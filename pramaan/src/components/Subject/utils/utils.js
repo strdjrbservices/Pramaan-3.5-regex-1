@@ -11,7 +11,7 @@ export const API_BASE_URL = process.env.REACT_APP_API_URL || (
         window.location.hostname.startsWith('172.') ||
         window.location.port === '3000'
     )
-        ? `http://${window.location.hostname || '127.0.0.1'}:8000`
+        ? 'https://45.195.243.67'
         : 'https://appraisalreviewoffline-strdjrbservices.pythonanywhere.com'
 );
 //https://appraisalreviewoffline-strdjrbservices.pythonanywhere.com
