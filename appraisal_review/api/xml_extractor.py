@@ -218,6 +218,94 @@ def _extract_appraiser_fee(full_narrative: str = "", embedded_doc: Optional[ET.E
 
     return ""
 
+def _extract_water_heater_comment(
+    full_narrative: str = "",
+    dom_narratives: Optional[List[str]] = None,
+    extracted_photos: Optional[List[Dict[str, Any]]] = None
+) -> str:
+    """
+    Extracts the Water heater double-strapped comment from report narrative,
+    DOM comments, and photo captions using keywords:
+    'water', 'heater', 'WATER HEATER', 'DOUBLE-STRAPPED', 'double strapped',
+    'single strapped', 'sinngle trapped', 'single trapped', 'double trapped',
+    'strapped', 'strap', 'straps', 'strapping', 'trapped', 'brace', 'braced', etc.
+    """
+    candidate_texts = []
+    if full_narrative:
+        candidate_texts.append(full_narrative)
+    if dom_narratives:
+        candidate_texts.extend(dom_narratives)
+
+    wh_term = r'(?:(?:hot\s+)?water\s*heater|waterheater|(?:hot\s+)?water\s*tank)'
+    strap_term = (
+        r'(?:'
+        r'double[\s\-]*(?:strapp\w*|trapp\w*|strap\b|trap\b)|'
+        r'sinngle[\s\-]*(?:trapp\w*|strapp\w*|strap\b|trap\b)|'
+        r'single[\s\-]*(?:strapp\w*|trapp\w*|strap\b|trap\b)|'
+        r'two[\s\-]*(?:straps?|traps?)|'
+        r'earthquake[\s\-]*(?:strapp\w*|trapp\w*|strap\b)|'
+        r'seismic[\s\-]*(?:strapp\w*|trapp\w*|strap\b)|'
+        r'properly[\s\-]*(?:strapp\w*|trapp\w*)|'
+        r'strapp\w*|'
+        r'straps?\b|'
+        r'trapp\w*|'
+        r'traps?\b|'
+        r'brac\w*|'
+        r'anchor\w*|'
+        r'tie[\s\-]*downs?'
+        r')'
+    )
+    wh_with_strap_pat = re.compile(
+        rf'(?:{wh_term}[^.?!;\n\r]{{0,60}}{strap_term}|{strap_term}[^.?!;\n\r]{{0,60}}{wh_term})',
+        re.IGNORECASE
+    )
+    wh_general_pat = re.compile(rf'\b{wh_term}\b', re.IGNORECASE)
+
+    tier1_comments = []
+    tier2_comments = []
+
+    for txt in candidate_texts:
+        if not txt or not isinstance(txt, str):
+            continue
+        norm_txt = re.sub(r'[\r\n]+', '\n', txt)
+        raw_chunks = re.split(r'(?<=[.?!;])\s+|\n+', norm_txt)
+        for s in raw_chunks:
+            s_clean = s.strip(" \t\r\n-•*")
+            if not s_clean or len(s_clean) < 6:
+                continue
+            s_clean_narr = re.sub(
+                r'^(?:ADDITIONAL\s+FEATURES|ADDITIONAL\s+COMMENTS|COMMENTS|NOTE|APPRAISAL\s+COMMENTS|'
+                r'SCOPE\s+OF\s+WORK|SUBJECT\s+PROPERTY\s+OBSERVATIONS?|IMPROVEMENTS?\s+COMMENTS?)\s*[:\-]\s*',
+                '',
+                s_clean,
+                flags=re.IGNORECASE
+            ).strip()
+
+            if wh_with_strap_pat.search(s_clean_narr):
+                if s_clean_narr not in tier1_comments:
+                    tier1_comments.append(s_clean_narr)
+            elif wh_general_pat.search(s_clean_narr):
+                if len(s_clean_narr) > 15 and not re.match(r'^(?:appliances?|utilities?|heating|mechanical)\s*[:\-]', s_clean_narr, re.I):
+                    if s_clean_narr not in tier2_comments:
+                        tier2_comments.append(s_clean_narr)
+
+    if tier1_comments:
+        return " ".join(tier1_comments)
+    if tier2_comments:
+        return " ".join(tier2_comments)
+
+    if extracted_photos:
+        for photo in extracted_photos:
+            caption = (photo.get("caption") or photo.get("original_label") or "").strip()
+            p_no = photo.get("page")
+            cap_lower = caption.lower()
+            if any(k in cap_lower for k in ["water heater", "waterheater", "hot water heater", "water tank"]):
+                page_str = f" (Page {p_no})" if p_no else ""
+                return f"Photo present: {caption}{page_str}"
+
+    return ""
+
+
 
 def _extract_nonconforming_rebuild_comment(
     full_narrative: str = "",
@@ -3638,13 +3726,18 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
             if len(c_cand) > 5:
                 uspap_comment = c_cand
     
-    # Smoke & CO detectors
+    # Smoke & CO detectors & Water Heater
     smoke_comment = ""
     co_comment = ""
     m_det = re.search(r'([^.?!;\n]*\b(?:smoke|carbon\s*monoxide|co\s*detector)\b[^.?!;\n]*(?:[.?!]|$))', full_narrative, re.IGNORECASE)
     if m_det:
         smoke_comment = m_det.group(0).strip()
         co_comment = m_det.group(0).strip()
+
+    water_heater_comment = _extract_water_heater_comment(
+        full_narrative=full_narrative,
+        dom_narratives=dom_narratives
+    )
 
     # AMC Name
     amc_name = ""
@@ -3767,6 +3860,9 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "ADU File Check": adu_check,
         "Smoke detector comment": smoke_comment,
         "CO detector comment": co_comment,
+        "Water heater double-strapped comment": water_heater_comment,
+        "Water Heater Double-Strapped Comment": water_heater_comment,
+        "Water Heater Double Strapped Comment": water_heater_comment,
         "Appraiser's Fee": appraiser_fee,
         "Appraiser Fee": appraiser_fee,
         "Appraisal Fee": appraiser_fee,
@@ -4269,6 +4365,9 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "Heating Fuel": hf_val,
         "Cooling": cooling_val,
         "Cooling Type": cooling_val,
+        "Water heater double-strapped comment": water_heater_comment,
+        "Water Heater Double-Strapped Comment": water_heater_comment,
+        "Water Heater Double Strapped Comment": water_heater_comment,
 
         # Exterior Description (Material/Condition)
         "Foundation Walls (Material/Condition)": found_walls,
@@ -4905,6 +5004,19 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
             include_images=extract_images,
             reference_records=refs_for_photos
         )
+        if not water_heater_comment and extracted_photos:
+            wh_photo = _extract_water_heater_comment(extracted_photos=extracted_photos)
+            if wh_photo:
+                water_heater_comment = wh_photo
+                clean_subject["Water heater double-strapped comment"] = water_heater_comment
+                clean_subject["Water Heater Double-Strapped Comment"] = water_heater_comment
+                clean_subject["Water Heater Double Strapped Comment"] = water_heater_comment
+                improvements_section["Water heater double-strapped comment"] = water_heater_comment
+                improvements_section["Water Heater Double-Strapped Comment"] = water_heater_comment
+                improvements_section["Water Heater Double Strapped Comment"] = water_heater_comment
+                subject_section["Water heater double-strapped comment"] = water_heater_comment
+                subject_section["Water Heater Double-Strapped Comment"] = water_heater_comment
+                subject_section["Water Heater Double Strapped Comment"] = water_heater_comment
     except Exception:
         pass
 

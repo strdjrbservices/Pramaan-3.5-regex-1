@@ -453,10 +453,10 @@ def evaluate_state_requirements(pdf_path: str, extracted_data: Optional[Dict[str
         wh_val = _get_field_val(data, "Improvements", "Water heater double-strapped comment") or _get_field_val(data, "Subject", "Water heater double-strapped comment")
         wh_page, wh_snip = _find_keyword_in_pages(
             pages_text,
-            [r"water\s*heater.*(?:strapp|brace|double)", r"double\s*strapp.*water\s*heater", r"water\s*heater"]
+            [r"water\s*heater.*(?:strapp|brace|double|trapp)", r"(?:double|single|sinngle)\s*(?:strapp|trapp).*water\s*heater", r"water\s*heater"]
         )
         wh_snip_str = (wh_snip or "").lower()
-        if wh_val or (wh_page and ("strap" in wh_snip_str or "brace" in wh_snip_str)):
+        if wh_val or (wh_page and any(w in wh_snip_str for w in ["strap", "brace", "trapp"])):
             disp_wh = str(wh_val or "").strip() or "Water heater double-strapping addressed."
             details.append({
                 "requirement": "Water Heater Double-Strapping Addressed",
@@ -481,7 +481,7 @@ def evaluate_state_requirements(pdf_path: str, extracted_data: Optional[Dict[str
         is_the_loan_store = "THE LOAN STORE" in lender_val or "LOAN STORE" in lender_val
         wh_page, wh_snip = _find_keyword_in_pages(
             pages_text,
-            [r"water\s*heater.*(?:strapp|brace|double)", r"strapp.*water\s*heater", r"double\s*strapp"]
+            [r"water\s*heater.*(?:strapp|brace|double|trapp)", r"(?:strapp|trapp).*water\s*heater", r"(?:double|single|sinngle)\s*(?:strapp|trapp)"]
         )
         wh_val = _get_field_val(data, "Improvements", "Water heater double-strapped comment")
         if is_averra:
@@ -3600,16 +3600,16 @@ def evaluate_client_requirements(pdf_path: str, extracted_data: Optional[Dict[st
             wh_page, wh_snip = _find_keyword_in_pages(
                 pages_text,
                 [
-                    r"water\s*heater.*(?:double\s*strapp|strapp|brace)",
-                    r"(?:double\s*strapp|strapp).*water\s*heater",
-                    r"double\s*strapp",
+                    r"water\s*heater.*(?:double\s*(?:strapp|trapp)|(?:strapp|trapp)|brace)",
+                    r"(?:double|single|sinngle)\s*(?:strapp|trapp).*water\s*heater",
+                    r"(?:double|single|sinngle)\s*(?:strapp|trapp)",
                     r"water\s*heater"
                 ]
             )
             wh_val = _get_field_val(data, "Improvements", "Water heater double-strapped comment") or _get_field_val(data, "Subject", "Water heater double-strapped comment")
             has_double_strap = False
             combined_wh = f"{str(wh_val or '')} {str(wh_snip or '')} {full_text}"
-            if re.search(r"double\s*strapp", combined_wh, re.I) or (re.search(r"water\s*heater", combined_wh, re.I) and re.search(r"strapp|brace", combined_wh, re.I)):
+            if re.search(r"(?:double|single|sinngle)\s*(?:strapp|trapp)", combined_wh, re.I) or (re.search(r"water\s*heater", combined_wh, re.I) and re.search(r"strapp|trapp|brace", combined_wh, re.I)):
                 has_double_strap = True
 
             if has_double_strap:

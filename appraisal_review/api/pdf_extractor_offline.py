@@ -1626,8 +1626,32 @@ def extract_smoke_and_carbon_comments_from_doc(doc=None, full_doc_text="", extra
     smoke_pat = re.compile(r'\bsmoke\b', re.IGNORECASE)
     carbon_co_pat = re.compile(r'\b(?:carbon\s*monoxide|co|carbon)\b', re.IGNORECASE)
     detector_pat = re.compile(r'\b(?:detector|detectors|alarm|alarms|device|devices|operable|installed|present|equipped|observed)\b', re.IGNORECASE)
-    wh_pat = re.compile(r'\b(?:water\s*heater|waterheater)\b', re.IGNORECASE)
-    strap_pat = re.compile(r'\b(?:strap|strapped|strapping|brace|braced|bracing|double[\s\-]strapped|double[\s\-]strap)\b', re.IGNORECASE)
+    
+    # Water heater & strapping terms (supporting words like water, heater, DOUBLE-STRAPPED, sinngle trapped, single strapped, strapped, brace, etc.)
+    wh_term = r'(?:(?:hot\s+)?water\s*heater|waterheater|(?:hot\s+)?water\s*tank)'
+    strap_term = (
+        r'(?:'
+        r'double[\s\-]*(?:strapp\w*|trapp\w*|strap\b|trap\b)|'
+        r'sinngle[\s\-]*(?:trapp\w*|strapp\w*|strap\b|trap\b)|'
+        r'single[\s\-]*(?:strapp\w*|trapp\w*|strap\b|trap\b)|'
+        r'two[\s\-]*(?:straps?|traps?)|'
+        r'earthquake[\s\-]*(?:strapp\w*|trapp\w*|strap\b)|'
+        r'seismic[\s\-]*(?:strapp\w*|trapp\w*|strap\b)|'
+        r'properly[\s\-]*(?:strapp\w*|trapp\w*)|'
+        r'strapp\w*|'
+        r'straps?\b|'
+        r'trapp\w*|'
+        r'traps?\b|'
+        r'brac\w*|'
+        r'anchor\w*|'
+        r'tie[\s\-]*downs?'
+        r')'
+    )
+    wh_with_strap_pat = re.compile(
+        rf'(?:{wh_term}[^.?!;\n\r]{{0,60}}{strap_term}|{strap_term}[^.?!;\n\r]{{0,60}}{wh_term})',
+        re.IGNORECASE
+    )
+    wh_general_pat = re.compile(rf'\b{wh_term}\b', re.IGNORECASE)
 
     smoke_co_combined_pat = re.compile(
         r'\b(?:smoke\s*(?:and|/|&|\+|,)?\s*(?:carbon\s*monoxide|co|carbon)\s*(?:detectors?|alarms?)?|'
@@ -1663,10 +1687,14 @@ def extract_smoke_and_carbon_comments_from_doc(doc=None, full_doc_text="", extra
                 if s_clean_narr not in co_sentences:
                     co_sentences.append(s_clean_narr)
 
-            # 4. Water heater strapping
-            if wh_pat.search(s_clean_narr) and (strap_pat.search(s_clean_narr) or 'heater' in s_clean_narr.lower()):
+            # 4. Water heater strapping & observations (Tier 1: with strapping/trapping/bracing, Tier 2: general comment)
+            if wh_with_strap_pat.search(s_clean_narr):
                 if s_clean_narr not in wh_sentences:
                     wh_sentences.append(s_clean_narr)
+            elif not wh_sentences and wh_general_pat.search(s_clean_narr):
+                if len(s_clean_narr) > 15 and not re.match(r'^(?:appliances?|utilities?|heating|mechanical)\s*[:\-]', s_clean_narr, re.I):
+                    if s_clean_narr not in wh_sentences:
+                        wh_sentences.append(s_clean_narr)
 
     if smoke_sentences:
         smoke_comment = " ".join(smoke_sentences)
@@ -6030,13 +6058,23 @@ def clean_appraisal_extracted_data(data):
         if isinstance(data.get("Subject"), dict):
             data["Subject"]["CO detector comment"] = co_val
 
-    wh_val = data.get("Water heater double-strapped comment") or (data.get("SUBJECT", {}).get("Water heater double-strapped comment") if isinstance(data.get("SUBJECT"), dict) else "") or (data.get("Subject", {}).get("Water heater double-strapped comment") if isinstance(data.get("Subject"), dict) else "") or ""
+    wh_val = data.get("Water heater double-strapped comment") or (data.get("SUBJECT", {}).get("Water heater double-strapped comment") if isinstance(data.get("SUBJECT"), dict) else "") or (data.get("Subject", {}).get("Water heater double-strapped comment") if isinstance(data.get("Subject"), dict) else "") or (data.get("IMPROVEMENTS", {}).get("Water heater double-strapped comment") if isinstance(data.get("IMPROVEMENTS"), dict) else "") or (data.get("Improvements", {}).get("Water heater double-strapped comment") if isinstance(data.get("Improvements"), dict) else "") or ""
     if wh_val:
         data["Water heater double-strapped comment"] = wh_val
+        data["Water Heater Double-Strapped Comment"] = wh_val
+        data["Water Heater Double Strapped Comment"] = wh_val
         if isinstance(data.get("SUBJECT"), dict):
             data["SUBJECT"]["Water heater double-strapped comment"] = wh_val
+            data["SUBJECT"]["Water Heater Double-Strapped Comment"] = wh_val
         if isinstance(data.get("Subject"), dict):
             data["Subject"]["Water heater double-strapped comment"] = wh_val
+            data["Subject"]["Water Heater Double-Strapped Comment"] = wh_val
+        if isinstance(data.get("IMPROVEMENTS"), dict):
+            data["IMPROVEMENTS"]["Water heater double-strapped comment"] = wh_val
+            data["IMPROVEMENTS"]["Water Heater Double-Strapped Comment"] = wh_val
+        if isinstance(data.get("Improvements"), dict):
+            data["Improvements"]["Water heater double-strapped comment"] = wh_val
+            data["Improvements"]["Water Heater Double-Strapped Comment"] = wh_val
 
     # 11. Clean & Sync Exposure comment (compulsory field)
     exp_val = data.get("Exposure comment") or data.get("Exposure Comment") or (data.get("SUBJECT", {}).get("Exposure comment") if isinstance(data.get("SUBJECT"), dict) else "") or (data.get("SUBJECT", {}).get("Exposure Comment") if isinstance(data.get("SUBJECT"), dict) else "") or (data.get("Subject", {}).get("Exposure comment") if isinstance(data.get("Subject"), dict) else "") or (data.get("Subject", {}).get("Exposure Comment") if isinstance(data.get("Subject"), dict) else "") or "Not Present"
