@@ -130,7 +130,7 @@ class MapExtractor:
 
     def run_ocr(self, img_bgr: Any) -> List[Tuple[str, float]]:
         """Runs OCR on an image crop, returning a list of (text, confidence) tuples."""
-        if img_bgr is None or img_bgr.size == 0:
+        if img_bgr is None or getattr(img_bgr, "size", 0) == 0 or cv2 is None or np is None:
             return []
 
         # Preprocessing: convert to grayscale and upscale slightly for clearer text OCR
@@ -289,7 +289,7 @@ class MapExtractor:
             txt = (page.get_text() or "").upper()
             if not txt.strip():
                 # For scanned/raster PDF pages without text layer, OCR header strip
-                if len(page.get_images()) > 0:
+                if len(page.get_images()) > 0 and fitz is not None and np is not None and cv2 is not None:
                     try:
                         clip_top = fitz.Rect(0, 0, page.rect.width, min(page.rect.height, 130))
                         pix_top = page.get_pixmap(clip=clip_top, dpi=120)
@@ -548,7 +548,7 @@ class MapExtractor:
         by_category, by_level, all_labels = parse_lines_for_rooms(filtered_lines)
 
         # Phase 2: If vector text found no room labels, trigger OCR on the drawing area
-        if len(all_labels) == 0 and page is not None and fitz is not None:
+        if len(all_labels) == 0 and page is not None and fitz is not None and np is not None and cv2 is not None:
             try:
                 clip_rect = fitz.Rect(10, 75, page.rect.width - 10, page.rect.height - 25)
                 pix = page.get_pixmap(clip=clip_rect, dpi=150)
@@ -1711,6 +1711,8 @@ class MapExtractor:
 
     def process_comp_photo_page(self, page, page_number: int) -> List[Dict[str, Any]]:
         """Extracts each comparable photograph, thumbnail preview, and structured metadata."""
+        if fitz is None or page is None:
+            return []
         img_infos = page.get_image_info()
         frames = []
         for item in img_infos:
