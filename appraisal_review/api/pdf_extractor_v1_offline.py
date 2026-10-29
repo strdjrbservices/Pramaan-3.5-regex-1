@@ -2466,6 +2466,9 @@ def extract_v1_sales_grid_section(doc, full_doc_text: str, summary: Dict[str, An
                     if adj_text: grid[actual_comp]["Bedrooms Adjustment"] = adj_text
                 elif "baths" in lbl_clean:
                     grid[actual_comp]["Bathrooms - Full"] = val_text
+                    if adj_text:
+                        grid[actual_comp]["Baths Adjustment"] = adj_text
+                        grid[actual_comp]["Bathrooms Adjustment"] = adj_text
                 elif "finished area above grade" in lbl_clean:
                     grid[actual_comp]["Finished Area Above Grade"] = val_text
                     if adj_text: grid[actual_comp]["Finished Area Above Grade Adjustment"] = adj_text

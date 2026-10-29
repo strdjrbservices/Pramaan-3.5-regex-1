@@ -190,10 +190,20 @@ const SalesComparisonSection = ({
                       {comparableSales.map((sale, cidx) => {
                         const compObj = getCompData(sale);
                         const compValue = compObj[row.valueKey] ?? compObj[row.valueKey?.replace('of Comparable', 'of Comparables')] ?? compObj[row.valueKey?.replace('of Comparables', 'of Comparable')] ?? '';
-                        const rawAdjValue = compObj[row.adjustmentKey];
-                        const adjValue = (row.adjustmentKey === 'Baths Adjustment' && (rawAdjValue === undefined || rawAdjValue === ''))
-                          ? (compObj['Above Grade Room Count Adjustment'] || '')
-                          : (rawAdjValue || '');
+                        const rawAdjValue = compObj[row.adjustmentKey] ?? (row.adjustmentKey === 'Baths Adjustment' ? compObj['Bathrooms Adjustment'] : undefined);
+                        let adjValue = (rawAdjValue !== undefined && rawAdjValue !== null) ? String(rawAdjValue) : '';
+                        if (!adjValue && compObj['Above Grade Room Count Adjustment']) {
+                          const rcAdj = compObj['Above Grade Room Count Adjustment'];
+                          const subjBed = String(subjectObj?.['Bedrooms'] || '').trim();
+                          const compBed = String(compObj?.['Bedrooms'] || '').trim();
+                          const subjBath = String(subjectObj?.['Baths'] || '').trim();
+                          const compBath = String(compObj?.['Baths'] || '').trim();
+                          if (row.adjustmentKey === 'Bedrooms Adjustment' && compBed && subjBed && compBed !== subjBed && compBath === subjBath) {
+                            adjValue = rcAdj;
+                          } else if (row.adjustmentKey === 'Baths Adjustment' && compBath && subjBath && compBath !== subjBath && compBed === subjBed) {
+                            adjValue = rcAdj;
+                          }
+                        }
                         const cellStyle = {};
                         if (extractionAttempted && !row.isAdjustmentOnly && (!compObj || (compValue === undefined || compValue === ''))) {
                           cellStyle.border = '2px solid red';

@@ -755,10 +755,21 @@ export const SalesComparisonSection = ({ data, salesGridRows, comparableSales, e
                                         <td></td>
                                         {comparableSales.map((sale, compIndex) => {
                                             const compData = getCompData(sale);
-                                            const rawAdjValue = compData[row.adjustmentKey];
-                                            const adjValue = (row.adjustmentKey === 'Baths Adjustment' && (rawAdjValue === undefined || rawAdjValue === ''))
-                                                ? (compData['Above Grade Room Count Adjustment'] || '')
-                                                : (rawAdjValue || '');
+                                            const rawAdjValue = compData[row.adjustmentKey] ?? (row.adjustmentKey === 'Baths Adjustment' ? compData['Bathrooms Adjustment'] : undefined);
+                                            let adjValue = (rawAdjValue !== undefined && rawAdjValue !== null) ? String(rawAdjValue) : '';
+                                            if (!adjValue && compData['Above Grade Room Count Adjustment']) {
+                                                const rcAdj = compData['Above Grade Room Count Adjustment'];
+                                                const subjData = allData?.Subject || allData?.SUBJECT || {};
+                                                const subjBed = String(subjData['Bedrooms'] || '').trim();
+                                                const compBed = String(compData['Bedrooms'] || '').trim();
+                                                const subjBath = String(subjData['Baths'] || '').trim();
+                                                const compBath = String(compData['Baths'] || '').trim();
+                                                if (row.adjustmentKey === 'Bedrooms Adjustment' && compBed && subjBed && compBed !== subjBed && compBath === subjBath) {
+                                                    adjValue = rcAdj;
+                                                } else if (row.adjustmentKey === 'Baths Adjustment' && compBath && subjBath && compBath !== subjBath && compBed === subjBed) {
+                                                    adjValue = rcAdj;
+                                                }
+                                            }
                                             const isMissing = false;
                                             return (
                                                 <td key={`${sale}-${row.adjustmentKey}`} style={isMissing ? { border: '2px solid red' } : {}}>

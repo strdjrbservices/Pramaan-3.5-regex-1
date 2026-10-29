@@ -2782,11 +2782,28 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
 
             # Extract child adjustments
             adjustments = {}
+            line1_adj = ""
+            line2_adj = ""
+            line1_found = False
+            line2_found = False
             for adj in comp.findall("SALE_PRICE_ADJUSTMENT"):
                 atype = adj.attrib.get("_Type", "")
                 adesc = adj.attrib.get("_Description", "")
                 aamt = _clean_currency(adj.attrib.get("_Amount", ""))
-                adjustments[atype] = {"desc": adesc, "amount": aamt}
+                other_desc = adj.attrib.get("_TypeOtherDescription", "")
+
+                # Line 1 (Bedrooms Adjustment) and Line 2 (Baths Adjustment) in MISMO XML
+                if other_desc in ["RoomAboveGradeLine1", "RoomAboveGrade1"] or atype == "Bedroom" or "bedroom" in other_desc.lower():
+                    line1_adj = aamt
+                    line1_found = True
+                elif other_desc in ["RoomAboveGradeLine2", "RoomAboveGrade2"] or atype == "Bathroom" or "bath" in other_desc.lower():
+                    line2_adj = aamt
+                    line2_found = True
+
+                adj_key = f"{atype}_{other_desc}" if (atype == "Other" and other_desc) else atype
+                adjustments[adj_key] = {"desc": adesc, "amount": aamt}
+                if atype not in adjustments or not adjustments[atype].get("amount"):
+                    adjustments[atype] = {"desc": adesc, "amount": aamt}
 
             if seq == "0":
                 adjustments_subject = adjustments
@@ -2811,7 +2828,8 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
             c_rooms = ""
             c_bed = ""
             c_bath = ""
-            c_room_adj = ""
+            clean_room_adj = ""
+            clean_bath_adj = ""
             unit_breakdown = {}
 
             for r_elem in comp.findall("ROOM_ADJUSTMENT"):
@@ -2820,6 +2838,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
                 u_br = r_elem.attrib.get("TotalBedroomCount", "")
                 u_ba = r_elem.attrib.get("TotalBathroomCount", "")
                 u_adj = _clean_currency(r_elem.attrib.get("RoomAdjustmentAmount", ""))
+                u_ba_adj = _clean_currency(r_elem.attrib.get("BathroomAdjustmentAmount", ""))
                 if u_id:
                     unit_breakdown[f"Unit Breakdown Tot Unit # {u_id}"] = u_tot
                     unit_breakdown[f"Unit Breakdown Br Unit # {u_id}"] = u_br
@@ -2835,7 +2854,8 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
                     c_rooms = u_tot
                     c_bed = u_br
                     c_bath = u_ba
-                    c_room_adj = u_adj
+                    clean_room_adj = u_adj
+                    clean_bath_adj = u_ba_adj
 
             if not c_rooms and total_unit_rooms > 0:
                 c_rooms = str(total_unit_rooms)
@@ -2849,42 +2869,95 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
                 c_bed = c_bed or bedrooms
                 c_bath = c_bath or baths
 
-            # Intelligently assign bedroom vs bath adjustment based on which differs from subject
+            # Intelligently assign bedroom and bath adjustments
+            c_b_num = float(c_bed) if c_bed and c_bed.replace(".", "").isdigit() else None
+            s_b_num = float(bedrooms) if bedrooms and bedrooms.replace(".", "").isdigit() else None
+            c_ba_num = float(c_bath) if c_bath and c_bath.replace(".", "").isdigit() else None
+            s_ba_num = float(baths) if baths and baths.replace(".", "").isdigit() else None
+
+            bed_same = (c_b_num is not None and s_b_num is not None and c_b_num == s_b_num)
+            bath_same = (c_ba_num is not None and s_ba_num is not None and c_ba_num == s_ba_num)
+
             bed_adj = ""
             bath_adj = ""
-            if c_room_adj:
-                adj_num = 0.0
-                try:
-                    adj_num = float(re.sub(r"[^\d.-]", "", c_room_adj.replace("+", "")))
-                except ValueError:
-                    pass
 
-                c_b_num = float(c_bed) if c_bed and c_bed.replace(".", "").isdigit() else None
-                s_b_num = float(bedrooms) if bedrooms and bedrooms.replace(".", "").isdigit() else None
-                c_ba_num = float(c_bath) if c_bath and c_bath.replace(".", "").isdigit() else None
-                s_ba_num = float(baths) if baths and baths.replace(".", "").isdigit() else None
-
-                bed_differs = c_b_num is not None and s_b_num is not None and c_b_num != s_b_num
-                bath_differs = c_ba_num is not None and s_ba_num is not None and c_ba_num != s_ba_num
-
-                if bed_differs and not bath_differs:
-                    bed_adj = c_room_adj
-                elif bath_differs and not bed_differs:
-                    bath_adj = c_room_adj
-                elif bed_differs and bath_differs:
-                    if c_ba_num is not None and s_ba_num is not None and c_b_num is not None and s_b_num is not None:
-                        if adj_num > 0 and c_ba_num < s_ba_num:
-                            bath_adj = c_room_adj
-                        elif adj_num < 0 and c_b_num > s_b_num:
-                            bed_adj = c_room_adj
-                        elif adj_num > 0 and c_b_num < s_b_num:
-                            bed_adj = c_room_adj
-                        else:
-                            bath_adj = c_room_adj
-                    else:
-                        bath_adj = c_room_adj
+            if line1_found or line2_found:
+                bed_adj = line1_adj
+                bath_adj = line2_adj
+            elif clean_bath_adj and clean_room_adj:
+                if bed_same:
+                    bed_adj = ""
+                    bath_adj = clean_bath_adj or clean_room_adj
+                elif bath_same:
+                    bath_adj = ""
+                    bed_adj = clean_room_adj or clean_bath_adj
                 else:
-                    bath_adj = c_room_adj
+                    bed_adj = clean_room_adj
+                    bath_adj = clean_bath_adj
+            else:
+                adj_val = clean_room_adj or clean_bath_adj
+                if adj_val:
+                    parts = [p.strip() for p in re.split(r'[/;\n]+', adj_val) if p.strip()]
+                    if len(parts) >= 2:
+                        bed_adj = parts[0]
+                        bath_adj = parts[1]
+                    else:
+                        bed_differs = c_b_num is not None and s_b_num is not None and c_b_num != s_b_num
+                        bath_differs = c_ba_num is not None and s_ba_num is not None and c_ba_num != s_ba_num
+
+                        if bed_differs and not bath_differs:
+                            bed_adj = adj_val
+                        elif bath_differs and not bed_differs:
+                            bath_adj = adj_val
+                        elif bed_differs and bath_differs:
+                            adj_num = 0.0
+                            try:
+                                adj_num = float(re.sub(r"[^\d.-]", "", adj_val.replace("+", "")))
+                            except ValueError:
+                                pass
+                            bed_exp_pos = (c_b_num < s_b_num)
+                            bath_exp_pos = (c_ba_num < s_ba_num)
+
+                            if adj_num > 0 and bed_exp_pos and not bath_exp_pos:
+                                bed_adj = adj_val
+                            elif adj_num < 0 and not bed_exp_pos and bath_exp_pos:
+                                bed_adj = adj_val
+                            elif adj_num > 0 and bath_exp_pos and not bed_exp_pos:
+                                bath_adj = adj_val
+                            elif adj_num < 0 and not bath_exp_pos and bed_exp_pos:
+                                bath_adj = adj_val
+                            else:
+                                bath_adj = adj_val
+                        else:
+                            bath_adj = adj_val
+
+            # Consistency check: cannot have adjustment if count is identical
+            if bed_same and bed_adj and not line1_found:
+                if not bath_adj:
+                    bath_adj = bed_adj
+                bed_adj = ""
+
+            if bath_same and bath_adj and not line2_found:
+                if not bed_adj:
+                    bed_adj = bath_adj
+                bath_adj = ""
+
+            # Overall room adjustment
+            c_room_adj = ""
+            if bed_adj and bath_adj:
+                try:
+                    b_val = float(re.sub(r"[^\d.-]", "", bed_adj.replace("+", "")))
+                    ba_val = float(re.sub(r"[^\d.-]", "", bath_adj.replace("+", "")))
+                    tot_val = b_val + ba_val
+                    c_room_adj = f"{int(tot_val):,}" if tot_val.is_integer() else f"{tot_val:,.2f}"
+                except Exception:
+                    c_room_adj = f"{bed_adj}; {bath_adj}"
+            elif bed_adj:
+                c_room_adj = bed_adj
+            elif bath_adj:
+                c_room_adj = bath_adj
+            else:
+                c_room_adj = clean_room_adj or clean_bath_adj or line1_adj or line2_adj
 
             # GLA vs GBA
             gla_desc = adjustments.get("GrossLivingArea", {}).get("desc", gba if seq == "0" else "")
@@ -2974,8 +3047,10 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
                 "Baths": c_bath,
                 "Above Grade Room Count": c_rooms,
                 "Above Grade Room Count Adjustment": c_room_adj,
+                "Room Count Adjustment": c_room_adj,
                 "Bedrooms Adjustment": bed_adj,
                 "Baths Adjustment": bath_adj,
+                "Bathrooms Adjustment": bath_adj,
                 "Gross Living Area": gla_desc or gba_desc,
                 "Gross Living Area Adjustment": gla_amt or gba_amt,
                 "Gross Building Area": gba_desc or gla_desc,

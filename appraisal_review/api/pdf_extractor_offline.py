@@ -3201,6 +3201,69 @@ def extract_page_2_sales_grid_and_reconciliation(page_p2, page_extra_comps=None,
         col_data["Adjusted Sale Price of Comparable"] = col_data.get("Adjusted Sale Price of Comparables", "")
         grid[col_key] = col_data
 
+    # Resolve Bedrooms and Baths adjustments for Comps 1-3
+    s_bed_val = grid.get("Subject", {}).get("Bedrooms", "")
+    s_bath_val = grid.get("Subject", {}).get("Baths", "")
+    for col_key, col_data in grid.items():
+        if col_key == "Subject":
+            continue
+        c_bed_val = col_data.get("Bedrooms", "")
+        c_bath_val = col_data.get("Baths", "")
+        rc_adj_val = col_data.get("Above Grade Room Count Adjustment", "") or col_data.get("Room Count Adjustment", "")
+        bed_adj = col_data.get("Bedrooms Adjustment", "")
+        bath_adj = col_data.get("Baths Adjustment", "") or col_data.get("Bathrooms Adjustment", "")
+
+        if rc_adj_val and not bed_adj and not bath_adj:
+            parts = [p.strip() for p in re.split(r'[/;\n]+', rc_adj_val) if p.strip()]
+            if len(parts) >= 2:
+                bed_adj = parts[0]
+                bath_adj = parts[1]
+            else:
+                c_b_num = float(c_bed_val) if c_bed_val and c_bed_val.replace(".", "").isdigit() else None
+                s_b_num = float(s_bed_val) if s_bed_val and s_bed_val.replace(".", "").isdigit() else None
+                c_ba_num = float(c_bath_val) if c_bath_val and c_bath_val.replace(".", "").isdigit() else None
+                s_ba_num = float(s_bath_val) if s_bath_val and s_bath_val.replace(".", "").isdigit() else None
+
+                bed_differs = c_b_num is not None and s_b_num is not None and c_b_num != s_b_num
+                bath_differs = c_ba_num is not None and s_ba_num is not None and c_ba_num != s_ba_num
+
+                if bed_differs and not bath_differs:
+                    bed_adj = rc_adj_val
+                elif bath_differs and not bed_differs:
+                    bath_adj = rc_adj_val
+                elif bed_differs and bath_differs:
+                    adj_num = 0.0
+                    try:
+                        adj_num = float(re.sub(r"[^\d.-]", "", rc_adj_val.replace("+", "")))
+                    except ValueError:
+                        pass
+                    bed_exp_pos = (c_b_num < s_b_num)
+                    bath_exp_pos = (c_ba_num < s_ba_num)
+
+                    if adj_num > 0 and bed_exp_pos and not bath_exp_pos:
+                        bed_adj = rc_adj_val
+                    elif adj_num < 0 and not bed_exp_pos and bath_exp_pos:
+                        bed_adj = rc_adj_val
+                    elif adj_num > 0 and bath_exp_pos and not bed_exp_pos:
+                        bath_adj = rc_adj_val
+                    elif adj_num < 0 and not bath_exp_pos and bed_exp_pos:
+                        bath_adj = rc_adj_val
+                    else:
+                        bath_adj = rc_adj_val
+                else:
+                    pass
+
+        if c_b_num is not None and s_b_num is not None and c_b_num == s_b_num:
+            bed_adj = ""
+        if c_ba_num is not None and s_ba_num is not None and c_ba_num == s_ba_num:
+            bath_adj = ""
+
+        col_data["Bedrooms Adjustment"] = bed_adj
+        col_data["Baths Adjustment"] = bath_adj
+        col_data["Bathrooms Adjustment"] = bath_adj
+        col_data["Above Grade Room Count Adjustment"] = rc_adj_val or bed_adj or bath_adj
+        col_data["Room Count Adjustment"] = col_data["Above Grade Room Count Adjustment"]
+
     # Prior Sales for Subject & Comps 1-3
     y_item_p2 = next((w['top'] for w in words if w['text'].upper() == 'ITEM' and w['top'] > 500), None)
     y_date_p2 = next((w['top'] for w in words if w['text'].lower() == 'date' and w['x0'] < 60 and w['top'] > 500), None)
@@ -5853,6 +5916,60 @@ def clean_appraisal_extracted_data(data):
                         if not beds: comp_clean["Bedrooms"] = parts[1]
                         if not baths_c: comp_clean["Baths"] = parts[2]
                         comp_clean["Above Grade Room Count"] = f"{parts[0]} {parts[1]} {parts[2]}"
+
+                # Resolve Bedroom and Bath adjustments if room count adjustment exists
+                s_beds_c = str(data.get("Subject", {}).get("Bedrooms") or data.get("SUBJECT", {}).get("Bedrooms") or "").strip()
+                s_baths_c = str(data.get("Subject", {}).get("Baths") or data.get("SUBJECT", {}).get("Baths") or "").strip()
+                rc_adj = str(comp_clean.get("Above Grade Room Count Adjustment") or comp_clean.get("Room Count Adjustment") or "").strip()
+                curr_bed_adj = str(comp_clean.get("Bedrooms Adjustment") or "").strip()
+                curr_bath_adj = str(comp_clean.get("Baths Adjustment") or comp_clean.get("Bathrooms Adjustment") or "").strip()
+
+                if rc_adj and not curr_bed_adj and not curr_bath_adj:
+                    r_parts = [p.strip() for p in re.split(r'[/;\n]+', rc_adj) if p.strip()]
+                    if len(r_parts) >= 2:
+                        curr_bed_adj = r_parts[0]
+                        curr_bath_adj = r_parts[1]
+                    else:
+                        cb_num = float(beds) if beds and beds.replace(".", "").isdigit() else None
+                        sb_num = float(s_beds_c) if s_beds_c and s_beds_c.replace(".", "").isdigit() else None
+                        cba_num = float(baths_c) if baths_c and baths_c.replace(".", "").isdigit() else None
+                        sba_num = float(s_baths_c) if s_baths_c and s_baths_c.replace(".", "").isdigit() else None
+
+                        b_diff = cb_num is not None and sb_num is not None and cb_num != sb_num
+                        ba_diff = cba_num is not None and sba_num is not None and cba_num != sba_num
+
+                        if b_diff and not ba_diff:
+                            curr_bed_adj = rc_adj
+                        elif ba_diff and not b_diff:
+                            curr_bath_adj = rc_adj
+                        elif b_diff and ba_diff:
+                            try:
+                                adj_n = float(re.sub(r"[^\d.-]", "", rc_adj.replace("+", "")))
+                            except ValueError:
+                                adj_n = 0.0
+                            if adj_n > 0 and (cb_num < sb_num) and not (cba_num < sba_num):
+                                curr_bed_adj = rc_adj
+                            elif adj_n < 0 and not (cb_num < sb_num) and (cba_num < sba_num):
+                                curr_bed_adj = rc_adj
+                            elif adj_n > 0 and (cba_num < sba_num) and not (cb_num < sb_num):
+                                curr_bath_adj = rc_adj
+                            elif adj_n < 0 and not (cba_num < sba_num) and (cb_num < sb_num):
+                                curr_bath_adj = rc_adj
+                            else:
+                                curr_bath_adj = rc_adj
+                        else:
+                            pass
+
+                if cb_num is not None and sb_num is not None and cb_num == sb_num:
+                    curr_bed_adj = ""
+                if cba_num is not None and sba_num is not None and cba_num == sba_num:
+                    curr_bath_adj = ""
+
+                comp_clean["Bedrooms Adjustment"] = curr_bed_adj
+                comp_clean["Baths Adjustment"] = curr_bath_adj
+                comp_clean["Bathrooms Adjustment"] = curr_bath_adj
+                comp_clean["Above Grade Room Count Adjustment"] = rc_adj or curr_bed_adj or curr_bath_adj
+                comp_clean["Room Count Adjustment"] = comp_clean["Above Grade Room Count Adjustment"]
 
                 # Standardize and add key aliases for UI compatibility
                 adj_sp = comp_clean.get("Adjusted Sale Price of Comparables") or comp_clean.get("Adjusted Sale Price of Comparable") or comp_clean.get("Adjusted Sale Price") or ""
