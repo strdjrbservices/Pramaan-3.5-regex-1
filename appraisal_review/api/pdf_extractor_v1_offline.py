@@ -3080,6 +3080,8 @@ def classify_and_caption_photo(raw_caption: str, page_text: str, p_idx: int, bbo
         return "Subject", "Subject Front View"
     if any(k in cap_lower for k in ["rear view", "dwelling rear", "subject rear", "rear of subject"]) or cap_lower == "rear":
         return "Subject", "Subject Rear View"
+    if any(k in cap_lower for k in ["side view", "subject side", "left side", "right side", "side of subject"]) or cap_lower == "side":
+        return "Subject", "Subject Side View"
     if any(k in cap_lower for k in ["street scene", "street view", "property access (street", "street"]):
         return "Subject", "Subject Street Scene"
 

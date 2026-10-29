@@ -188,6 +188,26 @@ def extract_report_data_offline(file_path: str) -> Dict[str, Any]:
             if isinstance(raw_fields, dict):
                 fields = raw_fields
             form_type = str(pdf_res.get("form_type", "1004"))
+        if not fields or (isinstance(pdf_res, dict) and pdf_res.get("status") != "success"):
+            try:
+                from api.pdf_extractor_v1_offline import extract_fields_from_pdf_v1_offline
+                v1_res = extract_fields_from_pdf_v1_offline(file_path)
+                if isinstance(v1_res, dict) and v1_res.get("status") == "success" and v1_res.get("fields"):
+                    pdf_res = v1_res
+                    fields = v1_res.get("fields", {})
+                    form_type = str(v1_res.get("form_type", "URAR"))
+            except Exception:
+                pass
+        if not fields:
+            try:
+                from api.pdf_extractor_ecr_offline import extract_fields_from_pdf_ecr_offline
+                ecr_res = extract_fields_from_pdf_ecr_offline(file_path)
+                if isinstance(ecr_res, dict) and ecr_res.get("status") == "success" and ecr_res.get("fields"):
+                    pdf_res = ecr_res
+                    fields = ecr_res.get("fields", {})
+                    form_type = str(ecr_res.get("form_type", "ECR"))
+            except Exception:
+                pass
         if not page_count:
             try:
                 doc = pymupdf.open(file_path)
@@ -204,6 +224,10 @@ def extract_report_data_offline(file_path: str) -> Dict[str, Any]:
         or _get_field_val(fields, "RECONCILIATION", "Indicated Value by Sales Comparison Approach")
         or _get_field_val(fields, "RECONCILIATION", "Market Value")
         or _get_field_val(fields, "RECONCILIATION", "Final Value")
+        or _get_field_val(fields, "SUMMARY", "Anticipated Sales Price: $")
+        or _get_field_val(fields, "SUMMARY", "Anticipated Sales Price")
+        or _get_field_val(fields, "CERTIFICATION", "Anticipated Sales Price: $")
+        or _get_field_val(fields, "CERTIFICATION", "Anticipated Sales Price")
         or "Not Found"
     )
 

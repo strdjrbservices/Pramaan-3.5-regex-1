@@ -6862,8 +6862,9 @@ def evaluate_photo_requirements(pdf_path: str, extracted_data: Optional[Dict[str
     captions_text = " ".join(p.get("caption", "") for p in photos).upper()
 
     checks = [
-        ("Subject Front Photo", ["SUBJECT FRONT", "FRONT VIEW"], "Required front view of subject property."),
-        ("Subject Rear Photo", ["SUBJECT REAR", "REAR VIEW"], "Required rear view of subject property."),
+        ("Subject Front Photo", ["SUBJECT FRONT", "FRONT VIEW", "FRONT OF SUBJECT"], "Required front view of subject property."),
+        ("Subject Rear Photo", ["SUBJECT REAR", "REAR VIEW", "REAR OF SUBJECT"], "Required rear view of subject property."),
+        ("Subject Side Photo", ["SUBJECT SIDE", "SIDE VIEW", "LEFT SIDE", "RIGHT SIDE", "FRONT/SIDE", "REAR/SIDE"], "Exterior side view photograph of subject property."),
         ("Subject Street Scene", ["SUBJECT STREET", "STREET SCENE", "STREET VIEW"], "Required street scene view of subject neighborhood."),
         ("Kitchen Photo", ["KITCHEN"], "Required interior kitchen photograph."),
         ("Main Living Area Photo", ["LIVING", "LIVING ROOM", "FAMILY ROOM"], "Required interior living area photograph."),

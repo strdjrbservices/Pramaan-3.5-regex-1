@@ -277,8 +277,8 @@ export const checkLeaseDates = (field, text, allData, path, saleName) => {
     // Comparable Rental Dates
     const currentVal = String(text ?? '').trim();
     const compData = allData?.[saleName] ||
-                     allData?.['Comparable Rental Data']?.[saleName] ||
-                     allData?.clean_data?.['Comparable Rental Data']?.[saleName] || {};
+        allData?.['Comparable Rental Data']?.[saleName] ||
+        allData?.clean_data?.['Comparable Rental Data']?.[saleName] || {};
     const storedBegins = String(compData['Date Lease Begins'] || '').trim();
     const storedExpires = String(compData['Date Lease Expires'] || '').trim();
 
@@ -360,7 +360,7 @@ export const checkSubjectUtilities = (field, text, allData, path, saleName) => {
     const occupant = getSubjectOccupant(allData);
     if (occupant === 'Tenant') {
         const amt = parseRentalAmount(text);
-        if (amt === null) {
+        if (amt === '' || amt === 0) {
             return {
                 isError: true,
                 skipBlankFilter: true,
@@ -388,7 +388,7 @@ export const checkSubjectFurniture = (field, text, allData, path, saleName) => {
     const occupant = getSubjectOccupant(allData);
     if (occupant === 'Tenant') {
         const amt = parseRentalAmount(text);
-        if (amt === null) {
+        if (amt === '' || amt === 0) {
             return {
                 isError: true,
                 skipBlankFilter: true,
@@ -445,19 +445,19 @@ export const checkOtherBasement = (field, text, allData, path, saleName) => {
     }
 
     const subjRent = allData?.['Single Family Rent Schedule'] ||
-                     allData?.clean_data?.['Single Family Rent Schedule'] ||
-                     allData?.['Subject Rent Schedule'] ||
-                     allData?.clean_data?.['Subject Rent Schedule'] ||
-                     allData?.Subject ||
-                     allData?.clean_data?.Subject ||
-                     {};
+        allData?.clean_data?.['Single Family Rent Schedule'] ||
+        allData?.['Subject Rent Schedule'] ||
+        allData?.clean_data?.['Subject Rent Schedule'] ||
+        allData?.Subject ||
+        allData?.clean_data?.Subject ||
+        {};
 
     const subjectValue = subjRent['Other (e.g., basement, etc.)'] ??
-                         subjRent['Other (e.g., basement)'] ??
-                         subjRent['Other Basement'] ??
-                         allData?.Subject?.['Other (e.g., basement, etc.)'] ??
-                         allData?.Subject?.['Other (e.g., basement)'] ??
-                         allData?.Subject?.['Other Basement'];
+        subjRent['Other (e.g., basement)'] ??
+        subjRent['Other Basement'] ??
+        allData?.Subject?.['Other (e.g., basement, etc.)'] ??
+        allData?.Subject?.['Other (e.g., basement)'] ??
+        allData?.Subject?.['Other Basement'];
     const comparableValue = text;
 
     const subjectValueStr = String(subjectValue || '').trim();
@@ -634,9 +634,9 @@ export const checkRentDesignAppealAdjustment = (field, text, allData, fieldPath,
 
     // Get Comp Design from the comparable rent entry
     const compObj = allData[rentName] ||
-                    allData['Comparable Rental Data']?.[rentName] ||
-                    allData.clean_data?.['Comparable Rental Data']?.[rentName] ||
-                    {};
+        allData['Comparable Rental Data']?.[rentName] ||
+        allData.clean_data?.['Comparable Rental Data']?.[rentName] ||
+        {};
     const compDesign = String(
         (isDesignField && text !== undefined && text !== null ? (typeof text === 'object' ? (text.value ?? '') : text) : compObj['Design and Appeal']) ||
         compObj['Design & Appeal'] ||
@@ -646,9 +646,9 @@ export const checkRentDesignAppealAdjustment = (field, text, allData, fieldPath,
 
     // Get Adjustment
     const adjObj = allData[rentName] ||
-                   allData['Comparable Rent Adjustments']?.[rentName] ||
-                   allData[`${rentName} Adjustments`] ||
-                   compObj;
+        allData['Comparable Rent Adjustments']?.[rentName] ||
+        allData[`${rentName} Adjustments`] ||
+        compObj;
     const adjustmentText = String(
         (isAdjField && text !== undefined && text !== null ? (typeof text === 'object' ? (text.value ?? '') : text) : adjObj['Design and Appeal Adjustment']) ||
         adjObj['Design and Appeal Adj'] ||
@@ -665,9 +665,9 @@ export const checkRentDesignAppealAdjustment = (field, text, allData, fieldPath,
 
         if (subjNorm && compNorm) {
             const isMatch = subjNorm === compNorm ||
-                            subjNorm.includes(compNorm) || compNorm.includes(subjNorm) ||
-                            ((subjNorm.includes('rranch') && compNorm.includes('raisedranch')) || (compNorm.includes('rranch') && subjNorm.includes('raisedranch'))) ||
-                            ((subjNorm.includes('splitlvl') && compNorm.includes('splitlevel')) || (compNorm.includes('splitlvl') && subjNorm.includes('splitlevel')));
+                subjNorm.includes(compNorm) || compNorm.includes(subjNorm) ||
+                ((subjNorm.includes('rranch') && compNorm.includes('raisedranch')) || (compNorm.includes('rranch') && subjNorm.includes('raisedranch'))) ||
+                ((subjNorm.includes('splitlvl') && compNorm.includes('splitlevel')) || (compNorm.includes('splitlvl') && subjNorm.includes('splitlevel')));
 
             const designsAreDifferent = !isMatch;
             const adjustmentIsPresent = adjustmentText !== '';
@@ -772,9 +772,9 @@ export const checkRentLocationViewAdjustment = (field, text, allData, fieldPath,
     ).trim();
 
     const compObj = allData[rentName] ||
-                    allData['Comparable Rental Data']?.[rentName] ||
-                    allData.clean_data?.['Comparable Rental Data']?.[rentName] ||
-                    {};
+        allData['Comparable Rental Data']?.[rentName] ||
+        allData.clean_data?.['Comparable Rental Data']?.[rentName] ||
+        {};
     const compVal = String(
         (!isAdjField && text !== undefined && text !== null ? (typeof text === 'object' ? (text.value ?? '') : text) : compObj['Location/View']) ||
         compObj['Location / View'] ||
@@ -783,9 +783,9 @@ export const checkRentLocationViewAdjustment = (field, text, allData, fieldPath,
     ).trim();
 
     const adjObj = allData[rentName] ||
-                   allData['Comparable Rent Adjustments']?.[rentName] ||
-                   allData[`${rentName} Adjustments`] ||
-                   compObj;
+        allData['Comparable Rent Adjustments']?.[rentName] ||
+        allData[`${rentName} Adjustments`] ||
+        compObj;
     const adjStr = String(
         (isAdjField && text !== undefined && text !== null ? (typeof text === 'object' ? (text.value ?? '') : text) : adjObj['Location/View Adjustment']) ||
         adjObj['Location / View Adjustment'] ||
@@ -923,9 +923,9 @@ export const checkRentAgeAdjustment = (field, text, allData, fieldPath, rentName
     ).trim();
 
     const compObj = allData[rentName] ||
-                    allData['Comparable Rental Data']?.[rentName] ||
-                    allData.clean_data?.['Comparable Rental Data']?.[rentName] ||
-                    {};
+        allData['Comparable Rental Data']?.[rentName] ||
+        allData.clean_data?.['Comparable Rental Data']?.[rentName] ||
+        {};
     const compVal = String(
         (!isAdjField && text !== undefined && text !== null ? (typeof text === 'object' ? (text.value ?? '') : text) : compObj['Age']) ||
         compObj['Actual Age'] ||
@@ -933,9 +933,9 @@ export const checkRentAgeAdjustment = (field, text, allData, fieldPath, rentName
     ).trim();
 
     const adjObj = allData[rentName] ||
-                   allData['Comparable Rent Adjustments']?.[rentName] ||
-                   allData[`${rentName} Adjustments`] ||
-                   compObj;
+        allData['Comparable Rent Adjustments']?.[rentName] ||
+        allData[`${rentName} Adjustments`] ||
+        compObj;
     const adjStr = String(
         (isAdjField && text !== undefined && text !== null ? (typeof text === 'object' ? (text.value ?? '') : text) : adjObj['Age Adjustment']) ||
         adjObj['Actual Age Adjustment'] ||
@@ -1041,18 +1041,18 @@ export const checkRentConditionAdjustment = (field, text, allData, fieldPath, re
     ).trim();
 
     const compObj = allData[rentName] ||
-                    allData['Comparable Rental Data']?.[rentName] ||
-                    allData.clean_data?.['Comparable Rental Data']?.[rentName] ||
-                    {};
+        allData['Comparable Rental Data']?.[rentName] ||
+        allData.clean_data?.['Comparable Rental Data']?.[rentName] ||
+        {};
     const compVal = String(
         (!isAdjField && text !== undefined && text !== null ? (typeof text === 'object' ? (text.value ?? '') : text) : compObj['Condition']) ||
         ''
     ).trim();
 
     const adjObj = allData[rentName] ||
-                   allData['Comparable Rent Adjustments']?.[rentName] ||
-                   allData[`${rentName} Adjustments`] ||
-                   compObj;
+        allData['Comparable Rent Adjustments']?.[rentName] ||
+        allData[`${rentName} Adjustments`] ||
+        compObj;
     const adjStr = String(
         (isAdjField && text !== undefined && text !== null ? (typeof text === 'object' ? (text.value ?? '') : text) : adjObj['Condition Adjustment']) ||
         adjObj['Condition Adj'] ||
@@ -1198,9 +1198,9 @@ export const checkRentRoomCountAdjustment = (field, text, allData, fieldPath, re
     const subjTotal = parseInt(String(getSubjectRentFieldVal(allData, 'Room Count Total') || allData.SALES_GRID?.Subject?.['Total'] || allData.Subject?.['Total Rooms'] || '0').replace(/[^0-9]/g, ''), 10);
 
     const compObj = allData[rentName] ||
-                    allData['Comparable Rental Data']?.[rentName] ||
-                    allData.clean_data?.['Comparable Rental Data']?.[rentName] ||
-                    {};
+        allData['Comparable Rental Data']?.[rentName] ||
+        allData.clean_data?.['Comparable Rental Data']?.[rentName] ||
+        {};
 
     let compBdrms = parseInt(String(compObj['Room Count Bdrms'] || compObj['Bedrooms'] || '0').replace(/[^0-9]/g, ''), 10);
     let compBaths = parseFloat(String(compObj['Room Count Baths'] || compObj['Baths'] || '0').replace(/[^0-9.]/g, ''));
@@ -1216,9 +1216,9 @@ export const checkRentRoomCountAdjustment = (field, text, allData, fieldPath, re
     }
 
     const adjObj = allData[rentName] ||
-                   allData['Comparable Rent Adjustments']?.[rentName] ||
-                   allData[`${rentName} Adjustments`] ||
-                   compObj;
+        allData['Comparable Rent Adjustments']?.[rentName] ||
+        allData[`${rentName} Adjustments`] ||
+        compObj;
     const adjStr = String(
         (isAdjField && text !== undefined && text !== null ? (typeof text === 'object' ? (text.value ?? '') : text) : adjObj['Room Count Total Adjustment']) ||
         adjObj['Room Count Adjustment'] ||
@@ -1327,18 +1327,18 @@ export const checkRentGrossLivingAreaAdjustment = (field, text, allData, fieldPa
     ).trim();
 
     const compObj = allData[rentName] ||
-                    allData['Comparable Rental Data']?.[rentName] ||
-                    allData.clean_data?.['Comparable Rental Data']?.[rentName] ||
-                    {};
+        allData['Comparable Rental Data']?.[rentName] ||
+        allData.clean_data?.['Comparable Rental Data']?.[rentName] ||
+        {};
     const compVal = String(
         (!isAdjField && text !== undefined && text !== null ? (typeof text === 'object' ? (text.value ?? '') : text) : compObj['Gross Living Area']) ||
         ''
     ).trim();
 
     const adjObj = allData[rentName] ||
-                   allData['Comparable Rent Adjustments']?.[rentName] ||
-                   allData[`${rentName} Adjustments`] ||
-                   compObj;
+        allData['Comparable Rent Adjustments']?.[rentName] ||
+        allData[`${rentName} Adjustments`] ||
+        compObj;
     const adjStr = String(
         (isAdjField && text !== undefined && text !== null ? (typeof text === 'object' ? (text.value ?? '') : text) : adjObj['Gross Living Area Adjustment']) ||
         adjObj['Gross Living Area Adj'] ||
@@ -1447,9 +1447,9 @@ export const checkRentOtherAdjustment = (field, text, allData, fieldPath, rentNa
     ).trim();
 
     const compObj = allData[rentName] ||
-                    allData['Comparable Rental Data']?.[rentName] ||
-                    allData.clean_data?.['Comparable Rental Data']?.[rentName] ||
-                    {};
+        allData['Comparable Rental Data']?.[rentName] ||
+        allData.clean_data?.['Comparable Rental Data']?.[rentName] ||
+        {};
     const compVal = String(
         (!isAdjField && text !== undefined && text !== null ? (typeof text === 'object' ? (text.value ?? '') : text) : compObj['Other:']) ||
         compObj['Other'] ||
@@ -1457,9 +1457,9 @@ export const checkRentOtherAdjustment = (field, text, allData, fieldPath, rentNa
     ).trim();
 
     const adjObj = allData[rentName] ||
-                   allData['Comparable Rent Adjustments']?.[rentName] ||
-                   allData[`${rentName} Adjustments`] ||
-                   compObj;
+        allData['Comparable Rent Adjustments']?.[rentName] ||
+        allData[`${rentName} Adjustments`] ||
+        compObj;
     const adjStr = String(
         (isAdjField && text !== undefined && text !== null ? (typeof text === 'object' ? (text.value ?? '') : text) : adjObj['Other: Adjustment']) ||
         adjObj['Other Adjustment'] ||

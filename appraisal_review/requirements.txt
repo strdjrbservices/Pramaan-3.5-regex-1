@@ -4,7 +4,6 @@ djangorestframework
 django-cors-headers
 djangorestframework-simplejwt
 
-google-generativeai
 PyPDF2
 pypdf
 pdfplumber

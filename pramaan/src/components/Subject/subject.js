@@ -3902,7 +3902,7 @@ function Subject({ defaultFormType }) {
     setData({});
     setExtractionAttempted(false);
     setLastExtractionTime(null);
-    setRawGemini('');
+    setRawExtractedData('');
     setPromptAnalysisResponse(null);
     setSubmittedPrompt('');
     setStateReqResponse(null);
@@ -3967,7 +3967,7 @@ function Subject({ defaultFormType }) {
     setData({});
     setExtractionAttempted(false);
     setLastExtractionTime(null);
-    setRawGemini('');
+    setRawExtractedData('');
     setPromptAnalysisResponse(null);
     setSubmittedPrompt('');
     setStateReqResponse(null);
@@ -4030,7 +4030,7 @@ function Subject({ defaultFormType }) {
       setPdfXmlDiffResult([]);
       setExtractionAttempted(false);
       setLastExtractionTime(null);
-      setRawGemini('');
+      setRawExtractedData('');
       setXmlFile(file);
       setExtractionSource('xml');
       startFileUploadTimer(file.name);
@@ -4135,7 +4135,7 @@ function Subject({ defaultFormType }) {
     };
   }, []);
 
-  const [rawGemini, setRawGemini] = useState('');
+  const [rawExtractedData, setRawExtractedData] = useState('');
 
   const validateInputs = () => {
     const activeFile = extractionSource === 'xml' ? (xmlFile || selectedFile) : (selectedFile || xmlFile);
@@ -4349,7 +4349,7 @@ function Subject({ defaultFormType }) {
       }
     }
 
-    setRawGemini(result.raw || '');
+    setRawExtractedData(result.raw || '');
     const durationInMs = Math.max(100, Date.now() - startTime);
     const durationInSeconds = durationInMs / 1000;
     const totalSeconds = Math.floor(durationInSeconds);
@@ -8204,7 +8204,7 @@ function Subject({ defaultFormType }) {
                 onAddendumRevisionButtonClick={() => setAddendumRevisionLangDialogOpen(true)}
               />
 
-              {(rawGemini || Object.keys(data).length > 0) && (
+              {(rawExtractedData || Object.keys(data).length > 0) && (
                 <Paper
                   id="raw-output"
                   elevation={3}

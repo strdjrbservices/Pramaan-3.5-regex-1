@@ -1,31 +1,12 @@
-import google.generativeai as genai
-from google.generativeai import caching
-import datetime
 import json
-from bs4 import BeautifulSoup
 import re
-import time
-import textwrap
-from google.api_core import exceptions as google_exceptions
-from PyPDF2 import PdfReader, PdfWriter
 from typing import Any, Dict, List, Optional
-import io
-import os
-from appraisal_review.settings import APIKEY
-# Allow APIKEY from settings or environment variable
-ACTIVE_API_KEY = os.environ.get("GEMINI_API_KEY") or os.environ.get("APIKEY") or APIKEY
-if ACTIVE_API_KEY:
-    try:
-        genai.configure(api_key=ACTIVE_API_KEY)
-    except Exception as e:
-        print(f"Warning: Failed to configure genai with API key: {e}")
 
-def _check_for_api_error_message(response_text, prompt_feedback):
-    """Checks if the given text or prompt feedback indicates a Gemini API error."""
-    if prompt_feedback and prompt_feedback.block_reason:
-        return True
-    return "Due to high traffic" in response_text or \
-           "API quota exceeded" in response_text
+ACTIVE_API_KEY = None
+
+def _check_for_api_error_message(response_text, prompt_feedback=None):
+    """Legacy check - Gemini API is removed."""
+    return False
 
 def clean_sublabels(s: str) -> str:
     if not s:
@@ -769,373 +750,142 @@ custom_checklist_schema = {
 }
 
 
-def extract_fields_from_pdf(pdf_path, form_type: str, category: str | None = None, custom_prompt: str | None = None, prompt_type: str = "checklist"):
-    # If custom_prompt is not provided, perform 100% offline extraction
-    if not custom_prompt:
-        form_type_clean = (form_type or "").strip()
-        if form_type_clean in ["Appraisal Version #1", "Appraisal Version #5", "Version 1", "Version 5", "URAR"] or "Appraisal Version" in form_type_clean or "VERSION" in form_type_clean.upper():
+
+def extract_fields_from_pdf(pdf_path: str, form_type: str = "1004", category: str | None = None, custom_prompt: str | None = None, prompt_type: str = "checklist") -> dict:
+    """
+    100% Offline pure Python & regex extraction.
+    Delegates to appropriate offline extractor without calling any external LLM/Gemini API.
+    """
+    form_type_clean = (form_type or "").strip()
+
+    # Priority routing for Version 1 / Version 5 URAR
+    if form_type_clean in ["Appraisal Version #1", "Appraisal Version #5", "Version 1", "Version 5", "URAR"] or "Appraisal Version" in form_type_clean or "VERSION" in form_type_clean.upper():
+        try:
             from api.pdf_extractor_v1 import extract_fields_from_pdf_v1
-            return extract_fields_from_pdf_v1(pdf_path, category=category, custom_prompt=None, prompt_type=prompt_type)
-        if (form_type or "").strip().upper() in ["ECR", "ERC", "WORLDWIDE ERC"]:
+            res = extract_fields_from_pdf_v1(pdf_path, category=category, custom_prompt=custom_prompt, prompt_type=prompt_type)
+            if isinstance(res, dict) and res.get("status") == "success":
+                return res
+        except Exception as e:
+            print(f"[pdf_extractor] Version 1 offline attempt notice: {e}")
+
+    # Priority routing for ECR
+    if form_type_clean.upper() in ["ECR", "ERC", "WORLDWIDE ERC"]:
+        try:
+            try:
+                from api.pdf_extractor_ecr import extract_fields_from_pdf_ecr
+            except ImportError:
+                from .pdf_extractor_ecr import extract_fields_from_pdf_ecr
+            res = extract_fields_from_pdf_ecr(pdf_path, category=category, custom_prompt=custom_prompt, prompt_type=prompt_type)
+            if isinstance(res, dict) and res.get("status") == "success":
+                return res
+        except Exception as e:
+            print(f"[pdf_extractor] ECR offline attempt notice: {e}")
+
+    # Standard Form 1004 offline extraction
+    from api.pdf_extractor_offline import extract_fields_from_pdf_offline
+    res = extract_fields_from_pdf_offline(pdf_path)
+
+    # Fallback to Version 1 offline if standard extraction did not succeed
+    if not isinstance(res, dict) or res.get("status") != "success":
+        try:
+            from api.pdf_extractor_v1_offline import extract_fields_from_pdf_v1_offline
+            v1_res = extract_fields_from_pdf_v1_offline(pdf_path)
+            if isinstance(v1_res, dict) and v1_res.get("status") == "success":
+                res = v1_res
+        except Exception:
+            pass
+
+    # Fallback to ECR offline if other forms did not succeed
+    if not isinstance(res, dict) or res.get("status") != "success":
+        try:
             from api.pdf_extractor_ecr_offline import extract_fields_from_pdf_ecr_offline
-            return extract_fields_from_pdf_ecr_offline(pdf_path)
-        from api.pdf_extractor_offline import extract_fields_from_pdf_offline
-        res = extract_fields_from_pdf_offline(pdf_path)
-        if res.get("status") == "success":
-            return res
+            ecr_res = extract_fields_from_pdf_ecr_offline(pdf_path)
+            if isinstance(ecr_res, dict) and ecr_res.get("status") == "success":
+                res = ecr_res
+        except Exception:
+            pass
 
-    combined_result = {}
-    raw_responses = []
-    
-    uploaded_file = None
-    cache = None
-    try:
-        if not ACTIVE_API_KEY:
-            return {'error': 'Configuration Error', 'message': 'Gemini API key is not configured.'}
-        genai.configure(api_key=ACTIVE_API_KEY)
+    if not isinstance(res, dict):
+        return {"error": "Extraction Error", "message": "Failed to extract fields offline"}
 
-        with open(pdf_path, "rb") as f:
-            pdf_bytes = f.read()
+    raw_fields = res.get("fields")
+    extracted_fields: dict[str, Any] = raw_fields if isinstance(raw_fields, dict) else {}
 
-        print("Uploading PDF to Gemini File API for caching...")
-        uploaded_file = genai.upload_file(pdf_path, mime_type="application/pdf")
-        
-        print("Creating Gemini Cache with gemini-3.5-flash...")
-        try:
-            cache = caching.CachedContent.create(
-                model='models/gemini-3.5-flash',
-                contents=[uploaded_file],
-                ttl=datetime.timedelta(minutes=15)
-            )
-        except Exception as err:
-            print(f"Cache create with gemini-3.5-flash failed ({err}), trying gemini-2.5-flash...")
+    # Handle category filtering
+    if category and extracted_fields:
+        cat_upper = category.upper()
+        cat_data = extracted_fields.get(cat_upper, {})
+        if isinstance(cat_data, dict) and cat_data:
+            cat_res = {cat_upper: cat_data, **cat_data}
+            return {
+                "fields": cat_res,
+                "raw": json.dumps(cat_res, indent=2, default=str),
+                "status": "success"
+            }
+
+    # Handle custom_prompt (queries or revision verification offline)
+    if custom_prompt:
+        prompt_lower = custom_prompt.lower()
+
+        # Revision checklist
+        if any(term in prompt_lower for term in ["revision", "checklist", "verify", "changed", "updated", "compare"]):
             try:
-                cache = caching.CachedContent.create(
-                    model='models/gemini-2.5-flash',
-                    contents=[uploaded_file],
-                    ttl=datetime.timedelta(minutes=15)
-                )
+                from api.offline_comparison import verify_revision_request_offline
+                return verify_revision_request_offline(pdf_path, custom_prompt)
             except Exception:
-                try:
-                    cache = caching.CachedContent.create(
-                        model='models/gemini-1.5-flash',
-                        contents=[uploaded_file],
-                        ttl=datetime.timedelta(minutes=15)
-                    )
-                except Exception as cache_err:
-                    print(f"Cache creation failed ({cache_err}). Falling back to direct model execution.")
-                    cache = None
+                pass
 
-        if custom_prompt:
-            response_schema = None
-            if prompt_type == "checklist":
-                response_schema = custom_checklist_schema
-            elif prompt_type == "general":
-                response_schema = None
+        # Requirement checks
+        try:
+            from api.offline_requirement_checks import (
+                evaluate_state_requirements, evaluate_unpaid_ok, evaluate_client_requirements,
+                evaluate_adu_requirements, evaluate_escalation_check, evaluate_fha_requirements
+            )
+            if any(term in prompt_lower for term in ["escalation check", "escalation rules", "run escalation check"]):
+                return evaluate_escalation_check(pdf_path, extracted_data=extracted_fields)
+            if any(term in prompt_lower for term in ["state-specific", "state specific", "state requirement", "amc license"]):
+                return evaluate_state_requirements(pdf_path, extracted_data=extracted_fields)
+            if any(term in prompt_lower for term in ["client requirement", "lender requirement", "homexpress", "logan"]):
+                return evaluate_client_requirements(pdf_path, extracted_data=extracted_fields, custom_prompt=custom_prompt)
+            if "unpaid ok" in prompt_lower:
+                return evaluate_unpaid_ok(pdf_path, extracted_data=extracted_fields)
+            if any(term in prompt_lower for term in ["accessory dwelling unit", "adu"]):
+                return evaluate_adu_requirements(pdf_path, extracted_data=extracted_fields)
+            if any(term in prompt_lower for term in ["fha-specific", "fha requirement", "hud 4000.1"]):
+                return evaluate_fha_requirements(pdf_path, extracted_data=extracted_fields)
+        except Exception:
+            pass
 
-            if response_schema:
-                generation_config = genai.GenerationConfig(
-                    temperature=0.0,
-                    response_mime_type="application/json",
-                    response_schema=response_schema,
-                )
-            else:
-                generation_config = genai.GenerationConfig(
-                    temperature=0.0,
-                    response_mime_type="application/json",
-                )
+        # General query: search for relevant keys or return extracted data
+        query_words = [w.strip() for w in re.findall(r'\b\w{3,}\b', prompt_lower)]
+        matched_data: dict[str, Any] = {}
+        for k, v in extracted_fields.items():
+            k_lower = k.lower()
+            if any(qw in k_lower for qw in query_words):
+                matched_data[k] = v
 
-            if prompt_type == "direct":
-                final_prompt = custom_prompt
-            elif prompt_type == "general":
-                final_prompt = textwrap.dedent(f"""\
-                    You are an expert appraisal data extractor. You are given an appraisal report PDF and a 'Query' to answer.
-                    Your task is to analyze the document and provide a detailed answer to the query.
-                    Query:
-                    ---
-                    {custom_prompt}
-                    ---
-                    Your response must be a single, clean JSON object.
-                    If the query asks for specific fields, return them as key-value pairs.
-                    If the query asks a question, return a JSON with a 'answer' key and the text response, and optionally 'page_no' if relevant.
-                    Do not include any introductory text, explanations, or markdown formatting like ```json.
-                """)
-            else:
-                final_prompt = textwrap.dedent(f"""\
-                    You are an expert appraisal reviewer. You are given an appraisal report PDF and a 'Revision Checklist' of items to verify.
-                    Your task is to meticulously follow the instructions in the 'Revision Checklist' and analyze the document to determine if the requested changes have been made.
-                    Revision Checklist:
-                    ---
-                    {custom_prompt}
-                    ---
-                    Your response must be a single, clean JSON object with two keys: 'summary' and 'comparison_summary'.
-                    The 'summary' value should be a concise, 2-3 line summary of your findings.
-                    The 'comparison_summary' value must be an array of objects. For each item in the checklist, create an object with three keys: 'status' ('Fulfilled' or 'Not Fulfilled'), 'section' (the relevant section from the checklist), and 'comment' (a brief explanation of your finding).
-                    Do not include any introductory text, explanations, or markdown formatting like ```json.
-                """)
+        if matched_data:
+            return {
+                "fields": matched_data,
+                "summary": f"Found {len(matched_data)} matching fields for query.",
+                "raw": json.dumps(matched_data, indent=2, default=str),
+                "status": "success"
+            }
 
-            if cache:
-                model = genai.GenerativeModel.from_cached_content(
-                    cached_content=cache,
-                    generation_config=generation_config
-                )
-                contents_payload = [final_prompt]
-            else:
-                model = genai.GenerativeModel(
-                    model_name='gemini-3.5-flash',
-                    generation_config=generation_config
-                )
-                contents_payload = [uploaded_file, final_prompt]
-            raw_text = ""
-            try:
-                response = model.generate_content(contents=contents_payload, request_options={"timeout": 600.0})
-                raw_text = response.text
-                if _check_for_api_error_message(raw_text, response.prompt_feedback):
-                    return {'error': 'Gemini API Error', 'message': raw_text, 'raw': raw_text}
-                json_str = raw_text.strip().lstrip('```json').rstrip('```').strip()
-                data = json.loads(json_str) if json_str else {}
-                return {'fields': data, 'raw': f"--- CUSTOM PROMPT SECTION ---\n{raw_text}"}
-            except json.JSONDecodeError as e:
-                return {'error': 'JSON Parsing Error', 'message': f"Failed to parse Gemini response: {e}. Raw response: {raw_text}", 'raw': raw_text}
-            except Exception as e:
-                return {'error': 'Processing Error', 'message': f"An unexpected error occurred during custom prompt extraction: {e}", 'raw': raw_text}
-
-        field_categories = {
-            "SUBJECT": SUBJECT_FIELDS, "CONTRACT": CONTRACT_FIELDS, "NEIGHBORHOOD": NEIGHBORHOOD_FIELDS,
-            "SITE": SITE_FIELDS, "IMPROVEMENTS": IMPROVEMENTS_FIELDS, "RECONCILIATION": RECONCILIATION_FIELDS,
-            "COST_APPROACH": COST_APPROACH_FIELDS, "INCOME_APPROACH": INCOME_APPROACH_FIELDS,
-            "RENT_SCHEDULE_RECONCILIATION": RENT_SCHEDULE_RECONCILIATION_FIELDS, "PUD_INFO": PUD_INFO_FIELDS,
-            "CERTIFICATION": CERTIFICATION_FIELDS, "SALES_TRANSFER": SALES_TRANSFER_FIELDS,
-            "MARKET_CONDITIONS": MARKET_CONDITIONS_FIELDS, "INFO_OF_SALES": INFO_OF_SALES_FIELDS,
-            "CONDO": CONDO_FIELDS,
-            "PRIOR_SALE_HISTORY": PRIOR_SALE_HISTORY_FIELDS, "PROJECT_SITE": Project_SITE_FIELDS, "PROJECT_INFO": Project_Info_FIELDS,
-            "CONDO_FORECLOSURE": CONDO_FORECLOSURE_FIELDS,
-            "PROJECT_ANALYSIS": Project_Analysis_FIELDS, "UNIT_DESCRIPTIONS": UNIT_DESCRIPTIONS_FIELDS,
-            "COMPARABLE_RENTAL_DATA": COMPARABLE_RENTAL_DATA_FIELDS,"SUBJECT_RENT_SCHEDULE": SUBJECT_RENT_SCHEDULE
+        return {
+            "fields": extracted_fields,
+            "summary": "Document processed offline.",
+            "raw": json.dumps(extracted_fields, indent=2, default=str),
+            "status": "success"
         }
-        if category:
-            categories_to_process = [category.upper()]
-        else:
-            categories_to_process = FORM_TYPE_CATEGORIES.get(form_type, DEFAULT_CATEGORIES)
 
-        for category_name in categories_to_process:
-            response_schema = None
-            if category_name in ["SALES_GRID", "RENT_SCHEDULE_GRID", "COMPARABLE_RENTAL_DATA", "MARKET_CONDITIONS"]:
-                response_schema = None
-            elif category_name in field_categories:
-                response_schema = make_flat_schema(field_categories[category_name])
-
-            if response_schema:
-                generation_config = genai.GenerationConfig(
-                    temperature=0.0,
-                    response_mime_type="application/json",
-                    response_schema=response_schema,
-                )
-            else:
-                generation_config = genai.GenerationConfig(
-                    temperature=0.0,
-                    response_mime_type="application/json",
-                )
-
-            if cache:
-                model = genai.GenerativeModel.from_cached_content(
-                    cached_content=cache,
-                    generation_config=generation_config
-                )
-            else:
-                model = genai.GenerativeModel(
-                    model_name='gemini-3.5-flash',
-                    generation_config=generation_config
-                )
-
-            prompt = ""
-            if category_name == "SALES_GRID":
-                prompt = textwrap.dedent(f"""
-                You are a specialized AI for digitizing appraisal report PDFs. Extract the 'SALES COMPARISON APPROACH' grid.
-
-                <instructions>
-                1. Output a single JSON object with keys: "Subject", "COMPARABLE SALE #1", "COMPARABLE SALE #2", etc.
-                2. Value for each key must contain the fields listed in <fields_to_extract>.
-                3. Extract each column independently. Match rows exactly with labels on the left of the grid.
-                4. Extract the description (unsigned values, e.g. "Q4", "C3") into the primary key and the signed adjustment (e.g. "+5000", "-1500") into the corresponding "* Adjustment" key. If no signed value is present, use "".
-                5. For Room Counts: Extract sub-columns under "Above Grade Room Count" into 'Total Rooms', 'Bedrooms', and 'Baths'. Adjustments for Bdrms and Baths go into 'Bedrooms Adjustment' and 'Baths Adjustment' respectively.
-                6. For GLA/GBA: Extract area into 'Gross Living Area'/'Gross Building Area' and its adjustment into 'Gross Living Area Adjustment'/'Gross Building Area Adjustment'.
-                7. For Proximity to Subject comment find out the comment from the all the pages of the report.
-                8. For Unit Breakdown: Extract counts and adjustments for each unit into 'Unit Breakdown Tot Unit # [1-4]', 'Unit Breakdown Br Unit # [1-4]', 'Unit Breakdown Ba Unit # [1-4]', and 'Unit Breakdown Adjustment Unit # [1-4]'.
-                9. For Prior Sales: Extract the bottom grid into prior sale keys (Date, Price, Data Source, Effective Date).
-                10. Clean monetary values (digits only) and format dates (MM/DD/YYYY).
-                11. For empty cells/missing data, use "".
-                </instructions>
-
-                <fields_to_extract>
-                {SalesGridFIELDS2}
-                </fields_to_extract>
-
-                Now, process the entire PDF, review every page, identify all SALES COMPARISON APPROACH grids, and generate the JSON output containing the Subject property and ALL Comparable Sale columns found in the document.
-                """)
-
-            elif category_name == "RENT_SCHEDULE_GRID":
-                prompt = textwrap.dedent(f"""
-                    You are a specialized AI for extracting structured data from appraisal report PDFs. Your task is to extract data from the 'COMPARABLE RENT SCHEDULE' grid.
-
-                    <instructions>
-                    1.  **Primary Goal**: Digitize the grid for the 'Subject' property and all 'Comparable' rental columns.
-                    2.  **Output Format**: Your entire response MUST be a single, valid JSON object. Do not include any text, explanations, or markdown (like ```json) before or after the JSON.
-                    3.  **JSON Structure**:
-                        - The root of the JSON object will have keys: "Subject", "COMPARABLE NO. 1", "COMPARABLE NO. 2", etc.
-                        - The value for each key will be another JSON object containing the fields listed in `<fields_to_extract>`.
-                    4.  **Extraction Rules**:
-                        -   **Column Integrity**: Data for one comparable must not leak into another.
-                        -   **Row Alignment**: Match data precisely with the row labels on the left side of the grid.
-                        -   **Adjustments**: Some fields may have adjustment strickly check values belong to that fields the main value. Capture both if present don't mismatch the adjustments. and '0' adjustment is present then that is valid adjustment please extract that also.
-                        -   **Data Cleaning**: Remove '$' and commas from monetary values. Format dates as MM/DD/YYYY.
-                        -   **Missing Data**: If a cell is empty or a value cannot be found, use an empty string `""`. Do not invent data.
-                    </instructions>
-
-                    <fields_to_extract>
-                    {RentSchedulesFIELDS2}
-                    </fields_to_extract>
-
-                    Now, process the provided PDF and generate the JSON output based on the 'COMPARABLE RENT SCHEDULE' grid.
-                """)
-            elif category_name == "COMPARABLE_RENTAL_DATA":
-                prompt = textwrap.dedent(f"""
-                    You are a specialized AI for extracting structured data from appraisal report PDFs. Your task is to extract data from the 'COMPARABLE RENTAL DATA' grid (often found in Form 1025).
-
-                    <instructions>
-                    1.  **Primary Goal**: Digitize the grid for the 'Subject' property and all 'Comparable' rental columns.
-                    2.  **Output Format**: Your entire response MUST be a single, valid JSON object. Do not include any text, explanations, or markdown (like ```json) before or after the JSON.
-                    3.  **JSON Structure**:
-                        - The root of the JSON object will have keys: "Subject", "COMPARABLE Rental No #1", "COMPARABLE Rental No #2", etc.
-                        - The value for each key will be another JSON object containing the fields listed in `<fields_to_extract>`.
-                    4.  **Extraction Rules**:
-                        -   **Column Integrity**: Data for one comparable must not leak into another.
-                        -   **Row Alignment**: Match data precisely with the row labels on the left side of the grid.
-                        -   **Unit Breakdown**: Pay close attention to the 'Unit Breakdown' section and extract room counts (Tot, Br, Ba), size (Sq. Ft.), and monthly rent for each unit number (Unit #1, Unit #2, etc.).
-                        -   **Data Cleaning**: Remove '$' and commas from monetary values. Format dates as MM/DD/YYYY.
-                        -   **Missing Data**: If a cell is empty or a value cannot be found, use an empty string `""`. Do not invent data.
-                    </instructions>
-
-                    <fields_to_extract>
-                    {COMPARABLE_RENTAL_DATA_FIELDS}
-                    </fields_to_extract>
-
-                    Now, process the provided PDF and generate the JSON output based on the 'COMPARABLE RENTAL DATA' grid.
-                """)
-            elif category_name in field_categories:
-                fields_list = field_categories[category_name]
-
-                instruction_details = GENERAL_INSTRUCTIONS
-                if category_name in CATEGORY_SPECIFIC_INSTRUCTIONS:
-                    instruction_details += "\n" + CATEGORY_SPECIFIC_INSTRUCTIONS[category_name]
-
-                base_prompt = (
-                    "From the provided appraisal report, extract the values for the fields listed below. "
-                    "Your response must be a single, clean JSON object with the field names as keys and their extracted values. "
-                    "Pay close attention to all instructions provided. "
-                    "Do not include any introductory text, explanations, or markdown formatting like ```json. "
-                    "The field names in the JSON must exactly match the list provided. "
-                    "Ensure all string values are properly escaped and the JSON is valid."
-                )
-                prompt = f"{base_prompt}\n{instruction_details}\n--- Fields for {category_name} ---\n{fields_list}"
-            else:
-                continue
-            try:
-                contents_payload = [prompt] if cache else [uploaded_file, prompt]
-                response = model.generate_content(contents=contents_payload, request_options={"timeout": 600.0})
-                raw_text = ""
-                try:
-                    if not response.parts:
-                        reason = "Unknown"
-                        if response.prompt_feedback.block_reason:
-                            reason = response.prompt_feedback.block_reason.name
-                        raw_text = f"Response blocked for '{category_name}'. Reason: {reason}"
-                        combined_result[category_name] = {'api_error': True, 'message': raw_text, 'raw': raw_text}
-                        raw_responses.append(f"--- {category_name} SECTION (API ERROR) ---\n{raw_text}")
-                        continue
-
-                    raw_text = response.text
-
-                except ValueError as ve:
-                    reason = "Unknown"
-                    if response.prompt_feedback.block_reason:
-                        reason = response.prompt_feedback.block_reason.name
-                    raw_text = f"Response blocked for '{category_name}'. Reason: {reason}. Error: {ve}"
-                    combined_result[category_name] = {'api_error': True, 'message': raw_text, 'raw': raw_text}
-                    raw_responses.append(f"--- {category_name} SECTION (API ERROR) ---\n{raw_text}")
-                    continue
-
-                if _check_for_api_error_message(raw_text, response.prompt_feedback):
-                    combined_result[category_name] = {'api_error': True, 'message': raw_text, 'raw': raw_text}
-                    raw_responses.append(f"--- {category_name} SECTION (API ERROR) ---\n{raw_text}")
-                    continue
-
-                truncated_raw_text = (raw_text[:2000] + '...' if len(raw_text) > 2000 else raw_text)
-                raw_responses.append(f"--- {category_name} SECTION ---\n{truncated_raw_text}")
-
-                json_str = raw_text.strip().lstrip('```json').rstrip('```').strip()
-                json_str = json_str.replace('"This appraisal is made "as is",', '"This appraisal is made \\"as is\\",')
-                json_str = json_str.replace('made "as is",', 'made \\"as is\\",')
-                parsed_data = {}
-                try:
-                    parsed_data = json.loads(json_str)
-
-                    parsed_data = sanitize_extracted_data(parsed_data)
-
-                    if category_name in ["SALES_GRID", "RENT_SCHEDULE_GRID", "COMPARABLE_RENTAL_DATA"]:
-                        if "Subject" in parsed_data:
-                            if "Subject" not in combined_result:
-                                combined_result["Subject"] = {}
-                            combined_result["Subject"].update(parsed_data["Subject"])
-                            del parsed_data["Subject"]
-                        combined_result.update(parsed_data)
-                    elif category_name not in ["SALES_GRID", "RENT_SCHEDULE_GRID", "COMPARABLE_RENTAL_DATA"]:
-                        combined_result.update(parsed_data)
-
-                    if category_name not in ["SALES_GRID", "RENT_SCHEDULE_GRID", "COMPARABLE_RENTAL_DATA"]:
-                        if 'api_error' not in combined_result.get(category_name, {}):
-                            combined_result.setdefault(category_name, {}).update(parsed_data)
-
-                except json.JSONDecodeError as e:
-                    error_message = f"JSON Parsing Error for {category_name}: {e}. Raw response snippet: {json_str[:500]}..."
-                    print(error_message)
-                    combined_result[category_name] = {'error': 'JSON Parsing Failed', 'message': error_message, 'raw_snippet': json_str[:500]}
-                except Exception as e:
-                    error_message = f"An unexpected error occurred during data processing for {category_name}: {e}. Raw response snippet: {json_str[:500]}..."
-                    print(error_message)
-                    combined_result[category_name] = {'error': 'Processing Error', 'message': error_message, 'raw_snippet': json_str[:500]}
-
-            except Exception as e:
-                error_message = f"API call failed for {category_name}: {e}"
-                print(error_message)
-                combined_result[category_name] = {'error': 'API Call Failed', 'message': error_message}
-                raw_responses.append(f"--- {category_name} SECTION (API CALL FAILED) ---\n{error_message}")
-            print(f"Processed category {category_name}, sleeping for 2 seconds...")
-            time.sleep(2)
-
-    except google_exceptions.ResourceExhausted as e:
-        print(f"Gemini API Quota Exceeded: {e}")
-        return {'error': 'Gemini API Quota Exceeded', 'message': f"API quota exceeded. Please check your plan and billing details. Original error: {e}"}
-    except Exception as e:
-        print(f"Error during overall document extraction: {e}")
-        return {'error': 'Extraction Failed', 'message': f"An unexpected error occurred during document extraction: {e}"}
-    finally:
-        try:
-            if cache: cache.delete()
-        except: pass
-        try:
-            if uploaded_file: uploaded_file.delete()
-        except: pass
-
-    return {'fields': combined_result, 'raw': "\n\n".join(raw_responses)}
+    return res
 
 
 def compare_documents(original_path: str, revised_path: str, revision_request: str | None = None, form_type: str | None = None) -> dict:
-    if form_type in ["ECR", "ERC", "WORLDWIDE ERC"]:
-        from api.pdf_extractor_ecr import compare_documents_ecr
-        return compare_documents_ecr(original_path, revised_path, revision_request=revision_request)
     from api.offline_comparison import compare_documents_offline
     return compare_documents_offline(original_path, revised_path, revision_request=revision_request, form_type=form_type)
+
 
 
 def extract_fields_from_html(html_content: str, fields_to_extract: list[str], custom_prompt: str | None = None) -> dict:
@@ -1143,4 +893,4 @@ def extract_fields_from_html(html_content: str, fields_to_extract: list[str], cu
     Extracts specified fields from HTML content 100% offline.
     """
     from api.offline_comparison import extract_fields_from_html_offline
-    return extract_fields_from_html_offline(html_content, fields_to_extract)
+    return extract_fields_from_html_offline(html_content, fields_to_extract)

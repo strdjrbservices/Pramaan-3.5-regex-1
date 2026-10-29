@@ -4,9 +4,9 @@ path = r"D:\new start\9-2-2026\Pramaan\src\components\Subject\subject.js"
 with open(path, "r", encoding="utf-8") as f:
     content = f.read()
 
-pattern = r'\{\(rawGemini \|\| Object\.keys\(data\)\.length > 0\) && \(\s*<div id="raw-output".*?</div>\s*\)\}'
+pattern = r'\{\(rawExtractedData \|\| Object\.keys\(data\)\.length > 0\) && \(\s*<div id="raw-output".*?</div>\s*\)\}'
 
-replacement = """{(rawGemini || Object.keys(data).length > 0) && (
+replacement = """{(rawExtractedData || Object.keys(data).length > 0) && (
                 <Paper
                   id="raw-output"
                   elevation={3}

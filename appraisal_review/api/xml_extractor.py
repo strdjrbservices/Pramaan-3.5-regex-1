@@ -1261,6 +1261,59 @@ def extract_comp_photo_metadata(
 
 
 
+def classify_subject_view_label(raw_label: str, page_context: str = "") -> Optional[Tuple[str, str]]:
+    """
+    Classifies a candidate text label into one of the four mandatory Subject views:
+    'Subject Front View', 'Subject Rear View', 'Subject Side View', 'Subject Street Scene'.
+    Returns (standardized_view_name, original_matched_label) or None.
+    """
+    if not raw_label:
+        return None
+    lbl = raw_label.strip()
+    lbl_upper = lbl.upper()
+    ctx_upper = (page_context or "").upper()
+
+    if any(k in lbl_upper for k in [
+        "FORM PIC", "TOTAL APPRAISAL", "1-800-ALAMODE", "BORROWER", "LENDER", "CLIENT",
+        "FILE NO", "APPRAISED VALUE", "APPRAISED DATE", "PRODUCED USING ACI", "WWW.ACIWEB",
+        "CASE NO", "PROPERTY ADDRESS", "COUNTY", "ZIP CODE", "INSPECTION DATE",
+        "DID INSPECT", "DID NOT INSPECT", "FROM STREET", "COMPARABLE SALE", "RENTAL #"
+    ]):
+        return None
+
+    if "CITY STREET VIEW" in lbl_upper and any(k in ctx_upper for k in ["MAP", "LOCATION", "AERIAL", "FLOOD", "TAX"]):
+        return None
+
+    if re.search(r'\b(?:COMPARABLE|COMP\s*#?\s*\d+|RENTAL\s*#?\s*\d+|LISTING\s*#?\s*\d+)\b', lbl_upper):
+        return None
+
+    # Front View
+    if re.search(r'\b(?:SUBJECT\s+FRONT(?:\s+VIEW)?|FRONT\s+VIEW(?:\s+OF\s+SUBJECT(?:\s+PROPERTY)?)?|DWELLING\s+FRONT|FRONT\s+OF\s+SUBJECT|FRONT\s+ELEVATION)\b', lbl_upper):
+        return ("Subject Front View", lbl)
+    if lbl_upper in ["FRONT", "FRONT VIEW", "SUBJECT FRONT", "SUBJECT FRONT ENTRANCE"]:
+        return ("Subject Front View", lbl)
+
+    # Rear View
+    if re.search(r'\b(?:SUBJECT\s+REAR(?:\s+VIEW)?|REAR\s+VIEW(?:\s+OF\s+SUBJECT(?:\s+PROPERTY)?)?|DWELLING\s+REAR|REAR\s+OF\s+SUBJECT|REAR\s+ELEVATION)\b', lbl_upper):
+        return ("Subject Rear View", lbl)
+    if lbl_upper in ["REAR", "REAR VIEW", "SUBJECT REAR"]:
+        return ("Subject Rear View", lbl)
+
+    # Side View
+    if re.search(r'\b(?:SUBJECT\s+SIDE(?:\s+VIEW)?|(?:LEFT|RIGHT)\s+SIDE\s+VIEW|SIDE\s+VIEW(?:\s+OF\s+SUBJECT(?:\s+PROPERTY)?)?|SUBJECT\s+(?:LEFT|RIGHT)\s+SIDE|(?:LEFT|RIGHT)\s+SIDE|SIDE\s+ELEVATION|FRONT/SIDE\s+VIEW|REAR/SIDE\s+VIEW|SIDE\s+&\s+FRONT\s+VIEW|SIDE\s+VIEW,\s*PANEL)\b', lbl_upper):
+        return ("Subject Side View", lbl)
+    if lbl_upper in ["SIDE", "SIDE VIEW", "SUBJECT SIDE", "RIGHT SIDE", "LEFT SIDE", "LEFT SIDE VIEW", "RIGHT SIDE VIEW"]:
+        return ("Subject Side View", lbl)
+
+    # Street Scene
+    if re.search(r'\b(?:SUBJECT\s+STREET(?:\s+SCENE|\s+VIEW)?|STREET\s+SCENE(?:\s+OF\s+SUBJECT(?:\s+PROPERTY)?)?|SUBJECT\s+STREET|STREET\s+VIEW(?:\s+OF\s+SUBJECT(?:\s+PROPERTY)?)?|NEIGHBORHOOD\s+STREET\s+SCENE|ALTERNATE\s+STREET\s+SCENE|PROPERTY\s+ACCESS\s*\(STREET\s*SCENE\))\b', lbl_upper):
+        return ("Subject Street Scene", lbl)
+    if lbl_upper in ["STREET", "STREET SCENE", "STREET VIEW", "SUBJECT STREET"]:
+        return ("Subject Street Scene", lbl)
+
+    return None
+
+
 def extract_photos_from_xml(
     xml_path_or_bytes: Any,
     max_photos: int = 100,
@@ -1574,11 +1627,19 @@ def extract_photos_from_xml(
                 if comp_meta.get("title"):
                     best_label = comp_meta["title"]
 
+            # Check Mandatory Subject View
+            mand_res = classify_subject_view_label(best_label, page_context=raw_text[:300])
+            mand_view_type = None
+            mand_orig_label = None
+            if mand_res:
+                mand_view_type, mand_orig_label = mand_res
+                category = "Subject"
+
             photo_count += 1
             photo_item = {
                 "id": f"photo_{photo_count}",
-                "caption": best_label,
-                "title": best_label,
+                "caption": mand_view_type or best_label,
+                "title": mand_view_type or best_label,
                 "category": category,
                 "page": p_no,
                 "base64_preview": base64_preview,
@@ -1592,6 +1653,10 @@ def extract_photos_from_xml(
                     "y1": round(frame.y1)
                 }
             }
+            if mand_view_type:
+                photo_item["view_type"] = mand_view_type
+                photo_item["original_label"] = mand_orig_label
+                photo_item["is_mandatory"] = True
 
             if comp_meta:
                 is_rent = (category == "Rental") or comp_meta.get("is_rental", False)
@@ -5316,9 +5381,47 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
     fields["formType"] = form_type
     fields["selectedFormType"] = form_type
 
+    # Compile Mandatory Subject Photos summary
+    mandatory_subject_photos = {}
     if extracted_photos:
+        mand_groups = {
+            "Subject Front View": [],
+            "Subject Rear View": [],
+            "Subject Side View": [],
+            "Subject Street Scene": []
+        }
+        for p in extracted_photos:
+            vt = p.get("view_type")
+            if vt in mand_groups:
+                mand_groups[vt].append(p)
+            elif p.get("category") == "Subject":
+                cap_res = classify_subject_view_label(p.get("caption") or p.get("title") or "")
+                if cap_res and cap_res[0] in mand_groups:
+                    p["view_type"] = cap_res[0]
+                    p["original_label"] = cap_res[1]
+                    p["is_mandatory"] = True
+                    mand_groups[cap_res[0]].append(p)
+
+        missing_mand = [k for k, v in mand_groups.items() if len(v) == 0]
+        mandatory_subject_photos = {
+            "all_mandatory_found": len(missing_mand) == 0,
+            "summary": {
+                k: {
+                    "found": len(v) > 0,
+                    "count": len(v),
+                    "original_labels": [x.get("original_label") or x.get("caption") for x in v],
+                    "pages": [x.get("page") for x in v]
+                } for k, v in mand_groups.items()
+            },
+            "missing_views": missing_mand,
+            "photos": mand_groups
+        }
         clean_data["EXTRACTED_PHOTOS"] = extracted_photos
         clean_data["extracted_photos"] = extracted_photos
+        clean_data["MANDATORY_SUBJECT_PHOTOS"] = mandatory_subject_photos
+        clean_data["mandatory_subject_photos"] = mandatory_subject_photos
+        fields["MANDATORY_SUBJECT_PHOTOS"] = mandatory_subject_photos
+        fields["mandatory_subject_photos"] = mandatory_subject_photos
 
     return {
         "status": "success",
@@ -5331,4 +5434,6 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "has_embedded_pdf": has_embedded_pdf,
         "extracted_photos": extracted_photos,
         "EXTRACTED_PHOTOS": extracted_photos,
+        "mandatory_subject_photos": mandatory_subject_photos,
+        "MANDATORY_SUBJECT_PHOTOS": mandatory_subject_photos,
     }

@@ -32,6 +32,8 @@ media/
 *.map
 map_output/
 **/map_output/
+subject_photos_output/
+**/subject_photos_output/
 
 # Logs & Debug
 *.log

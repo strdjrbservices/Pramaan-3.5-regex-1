@@ -5526,6 +5526,9 @@ def extract_photos_and_captions(doc, pdf_path=None):
                 elif "REAR VIEW" in cap_upper or "REAR" in cap_upper:
                     caption = "Subject Rear View"
                     category = "Subject"
+                elif "SIDE VIEW" in cap_upper or "SIDE" in cap_upper:
+                    caption = "Subject Side View"
+                    category = "Subject"
                 elif "STREET SCENE" in cap_upper or "STREET" in cap_upper:
                     caption = "Subject Street Scene"
                     category = "Subject"
