@@ -8,7 +8,7 @@ class UploadedFileAdmin(admin.ModelAdmin):
     """
     Admin view for UploadedFile model.
     """
-    list_display = ('user', 'file', 'uploaded_at')  # pyrefly: ignore [inconsistent-override]
+    list_display = ('user', 'file', 'uploaded_at')  # pyrefly: ignore [bad-override-mutable-attribute]  # type: ignore
     list_filter = ('user', 'uploaded_at')
     search_fields = ('user__username', 'file')
     readonly_fields = ('uploaded_at',)
@@ -22,7 +22,7 @@ class AppraisalReportAdmin(admin.ModelAdmin):
     """
     Admin interface for viewing Appraisal Reports.
     """
-    list_display = ('user_name', 'file_name', 'created_at')  # pyrefly: ignore [inconsistent-override]
+    list_display = ('user_name', 'file_name', 'created_at')  # pyrefly: ignore [bad-override-mutable-attribute]  # type: ignore
     list_filter = ('created_at', 'user_name')
     search_fields = (
         'user_name',
@@ -96,7 +96,7 @@ class ContactMessageAdmin(admin.ModelAdmin):
     """
     Admin view for ContactMessage model.
     """
-    list_display = ('name', 'email', 'subject', 'created_at', 'send_copy')  # pyrefly: ignore [inconsistent-override]
+    list_display = ('name', 'email', 'subject', 'created_at', 'send_copy')  # pyrefly: ignore [bad-override-mutable-attribute]  # type: ignore
     list_filter = ('created_at', 'send_copy')
     search_fields = ('name', 'email', 'subject', 'message')
     readonly_fields = ('created_at',)
