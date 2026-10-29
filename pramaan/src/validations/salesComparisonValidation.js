@@ -158,7 +158,7 @@ export const checkConditionAdjustment = (field, arg2, arg3, arg4, arg5) => {
 };
 
 export const checkBedroomsAdjustment = (field, arg2, arg3, arg4, arg5) => {
-    const { allData, saleName } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
+    const { allData, saleName, textVal } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
     const isBedroomField = field === 'Bedrooms';
     const isAdjustmentField = field === 'Bedrooms Adjustment';
 
@@ -167,7 +167,31 @@ export const checkBedroomsAdjustment = (field, arg2, arg3, arg4, arg5) => {
     const subjGrid = getSubjectGridData(allData);
     const subjectBedrooms = parseInt(String(subjGrid['Bedrooms'] || allData.Subject?.['Bedrooms'] || '0').trim(), 10);
     const compBedrooms = parseInt(String(allData[saleName]?.['Bedrooms'] || '0').trim(), 10);
-    const adjustmentText = String(allData[saleName]?.['Bedrooms Adjustment'] || '').trim();
+
+    const compIndexMatch = String(saleName).match(/\d+/);
+    const compIndex = compIndexMatch ? compIndexMatch[0] : '';
+
+    let adjustmentText = '';
+    if (isAdjustmentField && textVal !== null && textVal !== undefined) {
+        adjustmentText = String(textVal).trim();
+    } else {
+        const directBedAdj = allData[saleName]?.['Bedrooms Adjustment'] ??
+                             (compIndex ? allData[`Comp ${compIndex} Bedrooms Adjustment`] : undefined) ??
+                             (compIndex ? allData[`Comparable ${compIndex} Bedrooms Adjustment`] : undefined);
+        if (directBedAdj !== undefined && directBedAdj !== null) {
+            adjustmentText = String(directBedAdj).trim();
+        } else {
+            const subjectBathsStr = String(subjGrid['Baths'] || allData.Subject?.['Baths'] || '').trim();
+            const compBathsStr = String(allData[saleName]?.['Baths'] || '').trim();
+            if (compBedrooms !== subjectBedrooms && subjectBathsStr && compBathsStr && subjectBathsStr === compBathsStr) {
+                adjustmentText = String(
+                    allData[saleName]?.['Above Grade Room Count Adjustment'] ||
+                    (compIndex ? allData[`Comp ${compIndex} Above Grade Room Count Adjustment`] : '') ||
+                    ''
+                ).trim();
+            }
+        }
+    }
     const adjustmentValue = parseAdjustmentValue(adjustmentText);
 
     if (isNaN(subjectBedrooms) || isNaN(compBedrooms)) return null;
@@ -189,19 +213,7 @@ export const checkBedroomsAdjustment = (field, arg2, arg3, arg4, arg5) => {
 };
 
 export const checkBathsAdjustment = (field, arg2, arg3, arg4, arg5) => {
-    let allData = null;
-    let saleName = null;
-    let textVal = null;
-
-    if (arg3 && typeof arg3 === 'object' && !arg3.hasOwnProperty('prototype') && !Array.isArray(arg3)) {
-        allData = arg3;
-        saleName = arg5;
-        textVal = arg2;
-    } else {
-        allData = arg2;
-        saleName = arg3;
-    }
-
+    const { allData, saleName, textVal } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
     const isBathField = field === 'Baths';
     const isAdjustmentField = field === 'Baths Adjustment';
 
@@ -231,22 +243,6 @@ export const checkBathsAdjustment = (field, arg2, arg3, arg4, arg5) => {
         ).trim();
     }
 
-    let adjustmentStr = '';
-    if (isAdjustmentField && textVal !== null && textVal !== undefined) {
-        adjustmentStr = String(textVal).trim();
-    }
-    if (!adjustmentStr) {
-        adjustmentStr = String(
-            allData[saleName]?.['Baths Adjustment'] ||
-            allData[saleName]?.['Above Grade Room Count Adjustment'] ||
-            (compIndex ? allData[`Comp ${compIndex} Baths Adjustment`] : '') ||
-            (compIndex ? allData[`Comp ${compIndex} Above Grade Room Count Adjustment`] : '') ||
-            (compIndex ? allData[`Comparable ${compIndex} Baths Adjustment`] : '') ||
-            (compIndex ? allData[`Comparable ${compIndex} Above Grade Room Count Adjustment`] : '') ||
-            ''
-        ).trim();
-    }
-
     if (!subjectBathsStr || !compBathsStr) return null;
 
     const parseBaths = (bathStr) => {
@@ -259,10 +255,33 @@ export const checkBathsAdjustment = (field, arg2, arg3, arg4, arg5) => {
 
     if (isNaN(subjectBaths) || isNaN(compBaths)) return null;
 
+    let adjustmentStr = '';
+    if (isAdjustmentField && textVal !== null && textVal !== undefined) {
+        adjustmentStr = String(textVal).trim();
+    } else {
+        const directBathAdj = allData[saleName]?.['Baths Adjustment'] ??
+                              allData[saleName]?.['Bathrooms Adjustment'] ??
+                              (compIndex ? allData[`Comp ${compIndex} Baths Adjustment`] : undefined) ??
+                              (compIndex ? allData[`Comparable ${compIndex} Baths Adjustment`] : undefined);
+        if (directBathAdj !== undefined && directBathAdj !== null) {
+            adjustmentStr = String(directBathAdj).trim();
+        } else {
+            const subjectBedStr = String(subjGrid['Bedrooms'] || allData.Subject?.['Bedrooms'] || '').trim();
+            const compBedStr = String(allData[saleName]?.['Bedrooms'] || (compIndex ? allData[`Comp ${compIndex} Bedrooms`] : '') || '').trim();
+            if (compBaths !== subjectBaths && subjectBedStr && compBedStr && subjectBedStr === compBedStr) {
+                adjustmentStr = String(
+                    allData[saleName]?.['Above Grade Room Count Adjustment'] ||
+                    (compIndex ? allData[`Comp ${compIndex} Above Grade Room Count Adjustment`] : '') ||
+                    ''
+                ).trim();
+            }
+        }
+    }
+
     const adjustmentValue = parseAdjustmentValue(adjustmentStr);
 
     if (compBaths === subjectBaths) {
-        if (adjustmentValue !== 0) {
+        if (adjustmentValue !== 0 && adjustmentStr !== '') {
             return { isError: true, message: `Warning: Bath count is the same (${subjectBaths}), so no adjustment is required.` };
         }
     } else if (compBaths > subjectBaths) {
