@@ -575,7 +575,7 @@ CATEGORY_SPECIFIC_INSTRUCTIONS = {
         "12. **'Occupant'**: Strictly extract the checked option from ['Owner', 'Tenant', 'Vacant'].\n"
         "13. **'Property Rights Appraised'**: Strictly extract the checked option from ['Fee Simple', 'Leasehold', 'Other'].\n"
         "14. **'Assignment Type'**: Strictly extract the checked option from ['Purchase Transaction', 'Refinance Transaction', 'Other'].\n"
-        "15. **'Appraiser\'s Fee'**: Search all pages of the report for the Appraiser Fee using keywords like 'Appraiser Fee', 'Appraiser\'s Fee', 'Appraisal Fee', 'Total Fee', 'Agreed Fee', 'Fee', 'Invoice Amount' (e.g., 'Appraiser Fee; $525.00 dollars', 'Appraiser Fee: $525.00', 'Fee: $525'). Extract the clean numeric or currency fee amount (e.g. '$525.00' or '525.00'). If not found, output 'Not Disclosed'.\n"
+        "15. **'Appraiser\'s Fee'**: Search all pages of the report for the Appraiser Fee using keywords like 'Appraiser Fee', 'Appraiser\'s Fee', 'Appraisal Fee', 'Total Fee', 'Agreed Fee', 'Fee', 'Invoice Amount', or compensation statements (e.g., 'Fastapp has agreed to compensate the appraiser $350 for this appraisal assignment', 'Appraiser Fee; $525.00 dollars', 'Appraiser Fee: $525.00', 'Fee: $525'). Extract the clean numeric or currency fee amount (e.g. '$525.00' or '525.00'). If not found, output 'Not Disclosed'.\n"
     ),
     "CONTRACT": (
         "--- CONTRACT Section Instructions ---\n"

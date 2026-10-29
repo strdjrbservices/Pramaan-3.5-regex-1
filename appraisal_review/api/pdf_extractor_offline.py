@@ -1507,7 +1507,7 @@ def extract_uspap_reporting_option_and_comment(doc=None, uspap_page_idx=None, fu
 def extract_appraiser_fee_from_doc(doc=None, full_doc_text=""):
     """
     Extracts the Appraiser's Fee across all pages of the document
-    searching for keywords: 'Appraiser Fee', 'Appraiser\'s Fee', 'Appraisal Fee', 'Total Fee', 'Agreed Fee', 'Fee', 'Invoice Amount', 'TOTAL DUE', 'FULL RESIDENTIAL APPRAISAL'.
+    searching for keywords: 'agreed to compensate the appraiser $...', 'Appraiser Fee', 'Appraiser\'s Fee', 'Appraisal Fee', 'Total Fee', 'Agreed Fee', 'Fee', 'Invoice Amount', 'TOTAL DUE', 'FULL RESIDENTIAL APPRAISAL'.
     """
     candidate_texts = []
     if doc is not None:
@@ -1518,6 +1518,23 @@ def extract_appraiser_fee_from_doc(doc=None, full_doc_text=""):
         candidate_texts.append(full_doc_text)
 
     fee_patterns = [
+        # Compensation agreement sentences (e.g. 'Fastapp has agreed to compensate the appraiser $350 for this appraisal assignment.')
+        re.compile(
+            r'(?:(?:has\s+|have\s+)?agreed\s+to\s+)?(?:compensate|pay)\s+(?:the\s+|an?\s+)?(?:independent\s+)?appraiser'
+            r'(?:\s+(?:a\s+fee\s+of|in\s+the\s+amount\s+of|with\s+a\s+fee\s+of))?'
+            r'[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)',
+            re.IGNORECASE
+        ),
+        re.compile(
+            r'(?:appraiser(?:\'s)?\s+compensation|compensation\s+(?:paid\s+|due\s+)?to\s+(?:the\s+)?(?:independent\s+)?appraiser)'
+            r'[^0-9$\n]{0,50}\$?\s*([0-9,]+(?:\.\d{2})?)',
+            re.IGNORECASE
+        ),
+        re.compile(
+            r'(?:the\s+)?appraiser\s+(?:is|was|will\s+be|has\s+been)\s+(?:compensated|paid)'
+            r'[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)',
+            re.IGNORECASE
+        ),
         re.compile(r'(?:Fee\s+disclosures?(?:\s+are|\s+is|\s+was)?|Appraisal\s+Fee\s+disclosure)[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)', re.IGNORECASE),
         re.compile(r'Fee\s+paid\s+to\s+(?:the\s+)?appraiser[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)', re.IGNORECASE),
         re.compile(r'(?:Total\s+|Actual\s+|Agreed\s+)?(?:Appraiser(?:\'s)?\s*Fee|Appraisal\s*Fee)[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)', re.IGNORECASE),
