@@ -24,25 +24,32 @@ from typing import List, Dict, Any, Optional, Tuple
 import xml.etree.ElementTree as ET
 
 # Image & Document Processing
+cv2: Any = None
 try:
     import cv2
 except ImportError:
     cv2 = None
 
+np: Any = None
 try:
     import numpy as np
 except ImportError:
     np = None
 
+Image: Any = None
 try:
     from PIL import Image
 except ImportError:
     Image = None
 
+fitz: Any = None
 try:
     import fitz  # PyMuPDF
 except ImportError:
-    fitz: Any = None
+    try:
+        import pymupdf as fitz
+    except ImportError:
+        fitz = None
 
 import warnings
 
@@ -121,7 +128,7 @@ class MapExtractor:
         else:
             self.active_engine = "pymupdf_fallback"
 
-    def run_ocr(self, img_bgr: np.ndarray) -> List[Tuple[str, float]]:
+    def run_ocr(self, img_bgr: Any) -> List[Tuple[str, float]]:
         """Runs OCR on an image crop, returning a list of (text, confidence) tuples."""
         if img_bgr is None or img_bgr.size == 0:
             return []
