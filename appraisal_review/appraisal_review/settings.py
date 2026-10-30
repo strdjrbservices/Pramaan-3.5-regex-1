@@ -98,7 +98,8 @@ if USE_MYSQL:
     }
 elif os.environ.get('DATABASE_URL'):
     try:
-        import dj_database_url
+        import importlib
+        dj_database_url = importlib.import_module("dj_database_url")
         DATABASES = {
             'default': dj_database_url.config(default=os.environ.get('DATABASE_URL'))
         }
