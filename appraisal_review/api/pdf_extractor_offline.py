@@ -3390,16 +3390,17 @@ def extract_page_2_sales_grid_and_reconciliation(page_p2, page_extra_comps=None,
         bed_adj = col_data.get("Bedrooms Adjustment", "")
         bath_adj = col_data.get("Baths Adjustment", "") or col_data.get("Bathrooms Adjustment", "")
 
+        c_b_num = float(c_bed_val) if c_bed_val and c_bed_val.replace(".", "").isdigit() else None
+        s_b_num = float(s_bed_val) if s_bed_val and s_bed_val.replace(".", "").isdigit() else None
+        c_ba_num = float(c_bath_val) if c_bath_val and c_bath_val.replace(".", "").isdigit() else None
+        s_ba_num = float(s_bath_val) if s_bath_val and s_bath_val.replace(".", "").isdigit() else None
+
         if rc_adj_val and not bed_adj and not bath_adj:
             parts = [p.strip() for p in re.split(r'[/;\n]+', rc_adj_val) if p.strip()]
             if len(parts) >= 2:
                 bed_adj = parts[0]
                 bath_adj = parts[1]
             else:
-                c_b_num = float(c_bed_val) if c_bed_val and c_bed_val.replace(".", "").isdigit() else None
-                s_b_num = float(s_bed_val) if s_bed_val and s_bed_val.replace(".", "").isdigit() else None
-                c_ba_num = float(c_bath_val) if c_bath_val and c_bath_val.replace(".", "").isdigit() else None
-                s_ba_num = float(s_bath_val) if s_bath_val and s_bath_val.replace(".", "").isdigit() else None
 
                 bed_differs = c_b_num is not None and s_b_num is not None and c_b_num != s_b_num
                 bath_differs = c_ba_num is not None and s_ba_num is not None and c_ba_num != s_ba_num
@@ -6101,16 +6102,17 @@ def clean_appraisal_extracted_data(data):
                 curr_bed_adj = str(comp_clean.get("Bedrooms Adjustment") or "").strip()
                 curr_bath_adj = str(comp_clean.get("Baths Adjustment") or comp_clean.get("Bathrooms Adjustment") or "").strip()
 
+                cb_num = float(beds) if beds and beds.replace(".", "").isdigit() else None
+                sb_num = float(s_beds_c) if s_beds_c and s_beds_c.replace(".", "").isdigit() else None
+                cba_num = float(baths_c) if baths_c and baths_c.replace(".", "").isdigit() else None
+                sba_num = float(s_baths_c) if s_baths_c and s_baths_c.replace(".", "").isdigit() else None
+
                 if rc_adj and not curr_bed_adj and not curr_bath_adj:
                     r_parts = [p.strip() for p in re.split(r'[/;\n]+', rc_adj) if p.strip()]
                     if len(r_parts) >= 2:
                         curr_bed_adj = r_parts[0]
                         curr_bath_adj = r_parts[1]
                     else:
-                        cb_num = float(beds) if beds and beds.replace(".", "").isdigit() else None
-                        sb_num = float(s_beds_c) if s_beds_c and s_beds_c.replace(".", "").isdigit() else None
-                        cba_num = float(baths_c) if baths_c and baths_c.replace(".", "").isdigit() else None
-                        sba_num = float(s_baths_c) if s_baths_c and s_baths_c.replace(".", "").isdigit() else None
 
                         b_diff = cb_num is not None and sb_num is not None and cb_num != sb_num
                         ba_diff = cba_num is not None and sba_num is not None and cba_num != sba_num
