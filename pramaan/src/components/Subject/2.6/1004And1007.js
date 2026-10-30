@@ -12,7 +12,7 @@ const Form1004And1007 = ({
   subjectFields, contractFields, neighborhoodFields, siteFields, improvementsFields,
   salesGridRows, comparableSales, salesHistoryFields, salesComparisonAdditionalInfoFields,
   reconciliationFields, costApproachFields, incomeApproachFields, pudInformationFields,
-  marketConditionsRows, marketConditionsFields, appraiserFields, condoCoopProjectsRows,
+  marketConditionsRows, marketConditionsFields, appraiserFields, appraisalAndReportIdentificationFields, condoCoopProjectsRows,
   condoForeclosureFields, comparableRents, RentSchedulesFIELDS2, rentScheduleReconciliationFields,
   formType, comparisonData, getComparisonStyle, infoOfSalesFields, loading, loadingSection,
   handleStateRequirementCheck, stateReqLoading, handleClientRequirementCheck, clientReqLoading,
@@ -342,6 +342,26 @@ const Form1004And1007 = ({
       onRevisionButtonClick={onCertificationRevisionButtonClick}
       revisionHandlers={revisionHandlers}
     />
+
+    <GridInfoCard
+      id="uspap-identification-section"
+      title="USPAP / Appraisal and Report Identification"
+      fields={appraisalAndReportIdentificationFields}
+      data={data?.USPAP_IDENTIFICATION || data?.['USPAP / Report Identification'] || data?.CERTIFICATION || data}
+      cardClass="bg-info"
+      extractionAttempted={extractionAttempted}
+      onDataChange={(field, value) => handleDataChange(['USPAP_IDENTIFICATION', ...field], value)}
+      editingField={editingField}
+      setEditingField={setEditingField}
+      isEditable={true}
+      allData={allData}
+      loading={loading}
+      loadingSection={loadingSection}
+      manualValidations={manualValidations}
+      handleManualValidation={handleManualValidation}
+      revisionHandlers={revisionHandlers}
+    />
+
 
     <MapAndSketchExhibitsSection id="map-sketch-exhibits-section" data={data} allData={allData} selectedFile={selectedFile} />
     <PhotosGallerySection id="photos-exhibits-section" data={data} allData={allData} extractedPhotos={allData?.EXTRACTED_PHOTOS || data?.EXTRACTED_PHOTOS || []} />

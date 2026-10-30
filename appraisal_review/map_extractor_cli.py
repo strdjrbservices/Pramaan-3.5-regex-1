@@ -27,17 +27,17 @@ import xml.etree.ElementTree as ET
 try:
     import cv2
 except ImportError:
-    cv2 = None
+    cv2: Any = None
 
 try:
     import numpy as np
 except ImportError:
-    np = None
+    np: Any = None
 
 try:
     from PIL import Image
 except ImportError:
-    Image = None
+    Image: Any = None
 
 try:
     import fitz  # PyMuPDF
@@ -121,7 +121,7 @@ class MapExtractor:
         else:
             self.active_engine = "pymupdf_fallback"
 
-    def run_ocr(self, img_bgr: np.ndarray) -> List[Tuple[str, float]]:
+    def run_ocr(self, img_bgr: Any) -> List[Tuple[str, float]]:
         """Runs OCR on an image crop, returning a list of (text, confidence) tuples."""
         if img_bgr is None or img_bgr.size == 0:
             return []
@@ -1896,15 +1896,22 @@ class MapExtractor:
                     from api.pdf_extractor_offline import detect_form_pages, extract_page_1_fields, extract_page_2_sales_grid_and_reconciliation
                     from api.xml_extractor import extract_rent_schedule_from_pdf_page
                 except ImportError:
+                    import importlib
                     try:
-                        from appraisal_review.api.pdf_extractor_offline import detect_form_pages, extract_page_1_fields, extract_page_2_sales_grid_and_reconciliation
-                        from appraisal_review.api.xml_extractor import extract_rent_schedule_from_pdf_page
+                        _mod_pdf = importlib.import_module("appraisal_review.api.pdf_extractor_offline")
+                        _mod_xml = importlib.import_module("appraisal_review.api.xml_extractor")
                     except ImportError:
-                        api_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "appraisal_review", "api")
-                        if api_dir not in sys.path:
-                            sys.path.insert(0, api_dir)
-                        from pdf_extractor_offline import detect_form_pages, extract_page_1_fields, extract_page_2_sales_grid_and_reconciliation
-                        from xml_extractor import extract_rent_schedule_from_pdf_page
+                        _api_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "appraisal_review", "api")
+                        if not os.path.exists(_api_dir):
+                            _api_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "api")
+                        if _api_dir not in sys.path:
+                            sys.path.insert(0, _api_dir)
+                        _mod_pdf = importlib.import_module("pdf_extractor_offline")
+                        _mod_xml = importlib.import_module("xml_extractor")
+                    detect_form_pages = getattr(_mod_pdf, "detect_form_pages")
+                    extract_page_1_fields = getattr(_mod_pdf, "extract_page_1_fields")
+                    extract_page_2_sales_grid_and_reconciliation = getattr(_mod_pdf, "extract_page_2_sales_grid_and_reconciliation")
+                    extract_rent_schedule_from_pdf_page = getattr(_mod_xml, "extract_rent_schedule_from_pdf_page")
 
                 import pdfplumber
                 p_indices = detect_form_pages(doc)
@@ -2138,6 +2145,7 @@ class MapExtractor:
         all_pins = []
         for mp in map_pages:
             m_type = mp.get("map_type", "")
+            is_loc = bool(re.search(r'location|comparable|sales\s*map', m_type, re.IGNORECASE)) and not bool(re.search(r'rental|aerial|satellite', m_type, re.IGNORECASE))
             is_rent = bool(re.search(r'rental', m_type, re.IGNORECASE))
             is_plat_flood = bool(re.search(r'plat|flood|hazard|parcel', m_type, re.IGNORECASE))
             if is_plat_flood:

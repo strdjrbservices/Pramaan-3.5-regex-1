@@ -6742,6 +6742,86 @@ def extract_fields_from_pdf_offline(pdf_path):
                 data["CERTIFICATION"]["USPAP Reporting Option"] = uspap_val_to_use
                 data["CERTIFICATION"]["Comments on Appraisal and Report Identification"] = uspap_comm
 
+            # Extract signature image from USPAP page if present
+            appraiser_sig_b64 = ""
+            supervisory_sig_b64 = ""
+            if uspap_idx is not None and uspap_idx < len(doc):
+                try:
+                    uspap_page = doc[uspap_idx]
+                    for img_info in uspap_page.get_image_info(xrefs=True):
+                        bbox = img_info.get("bbox", ())
+                        if bbox and len(bbox) >= 4 and bbox[1] > 700:
+                            xref = img_info.get("xref")
+                            if xref:
+                                base_img = doc.extract_image(xref)
+                                if base_img and "image" in base_img:
+                                    ext = base_img.get("ext", "png")
+                                    b64_data = f"data:image/{ext};base64,{base64.b64encode(base_img['image']).decode('ascii')}"
+                                    if bbox[0] < 300 and not appraiser_sig_b64:
+                                        appraiser_sig_b64 = b64_data
+                                    elif bbox[0] >= 300 and not supervisory_sig_b64:
+                                        supervisory_sig_b64 = b64_data
+                except Exception:
+                    pass
+
+            cert_data = data.get("CERTIFICATION", {}) if isinstance(data.get("CERTIFICATION"), dict) else {}
+            uspap_identification_section = {
+                "USPAP / Appraisal and Report Identification": uspap_present_pdf,
+                "Appraisal and Report Identification": uspap_present_pdf,
+                "USPAP Addendum": uspap_present_pdf,
+                "has_uspap_identification": has_uspap_pdf,
+                "USPAP Reporting Option": uspap_val_to_use,
+                uspap_long_key: uspap_val_to_use,
+                "This report was prepared under the following USPAP reporting option:": uspap_val_to_use,
+                "Reasonable Exposure Time": data.get("Reasonable Exposure Time") or data.get("Exposure Comment") or "",
+                "Reasonable Exposure Time Comment": data.get("Reasonable Exposure Time") or data.get("Exposure Comment") or "",
+                "Exposure Comment": data.get("Exposure Comment") or data.get("Reasonable Exposure Time") or "",
+                "Prior Service Statement": data.get("Prior service comment") or data.get("Prior Service Comment") or "",
+                "Prior service comment": data.get("Prior service comment") or data.get("Prior Service Comment") or "",
+                "Prior Service Comment": data.get("Prior service comment") or data.get("Prior Service Comment") or "",
+                "Comments on Appraisal and Report Identification": uspap_comm,
+                "Restricted Appraisal Report Comment": uspap_comm,
+                "Signature": cert_data.get("Signature") or data.get("Appraiser Name") or "",
+                "Signature Image": appraiser_sig_b64,
+                "Appraiser Signature Image": appraiser_sig_b64,
+                "Name": cert_data.get("Name") or data.get("Appraiser Name") or "",
+                "Appraiser Name": cert_data.get("Appraiser Name") or data.get("Appraiser Name") or "",
+                "Date Signed": cert_data.get("Date of Signature and Report") or cert_data.get("Date of Signature") or cert_data.get("Date Signed") or data.get("Report Signed Date") or "",
+                "Date of Signature and Report": cert_data.get("Date of Signature and Report") or cert_data.get("Date of Signature") or data.get("Report Signed Date") or "",
+                "Report Signed Date": cert_data.get("Date of Signature and Report") or cert_data.get("Date of Signature") or data.get("Report Signed Date") or "",
+                "State Certification #": cert_data.get("State Certification #") or "",
+                "or State License #": cert_data.get("or State License #") or "",
+                "State": cert_data.get("State") or "",
+                "Expiration Date of Certification or License": cert_data.get("Expiration Date of Certification or License") or cert_data.get("Expiration Date") or "",
+                "Effective Date of Appraisal": cert_data.get("Effective Date of Appraisal") or cert_data.get("Effective Date") or data.get("Effective Date of Appraisal") or "",
+                "Effective Date": cert_data.get("Effective Date") or data.get("Effective Date of Appraisal") or "",
+                "Supervisory Signature": cert_data.get("Supervisory Signature") or "",
+                "Supervisory Signature Image": supervisory_sig_b64,
+                "Supervisory Name": cert_data.get("Supervisory Name") or "",
+                "Supervisory Date Signed": cert_data.get("Supervisory Date of Signature") or cert_data.get("Supervisory Date Signed") or "",
+                "Supervisory State Certification #": cert_data.get("Supervisory State Certification #") or "",
+                "Supervisory or State License #": cert_data.get("Supervisory or State License #") or "",
+                "Supervisory State": cert_data.get("Supervisory State") or "",
+                "Supervisory Expiration Date of Certification or License": cert_data.get("Supervisory Expiration Date of Certification or License") or "",
+                "Did not inspect subject property": cert_data.get("Did not inspect subject property") or "",
+                "Did inspect exterior of subject property from street": cert_data.get("Did inspect exterior of subject property from street") or "",
+                "Subject Property Date of Inspection (Exterior)": cert_data.get("Subject Property Date of Inspection (Exterior)") or "",
+                "Did inspect interior and exterior of subject property": cert_data.get("Did inspect interior and exterior of subject property") or "",
+                "Subject Property Date of Inspection (Interior/Exterior)": cert_data.get("Subject Property Date of Inspection (Interior/Exterior)") or "",
+            }
+
+            data["USPAP_IDENTIFICATION"] = uspap_identification_section
+            data["USPAP_REPORT_IDENTIFICATION"] = uspap_identification_section
+            data["USPAP / Report Identification"] = uspap_identification_section
+            data["Appraisal and Report Identification"] = uspap_identification_section
+            if appraiser_sig_b64:
+                data["Signature Image"] = appraiser_sig_b64
+                if "CERTIFICATION" in data and isinstance(data["CERTIFICATION"], dict):
+                    data["CERTIFICATION"]["Signature Image"] = appraiser_sig_b64
+            if "clean_data" in data and isinstance(data["clean_data"], dict):
+                data["clean_data"]["USPAP_IDENTIFICATION"] = uspap_identification_section
+                data["clean_data"]["USPAP / Report Identification"] = uspap_identification_section
+
             # Invoice Presence Detection in PDF
             inv_idx = page_indices.get("invoice") if "page_indices" in locals() and isinstance(page_indices, dict) else None
             inv_info = extract_invoice_info_from_doc(doc, full_doc_text=full_doc_text)

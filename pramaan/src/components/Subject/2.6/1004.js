@@ -12,7 +12,7 @@ const Form1004 = ({
   neighborhoodFields, siteFields, improvementsFields, salesGridRows, comparableSales,
   salesHistoryFields, salesComparisonAdditionalInfoFields, reconciliationFields,
   costApproachFields, incomeApproachFields, pudInformationFields, marketConditionsRows,
-  marketConditionsFields, appraiserFields, formType, comparisonData, getComparisonStyle,
+  marketConditionsFields, appraiserFields, appraisalAndReportIdentificationFields, formType, comparisonData, getComparisonStyle,
   infoOfSalesFields, loading, loadingSection, handleStateRequirementCheck, stateReqLoading,
   handleClientRequirementCheck, clientReqLoading, handleEscalationCheck, escalationLoading,
   manualValidations, handleManualValidation, onSubjectRevisionButtonClick, onContractRevisionButtonClick,
@@ -80,6 +80,26 @@ const Form1004 = ({
     <GridInfoCard id="condo-foreclosure-section" fields={condoForeclosureFields} data={data.CONDO_FORECLOSURE} usePre={true} extractionAttempted={extractionAttempted} onDataChange={(field, value) => handleDataChange(['CONDO_FORECLOSURE', ...field], value)} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} loading={loading} loadingSection={loadingSection} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} />
 
     <GridInfoCard id="appraiser-section" title="CERTIFICATION" fields={appraiserFields} data={data.CERTIFICATION} cardClass="bg-info" extractionAttempted={extractionAttempted} onDataChange={(field, value) => handleDataChange(['CERTIFICATION', ...field], value)} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} loading={loading} loadingSection={loadingSection} manualValidations={manualValidations} handleManualValidation={handleManualValidation} onRevisionButtonClick={onCertificationRevisionButtonClick} revisionHandlers={revisionHandlers} />
+
+    <GridInfoCard
+      id="uspap-identification-section"
+      title="USPAP / Appraisal and Report Identification"
+      fields={appraisalAndReportIdentificationFields}
+      data={data?.USPAP_IDENTIFICATION || data?.['USPAP / Report Identification'] || data?.CERTIFICATION || data}
+      cardClass="bg-info"
+      extractionAttempted={extractionAttempted}
+      onDataChange={(field, value) => handleDataChange(['USPAP_IDENTIFICATION', ...field], value)}
+      editingField={editingField}
+      setEditingField={setEditingField}
+      isEditable={true}
+      allData={allData}
+      loading={loading}
+      loadingSection={loadingSection}
+      manualValidations={manualValidations}
+      handleManualValidation={handleManualValidation}
+      revisionHandlers={revisionHandlers}
+    />
+
 
     <MapAndSketchExhibitsSection id="map-sketch-exhibits-section" data={data} allData={allData} selectedFile={selectedFile} />
     <PhotosGallerySection id="photos-exhibits-section" data={data} allData={allData} extractedPhotos={allData?.EXTRACTED_PHOTOS || data?.EXTRACTED_PHOTOS || []} />
