@@ -113,7 +113,7 @@ const Form1007 = ({
       id="uspap-identification-section"
       title="USPAP / Appraisal and Report Identification"
       fields={appraisalAndReportIdentificationFields}
-      data={data?.USPAP_IDENTIFICATION || data?.['USPAP / Report Identification'] || data?.CERTIFICATION || data}
+      data={data?.USPAP_IDENTIFICATION || data?.['USPAP / Report Identification'] || {}}
       cardClass="bg-info"
       extractionAttempted={extractionAttempted}
       onDataChange={(field, value) => handleDataChange(['USPAP_IDENTIFICATION', ...field], value)}

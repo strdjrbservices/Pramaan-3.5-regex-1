@@ -2259,11 +2259,9 @@ function Subject({ defaultFormType }) {
       }
 
       if (flatPath.length === 2 && (flatPath[0] === 'USPAP_IDENTIFICATION' || flatPath[0] === 'USPAP / Report Identification')) {
-        newData[fieldKey] = value;
-      }
-      if (flatPath.length === 1) {
-        if (!newData.USPAP_IDENTIFICATION) newData.USPAP_IDENTIFICATION = {};
-        newData.USPAP_IDENTIFICATION[fieldKey] = value;
+        const altKey = flatPath[0] === 'USPAP_IDENTIFICATION' ? 'USPAP / Report Identification' : 'USPAP_IDENTIFICATION';
+        if (!newData[altKey]) newData[altKey] = {};
+        newData[altKey] = { ...newData[altKey], [fieldKey]: value };
       }
       if (fieldKey === 'E&O' || fieldKey === 'E&O Present') {
         if (!newData.CERTIFICATION) newData.CERTIFICATION = {};
