@@ -18,7 +18,7 @@ import os
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-APIKEY = os.environ.get("APIKEY", "")
+APIKEY = os.environ.get("APIKEY", os.environ.get("GEMINI_API_KEY", ""))
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "django-insecure-zx9!0$38f(!jbn(7=-m-4gc)ixt8lq&-37=mau-qikbw+kkm5+")
 DEBUG = True
@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
+    "django.contrib.staticfiles",
     "rest_framework",
     "rest_framework_simplejwt",
     "corsheaders",
@@ -75,19 +76,39 @@ WSGI_APPLICATION = "appraisal_review.wsgi.application"
 
 import os
 
-IS_PRODUCTION = os.environ.get('PYTHONANYWHERE_DOMAIN') is not None
+IS_PRODUCTION = (
+    os.environ.get('PYTHONANYWHERE_DOMAIN') is not None
+    or os.environ.get('SPACE_ID') is not None
+    or os.environ.get('DOCKER_CONTAINER') == 'true'
+    or os.environ.get('ENVIRONMENT') == 'production'
+)
 
-if IS_PRODUCTION:
+USE_MYSQL = os.environ.get('USE_MYSQL', '').lower() in ('true', '1') or os.environ.get('PYTHONANYWHERE_DOMAIN') is not None
+
+if USE_MYSQL:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.mysql',
-            'NAME': 'strdjrbservices$AppraisalReviewData',
-            'USER': 'strdjrbservices',
-            'PASSWORD': 'Kjg(mB=:r7ju8V2',
-            'HOST': 'strdjrbservices.mysql.pythonanywhere-services.com',
-            'PORT': '3306',
+            'NAME': os.environ.get('DB_NAME', 'strdjrbservices$AppraisalReviewData'),
+            'USER': os.environ.get('DB_USER', 'strdjrbservices'),
+            'PASSWORD': os.environ.get('DB_PASSWORD', 'Kjg(mB=:r7ju8V2'),
+            'HOST': os.environ.get('DB_HOST', 'strdjrbservices.mysql.pythonanywhere-services.com'),
+            'PORT': os.environ.get('DB_PORT', '3306'),
         }
     }
+elif os.environ.get('DATABASE_URL'):
+    try:
+        import dj_database_url
+        DATABASES = {
+            'default': dj_database_url.config(default=os.environ.get('DATABASE_URL'))
+        }
+    except Exception:
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': BASE_DIR / 'db.sqlite3',
+            }
+        }
 else:
     DATABASES = {
         'default': {
@@ -99,6 +120,11 @@ else:
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
+
+AUTHENTICATION_BACKENDS = [
+    'api.mongo_db.MongoAuthBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -162,19 +188,15 @@ REST_FRAMEWORK = {
 
 # --- CORS & CSRF Settings ---
 CORS_ALLOWED_ORIGINS = [
-    "https://pramaan2.vercel.app",
-    "https://prod-pramaan.vercel.app",
-    "https://qa-pramaan.vercel.app",
-    "https://dev-pramaan.vercel.app",
-    "https://scaling-fiesta-pjq495j9j669f9967-3000.app.github.dev",
+    "https://*.vercel.app",
     "http://localhost:3000",
     "http://localhost:5173",
     "http://127.0.0.1:3000",
     "http://127.0.0.1:5173",
-]
-
-CORS_ALLOWED_ORIGIN_REGEXES = [
-    r"^https://.*\.vercel\.app$",
+    "https://prod-pramaan.vercel.app",
+    "https://qa-pramaan.vercel.app",
+    "https://dev-pramaan.vercel.app",
+    "https://scaling-fiesta-pjq495j9j669f9967-3000.app.github.dev",
 ]
 
 CORS_ALLOW_ALL_ORIGINS = True
@@ -182,11 +204,13 @@ CORS_ALLOW_CREDENTIALS = True
 
 CSRF_TRUSTED_ORIGINS = [
     "https://*.vercel.app",
-    "https://pramaan2.vercel.app",
+    "https://*.hf.space",
+    "http://*.hf.space",
+    "http://localhost:7860",
+    "http://127.0.0.1:7860",
     "https://45.195.243.67",
     "http://45.195.243.67",
     "https://praman-strdjrbservices.pythonanywhere.com",
-    "https://appraisalreviewoffline-strdjrbservices.pythonanywhere.com",
     "https://prod-pramaan.vercel.app",
     "https://qa-pramaan.vercel.app",
     "https://dev-pramaan.vercel.app",
