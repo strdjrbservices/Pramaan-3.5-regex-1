@@ -1543,16 +1543,20 @@ def extract_maps_view(request):
             from map_extractor_cli import MapExtractor
         except ImportError:
             try:
-                from appraisal_review.map_extractor_cli import MapExtractor
-            except ImportError:
+                import importlib
+                mod = importlib.import_module("appraisal_review.map_extractor_cli")
+                MapExtractor = getattr(mod, "MapExtractor")
+            except (ImportError, AttributeError):
                 import importlib.util
                 cli_path = os.path.join(backend_dir, "map_extractor_cli.py")
                 if not os.path.exists(cli_path):
                     cli_path = os.path.join(workspace_root, "map_extractor_cli.py")
                 spec = importlib.util.spec_from_file_location("map_extractor_cli", cli_path)
+                if spec is None or spec.loader is None:
+                    raise ImportError(f"Cannot load map_extractor_cli from {cli_path}")
                 mod = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(mod)
-                MapExtractor = mod.MapExtractor
+                MapExtractor = getattr(mod, "MapExtractor")
         out_dir = os.path.join(workspace_root, "map_output")
         extractor = MapExtractor(output_dir=out_dir, save_images=save_images)
         exhibits_result = extractor.extract_all_exhibits_data(tmp_path, exhibit_type=exhibit_type)
