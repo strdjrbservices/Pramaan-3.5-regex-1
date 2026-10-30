@@ -8,7 +8,13 @@ export const API_BASE_URL = process.env.REACT_APP_API_URL || (
         window.location.port === '5173'
     )
         ? `http://${window.location.hostname || '127.0.0.1'}:8000`
-        : (typeof window !== 'undefined' && window.location.origin ? window.location.origin : '')
+        : (typeof window !== 'undefined' && window.location.hostname && (
+            window.location.hostname.endsWith('hf.space') ||
+            window.location.hostname.includes('pythonanywhere.com') ||
+            window.location.port === '7860'
+        ))
+            ? window.location.origin
+            : 'https://appraisalreviewoffline-strdjrbservices.pythonanywhere.com'
 );
 
 export const getComparisonStyle = (field, extractedValue, comparisonValue) => {
