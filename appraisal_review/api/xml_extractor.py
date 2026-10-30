@@ -4854,6 +4854,15 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
                 certification_section["E&O Limit"] = eo_info["E&O Limit"]
             if eo_info.get("E&O Deductible"):
                 certification_section["E&O Deductible"] = eo_info["E&O Deductible"]
+            # Extract distinct USPAP / Report Identification section from embedded PDF's USPAP page
+            try:
+                from .pdf_extractor_offline import extract_uspap_identification_details
+                uspap_pdf_details = extract_uspap_identification_details(emb_pdf)
+                if uspap_pdf_details and uspap_pdf_details.get("has_uspap_identification"):
+                    uspap_identification_section = uspap_pdf_details
+            except Exception:
+                pass
+
         except Exception as e:
             pass
 

@@ -1735,13 +1735,62 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
   }
 
   if (id === 'uspap-identification-section' || id === 'uspap-section' || title === 'USPAP / Report Identification' || title === 'USPAP / Appraisal and Report Identification') {
-    const sigImg = data?.["Signature Image"] || data?.["Appraiser Signature Image"] || allData?.["Signature Image"] || allData?.USPAP_IDENTIFICATION?.["Signature Image"] || allData?.CERTIFICATION?.["Signature Image"];
+    const sigImg = data?.["Signature Image"] || data?.["Appraiser Signature Image"] || allData?.USPAP_IDENTIFICATION?.["Signature Image"];
     const supSigImg = data?.["Supervisory Signature Image"] || allData?.["Supervisory Signature Image"] || allData?.USPAP_IDENTIFICATION?.["Supervisory Signature Image"];
     const uspapRepOpt = data?.["USPAP Reporting Option"] || data?.["This report was prepared under the following USPAP reporting option:"] || allData?.["USPAP Reporting Option"] || '';
     const exposureTime = data?.["Reasonable Exposure Time"] || data?.["Reasonable Exposure Time Comment"] || data?.["Exposure Comment"] || allData?.["Reasonable Exposure Time"] || '';
     const priorServices = data?.["Prior Service Statement"] || data?.["Prior service comment"] || data?.["Prior Service Comment"] || allData?.["Prior Service Statement"] || allData?.["Prior service comment"] || '';
     const uspapComments = data?.["Comments on Appraisal and Report Identification"] || data?.["Restricted Appraisal Report Comment"] || allData?.["Comments on Appraisal and Report Identification"] || '';
     const uspapStatus = data?.["USPAP / Appraisal and Report Identification"] || data?.["Appraisal and Report Identification"] || allData?.["USPAP / Appraisal and Report Identification"] || 'Present';
+
+    const renderUspapField = (label, fieldKey, isCheckbox = false) => {
+      if (isCheckbox) {
+        const isChecked = data && (data[fieldKey] === 'Yes' || data[fieldKey] === true || String(data[fieldKey]).toLowerCase() === 'x');
+        const handleToggle = () => {
+          const newValue = isChecked ? 'No' : 'Yes';
+          onDataChange([fieldKey], newValue);
+        };
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '4px 0' }}>
+            <input
+              type="checkbox"
+              checked={isChecked}
+              onChange={handleToggle}
+              style={{ width: '14px', height: '14px', cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: '0.75rem', fontWeight: '500', color: '#495057' }}>{label}</span>
+          </div>
+        );
+      }
+
+      const val = data ? renderValue(data[fieldKey]) : '';
+      return (
+        <div style={{ borderBottom: '1px solid #dee2e6', paddingBottom: '4px', marginBottom: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontWeight: 'bold', color: '#495057', fontSize: '0.75rem', minWidth: '95px', whiteSpace: 'nowrap' }}>
+              {label}:
+            </span>
+            <div style={{ flexGrow: 1 }}>
+              <EditableField
+                fieldPath={[fieldKey]}
+                value={val}
+                onDataChange={onDataChange}
+                editingField={editingField}
+                setEditingField={setEditingField}
+                isEditable={true}
+                allData={allData}
+                manualValidations={manualValidations}
+                handleManualValidation={handleManualValidation}
+                revisionHandlers={revisionHandlers}
+                inputClassName="form-control form-control-sm field-value"
+                inputStyle={{ width: '100%', fontSize: '0.85rem' }}
+              />
+            </div>
+          </div>
+        </div>
+      );
+    };
+
 
     return (
       <Paper id={id} elevation={1} sx={{ mb: 2, borderRadius: 2, overflow: 'hidden', borderTop: '3px solid', borderTopColor: borderColor || '#0d6efd' }}>
@@ -1913,13 +1962,13 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
                 </div>
               </div>
 
-              {renderCertField("Name", "Name")}
-              {renderCertField("Date Signed", "Date Signed")}
-              {renderCertField("State Certification #", "State Certification #")}
-              {renderCertField("or State License #", "or State License #")}
-              {renderCertField("State", "State")}
-              {renderCertField("Expiration Date of Certification or License", "Expiration Date of Certification or License")}
-              {renderCertField("Effective Date of Appraisal", "Effective Date of Appraisal")}
+              {renderUspapField("Name", "Name")}
+              {renderUspapField("Date Signed", "Date Signed")}
+              {renderUspapField("State Certification #", "State Certification #")}
+              {renderUspapField("or State License #", "or State License #")}
+              {renderUspapField("State", "State")}
+              {renderUspapField("Expiration Date of Certification or License", "Expiration Date of Certification or License")}
+              {renderUspapField("Effective Date of Appraisal", "Effective Date of Appraisal")}
             </div>
 
             {/* Right Column: SUPERVISORY APPRAISER (only if required) */}
@@ -1957,21 +2006,21 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
                 </div>
               </div>
 
-              {renderCertField("Name", "Supervisory Name")}
-              {renderCertField("Date Signed", "Supervisory Date Signed")}
-              {renderCertField("State Certification #", "Supervisory State Certification #")}
-              {renderCertField("or State License #", "Supervisory or State License #")}
-              {renderCertField("State", "Supervisory State")}
-              {renderCertField("Expiration Date of Certification or License", "Supervisory Expiration Date of Certification or License")}
+              {renderUspapField("Name", "Supervisory Name")}
+              {renderUspapField("Date Signed", "Supervisory Date Signed")}
+              {renderUspapField("State Certification #", "Supervisory State Certification #")}
+              {renderUspapField("or State License #", "Supervisory or State License #")}
+              {renderUspapField("State", "Supervisory State")}
+              {renderUspapField("Expiration Date of Certification or License", "Supervisory Expiration Date of Certification or License")}
 
               {/* Supervisory Inspection of Subject Property */}
               <div style={{ marginTop: '14px', borderTop: '1px dashed #dee2e6', paddingTop: '10px' }}>
                 <div style={{ fontWeight: 'bold', fontSize: '0.75rem', color: '#495057', marginBottom: '6px' }}>
                   Supervisory Appraiser Inspection of Subject Property:
                 </div>
-                {renderCertField("Did Not", "Did not inspect subject property", true)}
-                {renderCertField("Exterior-only from Street", "Did inspect exterior of subject property from street", true)}
-                {renderCertField("Interior and Exterior", "Did inspect interior and exterior of subject property", true)}
+                {renderUspapField("Did Not", "Did not inspect subject property", true)}
+                {renderUspapField("Exterior-only from Street", "Did inspect exterior of subject property from street", true)}
+                {renderUspapField("Interior and Exterior", "Did inspect interior and exterior of subject property", true)}
               </div>
             </div>
 

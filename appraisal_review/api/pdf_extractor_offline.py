@@ -1504,6 +1504,183 @@ def extract_uspap_reporting_option_and_comment(doc=None, uspap_page_idx=None, fu
     return reporting_option, comment
 
 
+def extract_uspap_identification_details(doc=None, uspap_page_idx=None, full_doc_text=""):
+    """
+    Extracts the complete USPAP / Appraisal and Report Identification section
+    including top USPAP options, exposure time, prior service disclosure, comments,
+    and the distinct Appraiser & Supervisory Appraiser signature card directly
+    from the USPAP addendum page.
+    This is completely independent from the CERTIFICATION section.
+    """
+    reporting_option, comment = extract_uspap_reporting_option_and_comment(
+        doc=doc, uspap_page_idx=uspap_page_idx, full_doc_text=full_doc_text
+    )
+
+    uspap_page = None
+    if doc is not None:
+        if uspap_page_idx is not None and 0 <= uspap_page_idx < len(doc):
+            uspap_page = doc[uspap_page_idx]
+        else:
+            for idx, p in enumerate(doc):
+                t = (p.get_text() or "").upper()
+                if (
+                    "APPRAISAL AND REPORT IDENTIFICATION" in t
+                    or "USPAP ADDENDUM" in t
+                    or "FORM ID14AP" in t
+                    or ("USPAP" in t and ("STANDARDS RULE 2-2" in t or "REASONABLE EXPOSURE TIME" in t))
+                ):
+                    if not (("PAGE 6 OF 6" in t or "PAGE 5 OF 6" in t) and "APPRAISER'S CERTIFICATION" in t):
+                        uspap_page = p
+                        break
+
+    exposure_time = ""
+    prior_service = ""
+    appraiser_sig_b64 = ""
+    supervisory_sig_b64 = ""
+    appr_fields = {}
+    sup_fields = {}
+    sup_did_not = "No"
+    sup_ext = "No"
+    sup_int_ext = "No"
+    has_uspap = False
+
+    if uspap_page is not None:
+        has_uspap = True
+        ptxt = uspap_page.get_text()
+
+        # Exposure time extraction
+        m_exp2 = re.search(r'reasonable\s+exposure\s+time\s+for\s+the\s+subject\s+property\s+is\s*([^\n\r]+(?:\r?\n[^\n\r]+)?)', ptxt, re.IGNORECASE)
+        if m_exp2:
+            cleaned_exp = " ".join(m_exp2.group(1).split()).strip()
+            exposure_time = re.split(r'(?:\bAdditional\s+Certifications|\bAPPRAISER:|\bThis\s+report\s+was|\Z)', cleaned_exp, flags=re.I)[0].strip()
+        if not exposure_time:
+            m_exp = re.search(r'(?:reasonable\s+exposure\s+time[^\n\r]*:\s*|\bexposure\s+time\b[^\n\r]*\n)([^\n\r]+)', ptxt, re.IGNORECASE)
+            if m_exp:
+                exposure_time = m_exp.group(1).strip()
+
+        # Prior service disclosure
+        if "have not performed services" in ptxt.lower():
+            prior_service = "I have NOT performed services, as an appraiser or in any other capacity, regarding the property that is the subject of this report within the three-year period immediately preceding acceptance of this assignment."
+        elif "have performed services" in ptxt.lower():
+            prior_service = "I HAVE performed services, as an appraiser or in another capacity, regarding the property that is the subject of this report within the three-year period immediately preceding acceptance of this assignment."
+
+        # Signature images on USPAP page
+        if doc is not None:
+            try:
+                for img_info in uspap_page.get_image_info(xrefs=True):
+                    bbox = img_info.get("bbox", ())
+                    if bbox and len(bbox) >= 4 and bbox[1] > 700:
+                        xref = img_info.get("xref")
+                        if xref:
+                            base_img = doc.extract_image(xref)
+                            if base_img and "image" in base_img:
+                                ext = base_img.get("ext", "png")
+                                b64_img = f"data:image/{ext};base64,{base64.b64encode(base_img['image']).decode('ascii')}"
+                                if bbox[0] < 310 and not appraiser_sig_b64:
+                                    appraiser_sig_b64 = b64_img
+                                elif bbox[0] >= 310 and not supervisory_sig_b64:
+                                    supervisory_sig_b64 = b64_img
+            except Exception:
+                pass
+
+        # Text words in the two signature columns
+        words = uspap_page.get_text("words")
+        appr_words = [w for w in words if w[1] >= 830 and w[0] < 310]
+        sup_words = [w for w in words if w[1] >= 830 and w[0] >= 310]
+
+        label_patterns = [
+            r'^APPRAISER:?', r'^Signature:?', r'^Name:?', r'^Date\s+Signed:?',
+            r'^State\s+Certification\s*#:?', r'^or\s+State\s+License\s*#:?', r'^State:?',
+            r'^Expiration\s+Date\s+of\s+Certification\s+or\s+License:?', r'^Effective\s+Date\s+of\s+Appraisal:?',
+            r'^SUPERVISORY', r'^Supervisory', r'^Inspection\s+of\s+Subject\s+Property:?',
+            r'^\(only', r'^if', r'^required\)', r'^Did', r'^Not', r'^Exterior-only',
+            r'^from', r'^Street', r'^Interior', r'^and', r'^Exterior'
+        ]
+
+        def _extract_cols(col_words, y_ranges):
+            res = {}
+            for fname, (y_min, y_max, x_min_val) in y_ranges.items():
+                matching = [w for w in col_words if y_min <= w[1] <= y_max and w[0] >= x_min_val]
+                matching.sort(key=lambda w: w[0])
+                val = " ".join(w[4] for w in matching).strip()
+                for pat in label_patterns:
+                    val = re.sub(pat, '', val, flags=re.I).strip()
+                res[fname] = val
+            return res
+
+        appr_y_ranges = {
+            "Name": (865, 880, 60),
+            "Date Signed": (880, 892, 75),
+            "State Certification #": (892, 903, 100),
+            "or State License #": (903, 915, 95),
+            "State": (915, 926, 55),
+            "Expiration Date of Certification or License": (926, 938, 160),
+            "Effective Date of Appraisal": (938, 952, 120),
+        }
+
+        sup_y_ranges = {
+            "Supervisory Name": (865, 880, 340),
+            "Supervisory Date Signed": (880, 892, 355),
+            "Supervisory State Certification #": (892, 903, 380),
+            "Supervisory or State License #": (903, 915, 375),
+            "Supervisory State": (915, 926, 335),
+            "Supervisory Expiration Date of Certification or License": (926, 938, 440),
+        }
+
+        appr_fields = _extract_cols(appr_words, appr_y_ranges)
+        sup_fields = _extract_cols(sup_words, sup_y_ranges)
+
+        # Supervisory inspection checkboxes
+        for w in sup_words:
+            if w[1] >= 945:
+                if w[4].upper() in ('X', 'YES', '8', '☒', '☑'):
+                    if w[0] < 360:
+                        sup_did_not = "Yes"
+                    elif w[0] < 450:
+                        sup_ext = "Yes"
+                    else:
+                        sup_int_ext = "Yes"
+
+    appr_name = appr_fields.get("Name", "")
+    sup_name = sup_fields.get("Supervisory Name", "")
+
+    return {
+        "USPAP / Appraisal and Report Identification": "Present" if has_uspap else "Not Present",
+        "Appraisal and Report Identification": "Present" if has_uspap else "Not Present",
+        "USPAP Addendum": "Present" if has_uspap else "Not Present",
+        "has_uspap_identification": has_uspap,
+        "USPAP Reporting Option": reporting_option if has_uspap else "Not Present",
+        "Reasonable Exposure Time": exposure_time,
+        "Prior Service Statement": prior_service,
+        "Comments on Appraisal and Report Identification": comment,
+        # Distinct Appraiser Fields for USPAP
+        "Signature": appr_name,
+        "Signature Image": appraiser_sig_b64,
+        "Appraiser Signature Image": appraiser_sig_b64,
+        "Name": appr_name,
+        "Appraiser Name": appr_name,
+        "Date Signed": appr_fields.get("Date Signed", ""),
+        "Date of Signature and Report": appr_fields.get("Date Signed", ""),
+        "State Certification #": appr_fields.get("State Certification #", ""),
+        "or State License #": appr_fields.get("or State License #", ""),
+        "State": appr_fields.get("State", ""),
+        "Expiration Date of Certification or License": appr_fields.get("Expiration Date of Certification or License", ""),
+        "Effective Date of Appraisal": appr_fields.get("Effective Date of Appraisal", ""),
+        # Distinct Supervisory Appraiser Fields for USPAP
+        "Supervisory Signature": sup_name,
+        "Supervisory Signature Image": supervisory_sig_b64,
+        "Supervisory Name": sup_name,
+        "Supervisory Date Signed": sup_fields.get("Supervisory Date Signed", ""),
+        "Supervisory State Certification #": sup_fields.get("Supervisory State Certification #", ""),
+        "Supervisory or State License #": sup_fields.get("Supervisory or State License #", ""),
+        "Supervisory State": sup_fields.get("Supervisory State", ""),
+        "Supervisory Expiration Date of Certification or License": sup_fields.get("Supervisory Expiration Date of Certification or License", ""),
+        "Did not inspect subject property": sup_did_not,
+        "Did inspect exterior of subject property from street": sup_ext,
+        "Did inspect interior and exterior of subject property": sup_int_ext,
+    }
+
+
 def extract_appraiser_fee_from_doc(doc=None, full_doc_text=""):
     """
     Extracts the Appraiser's Fee across all pages of the document
@@ -6769,6 +6946,7 @@ def extract_fields_from_pdf_offline(pdf_path):
                 "USPAP / Appraisal and Report Identification": uspap_present_pdf,
                 "Appraisal and Report Identification": uspap_present_pdf,
                 "USPAP Addendum": uspap_present_pdf,
+                
                 "has_uspap_identification": has_uspap_pdf,
                 "USPAP Reporting Option": uspap_val_to_use,
                 uspap_long_key: uspap_val_to_use,
