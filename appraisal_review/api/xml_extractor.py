@@ -4859,6 +4859,34 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
                 from .pdf_extractor_offline import extract_uspap_identification_details
                 uspap_pdf_details = extract_uspap_identification_details(emb_pdf)
                 if uspap_pdf_details and uspap_pdf_details.get("has_uspap_identification"):
+                    if not uspap_pdf_details.get("Reasonable Exposure Time") and exposure_comment:
+                        uspap_pdf_details["Reasonable Exposure Time"] = exposure_comment
+                        uspap_pdf_details["Reasonable Exposure Time Comment"] = exposure_comment
+                        uspap_pdf_details["Exposure Comment"] = exposure_comment
+                    if not uspap_pdf_details.get("Prior Service Statement") and prior_service_comment:
+                        uspap_pdf_details["Prior Service Statement"] = prior_service_comment
+                        uspap_pdf_details["Prior service comment"] = prior_service_comment
+                        uspap_pdf_details["Prior Service Comment"] = prior_service_comment
+                    if not uspap_pdf_details.get("Comments on Appraisal and Report Identification") and uspap_comment:
+                        uspap_pdf_details["Comments on Appraisal and Report Identification"] = uspap_comment
+
+                    if not uspap_pdf_details.get("Name") and appraiser_name:
+                        uspap_pdf_details["Name"] = appraiser_name
+                        uspap_pdf_details["Appraiser Name"] = appraiser_name
+                        uspap_pdf_details["Signature"] = appraiser_name
+                    if not uspap_pdf_details.get("Date Signed") and signed_date:
+                        uspap_pdf_details["Date Signed"] = signed_date
+                    if not uspap_pdf_details.get("State Certification #") and state_cert_no:
+                        uspap_pdf_details["State Certification #"] = state_cert_no
+                    if not uspap_pdf_details.get("Effective Date of Appraisal") and effective_date:
+                        uspap_pdf_details["Effective Date of Appraisal"] = effective_date
+
+                    is_appr_filled = bool(uspap_pdf_details.get("Name") or uspap_pdf_details.get("State Certification #") or uspap_pdf_details.get("Date Signed"))
+                    if is_appr_filled and uspap_pdf_details.get("Did not inspect subject property") != "Yes" and uspap_pdf_details.get("Did inspect exterior of subject property from street") != "Yes":
+                        uspap_pdf_details["Did inspect interior and exterior of subject property"] = "Yes"
+                        uspap_pdf_details["Did not inspect subject property"] = "No"
+                        uspap_pdf_details["Did inspect exterior of subject property from street"] = "No"
+
                     uspap_identification_section = uspap_pdf_details
             except Exception:
                 pass

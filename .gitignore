@@ -69,6 +69,13 @@ scratch_test/
 *.zip
 *.tar.gz
 
+# User sample files & plans
+2922 Jarboe St (1).xml
+Pramaan_Multi_User_Architecture_Plan.pdf
+*.xml
+*.pdf
+!**/static/**/*.pdf
+
 # IDE & OS
 .vscode/
 .idea/

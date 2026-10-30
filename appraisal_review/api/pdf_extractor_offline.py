@@ -1644,6 +1644,28 @@ def extract_uspap_identification_details(doc=None, uspap_page_idx=None, full_doc
     appr_name = appr_fields.get("Name", "")
     sup_name = sup_fields.get("Supervisory Name", "")
 
+    # Validation: If Appraiser section is filled in, automatically select the "Interior and Exterior" checkbox
+    if appr_name and sup_did_not != "Yes" and sup_ext != "Yes":
+        sup_int_ext = "Yes"
+        sup_did_not = "No"
+        sup_ext = "No"
+
+    # Pick up Exposure Time from document text if empty
+    if not exposure_time and full_doc_text:
+        m_exp_full = re.search(r'reasonable\s+exposure\s+time[^\r\n]*:\s*([^\r\n]+)', full_doc_text, re.IGNORECASE)
+        if not m_exp_full:
+            m_exp_full = re.search(r'reasonable\s+exposure\s+time\s+for\s+the\s+subject\s+property\s+is\s*([^\r\n]+)', full_doc_text, re.IGNORECASE)
+        if m_exp_full:
+            cleaned_exp = " ".join(m_exp_full.group(1).split()).strip()
+            exposure_time = re.split(r'(?: Additional\s+Certifications| APPRAISER:| This\s+report\s+was|\Z)', cleaned_exp, flags=re.I)[0].strip()
+
+    # Pick up Prior Service statement from document text if empty
+    if not prior_service and full_doc_text:
+        if "have not performed services" in full_doc_text.lower():
+            prior_service = "I have NOT performed services, as an appraiser or in any other capacity, regarding the property that is the subject of this report within the three-year period immediately preceding acceptance of this assignment."
+        elif "have performed services" in full_doc_text.lower():
+            prior_service = "I HAVE performed services, as an appraiser or in another capacity, regarding the property that is the subject of this report within the three-year period immediately preceding acceptance of this assignment." 
+
     return {
         "USPAP / Appraisal and Report Identification": "Present" if has_uspap else "Not Present",
         "Appraisal and Report Identification": "Present" if has_uspap else "Not Present",
