@@ -520,6 +520,7 @@ const getCleanDisplayJson = (data) => {
     ['SUBJECT_RENT_SCHEDULE', 'Subject Rent Schedule'],
     ['COMPARABLE_RENTAL_DATA', 'Comparable Rental Data'],
     ['CERTIFICATION', 'Certification'],
+    ['USPAP_IDENTIFICATION', 'USPAP / Report Identification'],
   ];
   sectionPairs.forEach(([secKey, label]) => {
     const obj = data[secKey] || data[label] || {};
@@ -2257,6 +2258,13 @@ function Subject({ defaultFormType }) {
         };
       }
 
+      if (flatPath.length === 2 && (flatPath[0] === 'USPAP_IDENTIFICATION' || flatPath[0] === 'USPAP / Report Identification')) {
+        newData[fieldKey] = value;
+      }
+      if (flatPath.length === 1) {
+        if (!newData.USPAP_IDENTIFICATION) newData.USPAP_IDENTIFICATION = {};
+        newData.USPAP_IDENTIFICATION[fieldKey] = value;
+      }
       if (fieldKey === 'E&O' || fieldKey === 'E&O Present') {
         if (!newData.CERTIFICATION) newData.CERTIFICATION = {};
         newData.CERTIFICATION['E&O'] = value;
@@ -3285,11 +3293,31 @@ function Subject({ defaultFormType }) {
   ];
 
   const appraisalAndReportIdentificationFields = [
-    "This report was prepared under the following USPAP reporting option:\nAppraisal Report A written report prepared under Standards Rule 2-2(a).\nRestricted Appraisal Report A written report prepared under Standards Rule 2-2(b).",
-    "This Report is one of the following types:",
-    "Comments on Standards Rule 2-3",
+    "USPAP / Appraisal and Report Identification",
+    "USPAP Reporting Option",
     "Reasonable Exposure Time",
-    "Comments on Appraisal and Report Identification"
+    "Prior Service Statement",
+    "Comments on Appraisal and Report Identification",
+    "Signature",
+    "Signature Image",
+    "Name",
+    "Date Signed",
+    "State Certification #",
+    "or State License #",
+    "State",
+    "Expiration Date of Certification or License",
+    "Effective Date of Appraisal",
+    "Supervisory Signature",
+    "Supervisory Signature Image",
+    "Supervisory Name",
+    "Supervisory Date Signed",
+    "Supervisory State Certification #",
+    "Supervisory or State License #",
+    "Supervisory State",
+    "Supervisory Expiration Date of Certification or License",
+    "Did not inspect subject property",
+    "Did inspect exterior of subject property from street",
+    "Did inspect interior and exterior of subject property"
   ];
 
   const marketConditionsFields = [
@@ -3504,6 +3532,7 @@ function Subject({ defaultFormType }) {
     { id: 'market-conditions-section', title: 'Market Conditions', category: 'MARKET_CONDITIONS', icon: <TrendingUpIcon /> },
     { id: 'condo-coop-section', title: 'Condo/Co-op', category: ['CONDO', 'CONDO_FORECLOSURE'], icon: <BusinessIcon /> },
     { id: 'appraiser-section', title: 'Certification', category: 'CERTIFICATION', icon: <VerifiedUserIcon /> },
+    { id: 'uspap-identification-section', title: 'USPAP / Report Identification', category: 'USPAP_IDENTIFICATION', icon: <VerifiedUserIcon /> },
     { id: 'map-sketch-exhibits-section', title: 'Map & Sketch Analysis', category: 'MAP_SKETCH_ANALYSIS', icon: <MapIcon /> },
     { id: 'photos-exhibits-section', title: 'Photos & Exhibits', category: 'EXTRACTED_PHOTOS', icon: <PhotoLibraryIcon /> },
     { id: 'raw-output', title: 'Raw Output', icon: <CodeIcon /> },

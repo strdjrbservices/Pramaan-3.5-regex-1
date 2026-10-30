@@ -3636,6 +3636,35 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         if m_ansi:
             ansi_comment = m_ansi.group(0).strip(" \t\r\n-•*")
     
+    # Extract signatures from USPAP / Appraisal and Report Identification page if present
+    appraiser_sig_b64 = ""
+    supervisory_sig_b64 = ""
+    if pdf_doc is not None:
+        try:
+            for page in pdf_doc:
+                pt = page.get_text() or ""
+                if "USPAP" in pt.upper() or "APPRAISAL AND REPORT IDENTIFICATION" in pt.upper() or "APPRAISER:" in pt.upper():
+                    for img_info in page.get_image_info(xrefs=True):
+                        bbox = img_info.get("bbox", ())
+                        if bbox and len(bbox) >= 4 and bbox[1] > 700:
+                            xref = img_info.get("xref")
+                            if xref:
+                                try:
+                                    base_img = pdf_doc.extract_image(xref)
+                                    if base_img and "image" in base_img:
+                                        ext = base_img.get("ext", "png")
+                                        b64_data = f"data:image/{ext};base64,{base64.b64encode(base_img['image']).decode('ascii')}"
+                                        if bbox[0] < 300 and not appraiser_sig_b64:
+                                            appraiser_sig_b64 = b64_data
+                                        elif bbox[0] >= 300 and not supervisory_sig_b64:
+                                            supervisory_sig_b64 = b64_data
+                                except Exception:
+                                    pass
+                    if appraiser_sig_b64:
+                        break
+        except Exception:
+            pass
+
     # Exposure comment (compulsory field - checks USPAP Addendum page in embedded PDF first)
     exposure_comment = "Not Present"
     if pdf_doc is not None:
@@ -4656,6 +4685,56 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
                 if idate:
                     sup_comp_date = idate
 
+    uspap_identification_section = {
+        # General / Status
+        "USPAP / Appraisal and Report Identification": uspap_ident_str,
+        "Appraisal and Report Identification": uspap_ident_str,
+        "USPAP Addendum": uspap_ident_str,
+        "has_uspap_identification": has_uspap_ident,
+        "USPAP Reporting Option": uspap_reporting_option,
+        uspap_long_key: uspap_reporting_option,
+        "This report was prepared under the following USPAP reporting option:": uspap_reporting_option,
+        "Reasonable Exposure Time": exposure_comment,
+        "Reasonable Exposure Time Comment": exposure_comment,
+        "Exposure Comment": exposure_comment,
+        "Prior Service Statement": prior_service_comment,
+        "Prior service comment": prior_service_comment,
+        "Prior Service Comment": prior_service_comment,
+        "Comments on Appraisal and Report Identification": uspap_comment,
+        "Restricted Appraisal Report Comment": uspap_comment,
+
+        # APPRAISER
+        "Signature": appraiser_name,
+        "Signature Image": appraiser_sig_b64,
+        "Appraiser Signature Image": appraiser_sig_b64,
+        "Name": appraiser_name,
+        "Appraiser Name": appraiser_name,
+        "Date Signed": signed_date,
+        "Date of Signature and Report": signed_date,
+        "Report Signed Date": signed_date,
+        "State Certification #": state_cert_no,
+        "or State License #": state_lic_no,
+        "State": lic_state or appr_state,
+        "Expiration Date of Certification or License": lic_exp,
+        "Effective Date of Appraisal": effective_date,
+        "Effective Date": effective_date,
+
+        # SUPERVISORY APPRAISER: (only if required)
+        "Supervisory Signature": sup_name if sup_name.strip() else "",
+        "Supervisory Signature Image": supervisory_sig_b64,
+        "Supervisory Name": sup_name,
+        "Supervisory Date Signed": signed_date if sup_name.strip() else "",
+        "Supervisory State Certification #": sup_cert_no,
+        "Supervisory or State License #": sup_lic_no,
+        "Supervisory State": sup_lic_state,
+        "Supervisory Expiration Date of Certification or License": sup_lic_exp,
+        "Did not inspect subject property": sup_insp_none,
+        "Did inspect exterior of subject property from street": sup_insp_ext,
+        "Subject Property Date of Inspection (Exterior)": sup_insp_ext_date,
+        "Did inspect interior and exterior of subject property": sup_insp_int_ext,
+        "Subject Property Date of Inspection (Interior/Exterior)": sup_insp_int_ext_date,
+    }
+
     certification_section = {
         # Appraiser Fields
         "Signature": appraiser_name,
@@ -5489,6 +5568,11 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "CONDO_COOP_PROJECTS": condo_coop_section,
         "CONDO_FORECLOSURE": condo_foreclosure_section,
         "CERTIFICATION": certification_section,
+        "USPAP_IDENTIFICATION": uspap_identification_section,
+        "USPAP_REPORT_IDENTIFICATION": uspap_identification_section,
+        "USPAP / Report Identification": uspap_identification_section,
+        "Signature Image": appraiser_sig_b64,
+        "Supervisory Signature Image": supervisory_sig_b64,
         "SUBJECT_RENT_SCHEDULE": subject_rent_schedule,
         "Single Family Rent Schedule": single_family_rent_schedule,
         "SINGLE_FAMILY_RENT_SCHEDULE": single_family_rent_schedule,
@@ -5515,7 +5599,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         fields["Invoice"] = fields["INVOICE"]
 
     # Flatten category fields into root fields so data[field] is directly available to UI
-    for cat_dict in [clean_subject, contract_section, neighborhood_section, site_section, improvements_section, reconciliation_section, income_approach_section, cost_approach_section, pud_info_section, project_info_section, project_analysis_section, market_conditions_section, condo_coop_section, condo_foreclosure_section, certification_section, info_of_sales_section]:
+    for cat_dict in [clean_subject, contract_section, neighborhood_section, site_section, improvements_section, reconciliation_section, income_approach_section, cost_approach_section, pud_info_section, project_info_section, project_analysis_section, market_conditions_section, condo_coop_section, condo_foreclosure_section, certification_section, uspap_identification_section, info_of_sales_section]:
         for k, v in cat_dict.items():
             if k not in fields:
                 fields[k] = v
@@ -5552,6 +5636,8 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "Improvements": improvements_section,
         "Sales Grid": clean_sales_grid,
         "Reconciliation": reconciliation_section,
+        "USPAP_IDENTIFICATION": uspap_identification_section,
+        "USPAP / Report Identification": uspap_identification_section,
     }
     if cost_approach_section and any(cost_approach_section.values()):
         clean_data["Cost Approach"] = cost_approach_section

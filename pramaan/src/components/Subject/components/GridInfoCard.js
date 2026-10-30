@@ -432,6 +432,33 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
     }
 
     let certVal = data ? renderValue(data[fieldPath]) : '';
+    if ((certVal === undefined || certVal === null || certVal === '') && fieldPath === 'Date Signed') {
+      certVal = renderValue(data?.["Date Signed"] ?? data?.["Date of Signature and Report"] ?? data?.["Date of Signature"] ?? data?.["Report Signed Date"] ?? allData?.["Date Signed"] ?? allData?.["Date of Signature and Report"] ?? allData?.["Report Signed Date"] ?? allData?.CERTIFICATION?.["Date of Signature and Report"] ?? '');
+    }
+    if ((certVal === undefined || certVal === null || certVal === '') && fieldPath === 'Effective Date of Appraisal') {
+      certVal = renderValue(data?.["Effective Date of Appraisal"] ?? data?.["Effective Date"] ?? allData?.["Effective Date of Appraisal"] ?? allData?.["Effective Date"] ?? allData?.CERTIFICATION?.["Effective Date of Appraisal"] ?? '');
+    }
+    if ((certVal === undefined || certVal === null || certVal === '') && fieldPath === 'Supervisory Date Signed') {
+      certVal = renderValue(data?.["Supervisory Date Signed"] ?? data?.["Supervisory Date of Signature"] ?? allData?.["Supervisory Date Signed"] ?? allData?.["Supervisory Date of Signature"] ?? allData?.CERTIFICATION?.["Supervisory Date of Signature"] ?? '');
+    }
+    if ((certVal === undefined || certVal === null || certVal === '') && fieldPath === 'State') {
+      certVal = renderValue(data?.["State"] ?? allData?.["State"] ?? allData?.CERTIFICATION?.["State"] ?? '');
+    }
+    if ((certVal === undefined || certVal === null || certVal === '') && fieldPath === 'Supervisory State') {
+      certVal = renderValue(data?.["Supervisory State"] ?? allData?.["Supervisory State"] ?? allData?.CERTIFICATION?.["Supervisory State"] ?? '');
+    }
+    if ((certVal === undefined || certVal === null || certVal === '') && (fieldPath === 'State Certification #' || fieldPath === 'or State License #')) {
+      certVal = renderValue(data?.[fieldPath] ?? allData?.[fieldPath] ?? allData?.CERTIFICATION?.[fieldPath] ?? '');
+    }
+    if ((certVal === undefined || certVal === null || certVal === '') && (fieldPath === 'Supervisory State Certification #' || fieldPath === 'Supervisory or State License #')) {
+      certVal = renderValue(data?.[fieldPath] ?? allData?.[fieldPath] ?? allData?.CERTIFICATION?.[fieldPath] ?? '');
+    }
+    if ((certVal === undefined || certVal === null || certVal === '') && (fieldPath === 'Expiration Date of Certification or License' || fieldPath === 'Expiration Date')) {
+      certVal = renderValue(data?.["Expiration Date of Certification or License"] ?? data?.["Expiration Date"] ?? allData?.["Expiration Date of Certification or License"] ?? allData?.["Expiration Date"] ?? allData?.CERTIFICATION?.["Expiration Date of Certification or License"] ?? '');
+    }
+    if ((certVal === undefined || certVal === null || certVal === '') && fieldPath === 'Supervisory Expiration Date of Certification or License') {
+      certVal = renderValue(data?.["Supervisory Expiration Date of Certification or License"] ?? allData?.["Supervisory Expiration Date of Certification or License"] ?? allData?.CERTIFICATION?.["Supervisory Expiration Date of Certification or License"] ?? '');
+    }
     if ((certVal === undefined || certVal === null || certVal === '') && (fieldPath === 'E&O' || fieldPath === 'E&O Present')) {
       certVal = renderValue(data?.['E&O'] ?? data?.['E&O Present'] ?? data?.CERTIFICATION?.['E&O'] ?? data?.CERTIFICATION?.['E&O Present'] ?? allData?.['E&O'] ?? allData?.['E&O Present'] ?? allData?.CERTIFICATION?.['E&O'] ?? allData?.CERTIFICATION?.['E&O Present'] ?? '');
     }
@@ -1702,6 +1729,254 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
               inputStyle={{ width: '100%', border: 'none', background: 'transparent', padding: 0, fontSize: '0.8rem', height: 'auto', minHeight: '60px', resize: 'vertical' }}
             />
           </div>
+        </div>
+      </Paper>
+    );
+  }
+
+  if (id === 'uspap-identification-section' || id === 'uspap-section' || title === 'USPAP / Report Identification' || title === 'USPAP / Appraisal and Report Identification') {
+    const sigImg = data?.["Signature Image"] || data?.["Appraiser Signature Image"] || allData?.["Signature Image"] || allData?.USPAP_IDENTIFICATION?.["Signature Image"] || allData?.CERTIFICATION?.["Signature Image"];
+    const supSigImg = data?.["Supervisory Signature Image"] || allData?.["Supervisory Signature Image"] || allData?.USPAP_IDENTIFICATION?.["Supervisory Signature Image"];
+    const uspapRepOpt = data?.["USPAP Reporting Option"] || data?.["This report was prepared under the following USPAP reporting option:"] || allData?.["USPAP Reporting Option"] || '';
+    const exposureTime = data?.["Reasonable Exposure Time"] || data?.["Reasonable Exposure Time Comment"] || data?.["Exposure Comment"] || allData?.["Reasonable Exposure Time"] || '';
+    const priorServices = data?.["Prior Service Statement"] || data?.["Prior service comment"] || data?.["Prior Service Comment"] || allData?.["Prior Service Statement"] || allData?.["Prior service comment"] || '';
+    const uspapComments = data?.["Comments on Appraisal and Report Identification"] || data?.["Restricted Appraisal Report Comment"] || allData?.["Comments on Appraisal and Report Identification"] || '';
+    const uspapStatus = data?.["USPAP / Appraisal and Report Identification"] || data?.["Appraisal and Report Identification"] || allData?.["USPAP / Appraisal and Report Identification"] || 'Present';
+
+    return (
+      <Paper id={id} elevation={1} sx={{ mb: 2, borderRadius: 2, overflow: 'hidden', borderTop: '3px solid', borderTopColor: borderColor || '#0d6efd' }}>
+        <Box
+          sx={{
+            p: 1.5,
+            bgcolor: 'grey.50',
+            color: 'text.primary',
+            borderBottom: '1px solid',
+            borderColor: 'grey.200',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Typography variant="h6" component="h5" sx={{ fontSize: '1.05rem', fontWeight: 'bold' }}>
+              {title || "USPAP / Report Identification"}
+            </Typography>
+            <span style={{
+              fontSize: '0.75rem',
+              fontWeight: 'bold',
+              padding: '2px 8px',
+              borderRadius: '4px',
+              backgroundColor: String(uspapStatus).includes('Present') ? '#d4edda' : '#f8d7da',
+              color: String(uspapStatus).includes('Present') ? '#155724' : '#721c24'
+            }}>
+              {uspapStatus}
+            </span>
+          </Box>
+          {onRevisionButtonClick && (
+            <Tooltip title="Revision Language">
+              <IconButton onClick={onRevisionButtonClick} size="small" sx={{ color: 'text.secondary', ml: 'auto' }}>
+                <LibraryBooksIcon />
+              </IconButton>
+            </Tooltip>
+          )}
+        </Box>
+        {loading && loadingSection === id && (
+          <Box sx={{ width: '100%' }}><LinearProgress /></Box>
+        )}
+        <div className="card-body p-3" style={{ fontSize: '0.8rem', backgroundColor: '#fff' }}>
+          
+          {/* Top Section: USPAP Options & Compliance Statements */}
+          <div style={{ marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #dee2e6' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
+              
+              {/* USPAP Reporting Option */}
+              <div style={{ borderBottom: '1px solid #f1f3f5', paddingBottom: '6px' }}>
+                <span style={{ fontWeight: 'bold', color: '#495057', fontSize: '0.75rem', display: 'block', marginBottom: '2px' }}>
+                  This report was prepared under the following USPAP reporting option:
+                </span>
+                <EditableField
+                  fieldPath={["USPAP Reporting Option"]}
+                  value={renderValue(uspapRepOpt)}
+                  onDataChange={onDataChange}
+                  editingField={editingField}
+                  setEditingField={setEditingField}
+                  isEditable={true}
+                  allData={allData}
+                  manualValidations={manualValidations}
+                  handleManualValidation={handleManualValidation}
+                  revisionHandlers={revisionHandlers}
+                  inputClassName="form-control form-control-sm field-value"
+                  inputStyle={{ width: '100%', fontSize: '0.85rem' }}
+                />
+              </div>
+
+              {/* Reasonable Exposure Time */}
+              <div style={{ borderBottom: '1px solid #f1f3f5', paddingBottom: '6px' }}>
+                <span style={{ fontWeight: 'bold', color: '#495057', fontSize: '0.75rem', display: 'block', marginBottom: '2px' }}>
+                  Reasonable Exposure Time:
+                </span>
+                <EditableField
+                  fieldPath={["Reasonable Exposure Time"]}
+                  value={renderValue(exposureTime)}
+                  onDataChange={onDataChange}
+                  editingField={editingField}
+                  setEditingField={setEditingField}
+                  isEditable={true}
+                  allData={allData}
+                  manualValidations={manualValidations}
+                  handleManualValidation={handleManualValidation}
+                  revisionHandlers={revisionHandlers}
+                  inputClassName="form-control form-control-sm field-value"
+                  inputStyle={{ width: '100%', fontSize: '0.85rem' }}
+                />
+              </div>
+
+              {/* Prior Services Statement (3-Year Period) */}
+              <div style={{ borderBottom: '1px solid #f1f3f5', paddingBottom: '6px' }}>
+                <span style={{ fontWeight: 'bold', color: '#495057', fontSize: '0.75rem', display: 'block', marginBottom: '2px' }}>
+                  Prior Services (3-Year Period Disclosure):
+                </span>
+                <EditableField
+                  fieldPath={["Prior Service Statement"]}
+                  value={renderValue(priorServices)}
+                  onDataChange={onDataChange}
+                  editingField={editingField}
+                  setEditingField={setEditingField}
+                  isEditable={true}
+                  allData={allData}
+                  manualValidations={manualValidations}
+                  handleManualValidation={handleManualValidation}
+                  revisionHandlers={revisionHandlers}
+                  inputClassName="form-control form-control-sm field-value"
+                  inputStyle={{ width: '100%', fontSize: '0.85rem' }}
+                />
+              </div>
+
+              {/* Comments on Appraisal and Report Identification */}
+              <div>
+                <span style={{ fontWeight: 'bold', color: '#495057', fontSize: '0.75rem', display: 'block', marginBottom: '2px' }}>
+                  Comments on Appraisal and Report Identification:
+                </span>
+                <EditableField
+                  fieldPath={["Comments on Appraisal and Report Identification"]}
+                  value={renderValue(uspapComments)}
+                  onDataChange={onDataChange}
+                  editingField={editingField}
+                  setEditingField={setEditingField}
+                  isEditable={true}
+                  allData={allData}
+                  manualValidations={manualValidations}
+                  handleManualValidation={handleManualValidation}
+                  revisionHandlers={revisionHandlers}
+                  inputClassName="form-control form-control-sm field-value"
+                  inputStyle={{ width: '100%', fontSize: '0.85rem' }}
+                />
+              </div>
+
+            </div>
+          </div>
+
+          {/* Bottom Section: Two-Column Signature Block (Matching Fannie Mae USPAP Addendum / User Image) */}
+          <div style={{ display: 'flex', gap: '24px' }}>
+            
+            {/* Left Column: APPRAISER */}
+            <div style={{ flex: 1, minWidth: 0, border: '1px solid #ced4da', borderRadius: '4px', padding: '14px', backgroundColor: '#fcfcfc' }}>
+              <div style={{ fontWeight: 'bold', fontSize: '0.95rem', marginBottom: '14px', borderBottom: '2px solid #343a40', paddingBottom: '4px', color: '#212529' }}>
+                APPRAISER:
+              </div>
+
+              {/* Signature Line */}
+              <div style={{ borderBottom: '1px solid #dee2e6', paddingBottom: '4px', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontWeight: 'bold', color: '#495057', fontSize: '0.75rem', minWidth: '95px', whiteSpace: 'nowrap' }}>Signature:</span>
+                  <div style={{ flexGrow: 1 }}>
+                    {sigImg && (
+                      <div style={{ marginBottom: '4px' }}>
+                        <img src={sigImg} alt="Appraiser Signature" style={{ maxHeight: '48px', maxWidth: '100%', objectFit: 'contain' }} />
+                      </div>
+                    )}
+                    <EditableField
+                      fieldPath={["Signature"]}
+                      value={data ? renderValue(data["Signature"] || data["Name"]) : ''}
+                      onDataChange={onDataChange}
+                      editingField={editingField}
+                      setEditingField={setEditingField}
+                      isEditable={true}
+                      allData={allData}
+                      manualValidations={manualValidations}
+                      handleManualValidation={handleManualValidation}
+                      revisionHandlers={revisionHandlers}
+                      inputClassName="form-control form-control-sm field-value"
+                      inputStyle={{ width: '100%', border: 'none', background: 'transparent', padding: 0, fontSize: '0.85rem', height: 'auto' }}
+                      valueStyle={{ fontFamily: "'Caveat', 'Dancing Script', 'Brush Script MT', cursive, sans-serif", fontSize: '1.25rem', color: '#1a252c', fontStyle: 'italic' }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {renderCertField("Name", "Name")}
+              {renderCertField("Date Signed", "Date Signed")}
+              {renderCertField("State Certification #", "State Certification #")}
+              {renderCertField("or State License #", "or State License #")}
+              {renderCertField("State", "State")}
+              {renderCertField("Expiration Date of Certification or License", "Expiration Date of Certification or License")}
+              {renderCertField("Effective Date of Appraisal", "Effective Date of Appraisal")}
+            </div>
+
+            {/* Right Column: SUPERVISORY APPRAISER (only if required) */}
+            <div style={{ flex: 1, minWidth: 0, border: '1px solid #ced4da', borderRadius: '4px', padding: '14px', backgroundColor: '#fcfcfc' }}>
+              <div style={{ fontWeight: 'bold', fontSize: '0.95rem', marginBottom: '14px', borderBottom: '2px solid #343a40', paddingBottom: '4px', color: '#212529' }}>
+                SUPERVISORY APPRAISER: <span style={{ fontSize: '0.8rem', fontWeight: 'normal', color: '#6c757d' }}>(only if required)</span>
+              </div>
+
+              {/* Signature Line */}
+              <div style={{ borderBottom: '1px solid #dee2e6', paddingBottom: '4px', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontWeight: 'bold', color: '#495057', fontSize: '0.75rem', minWidth: '95px', whiteSpace: 'nowrap' }}>Signature:</span>
+                  <div style={{ flexGrow: 1 }}>
+                    {supSigImg && (
+                      <div style={{ marginBottom: '4px' }}>
+                        <img src={supSigImg} alt="Supervisory Signature" style={{ maxHeight: '48px', maxWidth: '100%', objectFit: 'contain' }} />
+                      </div>
+                    )}
+                    <EditableField
+                      fieldPath={["Supervisory Signature"]}
+                      value={data ? renderValue(data["Supervisory Signature"] || data["Supervisory Name"]) : ''}
+                      onDataChange={onDataChange}
+                      editingField={editingField}
+                      setEditingField={setEditingField}
+                      isEditable={true}
+                      allData={allData}
+                      manualValidations={manualValidations}
+                      handleManualValidation={handleManualValidation}
+                      revisionHandlers={revisionHandlers}
+                      inputClassName="form-control form-control-sm field-value"
+                      inputStyle={{ width: '100%', border: 'none', background: 'transparent', padding: 0, fontSize: '0.85rem', height: 'auto' }}
+                      valueStyle={{ fontFamily: "'Caveat', 'Dancing Script', 'Brush Script MT', cursive, sans-serif", fontSize: '1.25rem', color: '#1a252c', fontStyle: 'italic' }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {renderCertField("Name", "Supervisory Name")}
+              {renderCertField("Date Signed", "Supervisory Date Signed")}
+              {renderCertField("State Certification #", "Supervisory State Certification #")}
+              {renderCertField("or State License #", "Supervisory or State License #")}
+              {renderCertField("State", "Supervisory State")}
+              {renderCertField("Expiration Date of Certification or License", "Supervisory Expiration Date of Certification or License")}
+
+              {/* Supervisory Inspection of Subject Property */}
+              <div style={{ marginTop: '14px', borderTop: '1px dashed #dee2e6', paddingTop: '10px' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '0.75rem', color: '#495057', marginBottom: '6px' }}>
+                  Supervisory Appraiser Inspection of Subject Property:
+                </div>
+                {renderCertField("Did Not", "Did not inspect subject property", true)}
+                {renderCertField("Exterior-only from Street", "Did inspect exterior of subject property from street", true)}
+                {renderCertField("Interior and Exterior", "Did inspect interior and exterior of subject property", true)}
+              </div>
+            </div>
+
+          </div>
+
         </div>
       </Paper>
     );
