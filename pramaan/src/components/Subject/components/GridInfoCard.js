@@ -1738,52 +1738,10 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
     const sigImg = data?.["Signature Image"] || data?.["Appraiser Signature Image"] || allData?.USPAP_IDENTIFICATION?.["Signature Image"];
     const supSigImg = data?.["Supervisory Signature Image"] || allData?.["Supervisory Signature Image"] || allData?.USPAP_IDENTIFICATION?.["Supervisory Signature Image"];
     const uspapRepOpt = data?.["USPAP Reporting Option"] || data?.["This report was prepared under the following USPAP reporting option:"] || allData?.["USPAP Reporting Option"] || '';
-    const exposureTime = data?.["Reasonable Exposure Time"] || data?.["Reasonable Exposure Time Comment"] || data?.["Exposure Comment"] || data?.["Exposure comment"] || allData?.USPAP_IDENTIFICATION?.["Reasonable Exposure Time"] || allData?.RECONCILIATION?.["Reasonable Exposure Time"] || allData?.["Reasonable Exposure Time"] || allData?.["Exposure Comment"] || '';
-    const priorServices = data?.["Prior Service Statement"] || data?.["Prior service comment"] || data?.["Prior Service Comment"] || allData?.USPAP_IDENTIFICATION?.["Prior Service Statement"] || allData?.CERTIFICATION?.["Prior Service Statement"] || allData?.["Prior Service Statement"] || allData?.["Prior service comment"] || '';
+    const exposureTime = data?.["Reasonable Exposure Time"] || data?.["Reasonable Exposure Time Comment"] || data?.["Exposure Comment"] || allData?.["Reasonable Exposure Time"] || '';
+    const priorServices = data?.["Prior Service Statement"] || data?.["Prior service comment"] || data?.["Prior Service Comment"] || allData?.["Prior Service Statement"] || allData?.["Prior service comment"] || '';
     const uspapComments = data?.["Comments on Appraisal and Report Identification"] || data?.["Restricted Appraisal Report Comment"] || allData?.["Comments on Appraisal and Report Identification"] || '';
     const uspapStatus = data?.["USPAP / Appraisal and Report Identification"] || data?.["Appraisal and Report Identification"] || allData?.["USPAP / Appraisal and Report Identification"] || 'Present';
-
-    // Validation requirement: detect if Appraiser section is filled in
-    const isAppraiserFilled = Boolean(
-      (data?.["Name"] && String(data["Name"]).trim() !== '') ||
-      (data?.["Signature"] && String(data["Signature"]).trim() !== '') ||
-      (data?.["State Certification #"] && String(data["State Certification #"]).trim() !== '') ||
-      (data?.["or State License #"] && String(data["or State License #"]).trim() !== '') ||
-      (data?.["Date Signed"] && String(data["Date Signed"]).trim() !== '') ||
-      (data?.["Effective Date of Appraisal"] && String(data["Effective Date of Appraisal"]).trim() !== '')
-    );
-
-    // Inspection checkboxes state
-    const isDidNot = data?.["Did not inspect subject property"] === 'Yes';
-    const isExtOnly = data?.["Did inspect exterior of subject property from street"] === 'Yes';
-    const isIntExtExplicit = data?.["Did inspect interior and exterior of subject property"] === 'Yes';
-    // When Appraiser section is filled in, automatically select Interior and Exterior
-    const isIntExt = isIntExtExplicit || (isAppraiserFilled && !isDidNot && !isExtOnly);
-
-    const handleInspectionToggle = (type) => {
-      if (type === 'did_not') {
-        const nextVal = isDidNot ? 'No' : 'Yes';
-        onDataChange(["Did not inspect subject property"], nextVal);
-        if (nextVal === 'Yes') {
-          onDataChange(["Did inspect exterior of subject property from street"], 'No');
-          onDataChange(["Did inspect interior and exterior of subject property"], 'No');
-        }
-      } else if (type === 'exterior') {
-        const nextVal = isExtOnly ? 'No' : 'Yes';
-        onDataChange(["Did inspect exterior of subject property from street"], nextVal);
-        if (nextVal === 'Yes') {
-          onDataChange(["Did not inspect subject property"], 'No');
-          onDataChange(["Did inspect interior and exterior of subject property"], 'No');
-        }
-      } else if (type === 'interior_exterior') {
-        const nextVal = isIntExt ? 'No' : 'Yes';
-        onDataChange(["Did inspect interior and exterior of subject property"], nextVal);
-        if (nextVal === 'Yes') {
-          onDataChange(["Did not inspect subject property"], 'No');
-          onDataChange(["Did inspect exterior of subject property from street"], 'No');
-        }
-      }
-    };
 
     const renderUspapField = (label, fieldKey, isCheckbox = false) => {
       if (isCheckbox) {
@@ -1880,30 +1838,10 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
               
               {/* USPAP Reporting Option */}
-              <div style={{ borderBottom: '1px solid #f1f3f5', paddingBottom: '8px' }}>
-                <span style={{ fontWeight: 'bold', color: '#495057', fontSize: '0.75rem', display: 'block', marginBottom: '4px' }}>
+              <div style={{ borderBottom: '1px solid #f1f3f5', paddingBottom: '6px' }}>
+                <span style={{ fontWeight: 'bold', color: '#495057', fontSize: '0.75rem', display: 'block', marginBottom: '2px' }}>
                   This report was prepared under the following USPAP reporting option:
                 </span>
-                <div style={{ display: 'flex', gap: '16px', alignItems: 'center', margin: '4px 0 8px 0', flexWrap: 'wrap' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.78rem' }}>
-                    <input
-                      type="checkbox"
-                      checked={String(uspapRepOpt).toLowerCase().includes('standards rule 2-2(a)') || (String(uspapRepOpt).toLowerCase().includes('appraisal report') && !String(uspapRepOpt).toLowerCase().includes('restricted'))}
-                      onChange={() => onDataChange(["USPAP Reporting Option"], "Appraisal Report (USPAP Standards Rule 2-2(a))")}
-                      style={{ width: '14px', height: '14px', cursor: 'pointer' }}
-                    />
-                    <span style={{ fontWeight: 500, color: '#334155' }}>Appraisal Report (USPAP Standards Rule 2-2(a))</span>
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.78rem' }}>
-                    <input
-                      type="checkbox"
-                      checked={String(uspapRepOpt).toLowerCase().includes('restricted') || String(uspapRepOpt).toLowerCase().includes('2-2(b)')}
-                      onChange={() => onDataChange(["USPAP Reporting Option"], "Restricted Appraisal Report (USPAP Standards Rule 2-2(b))")}
-                      style={{ width: '14px', height: '14px', cursor: 'pointer' }}
-                    />
-                    <span style={{ fontWeight: 500, color: '#334155' }}>Restricted Appraisal Report (USPAP Standards Rule 2-2(b))</span>
-                  </label>
-                </div>
                 <EditableField
                   fieldPath={["USPAP Reporting Option"]}
                   value={renderValue(uspapRepOpt)}
@@ -1989,48 +1927,16 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
           {/* Bottom Section: Two-Column Signature Block (Matching Fannie Mae USPAP Addendum / User Image) */}
           <div style={{ display: 'flex', gap: '24px' }}>
             
-            {/* Left Column: APPRAISER - Highlighted in Red when filled in */}
-            <div style={{
-              flex: 1,
-              minWidth: 0,
-              border: isAppraiserFilled ? '2px solid #dc2626' : '1px solid #ced4da',
-              borderRadius: '6px',
-              padding: '14px',
-              backgroundColor: isAppraiserFilled ? '#fff5f5' : '#fcfcfc',
-              boxShadow: isAppraiserFilled ? '0 0 10px rgba(220, 38, 38, 0.15)' : 'none',
-              transition: 'all 0.2s ease-in-out'
-            }}>
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                fontWeight: 'bold',
-                fontSize: '0.95rem',
-                marginBottom: '14px',
-                borderBottom: isAppraiserFilled ? '2px solid #dc2626' : '2px solid #343a40',
-                paddingBottom: '4px',
-                color: isAppraiserFilled ? '#b91c1c' : '#212529'
-              }}>
-                <span>APPRAISER:</span>
-                {isAppraiserFilled && (
-                  <span style={{
-                    fontSize: '0.68rem',
-                    fontWeight: 'bold',
-                    padding: '2px 8px',
-                    borderRadius: '12px',
-                    backgroundColor: '#fee2e2',
-                    color: '#991b1b',
-                    border: '1px solid #f87171'
-                  }}>
-                    ● Appraiser Filled
-                  </span>
-                )}
+            {/* Left Column: APPRAISER */}
+            <div style={{ flex: 1, minWidth: 0, border: '1px solid #ced4da', borderRadius: '4px', padding: '14px', backgroundColor: '#fcfcfc' }}>
+              <div style={{ fontWeight: 'bold', fontSize: '0.95rem', marginBottom: '14px', borderBottom: '2px solid #343a40', paddingBottom: '4px', color: '#212529' }}>
+                APPRAISER:
               </div>
 
               {/* Signature Line */}
               <div style={{ borderBottom: '1px solid #dee2e6', paddingBottom: '4px', marginBottom: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontWeight: 'bold', color: isAppraiserFilled ? '#991b1b' : '#495057', fontSize: '0.75rem', minWidth: '95px', whiteSpace: 'nowrap' }}>Signature:</span>
+                  <span style={{ fontWeight: 'bold', color: '#495057', fontSize: '0.75rem', minWidth: '95px', whiteSpace: 'nowrap' }}>Signature:</span>
                   <div style={{ flexGrow: 1 }}>
                     {sigImg && (
                       <div style={{ marginBottom: '4px' }}>
@@ -2066,7 +1972,7 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
             </div>
 
             {/* Right Column: SUPERVISORY APPRAISER (only if required) */}
-            <div style={{ flex: 1, minWidth: 0, border: '1px solid #ced4da', borderRadius: '6px', padding: '14px', backgroundColor: '#fcfcfc' }}>
+            <div style={{ flex: 1, minWidth: 0, border: '1px solid #ced4da', borderRadius: '4px', padding: '14px', backgroundColor: '#fcfcfc' }}>
               <div style={{ fontWeight: 'bold', fontSize: '0.95rem', marginBottom: '14px', borderBottom: '2px solid #343a40', paddingBottom: '4px', color: '#212529' }}>
                 SUPERVISORY APPRAISER: <span style={{ fontSize: '0.8rem', fontWeight: 'normal', color: '#6c757d' }}>(only if required)</span>
               </div>
@@ -2109,55 +2015,12 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
               {/* Supervisory Inspection of Subject Property */}
               <div style={{ marginTop: '14px', borderTop: '1px dashed #dee2e6', paddingTop: '10px' }}>
-                <div style={{ fontWeight: 'bold', fontSize: '0.75rem', color: '#495057', marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px' }}>
-                  <span>Supervisory Appraiser Inspection of Subject Property:</span>
-                  {isAppraiserFilled && isIntExt && (
-                    <span style={{ fontSize: '0.68rem', color: '#b91c1c', fontWeight: 600, backgroundColor: '#fee2e2', padding: '1px 6px', borderRadius: '4px', border: '1px solid #fca5a5' }}>
-                      ✓ Auto-selected Interior & Exterior
-                    </span>
-                  )}
+                <div style={{ fontWeight: 'bold', fontSize: '0.75rem', color: '#495057', marginBottom: '6px' }}>
+                  Supervisory Appraiser Inspection of Subject Property:
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', margin: 0 }}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(isDidNot)}
-                      onChange={() => handleInspectionToggle('did_not')}
-                      style={{ width: '15px', height: '15px', cursor: 'pointer' }}
-                    />
-                    <span style={{ fontSize: '0.78rem', color: '#495057' }}>Did Not</span>
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', margin: 0 }}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(isExtOnly)}
-                      onChange={() => handleInspectionToggle('exterior')}
-                      style={{ width: '15px', height: '15px', cursor: 'pointer' }}
-                    />
-                    <span style={{ fontSize: '0.78rem', color: '#495057' }}>Exterior-only from Street</span>
-                  </label>
-                  <label style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    cursor: 'pointer',
-                    margin: 0,
-                    padding: '3px 8px',
-                    borderRadius: '4px',
-                    backgroundColor: isIntExt ? (isAppraiserFilled ? '#fee2e2' : '#eff6ff') : 'transparent',
-                    border: isIntExt ? (isAppraiserFilled ? '1px solid #f87171' : '1px solid #bfdbfe') : '1px solid transparent'
-                  }}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(isIntExt)}
-                      onChange={() => handleInspectionToggle('interior_exterior')}
-                      style={{ width: '15px', height: '15px', cursor: 'pointer' }}
-                    />
-                    <span style={{ fontSize: '0.78rem', fontWeight: isIntExt ? '600' : 'normal', color: isIntExt ? (isAppraiserFilled ? '#991b1b' : '#1d4ed8') : '#495057' }}>
-                      Interior and Exterior
-                    </span>
-                  </label>
-                </div>
+                {renderUspapField("Did Not", "Did not inspect subject property", true)}
+                {renderUspapField("Exterior-only from Street", "Did inspect exterior of subject property from street", true)}
+                {renderUspapField("Interior and Exterior", "Did inspect interior and exterior of subject property", true)}
               </div>
             </div>
 

@@ -2321,47 +2321,6 @@ function Subject({ defaultFormType }) {
         newData.Subject["Comments on Appraisal and Report Identification"] = value;
       }
 
-      if (
-        fieldKey === "Reasonable Exposure Time" ||
-        fieldKey === "Reasonable Exposure Time Comment" ||
-        fieldKey === "Exposure Comment" ||
-        fieldKey === "Exposure comment"
-      ) {
-        if (!newData.USPAP_IDENTIFICATION) newData.USPAP_IDENTIFICATION = {};
-        newData.USPAP_IDENTIFICATION["Reasonable Exposure Time"] = value;
-        newData["Reasonable Exposure Time"] = value;
-        newData["Exposure Comment"] = value;
-        newData["Exposure comment"] = value;
-        if (!newData.Subject) newData.Subject = {};
-        newData.Subject["Exposure comment"] = value;
-        newData.Subject["Exposure Comment"] = value;
-      }
-
-      if (
-        fieldKey === "Prior Service Statement" ||
-        fieldKey === "Prior service comment" ||
-        fieldKey === "Prior Service Comment"
-      ) {
-        if (!newData.USPAP_IDENTIFICATION) newData.USPAP_IDENTIFICATION = {};
-        newData.USPAP_IDENTIFICATION["Prior Service Statement"] = value;
-        newData["Prior Service Statement"] = value;
-        newData["Prior service comment"] = value;
-        newData["Prior Service Comment"] = value;
-        if (!newData.Subject) newData.Subject = {};
-        newData.Subject["Prior service comment"] = value;
-        newData.Subject["Prior Service Comment"] = value;
-      }
-
-      if (
-        fieldKey === "Did not inspect subject property" ||
-        fieldKey === "Did inspect exterior of subject property from street" ||
-        fieldKey === "Did inspect interior and exterior of subject property"
-      ) {
-        if (!newData.USPAP_IDENTIFICATION) newData.USPAP_IDENTIFICATION = {};
-        newData.USPAP_IDENTIFICATION[fieldKey] = value;
-        newData[fieldKey] = value;
-      }
-
       if (rentScheduleReconciliationFields.includes(fieldKey)) {
         if (!newData['Comparable Rent Schedule Reconciliation']) newData['Comparable Rent Schedule Reconciliation'] = {};
         newData['Comparable Rent Schedule Reconciliation'] = { ...newData['Comparable Rent Schedule Reconciliation'], [fieldKey]: value };
@@ -7865,65 +7824,6 @@ function Subject({ defaultFormType }) {
                         );
                       })()}
 
-                      {/* USPAP Appraiser Inspection Check */}
-                      {(data?.has_uspap_identification || data?.USPAP_IDENTIFICATION || data?.['USPAP / Appraisal and Report Identification'] === 'Present') && (() => {
-                        const uspapData = data?.USPAP_IDENTIFICATION || data;
-                        const isApprFilled = Boolean(
-                          uspapData?.["Name"] || 
-                          uspapData?.["Signature"] || 
-                          uspapData?.["State Certification #"] || 
-                          uspapData?.["Date Signed"]
-                        );
-                        const isDidNot = uspapData?.["Did not inspect subject property"] === 'Yes';
-                        const isExt = uspapData?.["Did inspect exterior of subject property from street"] === 'Yes';
-                        const isIntExt = uspapData?.["Did inspect interior and exterior of subject property"] === 'Yes' || (isApprFilled && !isDidNot && !isExt);
-
-                        const inspLabel = isIntExt ? 'Interior and Exterior' : isExt ? 'Exterior-only from Street' : isDidNot ? 'Did Not Inspect' : (isApprFilled ? 'Interior and Exterior' : 'Not Specified');
-                        const isVerified = Boolean(isApprFilled && isIntExt);
-
-                        return (
-                          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-                            <Paper
-                              variant="outlined"
-                              sx={{
-                                p: 1.5,
-                                height: '100%',
-                                borderColor: isVerified ? '#dc2626' : (isApprFilled ? 'success.main' : 'divider'),
-                                bgcolor: isVerified ? '#fff5f5' : 'background.paper',
-                                transition: 'all 0.2s ease-in-out'
-                              }}
-                            >
-                              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                                <Typography variant="caption" sx={{ color: isVerified ? '#b91c1c' : 'secondary.main', fontWeight: 'bold' }}>
-                                  USPAP Inspection Check
-                                </Typography>
-                                {isApprFilled && (
-                                  <span style={{
-                                    fontSize: '0.65rem',
-                                    fontWeight: 'bold',
-                                    padding: '1px 6px',
-                                    borderRadius: '10px',
-                                    backgroundColor: '#fee2e2',
-                                    color: '#991b1b',
-                                    border: '1px solid #f87171'
-                                  }}>
-                                    ● Appraiser Filled
-                                  </span>
-                                )}
-                              </Box>
-                              <Typography variant="body2" sx={{ fontWeight: 600, color: isVerified ? '#991b1b' : '#1f2937' }}>
-                                {inspLabel}
-                              </Typography>
-                              <Typography variant="caption" sx={{ color: isVerified ? '#b91c1c' : 'text.secondary', display: 'block', mt: 0.5, fontSize: '0.72rem' }}>
-                                {isApprFilled
-                                  ? `Appraiser ${uspapData?.["Name"] || ''}: Auto Interior & Exterior Selected`
-                                  : 'Inspection Checkbox Status'}
-                              </Typography>
-                            </Paper>
-                          </Grid>
-                        );
-                      })()}}
-
                       {/* ANSI - Compulsory Extraction Check */}
                       <Grid size={{ xs: 12, sm: 6, md: 4 }}>
                         <Paper
@@ -7951,68 +7851,56 @@ function Subject({ defaultFormType }) {
                       </Grid>
 
                       {/* Exposure Comment - Compulsory Extraction Check */}
-                      {(() => {
-                        const expVal = data['Exposure comment'] || data['Exposure Comment'] || data['Reasonable Exposure Time'] || data?.USPAP_IDENTIFICATION?.['Reasonable Exposure Time'] || data?.USPAP_IDENTIFICATION?.['Exposure Comment'] || data?.Subject?.['Exposure comment'] || data?.Subject?.['Exposure Comment'] || data?.SUBJECT?.['Exposure comment'] || data?.SUBJECT?.['Exposure Comment'] || '';
-                        const hasExp = Boolean(expVal && !String(expVal).toLowerCase().includes('not present'));
-                        return (
-                          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-                            <Paper
-                              variant="outlined"
-                              sx={{
-                                p: 1.5,
-                                height: '100%',
-                                borderColor: hasExp ? 'success.main' : 'warning.main',
-                                bgcolor: hasExp ? '#f0fdf4' : '#fffbeb'
-                              }}
-                            >
-                              <Typography variant="caption" color="secondary.main" fontWeight="bold" display="block" noWrap>
-                                Exposure Comment
-                              </Typography>
-                              <EditableField
-                                fieldPath={['Exposure comment']}
-                                value={expVal || 'Not Present'}
-                                onDataChange={handleDataChange}
-                                editingField={editingField}
-                                setEditingField={setEditingField}
-                                isEditable={isEditable}
-                                allData={data}
-                              />
-                            </Paper>
-                          </Grid>
-                        );
-                      })()}
+                      <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+                        <Paper
+                          variant="outlined"
+                          sx={{
+                            p: 1.5,
+                            height: '100%',
+                            borderColor: ((data['Exposure comment'] || data['Exposure Comment'] || data?.Subject?.['Exposure comment'] || data?.SUBJECT?.['Exposure comment']) && !String(data['Exposure comment'] || data['Exposure Comment'] || '').toLowerCase().includes('not present')) ? 'success.main' : 'warning.main',
+                            bgcolor: ((data['Exposure comment'] || data['Exposure Comment'] || data?.Subject?.['Exposure comment'] || data?.SUBJECT?.['Exposure comment']) && !String(data['Exposure comment'] || data['Exposure Comment'] || '').toLowerCase().includes('not present')) ? '#f0fdf4' : '#fffbeb'
+                          }}
+                        >
+                          <Typography variant="caption" color="secondary.main" fontWeight="bold" display="block" noWrap>
+                            Exposure Comment
+                          </Typography>
+                          <EditableField
+                            fieldPath={['Exposure comment']}
+                            value={data['Exposure comment'] || data['Exposure Comment'] || data?.Subject?.['Exposure comment'] || data?.Subject?.['Exposure Comment'] || data?.SUBJECT?.['Exposure comment'] || data?.SUBJECT?.['Exposure Comment'] || 'Not Present'}
+                            onDataChange={handleDataChange}
+                            editingField={editingField}
+                            setEditingField={setEditingField}
+                            isEditable={isEditable}
+                            allData={data}
+                          />
+                        </Paper>
+                      </Grid>
 
                       {/* Prior Service Comment - Compulsory Extraction Check */}
-                      {(() => {
-                        const priorVal = data['Prior service comment'] || data['Prior Service Comment'] || data['Prior Service Statement'] || data?.USPAP_IDENTIFICATION?.['Prior Service Statement'] || data?.USPAP_IDENTIFICATION?.['Prior service comment'] || data?.Subject?.['Prior service comment'] || data?.Subject?.['Prior Service Comment'] || data?.SUBJECT?.['Prior service comment'] || data?.SUBJECT?.['Prior Service Comment'] || '';
-                        const hasPrior = Boolean(priorVal && !String(priorVal).toLowerCase().includes('not present'));
-                        return (
-                          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-                            <Paper
-                              variant="outlined"
-                              sx={{
-                                p: 1.5,
-                                height: '100%',
-                                borderColor: hasPrior ? 'success.main' : 'warning.main',
-                                bgcolor: hasPrior ? '#f0fdf4' : '#fffbeb'
-                              }}
-                            >
-                              <Typography variant="caption" color="secondary.main" fontWeight="bold" display="block" noWrap>
-                                Prior Service Comment
-                              </Typography>
-                              <EditableField
-                                fieldPath={['Prior service comment']}
-                                value={priorVal || 'Not Present'}
-                                onDataChange={handleDataChange}
-                                editingField={editingField}
-                                setEditingField={setEditingField}
-                                isEditable={isEditable}
-                                allData={data}
-                              />
-                            </Paper>
-                          </Grid>
-                        );
-                      })()}
+                      <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+                        <Paper
+                          variant="outlined"
+                          sx={{
+                            p: 1.5,
+                            height: '100%',
+                            borderColor: ((data['Prior service comment'] || data['Prior Service Comment'] || data?.Subject?.['Prior service comment'] || data?.SUBJECT?.['Prior service comment']) && !String(data['Prior service comment'] || data['Prior Service Comment'] || '').toLowerCase().includes('not present')) ? 'success.main' : 'warning.main',
+                            bgcolor: ((data['Prior service comment'] || data['Prior Service Comment'] || data?.Subject?.['Prior service comment'] || data?.SUBJECT?.['Prior service comment']) && !String(data['Prior service comment'] || data['Prior Service Comment'] || '').toLowerCase().includes('not present')) ? '#f0fdf4' : '#fffbeb'
+                          }}
+                        >
+                          <Typography variant="caption" color="secondary.main" fontWeight="bold" display="block" noWrap>
+                            Prior Service Comment
+                          </Typography>
+                          <EditableField
+                            fieldPath={['Prior service comment']}
+                            value={data['Prior service comment'] || data['Prior Service Comment'] || data?.Subject?.['Prior service comment'] || data?.Subject?.['Prior Service Comment'] || data?.SUBJECT?.['Prior service comment'] || data?.SUBJECT?.['Prior Service Comment'] || 'Not Present'}
+                            onDataChange={handleDataChange}
+                            editingField={editingField}
+                            setEditingField={setEditingField}
+                            isEditable={isEditable}
+                            allData={data}
+                          />
+                        </Paper>
+                      </Grid>
 
                       {/* E&O - Insurance Compliance Check */}
                       <Grid size={{ xs: 12, sm: 6, md: 4 }}>
