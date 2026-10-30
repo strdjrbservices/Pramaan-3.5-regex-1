@@ -211,6 +211,8 @@ CSRF_TRUSTED_ORIGINS = [
     "https://45.195.243.67",
     "http://45.195.243.67",
     "https://praman-strdjrbservices.pythonanywhere.com",
+    "https://appraisalreviewoffline-strdjrbservices.pythonanywhere.com",
+    "https://*.pythonanywhere.com",
     "https://prod-pramaan.vercel.app",
     "https://qa-pramaan.vercel.app",
     "https://dev-pramaan.vercel.app",
