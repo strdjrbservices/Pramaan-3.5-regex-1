@@ -1,0 +1,80 @@
+# Python & Virtual Environments
+**/__pycache__/
+__pycache__/
+*.py[cod]
+*$py.class
+**/.venv/
+**/venv/
+**/env/
+**/ENV/
+**/*.bak
+**/.pytest_cache/
+
+# Databases
+**/db.sqlite3
+db.sqlite3
+*.sqlite3
+*.sqlite3-journal
+db.sqlite3-journal
+
+# Node / React & Dependencies
+**/node_modules/
+**/build/
+!pramaan/build/
+!pramaan/build/**
+**/.pnp
+.pnp.js
+**/coverage/
+
+# Static files, Media & Generated Assets
+**/staticfiles/
+**/staticfiles/**
+staticfiles/
+api/staticfiles/
+media/
+**/media/uploads/*
+!**/media/uploads/.gitkeep
+*.map
+map_output/
+**/map_output/
+subject_photos_output/
+**/subject_photos_output/
+
+# Logs & Debug
+*.log
+logs/
+**/logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment & Secrets
+*.env
+.env*
+.env.local
+.env.*.local
+
+# Temporary, Downloads & Cache
+*.tmp
+*.temp
+**/Downloads/
+**/scratch/
+scratch/
+test_maps/
+**/test_maps/
+scratch_test/
+**/scratch_test/
+
+# Archives
+*.zip
+*.tar.gz
+
+# IDE & OS
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
