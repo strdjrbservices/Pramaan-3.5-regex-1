@@ -1583,66 +1583,236 @@ def extract_uspap_identification_details(doc=None, uspap_page_idx=None, full_doc
             except Exception:
                 pass
 
-        # Text words in the two signature columns
-        words = uspap_page.get_text("words")
-        appr_words = [w for w in words if w[1] >= 830 and w[0] < 310]
-        sup_words = [w for w in words if w[1] >= 830 and w[0] >= 310]
+        # Helper to detect corrupted/leaked label values
+        def _is_garbled_uspap_value(val):
+            if not val:
+                return False
+            s = str(val).strip()
+            bad_patterns = [
+                r'^#:\s*#:',
+                r'^\s*[:#\-]+\s*$',
+                r'^Date\s+of\s+Certification',
+                r'^Date\s+of\s+Appraisal',
+                r'^Date\s+of\s+Signature',
+                r'^Date\s+of\s+Inspection',
+                r'^Report:\s*',
+                r'^Exterior-Only$',
+                r'^Interior\s+and\s+Exterior$',
+                r'^None$',
+                r'by\s+a\s+la\s+mode',
+                r'1-800-ALAMODE',
+                r'Form\s+ID'
+            ]
+            return any(re.search(p, s, re.IGNORECASE) for p in bad_patterns)
 
-        label_patterns = [
-            r'^APPRAISER:?', r'^Signature:?', r'^Name:?', r'^Date\s+Signed:?',
-            r'^State\s+Certification\s*#:?', r'^or\s+State\s+License\s*#:?', r'^State:?',
-            r'^Expiration\s+Date\s+of\s+Certification\s+or\s+License:?', r'^Effective\s+Date\s+of\s+Appraisal:?',
-            r'^SUPERVISORY', r'^Supervisory', r'^Inspection\s+of\s+Subject\s+Property:?',
-            r'^\(only', r'^if', r'^required\)', r'^Did', r'^Not', r'^Exterior-only',
-            r'^from', r'^Street', r'^Interior', r'^and', r'^Exterior'
-        ]
+        def _parse_uspap_column_lines(lines_text_list, is_supervisory=False):
+            res = {
+                "Name": "",
+                "Date Signed": "",
+                "State Certification #": "",
+                "or State License #": "",
+                "State": "",
+                "Expiration Date of Certification or License": "",
+                "Effective Date of Appraisal": "",
+                "Date of Inspection": ""
+            }
+            cleaned_lines = [l for l in lines_text_list if not re.search(r'Form\s+ID|by\s+a\s+la\s+mode|1-800-ALAMODE', l, re.I)]
+            full_col_text = "\n".join(cleaned_lines)
 
-        def _extract_cols(col_words, y_ranges):
-            res = {}
-            for fname, (y_min, y_max, x_min_val) in y_ranges.items():
-                matching = [w for w in col_words if y_min <= w[1] <= y_max and w[0] >= x_min_val]
-                matching.sort(key=lambda w: w[0])
-                val = " ".join(w[4] for w in matching).strip()
-                for pat in label_patterns:
-                    val = re.sub(pat, '', val, flags=re.I).strip()
-                res[fname] = val
+            # 1. Name
+            m = re.search(r'\bName\s*:\s*(.*?)(?=\n|$)', full_col_text, re.IGNORECASE)
+            if m:
+                val = m.group(1).strip()
+                val = re.split(r'\bState\b|\bSignature\b|\bExpiration\b', val, flags=re.I)[0].strip()
+                if not _is_garbled_uspap_value(val):
+                    res["Name"] = val
+
+            # If supervisory and Name is blank, everything for supervisory is blank!
+            if is_supervisory and not res["Name"]:
+                return res
+
+            # 2. State Certification #
+            m = re.search(r'State\s+Certification\s*#\s*:\s*(.*?)(?=\n|$)', full_col_text, re.IGNORECASE)
+            if m:
+                val = m.group(1).strip()
+                val = re.split(r'\bor\b|\bState\b|\bLicense\b', val, flags=re.I)[0].strip()
+                if not _is_garbled_uspap_value(val):
+                    res["State Certification #"] = val
+
+            # 3. or State License #
+            m = re.search(r'or\s+State\s+License\s*#\s*:\s*(.*?)(?=\n|$)', full_col_text, re.IGNORECASE)
+            if m:
+                val = m.group(1).strip()
+                val = re.split(r'\bState\b|\bExpiration\b', val, flags=re.I)[0].strip()
+                if not _is_garbled_uspap_value(val):
+                    res["or State License #"] = val
+
+            # 4. State & Expiration Date
+            m = re.search(r'State\s*:\s*(.*?)\s*Expiration\s+Date\s+of\s+Certification\s+or\s+License\s*:\s*(.*?)(?=\n|$)', full_col_text, re.IGNORECASE)
+            if m:
+                st = m.group(1).strip()
+                exp = m.group(2).strip()
+                if not _is_garbled_uspap_value(st):
+                    res["State"] = st
+                if not _is_garbled_uspap_value(exp):
+                    res["Expiration Date of Certification or License"] = exp
+            else:
+                m_st = re.search(r'\bState\s*:\s*([A-Za-z]{2})\b', full_col_text, re.IGNORECASE)
+                if m_st and not _is_garbled_uspap_value(m_st.group(1)):
+                    res["State"] = m_st.group(1).strip()
+                m_exp = re.search(r'Expiration\s+Date\s+of\s+Certification\s+or\s+License\s*:\s*(\d{1,2}/\d{1,2}/\d{4}|\d{4}-\d{2}-\d{2})', full_col_text, re.IGNORECASE)
+                if m_exp and not _is_garbled_uspap_value(m_exp.group(1)):
+                    res["Expiration Date of Certification or License"] = m_exp.group(1).strip()
+
+            # 5. Date of Signature and Report
+            m_sig_date = re.search(r'Date\s+of\s+Signature(?:\s+and\s+Report)?\s*:\s*(.*?)(?=\n|$)', full_col_text, re.IGNORECASE)
+            if m_sig_date:
+                val = m_sig_date.group(1).strip()
+                val = re.split(r'\bEffective\b|\bInspection\b', val, flags=re.I)[0].strip()
+                if not _is_garbled_uspap_value(val):
+                    res["Date Signed"] = val
+
+            # 6. Effective Date of Appraisal
+            m_eff = re.search(r'Effective\s+Date\s+of\s+Appraisal\s*:\s*(.*?)(?=\n|$)', full_col_text, re.IGNORECASE)
+            if m_eff:
+                val = m_eff.group(1).strip()
+                val = re.split(r'\bInspection\b', val, flags=re.I)[0].strip()
+                if not _is_garbled_uspap_value(val):
+                    res["Effective Date of Appraisal"] = val
+
+            # 7. Date of Inspection
+            m_insp_date = re.search(r'Date\s+of\s+Inspection(?:\s*\(if\s+applicable\))?\s*:\s*(.*?)(?=\n|$)', full_col_text, re.IGNORECASE)
+            if m_insp_date:
+                val = m_insp_date.group(1).strip()
+                if not _is_garbled_uspap_value(val):
+                    res["Date of Inspection"] = val
+
             return res
 
-        appr_y_ranges = {
-            "Name": (865, 880, 60),
-            "Date Signed": (880, 892, 75),
-            "State Certification #": (892, 903, 100),
-            "or State License #": (903, 915, 95),
-            "State": (915, 926, 55),
-            "Expiration Date of Certification or License": (926, 938, 160),
-            "Effective Date of Appraisal": (938, 952, 120),
-        }
+        # Extract words from uspap_page across PyMuPDF or pdfplumber
+        words = []
+        if hasattr(uspap_page, "get_text"):
+            try:
+                raw_words = uspap_page.get_text("words")
+                words = [{"x0": w[0], "top": w[1], "x1": w[2], "bottom": w[3], "text": str(w[4])} for w in raw_words]
+            except Exception:
+                words = []
+        elif hasattr(uspap_page, "extract_words"):
+            try:
+                words = uspap_page.extract_words()
+            except Exception:
+                words = []
 
-        sup_y_ranges = {
-            "Supervisory Name": (865, 880, 340),
-            "Supervisory Date Signed": (880, 892, 355),
-            "Supervisory State Certification #": (892, 903, 380),
-            "Supervisory or State License #": (903, 915, 375),
-            "Supervisory State": (915, 926, 335),
-            "Supervisory Expiration Date of Certification or License": (926, 938, 440),
-        }
+        # Find APPRAISER signature section header top Y
+        appr_header_y = 800.0
+        for w in words:
+            if "APPRAISER" in w.get("text", "").upper() and w.get("top", 0) > 600:
+                appr_header_y = w.get("top", 0) - 10
+                break
 
-        appr_fields = _extract_cols(appr_words, appr_y_ranges)
-        sup_fields = _extract_cols(sup_words, sup_y_ranges)
+        appr_col_words = [w for w in words if w.get("top", 0) >= appr_header_y and w.get("x0", 0) < 310]
+        sup_col_words = [w for w in words if w.get("top", 0) >= appr_header_y and w.get("x0", 0) >= 310]
 
-        # Supervisory inspection checkboxes
-        for w in sup_words:
-            if w[1] >= 945:
-                if w[4].upper() in ('X', 'YES', '8', '☒', '☑'):
-                    if w[0] < 360:
+        def _group_words_into_lines(col_words):
+            lines = []
+            for w in sorted(col_words, key=lambda x: (x.get("top", 0), x.get("x0", 0))):
+                placed = False
+                for line in lines:
+                    if abs(line["top"] - w.get("top", 0)) <= 4.0:
+                        line["words"].append(w)
+                        placed = True
+                        break
+                if not placed:
+                    lines.append({"top": w.get("top", 0), "words": [w]})
+            res = []
+            for l in lines:
+                l["words"].sort(key=lambda x: x.get("x0", 0))
+                res.append(" ".join(w.get("text", "") for w in l["words"]).strip())
+            return res
+
+        appr_lines = _group_words_into_lines(appr_col_words)
+        sup_lines = _group_words_into_lines(sup_col_words)
+
+        appr_fields = _parse_uspap_column_lines(appr_lines, is_supervisory=False)
+        sup_fields = _parse_uspap_column_lines(sup_lines, is_supervisory=True)
+
+        # Inspection checkboxes detection
+        appr_did_not = "No"
+        appr_ext = "No"
+        appr_int_ext = "No"
+        sup_did_not = "No"
+        sup_ext = "No"
+        sup_int_ext = "No"
+
+        # Check vector diagonal cross lines (PyMuPDF drawings)
+        if hasattr(uspap_page, "get_drawings"):
+            try:
+                for d in uspap_page.get_drawings():
+                    if d.get("rect") and d["rect"][1] >= 900:
+                        for item in d.get("items", []):
+                            if item[0] == "l":
+                                p1, p2 = item[1], item[2]
+                                if abs(p1.x - p2.x) > 3 and abs(p1.y - p2.y) > 3:
+                                    cx = (p1.x + p2.x) / 2.0
+                                    if 100 <= cx <= 138:
+                                        appr_did_not = "Yes"
+                                    elif 145 <= cx <= 200:
+                                        appr_int_ext = "Yes"
+                                    elif 225 <= cx <= 275:
+                                        appr_ext = "Yes"
+                                    elif 380 <= cx <= 420:
+                                        sup_did_not = "Yes"
+                                    elif 425 <= cx <= 480:
+                                        sup_int_ext = "Yes"
+                                    elif 505 <= cx <= 555:
+                                        sup_ext = "Yes"
+            except Exception:
+                pass
+
+        # Check pdfplumber lines
+        if hasattr(uspap_page, "lines"):
+            try:
+                diag_lines = [l for l in uspap_page.lines if l.get('top', 0) >= 900 and l.get('width', 0) > 3 and l.get('height', 0) > 3]
+                for l in diag_lines:
+                    cx = (l['x0'] + l['x1']) / 2.0
+                    if 100 <= cx <= 138:
+                        appr_did_not = "Yes"
+                    elif 145 <= cx <= 200:
+                        appr_int_ext = "Yes"
+                    elif 225 <= cx <= 275:
+                        appr_ext = "Yes"
+                    elif 380 <= cx <= 420:
                         sup_did_not = "Yes"
-                    elif w[0] < 450:
-                        sup_ext = "Yes"
-                    else:
+                    elif 425 <= cx <= 480:
                         sup_int_ext = "Yes"
+                    elif 505 <= cx <= 555:
+                        sup_ext = "Yes"
+            except Exception:
+                pass
+
+        # Check character marks (X, 8)
+        for w in words:
+            if w.get("top", 0) >= 920 and w.get("text", "").upper() in ('X', 'YES', '8', '☒', '☑'):
+                cx = (w.get("x0", 0) + w.get("x1", 0)) / 2.0
+                if 100 <= cx <= 138:
+                    appr_did_not = "Yes"
+                elif 145 <= cx <= 200:
+                    appr_int_ext = "Yes"
+                elif 225 <= cx <= 275:
+                    appr_ext = "Yes"
+                elif 380 <= cx <= 420:
+                    sup_did_not = "Yes"
+                elif 425 <= cx <= 480:
+                    sup_int_ext = "Yes"
+                elif 505 <= cx <= 555:
+                    sup_ext = "Yes"
+
+        # Default Appraiser inspection to Interior & Exterior if none detected on standard 1004
+        if appr_did_not != "Yes" and appr_ext != "Yes" and appr_int_ext != "Yes":
+            appr_int_ext = "Yes"
 
     appr_name = appr_fields.get("Name", "")
-    sup_name = sup_fields.get("Supervisory Name", "")
+    sup_name = sup_fields.get("Name", "")
 
     return {
         "USPAP / Appraisal and Report Identification": "Present" if has_uspap else "Not Present",
@@ -1661,25 +1831,42 @@ def extract_uspap_identification_details(doc=None, uspap_page_idx=None, full_doc
         "Appraiser Name": appr_name,
         "Date Signed": appr_fields.get("Date Signed", ""),
         "Date of Signature and Report": appr_fields.get("Date Signed", ""),
+        "Report Signed Date": appr_fields.get("Date Signed", ""),
         "State Certification #": appr_fields.get("State Certification #", ""),
         "or State License #": appr_fields.get("or State License #", ""),
         "State": appr_fields.get("State", ""),
         "Expiration Date of Certification or License": appr_fields.get("Expiration Date of Certification or License", ""),
         "Effective Date of Appraisal": appr_fields.get("Effective Date of Appraisal", ""),
+        "Effective Date": appr_fields.get("Effective Date of Appraisal", ""),
+        "Date of Inspection (if applicable)": appr_fields.get("Date of Inspection", ""),
+        "Appraiser Date of Inspection": appr_fields.get("Date of Inspection", ""),
+        "Appraiser Did not inspect subject property": appr_did_not,
+        "Did not inspect subject property (Appraiser)": appr_did_not,
+        "Appraiser Did Not Inspect": appr_did_not,
+        "Appraiser Did inspect exterior of subject property from street": appr_ext,
+        "Did inspect exterior of subject property from street (Appraiser)": appr_ext,
+        "Appraiser Did Inspect Exterior": appr_ext,
+        "Appraiser Did inspect interior and exterior of subject property": appr_int_ext,
+        "Did inspect interior and exterior of subject property (Appraiser)": appr_int_ext,
+        "Appraiser Did Inspect Interior and Exterior": appr_int_ext,
         # Distinct Supervisory Appraiser Fields for USPAP
         "Supervisory Signature": sup_name,
         "Supervisory Signature Image": supervisory_sig_b64,
         "Supervisory Name": sup_name,
-        "Supervisory Date Signed": sup_fields.get("Supervisory Date Signed", ""),
-        "Supervisory State Certification #": sup_fields.get("Supervisory State Certification #", ""),
-        "Supervisory or State License #": sup_fields.get("Supervisory or State License #", ""),
-        "Supervisory State": sup_fields.get("Supervisory State", ""),
-        "Supervisory Expiration Date of Certification or License": sup_fields.get("Supervisory Expiration Date of Certification or License", ""),
-        "Did not inspect subject property": sup_did_not,
-        "Did inspect exterior of subject property from street": sup_ext,
-        "Did inspect interior and exterior of subject property": sup_int_ext,
+        "Supervisory Date Signed": sup_fields.get("Date Signed", ""),
+        "Supervisory Date of Signature": sup_fields.get("Date Signed", ""),
+        "Supervisory State Certification #": sup_fields.get("State Certification #", ""),
+        "Supervisory or State License #": sup_fields.get("or State License #", ""),
+        "Supervisory State": sup_fields.get("State", ""),
+        "Supervisory Expiration Date of Certification or License": sup_fields.get("Expiration Date of Certification or License", ""),
+        "Supervisory Date of Inspection": sup_fields.get("Date of Inspection", ""),
+        "Did not inspect subject property": sup_did_not if sup_name else "",
+        "Supervisory Did not inspect subject property": sup_did_not if sup_name else "",
+        "Did inspect exterior of subject property from street": sup_ext if sup_name else "",
+        "Supervisory Did inspect exterior of subject property from street": sup_ext if sup_name else "",
+        "Did inspect interior and exterior of subject property": sup_int_ext if sup_name else "",
+        "Supervisory Did inspect interior and exterior of subject property": sup_int_ext if sup_name else "",
     }
-
 
 def extract_appraiser_fee_from_doc(doc=None, full_doc_text=""):
     """

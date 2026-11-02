@@ -66,11 +66,11 @@ const ComparableRentScheduleSection = ({
     } else if (field === 'Age') {
       aliases.push('Actual Age', 'Age (Yrs)', 'Age (Years)');
     } else if (field === 'Age Adjustment') {
-      aliases.push('Actual Age Adjustment', 'Age Adj');
+      aliases.push('Actual Age Adjustment', 'Age Adj', 'Age/Condition Adjustment', 'Age / Condition Adjustment');
     } else if (field === 'Condition') {
       aliases.push('Overall Condition', 'Condition Rating');
     } else if (field === 'Condition Adjustment') {
-      aliases.push('Overall Condition Adjustment', 'Condition Adj');
+      aliases.push('Overall Condition Adjustment', 'Condition Adj', 'Age/Condition Adjustment', 'Age / Condition Adjustment');
     } else if (field === 'Room Count Total') {
       aliases.push('Total Rooms', 'Total', 'Rooms', 'Above Grade Room Count Total');
     } else if (field === 'Room Count Bdrms') {
@@ -97,15 +97,56 @@ const ComparableRentScheduleSection = ({
         `COMPARABLE NO. ${n}`,
         `COMPARABLE NO ${n}`,
         `COMPARABLE RENTAL #${n}`,
-        `COMPARABLE #${n}`,
+        `Comparable Rental #${n}`,
+        `Comparable Rental No #${n}`,
+        `COMPARABLE Rental No #${n}`,
         `Comparable Rental ${n}`,
         `Rental ${n}`,
-        `Comp ${n}`,
+        `Rental #${n}`,
+        `RENTAL_${n}`,
         `COMPARABLE NO. 0${n}`,
         `COMPARABLE NO 0${n}`
       );
     }
     return [...new Set(aliases)];
+  };
+
+  const getRentalCompObject = (rentKey) => {
+    const rentAliases = getRentKeyAliases(rentKey);
+    const containers = [
+      data?.['Comparable Rental Data'],
+      allData?.['Comparable Rental Data'],
+      data?.clean_data?.['Comparable Rental Data'],
+      allData?.clean_data?.['Comparable Rental Data'],
+      data?.['Single Family Rent Schedule'],
+      allData?.['Single Family Rent Schedule'],
+      data?.clean_data?.['Single Family Rent Schedule'],
+      allData?.clean_data?.['Single Family Rent Schedule'],
+      data?.RENTAL_GRID,
+      allData?.RENTAL_GRID,
+      data?.fields?.['Comparable Rental Data'],
+      allData?.fields?.['Comparable Rental Data']
+    ];
+
+    for (const container of containers) {
+      if (container && typeof container === 'object') {
+        for (const r of rentAliases) {
+          if (container[r] && typeof container[r] === 'object') {
+            return container[r];
+          }
+        }
+      }
+    }
+
+    // Top-level fallback ONLY for explicit rental keys (never generic "Comparable #N" or "Comp N")
+    for (const r of rentAliases) {
+      if (/^(?:rental\b|comparable\s*no\.?|comparable\s*rental)/i.test(r)) {
+        if (data?.[r] && typeof data[r] === 'object') return data[r];
+        if (allData?.[r] && typeof allData[r] === 'object') return allData[r];
+      }
+    }
+
+    return null;
   };
 
   const getSubjectVal = (field) => {
@@ -144,22 +185,14 @@ const ComparableRentScheduleSection = ({
   };
 
   const getRentVal = (rentKey, field) => {
-    const rentAliases = getRentKeyAliases(rentKey);
+    const rentObj = getRentalCompObject(rentKey);
+    if (!rentObj) return '';
     const fieldAliases = getFieldAliases(field);
 
-    for (const r of rentAliases) {
-      for (const f of fieldAliases) {
-        const val =
-          (data?.[r] && data[r][f]) ??
-          (allData?.[r] && allData[r][f]) ??
-          (data?.['Comparable Rental Data']?.[r] && data['Comparable Rental Data'][r][f]) ??
-          (allData?.['Comparable Rental Data']?.[r] && allData['Comparable Rental Data'][r][f]) ??
-          (data?.clean_data?.['Comparable Rental Data']?.[r] && data.clean_data['Comparable Rental Data'][r][f]) ??
-          (allData?.clean_data?.['Comparable Rental Data']?.[r] && allData.clean_data['Comparable Rental Data'][r][f]);
-
-        if (val !== undefined && val !== null && String(val).trim() !== '') {
-          return val;
-        }
+    for (const f of fieldAliases) {
+      const val = rentObj[f];
+      if (val !== undefined && val !== null && String(val).trim() !== '') {
+        return val;
       }
     }
 
@@ -167,18 +200,7 @@ const ComparableRentScheduleSection = ({
   };
 
   const activeComparableRents = (comparableRents || []).filter((rent, idx) => {
-    const rentAliases = getRentKeyAliases(rent);
-    let rentData = null;
-    for (const r of rentAliases) {
-      rentData =
-        (data && data[r]) ||
-        (allData && allData[r]) ||
-        (data?.['Comparable Rental Data'] && data['Comparable Rental Data'][r]) ||
-        (allData?.['Comparable Rental Data'] && allData['Comparable Rental Data'][r]) ||
-        (data?.clean_data?.['Comparable Rental Data'] && data.clean_data['Comparable Rental Data'][r]) ||
-        (allData?.clean_data?.['Comparable Rental Data'] && allData.clean_data['Comparable Rental Data'][r]);
-      if (rentData) break;
-    }
+    const rentData = getRentalCompObject(rent);
     if (!rentData) return idx < 3;
     const hasVal = Object.values(rentData).some(
       (val) => val !== undefined && val !== null && String(val).trim() !== ''
