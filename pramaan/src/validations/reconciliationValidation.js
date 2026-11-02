@@ -156,57 +156,7 @@ export const checkAsOfDate = (field, text, allData) => {
     return { isMatch: true };
 };
 
-export const checkFinalValueBracketing = (field, text, allData) => {
-    if (field !== 'opinion of the market value, as defined, of the real property that is the subject of this report is $' || !text || String(text).trim() === '') {
-        return null;
-    }
-    const finalValue = parseFloat(String(text).replace(/[^0-9.]/g, ''));
-    if (isNaN(finalValue)) {
-        return null;
-    }
-
-    let minComparableValue = Infinity;
-    let maxComparableValue = -Infinity;
-    let comparableValuesFound = false;
-
-    const comparableSalesKeys = Object.keys(allData).filter(k => k.startsWith('COMPARABLE SALE #'));
-
-    if (comparableSalesKeys.length === 0) {
-        return null;
-    }
-
-    for (const saleKey of comparableSalesKeys) {
-        const salePriceText = String(allData[saleKey]?.['Sale Price'] || '').trim();
-        const adjustedSalePriceText = String(allData[saleKey]?.['Adjusted Sale Price of Comparable'] || '').trim();
-
-        const salePrice = parseFloat(salePriceText.replace(/[^0-9.]/g, ''));
-        const adjustedSalePrice = parseFloat(adjustedSalePriceText.replace(/[^0-9.]/g, ''));
-
-        if (!isNaN(salePrice)) {
-            minComparableValue = Math.min(minComparableValue, salePrice);
-            maxComparableValue = Math.max(maxComparableValue, salePrice);
-            comparableValuesFound = true;
-        }
-        if (!isNaN(adjustedSalePrice)) {
-            minComparableValue = Math.min(minComparableValue, adjustedSalePrice);
-            maxComparableValue = Math.max(maxComparableValue, adjustedSalePrice);
-            comparableValuesFound = true;
-        }
-    }
-
-    if (!comparableValuesFound) {
-        return null;
-    }
-
-    if (finalValue < minComparableValue || finalValue > maxComparableValue) {
-        return {
-            isError: true,
-            message: `opinion of the market value, as defined, of the real property that is the subject of this report is $ ($${finalValue.toLocaleString()}) is not bracketed by comparable sales prices. Range: $${minComparableValue.toLocaleString()} - $${maxComparableValue.toLocaleString()}.`
-        };
-    }
-
-    return { isMatch: true, message: "opinion of the market value, as defined, of the real property that is the subject of this report is $ is bracketed by comparable sales prices." };
-};
+export { checkFinalValueBracketing, getComparableSalesPrices, getOpinionOfMarketValue, checkCompSalePriceBracketing, checkCompAdjustedSalePriceBracketing, checkSalesConcessions, checkSalesConcessionsAdjustment, checkBasementAdjustment, checkSubjectGLABracketing, checkCompGLABracketing, checkGrossLivingAreaBracketing, getSubjectGLA, getComparableGLAs, checkSubjectSiteBracketing, checkCompSiteBracketing, checkSiteBracketing, getSubjectSite, getComparableSites } from './salesComparisonValidation';
 
 export const checkReconciliationFieldsNotBlank = (field, text) => {
     const fieldsToCheck = [

@@ -3,6 +3,7 @@
 import os
 import re
 import base64
+import io
 import tempfile
 import xml.etree.ElementTree as ET
 from typing import Dict, Any, Optional, Tuple, List
@@ -14,6 +15,16 @@ except ImportError:
         import fitz
     except ImportError:
         fitz = None
+
+try:
+    import pdfplumber
+except ImportError:
+    pdfplumber = None
+
+try:
+    import pypdf
+except ImportError:
+    pypdf = None
 
 try:
     from api.eo_extractor import extract_eo_insurance_from_doc
@@ -52,6 +63,39 @@ def _clean_currency(val: Any) -> str:
         return f"{prefix}{num:,.2f}"
     except ValueError:
         return val_str
+
+def _parse_and_sum_adjustments(adj_str: Any) -> str:
+    if adj_str is None:
+        return ""
+    s = str(adj_str).strip()
+    if not s:
+        return ""
+    matches = re.findall(r'([+-]?\s*\$?\s*\(?\s*[\d,]+(?:\.\d+)?\s*\)?)', s)
+    total = 0.0
+    found = False
+    for m in matches:
+        m_str = m.strip()
+        if not m_str or m_str in ['+', '-', '$', '(', ')']:
+            continue
+        is_neg = '-' in m_str or ('(' in m_str and ')' in m_str)
+        clean = re.sub(r'[^\d.]', '', m_str)
+        if clean:
+            try:
+                num = float(clean)
+                total += -num if is_neg else num
+                found = True
+            except ValueError:
+                pass
+    if not found:
+        return ""
+    if total == 0:
+        return "0"
+    sign = "+" if total > 0 else "-"
+    abs_tot = abs(total)
+    if abs_tot.is_integer():
+        return f"{sign}{int(abs_tot):,}"
+    return f"{sign}{abs_tot:,.2f}"
+
 
 
 def _format_date(val: Any) -> str:
@@ -586,6 +630,118 @@ def _detect_invoice_presence(root: ET.Element, embedded_doc: Optional[ET.Element
     return False, "Not Present", inv_details
 
 
+def _detect_uad_pages_presence(root: ET.Element, embedded_doc: Optional[ET.Element] = None) -> Tuple[bool, str, List[int], Dict[str, Any]]:
+    """
+    Identifies whether UAD (Uniform Appraisal Dataset) definitions addendum pages,
+    Scope of Work, Limiting Conditions, and Certifications are present in MISMO XML or embedded PDF.
+    Returns (is_present: bool, reason_str: str, uad_pages: List[int], uad_details: Dict[str, Any])
+    """
+    uad_pages: List[int] = []
+    uad_source = ""
+    limiting_pages: List[int] = []
+    cert_pages: List[int] = []
+
+    # 1. Check <FORM> tags
+    for form in root.findall(".//FORM"):
+        name = f"{form.attrib.get('AppraisalReportContentName', '')} {form.attrib.get('AppraisalReportContentIdentifier', '')} {form.attrib.get('AppraisalReportContentType', '')}".upper()
+        if "UAD" in name or "UNIFORM APPRAISAL DATASET" in name or "UADDEFINE" in name:
+            if not uad_source:
+                uad_source = f"FORM Tag: {form.attrib.get('AppraisalReportContentName', '') or form.attrib.get('AppraisalReportContentIdentifier', '')}"
+
+    # 2. Check embedded PDF
+    pdf_bytes = None
+    if embedded_doc is not None and embedded_doc.text and len(embedded_doc.text.strip()) > 100:
+        try:
+            pdf_bytes = base64.b64decode(embedded_doc.text.strip())
+        except Exception:
+            pass
+
+    if not pdf_bytes:
+        for tag in [".//EMBEDDED_FILE/DOCUMENT", ".//DOCUMENT", ".//EMBEDDED_FILE"]:
+            elem = root.find(tag)
+            if elem is not None and elem.text and len(elem.text.strip()) > 100:
+                try:
+                    pdf_bytes = base64.b64decode(elem.text.strip())
+                    if pdf_bytes:
+                        break
+                except Exception:
+                    pass
+
+    if pdf_bytes:
+        pages_text: List[Tuple[int, str]] = []
+        if fitz is not None:
+            try:
+                pdf = fitz.open(stream=pdf_bytes, filetype="pdf")
+                for p_no, page in enumerate(pdf, 1):
+                    pages_text.append((p_no, page.get_text() or ""))
+                pdf.close()
+            except Exception:
+                pages_text = []
+
+        if not pages_text and pypdf is not None:
+            try:
+                reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
+                for p_no, page in enumerate(reader.pages, 1):
+                    pages_text.append((p_no, page.extract_text() or ""))
+            except Exception:
+                pages_text = []
+
+        for p_no, txt in pages_text:
+            upper_txt = txt.upper()
+            is_uad = any(k in upper_txt for k in [
+                "UNIFORM APPRAISAL DATASET (UAD) DEFINITIONS ADDENDUM",
+                "UAD DEFINITIONS ADDENDUM",
+                "UAD FIELD-SPECIFIC STANDARDIZATION",
+                "CONDITION RATINGS AND DEFINITIONS",
+                "FORM UADDEFINE"
+            ])
+            if is_uad:
+                uad_pages.append(p_no)
+
+            if "STATEMENT OF ASSUMPTIONS AND LIMITING CONDITIONS" in upper_txt:
+                limiting_pages.append(p_no)
+            is_cert_page = (
+                "APPRAISER'S CERTIFICATION:" in upper_txt or
+                "SUPERVISORY APPRAISER'S CERTIFICATION" in upper_txt or
+                ("STATEMENT OF ASSUMPTIONS AND LIMITING CONDITIONS" in upper_txt and "APPRAISER'S CERTIFICATION" in upper_txt)
+            )
+            if is_cert_page:
+                cert_pages.append(p_no)
+
+    has_uad = len(uad_pages) > 0 or bool(uad_source)
+    if uad_pages:
+        pages_str = ", ".join(str(p) for p in uad_pages)
+        desc = f"Present (Pages {pages_str})" if len(uad_pages) > 1 else f"Present (Page {uad_pages[0]})"
+    elif has_uad:
+        desc = "Present (UAD Form Detected)"
+    else:
+        desc = "Not Present"
+
+    limiting_str = (
+        f"Present (Pages {', '.join(str(p) for p in limiting_pages)})" if len(limiting_pages) > 1
+        else (f"Present (Page {limiting_pages[0]})" if limiting_pages else "Not Present")
+    )
+    cert_str = (
+        f"Present (Pages {', '.join(str(p) for p in cert_pages)})" if len(cert_pages) > 1
+        else (f"Present (Page {cert_pages[0]})" if cert_pages else "Not Present")
+    )
+
+    details = {
+        "has_uad_pages": has_uad,
+        "uad_pages": uad_pages,
+        "uad_pages_count": len(uad_pages),
+        "uad_presence": desc,
+        "limiting_conditions_pages": limiting_pages,
+        "limiting_conditions_presence": limiting_str,
+        "certification_pages": cert_pages,
+        "certification_presence": cert_str,
+        "description": desc,
+        "source": uad_source or (f"Embedded PDF Pages {', '.join(str(p) for p in uad_pages)}" if uad_pages else "Not Found"),
+        "details_summary": f"UAD Definitions: {desc} | Limiting Conditions: {limiting_str} | Appraiser Certification: {cert_str}"
+    }
+    return has_uad, desc, uad_pages, details
+
+
 def find_comparable_rent_schedule_pages(doc) -> List[int]:
     """
     Finds page index(es) containing the Form 1007 Comparable Rent Schedule table.
@@ -829,22 +985,65 @@ def extract_rent_schedule_from_pdf_page(page, start_comp_num: int = 1) -> Dict[s
                 ax0, ax1 = adj_box
                 adj_val = get_text_box(ax0, ax1, y0, y1)
 
-            if field_name in ["Rent", "Concessions"]:
-                if desc_val: target[field_name] = desc_val
+            if field_name == "Rent":
+                if desc_val:
+                    target["Rent"] = desc_val
+                elif cname != "Subject":
+                    target["Rent"] = "0"
+                if cname != "Subject":
+                    target["Rent Adjustment"] = _parse_and_sum_adjustments(adj_val) if adj_val else "0"
+
+            elif field_name == "Concessions":
+                if desc_val:
+                    target["Concessions"] = desc_val
+                elif cname != "Subject":
+                    target["Concessions"] = "0"
+                if cname != "Subject":
+                    target["Concessions Adjustment"] = _parse_and_sum_adjustments(adj_val) if adj_val else "0"
+
             elif field_name == "Location/View":
-                if desc_val: target["Location/View"] = desc_val
-                if adj_val: target["Location/View Adjustment"] = _clean_currency(adj_val)
+                if desc_val:
+                    target["Location/View"] = desc_val
+                if cname != "Subject":
+                    target["Location/View Adjustment"] = _parse_and_sum_adjustments(adj_val) if adj_val else "0"
+
             elif field_name == "Design and Appeal":
-                if desc_val: target["Design and Appeal"] = desc_val
-                if adj_val: target["Design and Appeal Adjustment"] = _clean_currency(adj_val)
+                if desc_val:
+                    target["Design and Appeal"] = desc_val
+                if cname != "Subject":
+                    target["Design and Appeal Adjustment"] = _parse_and_sum_adjustments(adj_val) if adj_val else "0"
+
             elif field_name == "Age/Condition":
+                # Strict separation between Age and Condition
                 nums = re.findall(r'\b\d+\b', desc_val)
                 words_list = re.findall(r'[A-Za-z0-9~]+', desc_val)
-                if nums: target["Age"] = nums[0]
-                cond = [w for w in words_list if w.startswith(('C', 'Q', 'Good', 'Avg', 'Fair', 'Poor')) or w in ['C1','C2','C3','C4','C5','C6']]
-                if cond: target["Condition"] = " ".join(cond)
-                elif desc_val: target["Condition"] = desc_val
-                if adj_val: target["Condition Adjustment"] = _clean_currency(adj_val)
+                if nums:
+                    target["Age"] = nums[0]
+                elif "new" in desc_val.lower():
+                    target["Age"] = "0"
+                else:
+                    target["Age"] = ""
+
+                # Condition MUST be a condition rating (C1-C6, Q1-Q6) or descriptor - NEVER numeric age!
+                cond = [
+                    w for w in words_list
+                    if re.match(r'^[CQ][1-6]$', w, re.I) or w.lower() in [
+                        'good', 'avg', 'average', 'fair', 'poor', 'remodeled', 'updated', 'superior', 'similar', 'inferior'
+                    ]
+                ]
+                clean_stripped = re.sub(r'[\s,.~#\-_]+', '', desc_val)
+                if cond:
+                    target["Condition"] = " ".join(cond)
+                elif desc_val and not clean_stripped.isdigit():
+                    non_num_words = [w for w in words_list if not w.isdigit()]
+                    target["Condition"] = " ".join(non_num_words) if non_num_words else ""
+                else:
+                    target["Condition"] = ""
+                if cname != "Subject":
+                    adj_parsed = _parse_and_sum_adjustments(adj_val) if adj_val else "0"
+                    target["Age/Condition Adjustment"] = adj_parsed
+                    target["Age Adjustment"] = adj_parsed
+                    target["Condition Adjustment"] = "0"
             elif field_name == "Above Grade Room Count":
                 matched_w = [w for w in words if dx0 <= ((w[0]+w[2])/2.0) <= dx1 and y0 <= ((w[1]+w[3])/2.0) <= y1 and re.match(r'^\d+(?:\.\d+)?$', w[4])]
                 matched_w.sort(key=lambda w: w[0])
@@ -1368,6 +1567,390 @@ def extract_comp_photo_metadata(
 
 
 
+def _classify_photo_category(caption: str, page_header: str, default_cat: str = "Subject property") -> str:
+    """
+    Classifies a photo into one of the 4 primary categories:
+    'Subject property' (Subject property exterior/site)
+    'Subject interior' (Subject interior rooms)
+    'Comparable property' (Comparable property)
+    'Rental property' (Rental property)
+    or 'Building Sketch' / 'Maps & Aerials' when applicable.
+    """
+    cap_upper = (caption or "").upper()
+    hdr_upper = (page_header or "").upper()
+
+    # 1. High-confidence keywords in caption
+    if any(k in cap_upper for k in [
+        "LIVING", "KITCHEN", "BATH", "BED", "DINING", "FAMILY", "BASEMENT", "ROOM",
+        "DEN", "OFFICE", "NOOK", "LAUNDRY", "ALARM", "FURNACE", "HEATER", "HVAC",
+        "WATER TANK", "WATER HEATER", "HOT WATER", "CLOSET", "HALL", "STAIR", "CEILING", "FIREPLACE",
+        "INTERIOR", "SMOKE DETECTOR", "CO DETECTOR", "PANTRY", "FOYER", "ATTIC", "UTILITY",
+        "BREAKFAST", "MUD ROOM", "REC ROOM", "ELECTRICAL", "PANEL", "GAS METER"
+    ]):
+        return "Subject interior"
+
+    if any(k in cap_upper for k in [
+        "FRONT", "REAR", "STREET", "SIDE", "YARD", "EXTERIOR", "DRIVEWAY",
+        "PATIO", "DECK", "PORCH", "GARAGE", "ROOF", "CURB", "HOUSE NUMBER",
+        "ADDRESS", "SIDEWALK", "FENCE", "POOL", "BARN", "OUTBUILDING", "VIEW OF SUBJECT",
+        "SHED", "ACROSS STREET", "BALCONY", "STREET SIGN"
+    ]):
+        return "Subject property"
+
+    if any(k in cap_upper for k in ["COMPARABLE", "COMP #", "COMP ", "COMP_"]):
+        return "Comparable property"
+
+    if any(k in cap_upper for k in ["RENTAL", "LEASE", "RENT #", "RENT "]):
+        return "Rental property"
+
+    if any(k in cap_upper for k in ["SKETCH", "FLOOR PLAN", "FLOORPLAN"]):
+        return "Building Sketch"
+
+    if any(k in cap_upper for k in ["PLAT MAP", "AERIAL MAP", "LOCATION MAP", "FLOOD MAP"]):
+        return "Maps & Aerials"
+
+    # 2. Context from Page Header
+    if any(k in hdr_upper for k in ["SUBJECT INTERIOR", "INTERIOR PHOTO", "INTERIOR PHOTOS", "INTERIOR"]):
+        return "Subject interior"
+    if any(k in hdr_upper for k in ["COMPARABLE PROPERTY", "COMPARABLE PHOTO", "COMPARABLE SALES", "PICPIX.CR"]):
+        return "Comparable property"
+    if any(k in hdr_upper for k in ["RENTAL PHOTO", "COMPARABLE RENTALS", "RENTAL PROPERTY", "FORM DLSTRNT"]):
+        return "Rental property"
+    if any(k in hdr_upper for k in ["SUBJECT PROPERTY PHOTO", "SUBJECT PHOTO", "PHOTOGRAPH ADDENDUM"]):
+        return "Subject property"
+    if any(k in hdr_upper for k in ["SKETCH", "FLOOR PLAN", "FLOORPLAN"]):
+        return "Building Sketch"
+    if any(k in hdr_upper for k in ["LOCATION MAP", "AERIAL MAP", "PLAT MAP", "MAP ADDENDUM", "FLOOD MAP"]):
+        return "Maps & Aerials"
+
+    if default_cat in ["Subject interior", "Subject property", "Comparable property", "Rental property", "Building Sketch", "Maps & Aerials"]:
+        return default_cat
+    default_cat_lower = (default_cat or "").lower()
+    if "interior" in default_cat_lower:
+        return "Subject interior"
+    if "comparable" in default_cat_lower:
+        return "Comparable property"
+    if "rental" in default_cat_lower:
+        return "Rental property"
+    return "Subject property"
+
+
+def _merge_pdfplumber_image_slices(images: List[Dict[str, Any]], page_height: float) -> List[Dict[str, Any]]:
+    """
+    Merges vertically adjacent sliced image strips (common in ACI, TOTAL, and ClickFORMS PDFs)
+    into unified photo frames.
+    """
+    if not images:
+        return []
+
+    sorted_imgs = sorted(images, key=lambda img: (round(img["x0"] / 15), img["top"]))
+    clusters = []
+
+    for img in sorted_imgs:
+        w = img["width"]
+        h = img["height"]
+        if w < 40 or h < 5 or h > page_height * 0.90:
+            continue
+
+        merged = False
+        for c in clusters:
+            same_col = abs(c["x0"] - img["x0"]) <= 6 and abs(c["width"] - w) <= 6
+            is_slice = (c["height"] <= 55 or h <= 45)
+            vert_adj = (c["bottom"] - 3 <= img["top"] <= c["bottom"] + 12) or (img["top"] <= c["bottom"] and img["bottom"] >= c["top"])
+            if same_col and vert_adj and is_slice:
+                c["bottom"] = max(c["bottom"], img["top"] + h)
+                c["height"] = c["bottom"] - c["top"]
+                c["slices"] = c.get("slices", 1) + 1
+                merged = True
+                break
+        if not merged:
+            clusters.append({
+                "x0": img["x0"],
+                "top": img["top"],
+                "x1": img["x0"] + w,
+                "bottom": img["top"] + h,
+                "width": w,
+                "height": h,
+                "slices": 1
+            })
+
+    valid_photos = [
+        c for c in clusters
+        if c["width"] >= 70 and c["height"] >= 55 and (c["width"] * c["height"]) >= 4500
+        and c["height"] <= page_height * 0.88
+    ]
+    return valid_photos
+
+
+def _extract_photos_with_pdfplumber(
+    pdf_bytes: bytes,
+    max_photos: int = 100,
+    dpi: int = 72,
+    include_images: bool = True,
+    reference_records: Optional[Dict[str, Any]] = None
+) -> List[Dict[str, Any]]:
+    """
+    Extracts photos, labels, and categories from embedded PDF using pdfplumber.
+    Handles horizontal image strip slicing (ACI/ClickFORMS), multi-column grids (2x2, 2x3, 3x3),
+    single-column 3-photo addenda with right/above/below captions,
+    and classifies into: Subject property, Subject interior, Comparable property, Rental property.
+    """
+    if pdfplumber is None or not pdf_bytes:
+        return []
+
+    photos = []
+    photo_count = 0
+    try:
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            for pno, page in enumerate(pdf.pages):
+                if photo_count >= max_photos:
+                    break
+                text = page.extract_text() or ""
+                raw_upper = text.upper()
+
+                # Merge image slices into complete photo frames
+                photo_frames = _merge_pdfplumber_image_slices(page.images, page.height)
+                if not photo_frames:
+                    continue
+
+                # Photo page classification keywords
+                has_photo_kw = any(h in raw_upper for h in [
+                    "PHOTO", "PHOTOGRAPH", "PIX", "PIC", "PHT", "SUBJECT PROPERTY", "COMPARABLE PROPERTY",
+                    "COMPARABLE RENTALS", "INTERIOR", "EXTERIOR", "ADDITIONAL PHOTOS", "EXHIBIT", "ELEVATION"
+                ])
+                # Skip non-photo administrative forms
+                is_admin_form = any(h in raw_upper for h in [
+                    "INVOICE", "ENGAGEMENT LETTER", "SCOPE OF WORK", "PRIVACY NOTICE",
+                    "APPRAISER'S CERTIFICATION", "SUPERVISORY APPRAISER'S CERTIFICATION",
+                    "LIMITING CONDITIONS", "E&O COVERAGE", "POCKET CARD", "TABLE OF CONTENTS"
+                ]) and not any(h in raw_upper for h in [
+                    "PHOTO ADDENDUM", "SUBJECT PROPERTY PHOTO", "COMPARABLE PROPERTY PHOTO", "INTERIOR PHOTOS", "PHOTOGRAPH ADDENDUM"
+                ])
+                if len(photo_frames) == 1 and any(k in raw_upper for k in ["TABLE OF CONTENTS", "SIGNATURE", "CERTIFICATION"]):
+                    continue
+
+                is_photo_density = len(photo_frames) >= 2 or (len(photo_frames) == 1 and has_photo_kw)
+                if is_admin_form or not (has_photo_kw or is_photo_density):
+                    continue
+
+                # Sort frames top-to-bottom, left-to-right (document reading order)
+                photo_frames.sort(key=lambda f: (round(f["top"] / 40), f["x0"]))
+
+                # Multi-column grid check: at least two photos share the same horizontal row band
+                has_same_row_photos = False
+                for i in range(len(photo_frames)):
+                    for j in range(i + 1, len(photo_frames)):
+                        if abs(photo_frames[i]["top"] - photo_frames[j]["top"]) < 35:
+                            has_same_row_photos = True
+                            break
+                    if has_same_row_photos:
+                        break
+
+                page_cat = "Subject property"
+                if any(k in raw_upper for k in ["SUBJECT INTERIOR", "INTERIOR PHOTO", "INTERIOR"]):
+                    page_cat = "Subject interior"
+                elif any(k in raw_upper for k in ["COMPARABLE PROPERTY", "COMPARABLE PHOTO", "PICPIX.CR"]):
+                    page_cat = "Comparable property"
+                elif any(k in raw_upper for k in ["RENTAL PHOTO", "COMPARABLE RENTALS", "DLSTRNT"]):
+                    page_cat = "Rental property"
+
+                words = page.extract_words()
+                body_words = [w for w in words if w["top"] >= 90 and w["bottom"] <= page.height - 18]
+
+                for idx, frame in enumerate(photo_frames):
+                    if photo_count >= max_photos:
+                        break
+
+                    img_top = frame["top"]
+                    img_bottom = frame["bottom"]
+                    img_x0 = frame["x0"]
+                    img_x1 = frame["x1"]
+                    col_left = img_x0 - 25
+                    col_right = img_x1 + 25
+
+                    matched_caption = ""
+                    match_status = "unmatched"
+                    match_confidence = "low"
+                    photo_addr = ""
+                    photo_price = ""
+                    photo_prox = ""
+
+                    if has_same_row_photos:
+                        # Multi-column grid: captions are strictly within the photo's horizontal column
+                        below_words = [
+                            w for w in body_words 
+                            if (0 <= w["top"] - img_bottom <= 60) and (col_left <= (w["x0"] + w["x1"])/2 <= col_right)
+                        ]
+                        above_words = [
+                            w for w in body_words 
+                            if (0 <= img_top - w["bottom"] <= 40) and (col_left <= (w["x0"] + w["x1"])/2 <= col_right)
+                        ]
+
+                        if below_words:
+                            lines_dict = {}
+                            for w in below_words:
+                                y_key = round(w["top"] / 8)
+                                lines_dict.setdefault(y_key, []).append(w)
+                            for y_key in sorted(lines_dict.keys()):
+                                sorted_w = sorted(lines_dict[y_key], key=lambda x: x["x0"])
+                                l = " ".join([w["text"] for w in sorted_w]).strip()
+                                if l and not any(skip in l.lower() for skip in ["aciweb", "page", "total appraisal", "clickforms", "form "]):
+                                    matched_caption = l
+                                    match_status = "matched"
+                                    match_confidence = "high"
+                                    break
+
+                        if not matched_caption and above_words:
+                            lines_dict = {}
+                            for w in above_words:
+                                y_key = round(w["top"] / 8)
+                                lines_dict.setdefault(y_key, []).append(w)
+                            for y_key in sorted(lines_dict.keys()):
+                                sorted_w = sorted(lines_dict[y_key], key=lambda x: x["x0"])
+                                l = " ".join([w["text"] for w in sorted_w]).strip()
+                                if l and not any(skip in l.lower() for skip in ["aciweb", "page", "total appraisal", "borrower", "clickforms"]):
+                                    matched_caption = l
+                                    match_status = "matched"
+                                    match_confidence = "high"
+                                    break
+                    else:
+                        # Single-column vertical stack: text can be to the right, above, or below
+                        right_words = [
+                            w for w in body_words 
+                            if (w["x0"] >= img_x1 - 30) and (img_top - 20 <= w["top"] <= img_bottom + 30)
+                        ]
+                        above_words = [
+                            w for w in body_words 
+                            if (0 <= img_top - w["bottom"] <= 40) and (col_left <= (w["x0"] + w["x1"])/2 <= col_right)
+                        ]
+                        below_words = [
+                            w for w in body_words 
+                            if (0 <= w["top"] - img_bottom <= 60) and (col_left <= (w["x0"] + w["x1"])/2 <= col_right)
+                        ]
+
+                        if right_words:
+                            lines_dict = {}
+                            for w in right_words:
+                                y_key = round(w["top"] / 8)
+                                lines_dict.setdefault(y_key, []).append(w)
+                            for y_key in sorted(lines_dict.keys()):
+                                sorted_w = sorted(lines_dict[y_key], key=lambda x: x["x0"])
+                                l = " ".join([w["text"] for w in sorted_w]).strip()
+                                if l and not any(skip in l.lower() for skip in [
+                                    "sales price", "gross living", "total rooms", "form picpix", "alamode", "total appraisal",
+                                    "borrower", "property address", "lender", "file no", "city", "county", "state", "zip code"
+                                ]):
+                                    if page_cat in ["Subject interior", "Subject property"] and re.match(r"^\d+\s+[a-z]+", l.lower()):
+                                        continue
+                                    matched_caption = l
+                                    match_status = "matched"
+                                    match_confidence = "high"
+                                    break
+
+                            # For comp/rental pages, also extract address, price, proximity
+                            if page_cat in ["Comparable property", "Rental property", "Comparable", "Rental"]:
+                                for y_key in sorted(lines_dict.keys()):
+                                    sorted_w = sorted(lines_dict[y_key], key=lambda x: x["x0"])
+                                    l = " ".join([w["text"] for w in sorted_w]).strip()
+                                    if not photo_addr and re.match(r"^\d+\s+[A-Za-z0-9#\.\'\-]", l) and not re.match(r"^\$?[\d,]+", l):
+                                        photo_addr = l
+                                    m_pr = re.search(r'([\d\.]+\s*miles?\s*[NESWnesw]*)', l, re.I)
+                                    if m_pr and not photo_prox:
+                                        photo_prox = m_pr.group(1).strip()
+                                    m_prc = re.search(r'(?:Sale Price|Adj\. Monthly Rent|Rent)\s*[:$]?\s*([\d,]+)', l, re.I)
+                                    if m_prc and not photo_price:
+                                        photo_price = m_prc.group(1).replace(",", "")
+
+                        if not matched_caption and above_words:
+                            line_txt = " ".join([w["text"] for w in sorted(above_words, key=lambda x: x["x0"])])
+                            if line_txt and not any(skip in line_txt.lower() for skip in ["aciweb", "page", "total appraisal", "borrower"]):
+                                matched_caption = line_txt
+                                match_status = "matched"
+                                match_confidence = "high"
+
+                        if not matched_caption and below_words:
+                            line_txt = " ".join([w["text"] for w in sorted(below_words, key=lambda x: x["x0"])])
+                            if line_txt and not any(skip in line_txt.lower() for skip in ["aciweb", "page", "total appraisal"]):
+                                matched_caption = line_txt
+                                match_status = "matched"
+                                match_confidence = "high"
+
+                    if not matched_caption:
+                        for exhibit_kw in ["FLOORPLAN SKETCH", "FLOOR PLAN", "LOCATION MAP", "AERIAL MAP", "FLOOD MAP", "PLAT MAP"]:
+                            if exhibit_kw in raw_upper:
+                                matched_caption = exhibit_kw.title()
+                                match_status = "matched"
+                                match_confidence = "medium"
+                                break
+
+                    # Classify category using caption and page context
+                    category = _classify_photo_category(matched_caption, page_header=text[:400], default_cat=page_cat)
+
+                    # Check mandatory subject views
+                    mand_res = classify_subject_view_label(matched_caption, page_context=text[:300])
+                    view_type = None
+                    is_mand = False
+                    if mand_res:
+                        view_type = mand_res[0]
+                        is_mand = True
+                        category = "Subject property"
+
+                    final_caption = matched_caption if matched_caption else "Caption not found"
+                    if not matched_caption:
+                        match_status = "unmatched"
+                        match_confidence = "low"
+
+                    photo_count += 1
+                    photo_item = {
+                        "id": f"photo_{photo_count}",
+                        "caption": view_type or final_caption,
+                        "title": view_type or final_caption,
+                        "original_caption": matched_caption,
+                        "original_label": matched_caption,
+                        "category": category,
+                        "page": pno + 1,
+                        "index": idx,
+                        "match_status": match_status,
+                        "match_confidence": match_confidence,
+                        "is_mandatory": is_mand,
+                        "view_type": view_type,
+                        "filename": f"page_{pno + 1}_photo_{idx}.jpg",
+                        "width": round(frame["width"]),
+                        "height": round(frame["height"]),
+                        "dpi": dpi
+                    }
+                    if photo_addr:
+                        photo_item["address"] = photo_addr
+                    if photo_price:
+                        if category == "Rental property":
+                            photo_item["monthly_rent"] = photo_price
+                            photo_item["rent_amount"] = photo_price
+                        else:
+                            photo_item["sale_price"] = photo_price
+                    if photo_prox:
+                        photo_item["proximity"] = photo_prox
+
+                    # Extract base64 image preview
+                    if include_images:
+                        try:
+                            cropped = page.crop((frame["x0"], frame["top"], frame["x1"], frame["bottom"]))
+                            im = cropped.to_image(resolution=dpi)
+                            pil_img = im.original.convert("RGB")
+                            buf = io.BytesIO()
+                            pil_img.save(buf, format="JPEG")
+                            img_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+                            preview_url = f"data:image/jpeg;base64,{img_b64}"
+                            photo_item["image"] = preview_url
+                            photo_item["image_data"] = preview_url
+                            photo_item["base64_preview"] = preview_url
+                        except Exception:
+                            pass
+
+                    photos.append(photo_item)
+    except Exception as e:
+        print("pdfplumber photo extraction warning:", e)
+    return photos
+
 def classify_subject_view_label(raw_label: str, page_context: str = "") -> Optional[Tuple[str, str]]:
     """
     Classifies a candidate text label into one of the four mandatory Subject views:
@@ -1434,7 +2017,7 @@ def extract_photos_from_xml(
     Extracts high-resolution images, pairs them with intelligent spatial labels, and categorizes them:
     'Subject', 'Interior', 'Comparable', 'Rental', 'Sketch', 'Map', and 'General'.
     """
-    if fitz is None:
+    if fitz is None and pdfplumber is None:
         return []
 
     # 1. Read XML string
@@ -1473,9 +2056,16 @@ def extract_photos_from_xml(
     if not pdf_bytes:
         return []
 
+    if fitz is None:
+        if pdfplumber is not None:
+            return _extract_photos_with_pdfplumber(pdf_bytes, max_photos=max_photos, dpi=dpi, include_images=include_images, reference_records=reference_records)
+        return []
+
     try:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     except Exception:
+        if pdfplumber is not None:
+            return _extract_photos_with_pdfplumber(pdf_bytes, max_photos=max_photos, dpi=dpi, include_images=include_images, reference_records=reference_records)
         return []
 
     if reference_records is None:
@@ -3901,6 +4491,9 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
     has_invoice, inv_source, inv_details = _detect_invoice_presence(root, embedded_doc=embedded_doc, full_narrative=full_narrative)
     inv_present_str = "Yes" if has_invoice else "No"
 
+    # UAD Pages Presence Detection
+    has_uad_pages, uad_present_str, uad_pages, uad_details = _detect_uad_pages_presence(root, embedded_doc=embedded_doc)
+
     # Build standard sections matching UI
     subject_section = {
         "1004MC Addendum": mc_present_str,
@@ -3910,6 +4503,24 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "Appraisal and Report Identification": uspap_ident_str,
         "USPAP Addendum": uspap_ident_str,
         "has_uspap_identification": has_uspap_ident,
+        "UAD pages present in the report": uad_present_str,
+        "UAD Pages Present in the Report": uad_present_str,
+        "UAD Pages Present": "Yes" if has_uad_pages else "No",
+        "UAD Pages": uad_present_str,
+        "UAD Definitions Addendum": uad_present_str,
+        "UAD Dataset Pages": uad_present_str,
+        "has_uad_pages": has_uad_pages,
+        "uad_pages": uad_pages,
+        "uad_details": uad_details,
+        "Limiting Conditions": uad_details.get("limiting_conditions_presence", "Not Present"),
+        "Statement of Assumptions and Limiting Conditions": uad_details.get("limiting_conditions_presence", "Not Present"),
+        "limiting_conditions_pages": uad_details.get("limiting_conditions_pages", []),
+        "limiting_conditions_presence": uad_details.get("limiting_conditions_presence", "Not Present"),
+        "Appraiser's Certification": uad_details.get("certification_presence", "Not Present"),
+        "Appraiser Certification": uad_details.get("certification_presence", "Not Present"),
+        "certification_pages": uad_details.get("certification_pages", []),
+        "certification_presence": uad_details.get("certification_presence", "Not Present"),
+        "UAD Details": uad_details.get("details_summary", ""),
         "Invoice Attached": inv_present_str,
         "Invoice Present": inv_present_str,
         "has_invoice": has_invoice,
@@ -4685,12 +5296,57 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
                 if idate:
                     sup_comp_date = idate
 
+    appr_insp_none = ""
+    appr_insp_ext = ""
+    appr_insp_ext_date = ""
+    appr_insp_int_ext = ""
+    appr_insp_int_ext_date = ""
+
+    if appraiser_elem is not None:
+        for insp in appraiser_elem.findall(".//INSPECTION"):
+            pt = insp.attrib.get("AppraisalInspectionPropertyType", "")
+            idate = insp.attrib.get("InspectionDate", "")
+            itype = insp.attrib.get("AppraisalInspectionType", "").lower()
+            if pt == "Subject":
+                if "exterior" in itype and "interior" not in itype:
+                    appr_insp_ext = "Yes"
+                    appr_insp_ext_date = idate
+                    appr_insp_none = "No"
+                    appr_insp_int_ext = "No"
+                elif idate or "interior" in itype:
+                    appr_insp_int_ext = "Yes"
+                    appr_insp_int_ext_date = idate
+                    appr_insp_none = "No"
+                    appr_insp_ext = "No"
+                else:
+                    appr_insp_none = "Yes"
+                    appr_insp_ext = "No"
+                    appr_insp_int_ext = "No"
+
     uspap_identification_section = {
         # General / Status
         "USPAP / Appraisal and Report Identification": uspap_ident_str,
         "Appraisal and Report Identification": uspap_ident_str,
         "USPAP Addendum": uspap_ident_str,
         "has_uspap_identification": has_uspap_ident,
+        "UAD pages present in the report": uad_present_str,
+        "UAD Pages Present in the Report": uad_present_str,
+        "UAD Pages Present": "Yes" if has_uad_pages else "No",
+        "UAD Pages": uad_present_str,
+        "UAD Definitions Addendum": uad_present_str,
+        "UAD Dataset Pages": uad_present_str,
+        "has_uad_pages": has_uad_pages,
+        "uad_pages": uad_pages,
+        "uad_details": uad_details,
+        "Limiting Conditions": uad_details.get("limiting_conditions_presence", "Not Present"),
+        "Statement of Assumptions and Limiting Conditions": uad_details.get("limiting_conditions_presence", "Not Present"),
+        "limiting_conditions_pages": uad_details.get("limiting_conditions_pages", []),
+        "limiting_conditions_presence": uad_details.get("limiting_conditions_presence", "Not Present"),
+        "Appraiser's Certification": uad_details.get("certification_presence", "Not Present"),
+        "Appraiser Certification": uad_details.get("certification_presence", "Not Present"),
+        "certification_pages": uad_details.get("certification_pages", []),
+        "certification_presence": uad_details.get("certification_presence", "Not Present"),
+        "UAD Details": uad_details.get("details_summary", ""),
         "USPAP Reporting Option": uspap_reporting_option,
         uspap_long_key: uspap_reporting_option,
         "This report was prepared under the following USPAP reporting option:": uspap_reporting_option,
@@ -4718,6 +5374,17 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "Expiration Date of Certification or License": lic_exp,
         "Effective Date of Appraisal": effective_date,
         "Effective Date": effective_date,
+        "Appraiser Did not inspect subject property": appr_insp_none,
+        "Did not inspect subject property (Appraiser)": appr_insp_none,
+        "Appraiser Did Not Inspect": appr_insp_none,
+        "Appraiser Did inspect exterior of subject property from street": appr_insp_ext,
+        "Did inspect exterior of subject property from street (Appraiser)": appr_insp_ext,
+        "Appraiser Did Inspect Exterior": appr_insp_ext,
+        "Appraiser Subject Property Date of Inspection (Exterior)": appr_insp_ext_date,
+        "Appraiser Did inspect interior and exterior of subject property": appr_insp_int_ext,
+        "Did inspect interior and exterior of subject property (Appraiser)": appr_insp_int_ext,
+        "Appraiser Did Inspect Interior and Exterior": appr_insp_int_ext,
+        "Appraiser Subject Property Date of Inspection (Interior/Exterior)": appr_insp_int_ext_date,
 
         # SUPERVISORY APPRAISER: (only if required)
         "Supervisory Signature": sup_name if sup_name.strip() else "",
@@ -4813,6 +5480,24 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "Invoice Attached": inv_present_str,
         "Invoice Present": inv_present_str,
         "has_invoice": has_invoice,
+        "UAD pages present in the report": uad_present_str,
+        "UAD Pages Present in the Report": uad_present_str,
+        "UAD Pages Present": "Yes" if has_uad_pages else "No",
+        "UAD Pages": uad_present_str,
+        "UAD Definitions Addendum": uad_present_str,
+        "UAD Dataset Pages": uad_present_str,
+        "has_uad_pages": has_uad_pages,
+        "uad_pages": uad_pages,
+        "uad_details": uad_details,
+        "Limiting Conditions": uad_details.get("limiting_conditions_presence", "Not Present"),
+        "Statement of Assumptions and Limiting Conditions": uad_details.get("limiting_conditions_presence", "Not Present"),
+        "limiting_conditions_pages": uad_details.get("limiting_conditions_pages", []),
+        "limiting_conditions_presence": uad_details.get("limiting_conditions_presence", "Not Present"),
+        "Appraiser's Certification": uad_details.get("certification_presence", "Not Present"),
+        "Appraiser Certification": uad_details.get("certification_presence", "Not Present"),
+        "certification_pages": uad_details.get("certification_pages", []),
+        "certification_presence": uad_details.get("certification_presence", "Not Present"),
+        "UAD Details": uad_details.get("details_summary", ""),
         "License Valid To": lic_exp,
         "LICENSE/REGISTRATION/CERTIFICATION #": lic_id,
 
@@ -4825,44 +5510,67 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "AMC Name": amc_name,
     }
 
-    # Extract E&O Insurance details from embedded PDF document if present
-    emb_doc_elem = root.find(".//DOCUMENT")
-    if emb_doc_elem is None:
-        emb_doc_elem = root.find(".//EMBEDDED_FILE/DOCUMENT")
-    if emb_doc_elem is None:
-        emb_doc_elem = root.find(".//EMBEDDED_FILE")
+    # Extract E&O Insurance details and USPAP / Report Identification from embedded PDF document if present
+    emb_doc_elem = None
+    for cand in [root.find(".//DOCUMENT"), root.find(".//EMBEDDED_FILE/DOCUMENT"), root.find(".//EMBEDDED_FILE")]:
+        if cand is not None and (cand.text or "").strip():
+            emb_doc_elem = cand
+            break
 
-    if emb_doc_elem is not None and emb_doc_elem.text and fitz is not None:
+    emb_doc_text = (emb_doc_elem.text or "").strip() if emb_doc_elem is not None else ""
+    if emb_doc_text:
         try:
-            pdf_bytes = base64.b64decode(emb_doc_elem.text.strip())
-            emb_pdf = fitz.open(stream=pdf_bytes, filetype="pdf")
-            eo_info = extract_eo_insurance_from_doc(emb_pdf)
-            if eo_info.get("E&O"):
-                certification_section["E&O"] = eo_info["E&O"]
-                certification_section["E&O Present"] = eo_info.get("E&O Present", eo_info["E&O"])
-            if eo_info.get("E&O Insurance"):
-                certification_section["E&O Insurance"] = eo_info["E&O Insurance"]
-            if eo_info.get("Policy Period From"):
-                certification_section["Policy Period From"] = eo_info["Policy Period From"]
-            if eo_info.get("Policy Period To"):
-                certification_section["Policy Period To"] = eo_info["Policy Period To"]
-            if eo_info.get("E&O Insured"):
-                certification_section["E&O Insured"] = eo_info["E&O Insured"]
-            if eo_info.get("E&O Carrier"):
-                certification_section["E&O Carrier"] = eo_info["E&O Carrier"]
-            if eo_info.get("E&O Limit"):
-                certification_section["E&O Limit"] = eo_info["E&O Limit"]
-            if eo_info.get("E&O Deductible"):
-                certification_section["E&O Deductible"] = eo_info["E&O Deductible"]
-            # Extract distinct USPAP / Report Identification section from embedded PDF's USPAP page
-            try:
-                from .pdf_extractor_offline import extract_uspap_identification_details
-                uspap_pdf_details = extract_uspap_identification_details(emb_pdf)
-                if uspap_pdf_details and uspap_pdf_details.get("has_uspap_identification"):
-                    uspap_identification_section = uspap_pdf_details
-            except Exception:
-                pass
+            pdf_bytes = base64.b64decode(emb_doc_text)
+            emb_pdf = None
+            if fitz is not None:
+                try:
+                    emb_pdf = fitz.open(stream=pdf_bytes, filetype="pdf")
+                except Exception:
+                    emb_pdf = None
 
+            if emb_pdf is not None:
+                eo_info = extract_eo_insurance_from_doc(emb_pdf)
+                if eo_info.get("E&O"):
+                    certification_section["E&O"] = eo_info["E&O"]
+                    certification_section["E&O Present"] = eo_info.get("E&O Present", eo_info["E&O"])
+                if eo_info.get("E&O Insurance"):
+                    certification_section["E&O Insurance"] = eo_info["E&O Insurance"]
+                if eo_info.get("Policy Period From"):
+                    certification_section["Policy Period From"] = eo_info["Policy Period From"]
+                if eo_info.get("Policy Period To"):
+                    certification_section["Policy Period To"] = eo_info["Policy Period To"]
+                if eo_info.get("E&O Insured"):
+                    certification_section["E&O Insured"] = eo_info["E&O Insured"]
+                if eo_info.get("E&O Carrier"):
+                    certification_section["E&O Carrier"] = eo_info["E&O Carrier"]
+                if eo_info.get("E&O Limit"):
+                    certification_section["E&O Limit"] = eo_info["E&O Limit"]
+                if eo_info.get("E&O Deductible"):
+                    certification_section["E&O Deductible"] = eo_info["E&O Deductible"]
+
+                # Extract distinct USPAP / Report Identification section from embedded PDF's USPAP page
+                try:
+                    from .pdf_extractor_offline import extract_uspap_identification_details
+                    uspap_pdf_details = extract_uspap_identification_details(emb_pdf)
+                    if uspap_pdf_details and uspap_pdf_details.get("has_uspap_identification"):
+                        metadata_keys = {
+                            "UAD pages present in the report", "UAD Pages Present in the Report",
+                            "UAD Pages Present", "UAD Pages", "UAD Definitions Addendum",
+                            "UAD Dataset Pages", "has_uad_pages", "uad_pages", "uad_details",
+                            "Limiting Conditions", "Statement of Assumptions and Limiting Conditions",
+                            "limiting_conditions_pages", "limiting_conditions_presence",
+                            "Appraiser's Certification", "Appraiser Certification",
+                            "certification_pages", "certification_presence", "UAD Details"
+                        }
+                        for k, v in uspap_pdf_details.items():
+                            if k in metadata_keys:
+                                if not uspap_identification_section.get(k):
+                                    uspap_identification_section[k] = v
+                                continue
+                            if v is not None and v != "":
+                                uspap_identification_section[k] = v
+                except Exception:
+                    pass
         except Exception as e:
             pass
 
@@ -5119,18 +5827,18 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
 
     # 10. Extract Photo Exhibits & Visual Addenda
     extracted_photos = []
+    refs_for_photos = {
+        "subject": {
+            "street": clean_subject.get("Property Address") or prop_addr or "",
+            "city": clean_subject.get("City") or prop_city or "",
+            "state": clean_subject.get("State") or prop_state or "",
+            "zipcode": clean_subject.get("Zip Code") or prop_zip or "",
+            "address": clean_subject.get("Full Address") or full_addr or prop_addr or ""
+        },
+        "sales_comps": [],
+        "rental_comps": []
+    }
     try:
-        refs_for_photos = {
-            "subject": {
-                "street": clean_subject.get("Property Address") or prop_addr or "",
-                "city": clean_subject.get("City") or prop_city or "",
-                "state": clean_subject.get("State") or prop_state or "",
-                "zipcode": clean_subject.get("Zip Code") or prop_zip or "",
-                "address": clean_subject.get("Full Address") or full_addr or prop_addr or ""
-            },
-            "sales_comps": [],
-            "rental_comps": []
-        }
         for k, v in clean_sales_grid.items():
             if k != "Subject" and isinstance(v, dict):
                 m = re.search(r'\d+', k)
@@ -5537,6 +6245,24 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "Appraisal and Report Identification": uspap_ident_str,
         "USPAP Addendum": uspap_ident_str,
         "has_uspap_identification": has_uspap_ident,
+        "UAD pages present in the report": uad_present_str,
+        "UAD Pages Present in the Report": uad_present_str,
+        "UAD Pages Present": "Yes" if has_uad_pages else "No",
+        "UAD Pages": uad_present_str,
+        "UAD Definitions Addendum": uad_present_str,
+        "UAD Dataset Pages": uad_present_str,
+        "has_uad_pages": has_uad_pages,
+        "uad_pages": uad_pages,
+        "uad_details": uad_details,
+        "Limiting Conditions": uad_details.get("limiting_conditions_presence", "Not Present"),
+        "Statement of Assumptions and Limiting Conditions": uad_details.get("limiting_conditions_presence", "Not Present"),
+        "limiting_conditions_pages": uad_details.get("limiting_conditions_pages", []),
+        "limiting_conditions_presence": uad_details.get("limiting_conditions_presence", "Not Present"),
+        "Appraiser's Certification": uad_details.get("certification_presence", "Not Present"),
+        "Appraiser Certification": uad_details.get("certification_presence", "Not Present"),
+        "certification_pages": uad_details.get("certification_pages", []),
+        "certification_presence": uad_details.get("certification_presence", "Not Present"),
+        "UAD Details": uad_details.get("details_summary", ""),
         "ANSI": ansi_comment,
         "ANSI Standards": ansi_comment,
         "ANSI Comment": ansi_comment,
@@ -5638,6 +6364,24 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "Invoice Attached": inv_present_str,
         "Invoice Present": inv_present_str,
         "has_invoice": has_invoice,
+        "UAD pages present in the report": uad_present_str,
+        "UAD Pages Present in the Report": uad_present_str,
+        "UAD Pages Present": "Yes" if has_uad_pages else "No",
+        "UAD Pages": uad_present_str,
+        "UAD Definitions Addendum": uad_present_str,
+        "UAD Dataset Pages": uad_present_str,
+        "has_uad_pages": has_uad_pages,
+        "uad_pages": uad_pages,
+        "uad_details": uad_details,
+        "Limiting Conditions": uad_details.get("limiting_conditions_presence", "Not Present"),
+        "Statement of Assumptions and Limiting Conditions": uad_details.get("limiting_conditions_presence", "Not Present"),
+        "limiting_conditions_pages": uad_details.get("limiting_conditions_pages", []),
+        "limiting_conditions_presence": uad_details.get("limiting_conditions_presence", "Not Present"),
+        "Appraiser's Certification": uad_details.get("certification_presence", "Not Present"),
+        "Appraiser Certification": uad_details.get("certification_presence", "Not Present"),
+        "certification_pages": uad_details.get("certification_pages", []),
+        "certification_presence": uad_details.get("certification_presence", "Not Present"),
+        "UAD Details": uad_details.get("details_summary", ""),
         "Subject": clean_subject,
         "Contract": contract_section,
         "Neighborhood": neighborhood_section,
@@ -5676,6 +6420,92 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         clean_data["Certification"] = certification_section
     if has_invoice and "INVOICE" in fields:
         clean_data["Invoice"] = fields["INVOICE"]
+
+    # Dedicated Separate Extraction for Sales Grid Addresses and Rental Grid Addresses
+    sales_grid_addresses: Dict[str, Any] = {}
+    sales_addr_details = []
+    subj_full_addr = clean_subject.get("Full Address") or full_addr or prop_addr or ""
+    sales_grid_addresses["Subject"] = subj_full_addr
+    sales_addr_details.append({
+        "comp_type": "Subject",
+        "comp_num": 0,
+        "address": subj_full_addr,
+        "street": clean_subject.get("Property Address") or prop_addr or "",
+        "city": clean_subject.get("City") or prop_city or "",
+        "state": clean_subject.get("State") or prop_state or "",
+        "zip": clean_subject.get("Zip Code") or prop_zip or "",
+        "proximity": "0.00 mi",
+        "sale_price": clean_sales_grid.get("Subject", {}).get("Sale Price") or ""
+    })
+    for k, v in clean_sales_grid.items():
+        if k != "Subject" and isinstance(v, dict):
+            m = re.search(r'\d+', k)
+            cnum = int(m.group(0)) if m else len(sales_addr_details)
+            addr = v.get("Address") or v.get("Street Address") or ""
+            sales_grid_addresses[f"Comparable Sale {cnum}"] = addr
+            sales_grid_addresses[f"Comparable #{cnum}"] = addr
+            sales_grid_addresses[f"Comparable {cnum}"] = addr
+            sales_grid_addresses[f"Comp {cnum}"] = addr
+            sales_grid_addresses[f"COMPARABLE SALE #{cnum}"] = addr
+            sales_addr_details.append({
+                "comp_type": f"Comparable Sale {cnum}",
+                "comp_num": cnum,
+                "address": addr,
+                "street": v.get("Street Address") or (addr.split(",")[0].strip() if addr else ""),
+                "proximity": v.get("Proximity to Subject") or "",
+                "sale_price": v.get("Sale Price") or ""
+            })
+    sales_grid_addresses["details"] = sales_addr_details
+    sales_grid_addresses["addresses"] = [d["address"] for d in sales_addr_details if d.get("address")]
+
+    rental_grid_addresses: Dict[str, Any] = {}
+    rental_addr_details = []
+    subj_rent_addr = (
+        single_family_rent_schedule.get("Address")
+        or single_family_rent_schedule.get("Subject Address")
+        or subject_rent_schedule.get("Address")
+        or subj_full_addr
+    )
+    if single_family_rent_schedule or subject_rent_schedule or comparable_rental_data:
+        rental_grid_addresses["Subject"] = subj_rent_addr
+
+    seen_rent_nums = set()
+    rgrid = comparable_rental_data or single_family_rent_schedule or {}
+    for k, v in rgrid.items():
+        if isinstance(v, dict) and any(x in k.upper() for x in ["RENTAL", "COMPARABLE NO", "COMPARABLE RENTAL"]):
+            m = re.search(r'\d+', k)
+            cnum = int(m.group(0)) if m else (len(rental_addr_details) + 1)
+            if cnum not in seen_rent_nums:
+                seen_rent_nums.add(cnum)
+                addr = v.get("Address") or v.get("Street Address") or ""
+                m_st = re.match(r'^([^,]+)', addr)
+                st = m_st.group(1).strip() if m_st else addr
+                rental_grid_addresses[f"COMPARABLE NO. {cnum}"] = addr
+                rental_grid_addresses[f"Comparable No. {cnum}"] = addr
+                rental_grid_addresses[f"Comparable No {cnum}"] = addr
+                rental_grid_addresses[f"Rental {cnum}"] = addr
+                rental_grid_addresses[f"Comparable Rental #{cnum}"] = addr
+                rental_grid_addresses[f"Comparable Rental {cnum}"] = addr
+                rental_grid_addresses[f"COMPARABLE RENTAL #{cnum}"] = addr
+                rental_addr_details.append({
+                    "comp_type": f"Comparable Rental {cnum}",
+                    "comp_num": cnum,
+                    "address": addr,
+                    "street": st,
+                    "proximity": v.get("Proximity to Subject") or v.get("Proximity") or "",
+                    "monthly_rent": v.get("Monthly Rental") or v.get("Adjusted Monthly Rent") or ""
+                })
+    rental_grid_addresses["details"] = rental_addr_details
+    rental_grid_addresses["addresses"] = [d["address"] for d in rental_addr_details if d.get("address")]
+
+    clean_data["sales_grid_addresses"] = sales_grid_addresses
+    clean_data["SALES_GRID_ADDRESSES"] = sales_grid_addresses
+    clean_data["rental_grid_addresses"] = rental_grid_addresses
+    clean_data["RENTAL_GRID_ADDRESSES"] = rental_grid_addresses
+    fields["sales_grid_addresses"] = sales_grid_addresses
+    fields["SALES_GRID_ADDRESSES"] = sales_grid_addresses
+    fields["rental_grid_addresses"] = rental_grid_addresses
+    fields["RENTAL_GRID_ADDRESSES"] = rental_grid_addresses
 
     fields["Form Type"] = form_type
     fields["From Type"] = form_type
@@ -5724,17 +6554,141 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         fields["MANDATORY_SUBJECT_PHOTOS"] = mandatory_subject_photos
         fields["mandatory_subject_photos"] = mandatory_subject_photos
 
+    # Photo room label counts
+    photo_room_counts = {
+        "bedroom_count": 0,
+        "full_bath_count": 0,
+        "half_bath_count": 0,
+        "living_count": 0,
+        "kitchen_count": 0,
+        "dining_count": 0,
+        "other_count": 0,
+        "total_room_count": 0,
+        "bedroom_display": "—",
+        "bathroom_display": "—",
+        "bathroom_detail": "",
+        "total_room_display": "—",
+        "gla_display": "—"
+    }
+    if extracted_photos:
+        distinct_beds = set()
+        distinct_half_baths = set()
+        distinct_full_baths = set()
+        distinct_living = set()
+        distinct_kitchen = set()
+        distinct_dining = set()
+        distinct_other = set()
+
+        for p in extracted_photos:
+            cat = (p.get("category") or "").strip().lower()
+            if any(k in cat for k in ["comparable", "rental", "map", "sketch"]):
+                continue
+            cap = (p.get("caption") or p.get("title") or p.get("original_label") or "").strip()
+            if not cap:
+                continue
+            norm_cap = re.sub(r'\s*\([a-zA-Z0-9]+\)$', '', cap).strip().lower()
+            if re.search(r'\b(?:bedroom|bdrm|bed\b|mbr\b|master\s*bed|primary\s*bed|guest\s*bed)\b', norm_cap):
+                distinct_beds.add(norm_cap)
+            elif re.search(r'\b(?:half\s*bath|1\/2\s*bath|0?\.5\s*bath|powder\s*room|half\s*ba|lavatory|lav\b)\b', norm_cap):
+                distinct_half_baths.add(norm_cap)
+            elif re.search(r'\b(?:full\s*bath|full\s*ba|master\s*bath|primary\s*bath|guest\s*bath|hall\s*bath|bath\s*#?\s*\d|bathroom|bath\b|3\/4\s*bath)\b', norm_cap):
+                distinct_full_baths.add(norm_cap)
+            elif re.search(r'\b(?:living|family\s*room|great\s*room|sitting\s*room)\b', norm_cap):
+                distinct_living.add(norm_cap)
+            elif re.search(r'\b(?:kitchen|kit\b)\b', norm_cap):
+                distinct_kitchen.add(norm_cap)
+            elif re.search(r'\b(?:dining|dinette|breakfast\s*nook)\b', norm_cap):
+                distinct_dining.add(norm_cap)
+            elif re.search(r'\b(?:den\b|office\b|study\b|library\b|sunroom\b|bonus\s*room)\b', norm_cap):
+                distinct_other.add(norm_cap)
+
+        bed_count = len(distinct_beds)
+        full_bath_count = len(distinct_full_baths)
+        half_bath_count = len(distinct_half_baths)
+        living_count = len(distinct_living)
+        kitchen_count = len(distinct_kitchen)
+        dining_count = len(distinct_dining)
+        other_count = len(distinct_other)
+
+        tot_room_count = bed_count + living_count + kitchen_count + dining_count + other_count
+        bath_disp = "—"
+        bath_det = ""
+        if full_bath_count > 0 or half_bath_count > 0:
+            if half_bath_count > 0:
+                bath_disp = f"{full_bath_count}.{half_bath_count} Baths"
+                bath_det = f"{full_bath_count} Full, {half_bath_count} Half"
+            else:
+                bath_disp = f"{full_bath_count}.0 Baths"
+                bath_det = f"{full_bath_count} Full Bath{'s' if full_bath_count != 1 else ''}"
+
+        photo_room_counts = {
+            "bedroom_count": bed_count,
+            "full_bath_count": full_bath_count,
+            "half_bath_count": half_bath_count,
+            "living_count": living_count,
+            "kitchen_count": kitchen_count,
+            "dining_count": dining_count,
+            "other_count": other_count,
+            "total_room_count": tot_room_count,
+            "bedroom_display": f"{bed_count} Bed{'s' if bed_count != 1 else ''}" if bed_count > 0 else "—",
+            "bathroom_display": bath_disp,
+            "bathroom_detail": bath_det,
+            "total_room_display": f"{tot_room_count} Rooms" if tot_room_count > 0 else "—",
+            "gla_display": "—"
+        }
+
+    clean_data["photo_room_counts"] = photo_room_counts
+    clean_data["PHOTO_ROOM_COUNTS"] = photo_room_counts
+    clean_data["Bedroom Photo Count"] = str(photo_room_counts["bedroom_count"])
+    clean_data["Bathroom Photo Count"] = photo_room_counts["bathroom_display"]
+    clean_data["GLA Photo Count"] = photo_room_counts["gla_display"]
+    clean_data["Total Rooms Photo Count"] = str(photo_room_counts["total_room_count"])
+
+    fields["photo_room_counts"] = photo_room_counts
+    fields["PHOTO_ROOM_COUNTS"] = photo_room_counts
+    fields["Bedroom Photo Count"] = str(photo_room_counts["bedroom_count"])
+    fields["Bathroom Photo Count"] = photo_room_counts["bathroom_display"]
+    fields["GLA Photo Count"] = photo_room_counts["gla_display"]
+    fields["Total Rooms Photo Count"] = str(photo_room_counts["total_room_count"])
+
+    if "Subject" in clean_data and isinstance(clean_data["Subject"], dict):
+        clean_data["Subject"]["photo_room_counts"] = photo_room_counts
+        clean_data["Subject"]["Bedroom Photo Count"] = str(photo_room_counts["bedroom_count"])
+        clean_data["Subject"]["Bathroom Photo Count"] = photo_room_counts["bathroom_display"]
+        clean_data["Subject"]["GLA Photo Count"] = photo_room_counts["gla_display"]
+        clean_data["Subject"]["Total Rooms Photo Count"] = str(photo_room_counts["total_room_count"])
+
     return {
         "status": "success",
         "form_type": form_type,
         "has_1004mc": has_1004mc,
         "1004mc_presence": mc_present_str,
+        "UAD pages present in the report": uad_present_str,
+        "has_uad_pages": has_uad_pages,
+        "uad_pages": uad_pages,
+        "uad_details": uad_details,
+        "Limiting Conditions": uad_details.get("limiting_conditions_presence", "Not Present"),
+        "Statement of Assumptions and Limiting Conditions": uad_details.get("limiting_conditions_presence", "Not Present"),
+        "limiting_conditions_pages": uad_details.get("limiting_conditions_pages", []),
+        "limiting_conditions_presence": uad_details.get("limiting_conditions_presence", "Not Present"),
+        "Appraiser's Certification": uad_details.get("certification_presence", "Not Present"),
+        "Appraiser Certification": uad_details.get("certification_presence", "Not Present"),
+        "certification_pages": uad_details.get("certification_pages", []),
+        "certification_presence": uad_details.get("certification_presence", "Not Present"),
+        "UAD Details": uad_details.get("details_summary", ""),
         "fields": fields,
         "unified_fields": fields,
         "clean_data": clean_data,
+        "sales_grid_addresses": sales_grid_addresses,
+        "SALES_GRID_ADDRESSES": sales_grid_addresses,
+        "rental_grid_addresses": rental_grid_addresses,
+        "RENTAL_GRID_ADDRESSES": rental_grid_addresses,
+        "reference_records": refs_for_photos,
         "has_embedded_pdf": has_embedded_pdf,
         "extracted_photos": extracted_photos,
         "EXTRACTED_PHOTOS": extracted_photos,
         "mandatory_subject_photos": mandatory_subject_photos,
         "MANDATORY_SUBJECT_PHOTOS": mandatory_subject_photos,
+        "photo_room_counts": photo_room_counts,
+        "PHOTO_ROOM_COUNTS": photo_room_counts,
     }

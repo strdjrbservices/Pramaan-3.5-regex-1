@@ -33,6 +33,39 @@ const getSubjectGridData = (allData) => {
     );
 };
 
+const getComparableGridData = (allData, saleName) => {
+    if (!allData || !saleName || typeof allData !== 'object') return {};
+    if (allData[saleName] && typeof allData[saleName] === 'object') return allData[saleName];
+    if (allData.SALES_GRID?.[saleName] && typeof allData.SALES_GRID[saleName] === 'object') return allData.SALES_GRID[saleName];
+    if (allData['Sales Grid']?.[saleName] && typeof allData['Sales Grid'][saleName] === 'object') return allData['Sales Grid'][saleName];
+    if (allData.sales_grid?.[saleName] && typeof allData.sales_grid[saleName] === 'object') return allData.sales_grid[saleName];
+
+    const str = String(saleName);
+    const noSpace = str.replace('# ', '#');
+    const withSpace = str.replace('#', '# ');
+    const numMatch = str.match(/\d+/);
+    const num = numMatch ? numMatch[0] : null;
+
+    const candidates = [
+        noSpace,
+        withSpace,
+        num ? `Comparable ${num}` : null,
+        num ? `Comparable #${num}` : null,
+        num ? `Comparable # ${num}` : null,
+        num ? `Comp ${num}` : null,
+        num ? `#${num}` : null,
+        num ? `# ${num}` : null
+    ].filter(Boolean);
+
+    for (const c of candidates) {
+        if (allData[c] && typeof allData[c] === 'object') return allData[c];
+        if (allData.SALES_GRID?.[c] && typeof allData.SALES_GRID[c] === 'object') return allData.SALES_GRID[c];
+        if (allData['Sales Grid']?.[c] && typeof allData['Sales Grid'][c] === 'object') return allData['Sales Grid'][c];
+        if (allData.sales_grid?.[c] && typeof allData.sales_grid[c] === 'object') return allData.sales_grid[c];
+    }
+    return {};
+};
+
 const normalizeCheckArgs = (field, arg2, arg3, arg4, arg5) => {
     let allData = null;
     let saleName = null;
@@ -176,8 +209,8 @@ export const checkBedroomsAdjustment = (field, arg2, arg3, arg4, arg5) => {
         adjustmentText = String(textVal).trim();
     } else {
         const directBedAdj = allData[saleName]?.['Bedrooms Adjustment'] ??
-                             (compIndex ? allData[`Comp ${compIndex} Bedrooms Adjustment`] : undefined) ??
-                             (compIndex ? allData[`Comparable ${compIndex} Bedrooms Adjustment`] : undefined);
+            (compIndex ? allData[`Comp ${compIndex} Bedrooms Adjustment`] : undefined) ??
+            (compIndex ? allData[`Comparable ${compIndex} Bedrooms Adjustment`] : undefined);
         if (directBedAdj !== undefined && directBedAdj !== null) {
             adjustmentText = String(directBedAdj).trim();
         } else {
@@ -260,9 +293,9 @@ export const checkBathsAdjustment = (field, arg2, arg3, arg4, arg5) => {
         adjustmentStr = String(textVal).trim();
     } else {
         const directBathAdj = allData[saleName]?.['Baths Adjustment'] ??
-                              allData[saleName]?.['Bathrooms Adjustment'] ??
-                              (compIndex ? allData[`Comp ${compIndex} Baths Adjustment`] : undefined) ??
-                              (compIndex ? allData[`Comparable ${compIndex} Baths Adjustment`] : undefined);
+            allData[saleName]?.['Bathrooms Adjustment'] ??
+            (compIndex ? allData[`Comp ${compIndex} Baths Adjustment`] : undefined) ??
+            (compIndex ? allData[`Comparable ${compIndex} Baths Adjustment`] : undefined);
         if (directBathAdj !== undefined && directBathAdj !== null) {
             adjustmentStr = String(directBathAdj).trim();
         } else {
@@ -749,6 +782,126 @@ export const checkHeatingCoolingAdjustment = (field, arg2, arg3, arg4, arg5) => 
     return { isMatch: true };
 };
 
+
+export const checkBasementAdjustment = (field, arg2, arg3, arg4, arg5) => {
+    const { allData, saleName, textVal } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
+    if (!allData || !saleName || String(saleName).toLowerCase() === 'subject') return null;
+
+    const subjGrid = getSubjectGridData(allData);
+    const subjectBasement = String(
+        subjGrid['Basement & Finished Rooms Below Grade'] ||
+        subjGrid['Basement Description'] ||
+        subjGrid['Basement & Finished Rooms'] ||
+        subjGrid['Basement Finished Rooms'] ||
+        allData.Subject?.['Basement & Finished Rooms Below Grade'] ||
+        allData.Subject?.['Basement Description'] ||
+        allData.SUBJECT?.['Basement & Finished Rooms Below Grade'] ||
+        allData['Basement & Finished Rooms Below Grade'] ||
+        ''
+    ).trim();
+
+    const compObj = (typeof getComparableGridData === 'function')
+        ? getComparableGridData(allData, saleName)
+        : (allData[saleName] || allData.SALES_GRID?.[saleName] || allData['Sales Grid']?.[saleName] || {});
+
+    const isAdjustmentField = String(field || '').toLowerCase().includes('adjustment');
+
+    let compBasement = '';
+    let adjustmentText = '';
+
+    if (isAdjustmentField) {
+        adjustmentText = String(textVal !== null && textVal !== undefined ? textVal : (
+            compObj['Basement & Finished Rooms Below Grade Adjustment'] ??
+            compObj['Basement & Finished Rooms Adjustment'] ??
+            compObj['Basement Adjustment'] ??
+            compObj['Basement Description Adjustment'] ??
+            compObj['Basement Finished Rooms Adjustment'] ??
+            ''
+        )).trim();
+        compBasement = String(
+            compObj['Basement & Finished Rooms Below Grade'] ??
+            compObj['Basement & Finished Rooms'] ??
+            compObj['Basement Description'] ??
+            compObj['Basement Finished Rooms'] ??
+            ''
+        ).trim();
+    } else {
+        compBasement = String(textVal !== null && textVal !== undefined ? textVal : (
+            compObj['Basement & Finished Rooms Below Grade'] ??
+            compObj['Basement & Finished Rooms'] ??
+            compObj['Basement Description'] ??
+            compObj['Basement Finished Rooms'] ??
+            ''
+        )).trim();
+        adjustmentText = String(
+            compObj['Basement & Finished Rooms Below Grade Adjustment'] ??
+            compObj['Basement & Finished Rooms Adjustment'] ??
+            compObj['Basement Adjustment'] ??
+            compObj['Basement Description Adjustment'] ??
+            compObj['Basement Finished Rooms Adjustment'] ??
+            ''
+        ).trim();
+    }
+
+    if (!subjectBasement || !compBasement) return null;
+
+    const normalizeBasement = (str) => String(str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const isSame = normalizeBasement(subjectBasement) === normalizeBasement(compBasement);
+
+    const parseAdjNum = (adjStr) => {
+        if (adjStr === undefined || adjStr === null) return null;
+        const str = String(adjStr).trim();
+        if (!str || str === '$' || str === '-') return null;
+        const num = parseFloat(str.replace(/[^0-9.-]/g, ''));
+        return isNaN(num) ? null : num;
+    };
+
+    const targetField = isAdjustmentField ? 'Basement & Finished Rooms Below Grade Adjustment' : 'Basement & Finished Rooms Below Grade';
+
+    if (isSame) {
+        // If subject and comparable basement match:
+        // $0 or blank is valid. A non-zero adjustment is invalid.
+        const num = parseAdjNum(adjustmentText);
+        if (num !== null && num !== 0) {
+            return {
+                isError: true,
+                section: 'Sales Comparison',
+                field: targetField,
+                message: `Basement & Finished Rooms Below Grade is the same as Subject (${compBasement}), but an adjustment of '${adjustmentText}' is present. Adjustment should be $0 or blank.`
+            };
+        }
+        return {
+            isMatch: true,
+            section: 'Sales Comparison',
+            field: targetField,
+            message: `Basement & Finished Rooms Below Grade is the same as Subject (${compBasement}). Validated with $0 / no adjustment.`
+        };
+    } else {
+        // If subject and comparable basement differ:
+        // An adjustment is required: 0, $0, positive, or negative are all valid adjustments.
+        // If blank/empty, show error that an adjustment is required.
+        const isBlank = adjustmentText === undefined || adjustmentText === null || String(adjustmentText).trim() === '' || String(adjustmentText).trim() === '$';
+        if (isBlank) {
+            return {
+                isError: true,
+                section: 'Sales Comparison',
+                field: targetField,
+                message: `Basement & Finished Rooms Below Grade differs from Subject (Subject: '${subjectBasement}', Comp: '${compBasement}'). An adjustment is required, even if 0.`
+            };
+        }
+
+        const num = parseAdjNum(adjustmentText);
+        return {
+            isMatch: true,
+            section: 'Sales Comparison',
+            field: targetField,
+            message: (num === 0 || adjustmentText.trim() === '0' || adjustmentText.trim() === '$0')
+                ? `Basement & Finished Rooms Below Grade differs from Subject (Subject: '${subjectBasement}', Comp: '${compBasement}'), validated with $0 adjustment.`
+                : `Adjustment of ${adjustmentText} is provided for difference in Basement & Finished Rooms Below Grade (Subject: '${subjectBasement}', Comp: '${compBasement}').`
+        };
+    }
+};
+
 export const checkDataSourceDOM = (field, text, arg3, arg4, arg5) => {
     let saleName = arg3;
     if (typeof arg3 === 'object') saleName = arg5;
@@ -948,35 +1101,321 @@ export const checkCompDesignStyle = (field, text, allData, saleName) => {
     return null;
 };
 
-export const checkDateOfSale = (field, text, allData, arg4, arg5) => {
-    let saleName = arg4;
-    if (Array.isArray(arg4)) saleName = arg5;
+export const checkDateOfSale = (field, arg2, arg3, arg4, arg5) => {
+    const { allData, saleName, textVal } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
 
-    if (field !== 'Date of Sale/Time' || !saleName || saleName === 'Subject' || !allData) return null;
+    if (saleName && String(saleName).toLowerCase() === 'subject') return null;
 
-    const compDateStr = String(text || '').trim();
-    if (!compDateStr) return null;
+    const rawText = String(
+        textVal !== null && textVal !== undefined && String(textVal).trim() !== ''
+            ? textVal
+            : (allData?.[saleName]?.['Date of Sale/Time'] || allData?.SALES_GRID?.[saleName]?.['Date of Sale/Time'] || '')
+    ).trim();
 
-    const compDate = new Date(compDateStr);
-    if (isNaN(compDate.getTime())) return null;
+    if (!rawText) return null;
 
-    const comparableKeys = Object.keys(allData).filter(k => k.startsWith('COMPARABLE SALE #') && k !== saleName);
+    // 1. If value indicates an active listing, it is considered valid
+    const lowerText = rawText.toLowerCase();
+    const isActive = lowerText.includes('active') || /^(?:act\b|act\.|act;)/i.test(rawText);
+    if (isActive) {
+        return {
+            isMatch: true,
+            section: 'Sales Comparison',
+            field: 'Date of Sale/Time',
+            message: `Active listing is a valid value (${rawText}).`
+        };
+    }
 
-    for (const key of comparableKeys) {
-        const otherCompDateStr = String(allData[key]?.['Date of Sale/Time'] || '').trim();
-        if (!otherCompDateStr) continue;
+    // 2. Helper to parse date part with prefix 's' (settlement/sale date) or 'c' (contract date)
+    const parseDatePart = (str, prefix) => {
+        const regex = new RegExp(`(?:^|[^a-zA-Z0-9])${prefix}\\s*:?\\s*(\\d{1,2})\\s*[/.-]\\s*(\\d{2,4})`, 'i');
+        const match = str.match(regex);
+        if (!match) return null;
+        const month = parseInt(match[1], 10);
+        let year = parseInt(match[2], 10);
+        if (isNaN(month) || month < 1 || month > 12) return null;
+        if (year < 100) {
+            year = year >= 70 ? 1900 + year : 2000 + year;
+        }
+        const formatted = `${String(month).padStart(2, '0')}/${String(year).slice(-2)}`;
+        return {
+            month,
+            year,
+            formatted,
+            totalMonths: year * 12 + month
+        };
+    };
 
-        const otherCompDate = new Date(otherCompDateStr);
-        if (isNaN(otherCompDate.getTime())) continue;
+    const sPart = parseDatePart(rawText, 's');
+    const cPart = parseDatePart(rawText, 'c');
 
-        const diffTime = Math.abs(compDate - otherCompDate);
-        const diffMonths = diffTime / (1000 * 60 * 60 * 24 * 30.44);
+    // 3. When both 's' and 'c' exist, validate that 's' (sale date) is greater than or equal to 'c' (contract date)
+    if (sPart && cPart) {
+        if (sPart.totalMonths < cPart.totalMonths) {
+            return {
+                isError: true,
+                section: 'Sales Comparison',
+                field: 'Date of Sale/Time',
+                message: `'s' value (s${sPart.formatted}) cannot be earlier than 'c' value (c${cPart.formatted}). Contract date cannot be after sale date.`
+            };
+        }
+        if (sPart.totalMonths === cPart.totalMonths) {
+            return {
+                isMatch: true,
+                section: 'Sales Comparison',
+                field: 'Date of Sale/Time',
+                message: `'s' value (s${sPart.formatted}) is equal to 'c' value (c${cPart.formatted}) (same month/year).`
+            };
+        }
+        return {
+            isMatch: true,
+            section: 'Sales Comparison',
+            field: 'Date of Sale/Time',
+            message: `'s' value (s${sPart.formatted}) is greater than 'c' value (c${cPart.formatted}).`
+        };
+    }
 
-        if (diffMonths > 12) {
-            return { isError: true, message: `Sale date is more than 12 months apart from ${key} (${otherCompDateStr}).` };
+    // 4. If only 's' is present (contract date unknown or not recorded)
+    if (sPart && !cPart) {
+        return {
+            isMatch: true,
+            section: 'Sales Comparison',
+            field: 'Date of Sale/Time',
+            message: `Sale date (s${sPart.formatted}) is valid.`
+        };
+    }
+
+    // 5. Standard date fallback
+    const parsedDate = new Date(rawText);
+    if (!isNaN(parsedDate.getTime())) {
+        return {
+            isMatch: true,
+            section: 'Sales Comparison',
+            field: 'Date of Sale/Time',
+            message: `Sale date (${rawText}) is valid.`
+        };
+    }
+
+    return null;
+};
+
+
+const extractConcessionAmount = (str) => {
+    if (!str || typeof str !== 'string') return null;
+    const trimmed = str.trim();
+
+    // Check for Listing or Active
+    if (/^(?:listing|active|act\b|act\.)/i.test(trimmed)) {
+        return { isListing: true, amount: 0, raw: trimmed };
+    }
+
+    // Check for "None", "No", "N/A"
+    if (/^(?:none|no|n\/a|na)$/i.test(trimmed)) {
+        return { isNone: true, amount: 0, raw: trimmed };
+    }
+
+    // UAD format typically has 3 parts separated by ';' or ':' e.g. "ArmLth; Conv;2800" or "ArmLth; Cash;0"
+    if (trimmed.includes(';') || trimmed.includes(':')) {
+        const parts = trimmed.split(/[;:]/).map(p => p.trim());
+        if (parts.length >= 3) {
+            const lastPart = parts[2];
+            if (/^(?:none|unk|unknown|no|n\/a)$/i.test(lastPart)) {
+                return { amount: 0, raw: lastPart };
+            }
+            const num = parseFloat(lastPart.replace(/[^0-9.-]/g, ''));
+            if (!isNaN(num)) {
+                return { amount: Math.abs(num), raw: lastPart };
+            }
+        } else if (parts.length === 2) {
+            const lastPart = parts[1];
+            if (/^(?:none|unk|unknown|no|n\/a)$/i.test(lastPart)) {
+                return { amount: 0, raw: lastPart };
+            }
+            const num = parseFloat(lastPart.replace(/[^0-9.-]/g, ''));
+            if (!isNaN(num)) {
+                return { amount: Math.abs(num), raw: lastPart };
+            }
         }
     }
-    return { isMatch: true };
+
+    // Match numbers at the end of the string e.g. "Conv 2800" or "; 2800" or "$2,800"
+    const matchEndNum = trimmed.match(/[;:\s]\$?([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]+)?|[0-9]+)\s*$/);
+    if (matchEndNum) {
+        const num = parseFloat(matchEndNum[1].replace(/,/g, ''));
+        if (!isNaN(num)) {
+            return { amount: Math.abs(num), raw: matchEndNum[1] };
+        }
+    }
+
+    return null;
+};
+
+const parseConcessionAdjustment = (adjStr) => {
+    if (adjStr === undefined || adjStr === null) return 0;
+    const str = String(adjStr).trim();
+    if (!str || str === '$' || str === '-') return 0;
+
+    const isNegative = str.includes('-') || (str.startsWith('(') && str.endsWith(')'));
+    const cleanNum = parseFloat(str.replace(/[^0-9.]/g, ''));
+    if (isNaN(cleanNum)) return 0;
+
+    return isNegative ? -Math.abs(cleanNum) : cleanNum;
+};
+
+const getCompConcessionsData = (allData, saleName) => {
+    if (!allData || !saleName) return { desc: '', adj: '' };
+    const compObj = allData[saleName] || allData.SALES_GRID?.[saleName] || allData['Sales Grid']?.[saleName] || {};
+    const desc = compObj['Sales or Financing Concessions']
+        ?? compObj['Sales Concessions']
+        ?? compObj['Sale or Financing']
+        ?? compObj['Sales or Financing']
+        ?? '';
+    const adj = compObj['Sales or Financing Concessions Adjustment']
+        ?? compObj['Sales Concessions Adjustment']
+        ?? compObj['Sale or Financing Adjustment']
+        ?? compObj['Sales Concession Adjustment']
+        ?? '';
+    return { desc: String(desc || '').trim(), adj: String(adj || '').trim() };
+};
+
+export const checkSalesConcessions = (field, arg2, arg3, arg4, arg5) => {
+    const { allData, saleName, textVal } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
+    if (saleName && String(saleName).toLowerCase() === 'subject') return null;
+
+    const compData = getCompConcessionsData(allData, saleName);
+    const descStr = String(textVal !== null && textVal !== undefined && String(textVal).trim() !== '' ? textVal : compData.desc).trim();
+    const adjStr = compData.adj;
+
+    if (!descStr) return null;
+
+    const parsed = extractConcessionAmount(descStr);
+    if (!parsed) return null;
+
+    const adjNum = parseConcessionAdjustment(adjStr);
+
+    // Case 1: Listing
+    if (parsed.isListing) {
+        if (adjNum !== 0) {
+            return {
+                isError: true,
+                section: 'Sales Comparison',
+                field: 'Sales or Financing Concessions',
+                message: `Listing should not have a sales concession adjustment (found: ${adjStr}).`
+            };
+        }
+        return {
+            isMatch: true,
+            section: 'Sales Comparison',
+            field: 'Sales or Financing Concessions',
+            message: `Listing is a valid value with no sales concession adjustment required.`
+        };
+    }
+
+    // Case 2: Concession amount is 0 (e.g. ArmLth; Conv;0, ArmLth; Cash;0, None)
+    if (parsed.amount === 0) {
+        if (adjNum !== 0) {
+            return {
+                isError: true,
+                section: 'Sales Comparison',
+                field: 'Sales or Financing Concessions',
+                message: `Sales Concessions indicates $0 concession, but adjustment is ${adjStr}. Adjustment should be $0 or blank.`
+            };
+        }
+        return {
+            isMatch: true,
+            section: 'Sales Comparison',
+            field: 'Sales or Financing Concessions',
+            message: `Sales Concessions (${descStr}) has no concessions; adjustment is correctly $0 or blank.`
+        };
+    }
+
+    // Case 3: Concession amount > 0 (e.g. ArmLth; Conv;2800)
+    const expectedAdj = -parsed.amount;
+    if (adjNum === expectedAdj) {
+        return {
+            isMatch: true,
+            section: 'Sales Comparison',
+            field: 'Sales or Financing Concessions',
+            message: `Sales Concessions of $${parsed.amount.toLocaleString()} is correctly adjusted by -$${parsed.amount.toLocaleString()}.`
+        };
+    }
+
+    return {
+        isError: true,
+        section: 'Sales Comparison',
+        field: 'Sales or Financing Concessions',
+        message: `Sales Concessions indicates $${parsed.amount.toLocaleString()}, but adjustment is ${adjStr || '$0'}. Expected adjustment is -$${parsed.amount.toLocaleString()}.`
+    };
+};
+
+export const checkSalesConcessionsAdjustment = (field, arg2, arg3, arg4, arg5) => {
+    const { allData, saleName, textVal } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
+    if (saleName && String(saleName).toLowerCase() === 'subject') return null;
+
+    const compData = getCompConcessionsData(allData, saleName);
+    const descStr = compData.desc;
+    const adjStr = String(textVal !== null && textVal !== undefined && String(textVal).trim() !== '' ? textVal : compData.adj).trim();
+
+    if (!descStr) return null;
+
+    const parsed = extractConcessionAmount(descStr);
+    if (!parsed) return null;
+
+    const adjNum = parseConcessionAdjustment(adjStr);
+
+    // Case 1: Listing
+    if (parsed.isListing) {
+        if (adjNum !== 0) {
+            return {
+                isError: true,
+                section: 'Sales Comparison',
+                field: 'Sales or Financing Concessions Adjustment',
+                message: `Listing should not have a sales concession adjustment (found: ${adjStr}).`
+            };
+        }
+        return {
+            isMatch: true,
+            section: 'Sales Comparison',
+            field: 'Sales or Financing Concessions Adjustment',
+            message: `Listing adjustment is valid ($0 or blank).`
+        };
+    }
+
+    // Case 2: Concession amount is 0
+    if (parsed.amount === 0) {
+        if (adjNum !== 0) {
+            return {
+                isError: true,
+                section: 'Sales Comparison',
+                field: 'Sales or Financing Concessions Adjustment',
+                message: `Sales Concessions indicates $0 concession, but adjustment is ${adjStr}. Adjustment should be $0 or blank.`
+            };
+        }
+        return {
+            isMatch: true,
+            section: 'Sales Comparison',
+            field: 'Sales or Financing Concessions Adjustment',
+            message: `Sales Concessions adjustment is valid ($0 or blank).`
+        };
+    }
+
+    // Case 3: Concession amount > 0
+    const expectedAdj = -parsed.amount;
+    if (adjNum === expectedAdj) {
+        return {
+            isMatch: true,
+            section: 'Sales Comparison',
+            field: 'Sales or Financing Concessions Adjustment',
+            message: `Sales Concessions adjustment of -$${parsed.amount.toLocaleString()} matches concession amount of $${parsed.amount.toLocaleString()}.`
+        };
+    }
+
+    return {
+        isError: true,
+        section: 'Sales Comparison',
+        field: 'Sales or Financing Concessions Adjustment',
+        message: `Sales Concessions indicates $${parsed.amount.toLocaleString()}, but adjustment is ${adjStr || '$0'}. Expected adjustment is -$${parsed.amount.toLocaleString()}.`
+    };
 };
 
 export const checkSalePrice = (field, arg2, arg3, arg4, arg5) => {
@@ -1154,3 +1593,860 @@ export const checkViewAdjustment = (field, arg2, arg3, arg4, arg5) => {
     }
     return { isMatch: true };
 };
+
+
+export const getOpinionOfMarketValue = (allData) => {
+    if (!allData || typeof allData !== 'object') return null;
+
+    const possibleKeys = [
+        "opinion of the market value, as defined, of the real property that is the subject of this report is $",
+        "Final Value $",
+        "Indicated Value by Sales Comparison Approach $",
+        "Indicated Value by: Sales Comparison Approach $",
+        "APPRAISED VALUE OF SUBJECT PROPERTY Appraised Value $",
+        "APPRAISED VALUE OF SUBJECT PROPERTY $",
+        "Opinion of Market Value",
+        "Final Value",
+        "Market Value"
+    ];
+
+    const sources = [
+        allData.RECONCILIATION,
+        allData.Reconciliation,
+        allData.SALES_TRANSFER,
+        allData.SALES_GRID,
+        allData['Sales Grid'],
+        allData.CERTIFICATION,
+        allData.APPRAISER,
+        allData.SUMMARY,
+        allData.Subject,
+        allData.SUBJECT,
+        allData.clean_data?.Reconciliation,
+        allData.clean_data?.['Sales Grid'],
+        allData
+    ];
+
+    for (const src of sources) {
+        if (!src || typeof src !== 'object') continue;
+        for (const k of possibleKeys) {
+            const val = src[k];
+            if (val !== undefined && val !== null && String(val).trim() !== '') {
+                const num = parseFloat(String(val).replace(/[^0-9.]/g, ''));
+                if (!isNaN(num) && num > 0) return num;
+            }
+        }
+        for (const [k, val] of Object.entries(src)) {
+            if (k.toLowerCase().includes('opinion of the market value')) {
+                if (val !== undefined && val !== null && String(val).trim() !== '') {
+                    const num = parseFloat(String(val).replace(/[^0-9.]/g, ''));
+                    if (!isNaN(num) && num > 0) return num;
+                }
+            }
+        }
+    }
+
+    return null;
+};
+
+export const getComparableSalesPrices = (allData) => {
+    const salePrices = [];
+    const adjPrices = [];
+    const compSaleDetails = [];
+    const compAdjDetails = [];
+    if (!allData || typeof allData !== 'object') {
+        return { salePrices, adjPrices, compSaleDetails, compAdjDetails };
+    }
+
+    const seenComps = new Set();
+    const processCompObj = (compObj, compIdentifier) => {
+        if (!compObj || typeof compObj !== 'object' || Array.isArray(compObj)) return;
+        if (compIdentifier && seenComps.has(compIdentifier)) return;
+        if (compIdentifier) seenComps.add(compIdentifier);
+
+        // Extract Sale Price
+        const rawSale = compObj['Sale Price']
+            ?? compObj['Sale Price $']
+            ?? compObj['SalePrice']
+            ?? compObj['Sale price']
+            ?? compObj['SALE PRICE'];
+        if (rawSale !== undefined && rawSale !== null && String(rawSale).trim() !== '') {
+            const sNum = parseFloat(String(rawSale).replace(/[^0-9.]/g, ''));
+            if (!isNaN(sNum) && sNum > 0) {
+                salePrices.push(sNum);
+                compSaleDetails.push({ name: compIdentifier || 'Comparable', price: sNum, raw: rawSale });
+            }
+        }
+
+        // Extract Adjusted Sale Price of Comparable
+        const rawAdj = compObj['Adjusted Sale Price of Comparable']
+            ?? compObj['Adjusted Sale Price of Comparable $']
+            ?? compObj['Adjusted Sale Price']
+            ?? compObj['AdjustedSalePrice']
+            ?? compObj['Adjusted sale price of comparable']
+            ?? compObj['ADJUSTED SALE PRICE OF COMPARABLE']
+            ?? compObj['Indicated Value by Sales Comparison Approach $']
+            ?? compObj['Indicated Value by Sales Comparison Approach']
+            ?? compObj['Indicated Value by Sales Comparison']
+            ?? compObj['Indicated Value'];
+        if (rawAdj !== undefined && rawAdj !== null && String(rawAdj).trim() !== '') {
+            const aNum = parseFloat(String(rawAdj).replace(/[^0-9.]/g, ''));
+            if (!isNaN(aNum) && aNum > 0) {
+                adjPrices.push(aNum);
+                compAdjDetails.push({ name: compIdentifier || 'Comparable', price: aNum, raw: rawAdj });
+            }
+        }
+    };
+
+    // 1. Check top-level keys in allData first (user edits in UI are stored at top-level)
+    Object.entries(allData).forEach(([key, val]) => {
+        if (key.toLowerCase().trim() === 'subject') return;
+        const match = key.match(/^(?:comparable(?:\s*sale)?|comp)[\s#]*(\d+)$/i);
+        if (match && typeof val === 'object' && val !== null && !Array.isArray(val)) {
+            const compId = `comp_${match[1]}`;
+            processCompObj(val, compId);
+        }
+    });
+
+    // 2. Check numbered comps 1 to 9 if not yet captured
+    for (let i = 1; i <= 9; i++) {
+        const compId = `comp_${i}`;
+        if (!seenComps.has(compId)) {
+            const compObj = allData[`COMPARABLE SALE #${i}`]
+                || allData[`COMPARABLE SALE # ${i}`]
+                || allData[`Comparable Sale #${i}`]
+                || allData[`Comparable Sale ${i}`]
+                || allData[`Comp ${i}`]
+                || allData[`COMPARABLE #${i}`];
+            if (compObj && typeof compObj === 'object') {
+                processCompObj(compObj, compId);
+            }
+        }
+    }
+
+    // 3. Check SALES_GRID / Sales Grid / SALES_COMPARISON containers
+    const gridContainers = [
+        allData.SALES_GRID,
+        allData['Sales Grid'],
+        allData.SALES_COMPARISON,
+        allData.clean_data?.['Sales Grid'],
+        allData.clean_data?.SALES_GRID
+    ];
+
+    gridContainers.forEach(container => {
+        if (container && typeof container === 'object') {
+            Object.entries(container).forEach(([key, val]) => {
+                if (key.toLowerCase().trim() === 'subject') return;
+                const match = key.match(/(?:comparable(?:\s*sale)?|comp)[\s#]*(\d+)/i);
+                const compId = match ? `comp_${match[1]}` : key;
+                processCompObj(val, compId);
+            });
+        }
+    });
+
+    return { salePrices, adjPrices, compSaleDetails, compAdjDetails };
+};
+
+const _evaluateBracketing = (finalValue, prices, label = 'comparables', compDetails = []) => {
+    if (!finalValue || !Array.isArray(prices) || prices.length === 0) {
+        return { isBracketed: false, summary: 'No comparable prices available' };
+    }
+
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+
+    const minPct = (((min - finalValue) / finalValue) * 100).toFixed(1);
+    const maxPct = (((max - finalValue) / finalValue) * 100).toFixed(1);
+    const minSign = Number(minPct) > 0 ? '+' : '';
+    const maxSign = Number(maxPct) > 0 ? '+' : '';
+    const rangeSummary = `Range: $${min.toLocaleString()} (${minSign}${minPct}%) to $${max.toLocaleString()} (${maxSign}${maxPct}%)`;
+
+    // Simple bracketing check: at least one comp <= finalValue and at least one comp >= finalValue
+    const isBracketed = (min <= finalValue && max >= finalValue);
+
+    if (isBracketed) {
+        return {
+            isBracketed: true,
+            isMatch: true,
+            summary: rangeSummary
+        };
+    }
+
+    if (min > finalValue) {
+        return {
+            isBracketed: false,
+            isError: true,
+            summary: `All ${label} are above Opinion of Market Value ($${finalValue.toLocaleString()}). Lowest is $${min.toLocaleString()} (${minSign}${minPct}%). ${rangeSummary}`
+        };
+    }
+
+    return {
+        isBracketed: false,
+        isError: true,
+        summary: `All ${label} are below Opinion of Market Value ($${finalValue.toLocaleString()}). Highest is $${max.toLocaleString()} (${maxSign}${maxPct}%). ${rangeSummary}`
+    };
+};
+
+export const evaluateBracketing = _evaluateBracketing;
+export const evaluateBracketing10to20 = _evaluateBracketing;
+
+export const checkFinalValueBracketing = (field, arg2, arg3, arg4, arg5) => {
+    let allData = null;
+    let textVal = null;
+
+    if (arg3 && typeof arg3 === 'object' && !Array.isArray(arg3)) {
+        allData = arg3;
+        textVal = arg2;
+    } else if (arg2 && typeof arg2 === 'object' && !Array.isArray(arg2)) {
+        allData = arg2;
+        textVal = null;
+    } else if (typeof field === 'object' && field !== null && !Array.isArray(field)) {
+        allData = field;
+        field = 'opinion of the market value, as defined, of the real property that is the subject of this report is $';
+    }
+
+    if (!allData || typeof allData !== 'object') return null;
+
+    const fieldLower = String(field || '').trim().toLowerCase();
+    const isTargetField = !field ||
+        fieldLower.includes('opinion of the market value') ||
+        fieldLower === 'final value' ||
+        fieldLower === 'final value $' ||
+        fieldLower === 'indicated value by sales comparison approach $' ||
+        fieldLower === 'indicated value by: sales comparison approach $' ||
+        fieldLower === 'appraised value of subject property $';
+
+    if (!isTargetField) return null;
+
+    let finalValue = null;
+    if (textVal !== null && textVal !== undefined && String(textVal).trim() !== '') {
+        const parsed = parseFloat(String(textVal).replace(/[^0-9.]/g, ''));
+        if (!isNaN(parsed) && parsed > 0) {
+            finalValue = parsed;
+        }
+    }
+
+    if (finalValue === null) {
+        finalValue = getOpinionOfMarketValue(allData);
+    }
+
+    if (finalValue === null || isNaN(finalValue) || finalValue <= 0) {
+        return null;
+    }
+
+    const { salePrices, adjPrices, compSaleDetails, compAdjDetails } = getComparableSalesPrices(allData);
+
+    if (salePrices.length === 0 && adjPrices.length === 0) {
+        return null;
+    }
+
+    const hasSale = salePrices.length > 0;
+    const hasAdj = adjPrices.length > 0;
+
+    const evalSale = _evaluateBracketing(finalValue, salePrices, 'Sale Price', compSaleDetails);
+    const evalAdj = _evaluateBracketing(finalValue, adjPrices, 'Adjusted Sale Price of Comparable', compAdjDetails);
+
+    const targetFieldName = (field && String(field).trim()) || "opinion of the market value, as defined, of the real property that is the subject of this report is $";
+    const displayLabel = "Opinion of Market Value (Bracketing)";
+
+    if (hasSale && hasAdj) {
+        if (!evalAdj.isBracketed) {
+            return {
+                isError: true,
+                section: 'Sales Comparison',
+                field: targetFieldName,
+                message: `${displayLabel}: $${finalValue.toLocaleString()} is unbracketed by Adjusted Sale Price of Comparable. ${evalAdj.summary}.`
+            };
+        }
+        if (!evalSale.isBracketed) {
+            return {
+                isError: true,
+                section: 'Sales Comparison',
+                field: targetFieldName,
+                message: `${displayLabel}: $${finalValue.toLocaleString()} is unbracketed by comparable Sale Price. ${evalSale.summary}.`
+            };
+        }
+    } else if (hasAdj && !evalAdj.isBracketed) {
+        return {
+            isError: true,
+            section: 'Sales Comparison',
+            field: targetFieldName,
+            message: `${displayLabel}: $${finalValue.toLocaleString()} is unbracketed by Adjusted Sale Price of Comparable. ${evalAdj.summary}.`
+        };
+    } else if (hasSale && !evalSale.isBracketed) {
+        return {
+            isError: true,
+            section: 'Sales Comparison',
+            field: targetFieldName,
+            message: `${displayLabel}: $${finalValue.toLocaleString()} is unbracketed by comparable Sale Price. ${evalSale.summary}.`
+        };
+    }
+
+    const details = [];
+    if (hasAdj) details.push(`Adjusted: ${evalAdj.summary}`);
+    if (hasSale) details.push(`Sale Price: ${evalSale.summary}`);
+
+    return {
+        isMatch: true,
+        section: 'Sales Comparison',
+        field: targetFieldName,
+        message: `${displayLabel}: $${finalValue.toLocaleString()} is bracketed by comparable sales (${details.join('; ')}).`
+    };
+};
+
+export const checkCompSalePriceBracketing = (field, arg2, arg3, arg4, arg5) => {
+    const { allData, saleName, textVal } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
+    if (!allData || typeof allData !== 'object') return null;
+    if (saleName && String(saleName).toLowerCase() === 'subject') return null;
+
+    const finalValue = getOpinionOfMarketValue(allData);
+    if (!finalValue || isNaN(finalValue) || finalValue <= 0) return null;
+
+    const compObj = (typeof getComparableGridData === 'function')
+        ? getComparableGridData(allData, saleName)
+        : (allData[saleName] || allData.SALES_GRID?.[saleName] || {});
+
+    const rawSale = (textVal !== null && textVal !== undefined && String(textVal).trim() !== '')
+        ? textVal
+        : (compObj['Sale Price'] ?? compObj['Sale Price $'] ?? '');
+
+    if (rawSale === undefined || rawSale === null || String(rawSale).trim() === '') {
+        return null;
+    }
+
+    const sNum = parseFloat(String(rawSale).replace(/[^0-9.]/g, ''));
+    if (isNaN(sNum) || sNum <= 0) {
+        return null;
+    }
+
+    const pct = ((sNum - finalValue) / finalValue) * 100;
+    const sign = pct > 0 ? '+' : '';
+    const compLabel = saleName || 'Comparable';
+
+    return {
+        isMatch: true,
+        section: 'Sales Comparison',
+        field: 'Sale Price',
+        message: `${compLabel} Sale Price ($${sNum.toLocaleString()}, ${sign}${pct.toFixed(1)}%) vs Opinion of Market Value ($${finalValue.toLocaleString()}).`
+    };
+};
+
+export const checkCompAdjustedSalePriceBracketing = (field, arg2, arg3, arg4, arg5) => {
+    const { allData, saleName, textVal } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
+    if (!allData || typeof allData !== 'object') return null;
+    if (saleName && String(saleName).toLowerCase() === 'subject') return null;
+
+    const finalValue = getOpinionOfMarketValue(allData);
+    if (!finalValue || isNaN(finalValue) || finalValue <= 0) return null;
+
+    const compObj = (typeof getComparableGridData === 'function')
+        ? getComparableGridData(allData, saleName)
+        : (allData[saleName] || allData.SALES_GRID?.[saleName] || {});
+
+    const rawAdj = (textVal !== null && textVal !== undefined && String(textVal).trim() !== '')
+        ? textVal
+        : (compObj['Adjusted Sale Price of Comparable']
+            ?? compObj['Adjusted Sale Price of Comparable $']
+            ?? compObj['Adjusted Sale Price']
+            ?? compObj['AdjustedSalePrice']
+            ?? compObj['Indicated Value by Sales Comparison Approach $']
+            ?? compObj['Indicated Value by Sales Comparison Approach']
+            ?? '');
+
+    if (rawAdj === undefined || rawAdj === null || String(rawAdj).trim() === '') {
+        return null;
+    }
+
+    const aNum = parseFloat(String(rawAdj).replace(/[^0-9.]/g, ''));
+    if (isNaN(aNum) || aNum <= 0) {
+        return null;
+    }
+
+    const pct = ((aNum - finalValue) / finalValue) * 100;
+    const sign = pct > 0 ? '+' : '';
+    const compLabel = saleName || 'Comparable';
+
+    return {
+        isMatch: true,
+        section: 'Sales Comparison',
+        field: 'Adjusted Sale Price of Comparable',
+        message: `${compLabel} Adjusted Sale Price ($${aNum.toLocaleString()}, ${sign}${pct.toFixed(1)}%) vs Opinion of Market Value ($${finalValue.toLocaleString()}).`
+    };
+};
+
+export const getSubjectGLA = (allData, textVal) => {
+    if (textVal !== null && textVal !== undefined && String(textVal).trim() !== '') {
+        const val = parseAreaToSqFt(textVal);
+        if (!isNaN(val) && val > 0) return val;
+    }
+    if (!allData || typeof allData !== 'object') return null;
+    const subjGrid = (typeof getSubjectGridData === 'function') ? getSubjectGridData(allData) : (allData.Subject || {});
+    const candidates = [
+        subjGrid['Gross Living Area'],
+        subjGrid['Gross Living Area (GLA)'],
+        subjGrid['GLA'],
+        allData.Subject?.['Gross Living Area'],
+        allData.Subject?.['GLA'],
+        allData.SUBJECT?.['Gross Living Area'],
+        allData.SUBJECT?.['GLA'],
+        allData.IMPROVEMENTS?.['Gross Living Area'],
+        allData.Improvements?.['Gross Living Area'],
+        allData.SKETCH?.['Gross Living Area'],
+        allData.Sketch?.['Gross Living Area'],
+        allData.clean_data?.['Sales Grid']?.Subject?.['Gross Living Area'],
+        allData.clean_data?.SALES_GRID?.Subject?.['Gross Living Area']
+    ];
+    for (const c of candidates) {
+        if (c !== undefined && c !== null && String(c).trim() !== '') {
+            const val = parseAreaToSqFt(c);
+            if (!isNaN(val) && val > 0) return val;
+        }
+    }
+    return null;
+};
+
+export const getComparableGLAs = (allData) => {
+    const glas = [];
+    const compGlaDetails = [];
+    if (!allData || typeof allData !== 'object') {
+        return { glas, compGlaDetails };
+    }
+
+    const seenComps = new Set();
+    const processCompObj = (compObj, compIdentifier) => {
+        if (!compObj || typeof compObj !== 'object' || Array.isArray(compObj)) return;
+        if (compIdentifier && seenComps.has(compIdentifier)) return;
+        if (compIdentifier) seenComps.add(compIdentifier);
+
+        const rawGla = compObj['Gross Living Area']
+            ?? compObj['Gross Living Area (GLA)']
+            ?? compObj['GLA']
+            ?? compObj['GrossLivingArea']
+            ?? compObj['GROSS LIVING AREA']
+            ?? compObj['Total Gross Living Area'];
+        if (rawGla !== undefined && rawGla !== null && String(rawGla).trim() !== '') {
+            const gNum = parseAreaToSqFt(rawGla);
+            if (!isNaN(gNum) && gNum > 0) {
+                glas.push(gNum);
+                compGlaDetails.push({ name: compIdentifier || 'Comparable', gla: gNum, raw: rawGla });
+            }
+        }
+    };
+
+    // 1. Check top-level keys in allData first
+    Object.entries(allData).forEach(([key, val]) => {
+        if (key.toLowerCase().trim() === 'subject') return;
+        const match = key.match(/^(?:comparable(?:\s*sale)?|comp)[\s#]*(\d+)$/i);
+        if (match && typeof val === 'object' && val !== null && !Array.isArray(val)) {
+            const compId = `comp_${match[1]}`;
+            processCompObj(val, compId);
+        }
+    });
+
+    // 2. Check numbered comps 1 to 9 if not yet captured
+    for (let i = 1; i <= 9; i++) {
+        const compId = `comp_${i}`;
+        if (!seenComps.has(compId)) {
+            const compObj = allData[`COMPARABLE SALE #${i}`]
+                || allData[`COMPARABLE SALE # ${i}`]
+                || allData[`Comparable Sale #${i}`]
+                || allData[`Comparable Sale ${i}`]
+                || allData[`Comp ${i}`]
+                || allData[`COMPARABLE #${i}`];
+            if (compObj && typeof compObj === 'object') {
+                processCompObj(compObj, compId);
+            }
+        }
+    }
+
+    // 3. Check SALES_GRID / Sales Grid / SALES_COMPARISON containers
+    const gridContainers = [
+        allData.SALES_GRID,
+        allData['Sales Grid'],
+        allData.SALES_COMPARISON,
+        allData.clean_data?.['Sales Grid'],
+        allData.clean_data?.SALES_GRID
+    ];
+
+    gridContainers.forEach(container => {
+        if (container && typeof container === 'object') {
+            Object.entries(container).forEach(([key, val]) => {
+                if (key.toLowerCase().trim() === 'subject') return;
+                const match = key.match(/(?:comparable(?:\s*sale)?|comp)[\s#]*(\d+)/i);
+                const compId = match ? `comp_${match[1]}` : key;
+                processCompObj(val, compId);
+            });
+        }
+    });
+
+    // 4. Check comparableSales array if present
+    if (Array.isArray(allData.comparableSales)) {
+        allData.comparableSales.forEach(saleName => {
+            if (typeof saleName === 'string') {
+                const compObj = (typeof getComparableGridData === 'function')
+                    ? getComparableGridData(allData, saleName)
+                    : (allData[saleName] || allData.SALES_GRID?.[saleName] || {});
+                const match = saleName.match(/\d+/);
+                const compId = match ? `comp_${match[0]}` : saleName;
+                processCompObj(compObj, compId);
+            }
+        });
+    }
+
+    return { glas, compGlaDetails };
+};
+
+export const checkSubjectGLABracketing = (field, arg2, arg3, arg4, arg5) => {
+    let allData = null;
+    let textVal = null;
+
+    if (arg3 && typeof arg3 === 'object' && !Array.isArray(arg3)) {
+        allData = arg3;
+        textVal = arg2;
+    } else if (arg2 && typeof arg2 === 'object' && !Array.isArray(arg2)) {
+        allData = arg2;
+        textVal = null;
+    } else if (typeof field === 'object' && field !== null && !Array.isArray(field)) {
+        allData = field;
+    }
+
+    if (!allData || typeof allData !== 'object') return null;
+
+    const subjectGla = getSubjectGLA(allData, textVal);
+    if (!subjectGla || isNaN(subjectGla) || subjectGla <= 0) {
+        return null;
+    }
+
+    const { glas } = getComparableGLAs(allData);
+    if (!Array.isArray(glas) || glas.length === 0) {
+        return null;
+    }
+
+    const min = Math.min(...glas);
+    const max = Math.max(...glas);
+
+    const minPct = (((min - subjectGla) / subjectGla) * 100).toFixed(1);
+    const maxPct = (((max - subjectGla) / subjectGla) * 100).toFixed(1);
+    const minSign = Number(minPct) > 0 ? '+' : '';
+    const maxSign = Number(maxPct) > 0 ? '+' : '';
+    const rangeSummary = `Range: ${min.toLocaleString()} sq ft (${minSign}${minPct}%) to ${max.toLocaleString()} sq ft (${maxSign}${maxPct}%)`;
+
+    const isBracketed = (min <= subjectGla && max >= subjectGla);
+
+    if (isBracketed) {
+        return {
+            isBracketed: true,
+            isMatch: true,
+            section: 'Sales Comparison',
+            field: 'Gross Living Area',
+            message: `Subject Gross Living Area (${subjectGla.toLocaleString()} sq ft) is bracketed by comparables (${rangeSummary}).`
+        };
+    }
+
+    if (min > subjectGla) {
+        return {
+            isBracketed: false,
+            isError: true,
+            section: 'Sales Comparison',
+            field: 'Gross Living Area',
+            message: `Subject Gross Living Area (${subjectGla.toLocaleString()} sq ft) is unbracketed (all comparables are larger). Lowest is ${min.toLocaleString()} sq ft (${minSign}${minPct}%). ${rangeSummary}.`
+        };
+    }
+
+    return {
+        isBracketed: false,
+        isError: true,
+        section: 'Sales Comparison',
+        field: 'Gross Living Area',
+        message: `Subject Gross Living Area (${subjectGla.toLocaleString()} sq ft) is unbracketed (all comparables are smaller). Highest is ${max.toLocaleString()} sq ft (${maxSign}${maxPct}%). ${rangeSummary}.`
+    };
+};
+
+export const checkCompGLABracketing = (field, arg2, arg3, arg4, arg5) => {
+    const { allData, saleName, textVal } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
+    if (!allData || typeof allData !== 'object') return null;
+    if (saleName && String(saleName).toLowerCase() === 'subject') return null;
+
+    const subjectGla = getSubjectGLA(allData);
+    if (!subjectGla || isNaN(subjectGla) || subjectGla <= 0) return null;
+
+    const compObj = (typeof getComparableGridData === 'function')
+        ? getComparableGridData(allData, saleName)
+        : (allData[saleName] || allData.SALES_GRID?.[saleName] || {});
+
+    const rawGla = (textVal !== null && textVal !== undefined && String(textVal).trim() !== '')
+        ? textVal
+        : (compObj['Gross Living Area']
+            ?? compObj['Gross Living Area (GLA)']
+            ?? compObj['GLA']
+            ?? compObj['GrossLivingArea']
+            ?? compObj['GROSS LIVING AREA']
+            ?? '');
+
+    if (rawGla === undefined || rawGla === null || String(rawGla).trim() === '') {
+        return null;
+    }
+
+    const gNum = parseAreaToSqFt(rawGla);
+    if (isNaN(gNum) || gNum <= 0) {
+        return null;
+    }
+
+    const pct = ((gNum - subjectGla) / subjectGla) * 100;
+    const sign = pct > 0 ? '+' : '';
+    const numMatch = String(saleName || '').match(/\d+/);
+    const compLabel = numMatch ? `Comp #${numMatch[0]}` : (saleName || 'Comparable');
+
+    return {
+        isMatch: true,
+        section: 'Sales Comparison',
+        field: 'Gross Living Area',
+        message: `${compLabel} Gross Living Area (${gNum.toLocaleString()} sq ft, ${sign}${pct.toFixed(1)}%) vs Subject Gross Living Area (${subjectGla.toLocaleString()} sq ft).`
+    };
+};
+
+export const checkGrossLivingAreaBracketing = (field, arg2, arg3, arg4, arg5) => {
+    const { saleName } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
+    const isSubject = !saleName || String(saleName).toLowerCase() === 'subject' || (Array.isArray(arg4) && arg4.some(p => String(p).toLowerCase() === 'subject'));
+    if (isSubject) {
+        return checkSubjectGLABracketing(field, arg2, arg3, arg4, arg5);
+    }
+    return checkCompGLABracketing(field, arg2, arg3, arg4, arg5);
+};
+
+export const getSubjectSite = (allData, textVal) => {
+    if (textVal !== null && textVal !== undefined && String(textVal).trim() !== '') {
+        const val = parseAreaToSqFt(textVal);
+        if (!isNaN(val) && val > 0) return val;
+    }
+    if (!allData || typeof allData !== 'object') return null;
+    const subjGrid = (typeof getSubjectGridData === 'function') ? getSubjectGridData(allData) : (allData.Subject || {});
+    const candidates = [
+        subjGrid['Site'],
+        subjGrid['Site Size'],
+        subjGrid['Total Site Size'],
+        allData.Subject?.['Site'],
+        allData.Subject?.['Site Size'],
+        allData.SUBJECT?.['Site'],
+        allData.SUBJECT?.['Site Size'],
+        allData.SITE?.['Total Site Size'],
+        allData.SITE?.['Parcel Size'],
+        allData.SITE?.['Area'],
+        allData.Site?.['Total Site Size'],
+        allData.clean_data?.['Sales Grid']?.Subject?.['Site'],
+        allData.clean_data?.SALES_GRID?.Subject?.['Site']
+    ];
+    for (const c of candidates) {
+        if (c !== undefined && c !== null && String(c).trim() !== '') {
+            const val = parseAreaToSqFt(c);
+            if (!isNaN(val) && val > 0) return val;
+        }
+    }
+    return null;
+};
+
+export const getComparableSites = (allData) => {
+    const sites = [];
+    const compSiteDetails = [];
+    if (!allData || typeof allData !== 'object') {
+        return { sites, compSiteDetails };
+    }
+
+    const seenComps = new Set();
+    const processCompObj = (compObj, compIdentifier) => {
+        if (!compObj || typeof compObj !== 'object' || Array.isArray(compObj)) return;
+        if (compIdentifier && seenComps.has(compIdentifier)) return;
+        if (compIdentifier) seenComps.add(compIdentifier);
+
+        const rawSite = compObj['Site']
+            ?? compObj['Site Size']
+            ?? compObj['Total Site Size']
+            ?? compObj['SITE'];
+        if (rawSite !== undefined && rawSite !== null && String(rawSite).trim() !== '') {
+            const sNum = parseAreaToSqFt(rawSite);
+            if (!isNaN(sNum) && sNum > 0) {
+                sites.push(sNum);
+                compSiteDetails.push({ name: compIdentifier || 'Comparable', site: sNum, raw: rawSite });
+            }
+        }
+    };
+
+    // 1. Check top-level keys in allData first
+    Object.entries(allData).forEach(([key, val]) => {
+        if (key.toLowerCase().trim() === 'subject') return;
+        const match = key.match(/^(?:comparable(?:\s*sale)?|comp)[\s#]*(\d+)$/i);
+        if (match && typeof val === 'object' && val !== null && !Array.isArray(val)) {
+            const compId = `comp_${match[1]}`;
+            processCompObj(val, compId);
+        }
+    });
+
+    // 2. Check numbered comps 1 to 9 if not yet captured
+    for (let i = 1; i <= 9; i++) {
+        const compId = `comp_${i}`;
+        if (!seenComps.has(compId)) {
+            const compObj = allData[`COMPARABLE SALE #${i}`]
+                || allData[`COMPARABLE SALE # ${i}`]
+                || allData[`Comparable Sale #${i}`]
+                || allData[`Comparable Sale ${i}`]
+                || allData[`Comp ${i}`]
+                || allData[`COMPARABLE #${i}`];
+            if (compObj && typeof compObj === 'object') {
+                processCompObj(compObj, compId);
+            }
+        }
+    }
+
+    // 3. Check SALES_GRID / Sales Grid / SALES_COMPARISON containers
+    const gridContainers = [
+        allData.SALES_GRID,
+        allData['Sales Grid'],
+        allData.SALES_COMPARISON,
+        allData.clean_data?.['Sales Grid'],
+        allData.clean_data?.SALES_GRID
+    ];
+
+    gridContainers.forEach(container => {
+        if (container && typeof container === 'object') {
+            Object.entries(container).forEach(([key, val]) => {
+                if (key.toLowerCase().trim() === 'subject') return;
+                const match = key.match(/(?:comparable(?:\s*sale)?|comp)[\s#]*(\d+)/i);
+                const compId = match ? `comp_${match[1]}` : key;
+                processCompObj(val, compId);
+            });
+        }
+    });
+
+    // 4. Check comparableSales array if present
+    if (Array.isArray(allData.comparableSales)) {
+        allData.comparableSales.forEach(saleName => {
+            if (typeof saleName === 'string') {
+                const compObj = (typeof getComparableGridData === 'function')
+                    ? getComparableGridData(allData, saleName)
+                    : (allData[saleName] || allData.SALES_GRID?.[saleName] || {});
+                const match = saleName.match(/\d+/);
+                const compId = match ? `comp_${match[0]}` : saleName;
+                processCompObj(compObj, compId);
+            }
+        });
+    }
+
+    return { sites, compSiteDetails };
+};
+
+export const checkSubjectSiteBracketing = (field, arg2, arg3, arg4, arg5) => {
+    let allData = null;
+    let textVal = null;
+
+    if (arg3 && typeof arg3 === 'object' && !Array.isArray(arg3)) {
+        allData = arg3;
+        textVal = arg2;
+    } else if (arg2 && typeof arg2 === 'object' && !Array.isArray(arg2)) {
+        allData = arg2;
+        textVal = null;
+    } else if (typeof field === 'object' && field !== null && !Array.isArray(field)) {
+        allData = field;
+    }
+
+    if (!allData || typeof allData !== 'object') return null;
+
+    const subjectSite = getSubjectSite(allData, textVal);
+    if (!subjectSite || isNaN(subjectSite) || subjectSite <= 0) {
+        return null;
+    }
+
+    const { sites } = getComparableSites(allData);
+    if (!Array.isArray(sites) || sites.length === 0) {
+        return null;
+    }
+
+    const min = Math.min(...sites);
+    const max = Math.max(...sites);
+
+    const minPct = (((min - subjectSite) / subjectSite) * 100).toFixed(1);
+    const maxPct = (((max - subjectSite) / subjectSite) * 100).toFixed(1);
+    const minSign = Number(minPct) > 0 ? '+' : '';
+    const maxSign = Number(maxPct) > 0 ? '+' : '';
+    const rangeSummary = `Range: ${min.toLocaleString()} sq ft (${minSign}${minPct}%) to ${max.toLocaleString()} sq ft (${maxSign}${maxPct}%)`;
+
+    const isBracketed = (min <= subjectSite && max >= subjectSite);
+
+    if (isBracketed) {
+        return {
+            isBracketed: true,
+            isMatch: true,
+            section: 'Sales Comparison',
+            field: 'Site',
+            message: `Subject Site (${subjectSite.toLocaleString()} sq ft) is bracketed by comparables (${rangeSummary}).`
+        };
+    }
+
+    if (min > subjectSite) {
+        return {
+            isBracketed: false,
+            isError: true,
+            section: 'Sales Comparison',
+            field: 'Site',
+            message: `Subject Site (${subjectSite.toLocaleString()} sq ft) is unbracketed (all comparables are larger). Lowest is ${min.toLocaleString()} sq ft (${minSign}${minPct}%). ${rangeSummary}.`
+        };
+    }
+
+    return {
+        isBracketed: false,
+        isError: true,
+        section: 'Sales Comparison',
+        field: 'Site',
+        message: `Subject Site (${subjectSite.toLocaleString()} sq ft) is unbracketed (all comparables are smaller). Highest is ${max.toLocaleString()} sq ft (${maxSign}${maxPct}%). ${rangeSummary}.`
+    };
+};
+
+export const checkCompSiteBracketing = (field, arg2, arg3, arg4, arg5) => {
+    const { allData, saleName, textVal } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
+    if (!allData || typeof allData !== 'object') return null;
+    if (saleName && String(saleName).toLowerCase() === 'subject') return null;
+
+    const subjectSite = getSubjectSite(allData);
+    if (!subjectSite || isNaN(subjectSite) || subjectSite <= 0) return null;
+
+    const compObj = (typeof getComparableGridData === 'function')
+        ? getComparableGridData(allData, saleName)
+        : (allData[saleName] || allData.SALES_GRID?.[saleName] || {});
+
+    const rawSite = (textVal !== null && textVal !== undefined && String(textVal).trim() !== '')
+        ? textVal
+        : (compObj['Site']
+            ?? compObj['Site Size']
+            ?? compObj['Total Site Size']
+            ?? compObj['SITE']
+            ?? '');
+
+    if (rawSite === undefined || rawSite === null || String(rawSite).trim() === '') {
+        return null;
+    }
+
+    const sNum = parseAreaToSqFt(rawSite);
+    if (isNaN(sNum) || sNum <= 0) {
+        return null;
+    }
+
+    const pct = ((sNum - subjectSite) / subjectSite) * 100;
+    const sign = pct > 0 ? '+' : '';
+    const numMatch = String(saleName || '').match(/\d+/);
+    const compLabel = numMatch ? `Comp #${numMatch[0]}` : (saleName || 'Comparable');
+
+    return {
+        isMatch: true,
+        section: 'Sales Comparison',
+        field: 'Site',
+        message: `${compLabel} Site (${sNum.toLocaleString()} sq ft, ${sign}${pct.toFixed(1)}%) vs Subject Site (${subjectSite.toLocaleString()} sq ft).`
+    };
+};
+
+export const checkSiteBracketing = (field, arg2, arg3, arg4, arg5) => {
+    const { saleName } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
+    const isSubject = !saleName || String(saleName).toLowerCase() === 'subject' || (Array.isArray(arg4) && arg4.some(p => String(p).toLowerCase() === 'subject'));
+    if (isSubject) {
+        return checkSubjectSiteBracketing(field, arg2, arg3, arg4, arg5);
+    }
+    return checkCompSiteBracketing(field, arg2, arg3, arg4, arg5);
+};
+

@@ -30,6 +30,49 @@ export const SubjectInfoCard = ({ id, title, fields, data, extractionAttempted, 
     } else if (field === 'Prior Service Comment' || field === 'Prior service comment' || field === 'Prior Service') {
       candidateKeys.push('Prior Service Comment', 'Prior service comment', 'Prior Service', 'prior_service_comment');
     } else if (
+      field === 'Limiting Conditions' ||
+      field === 'Statement of Assumptions and Limiting Conditions' ||
+      field === 'Limiting Conditions Presence'
+    ) {
+      candidateKeys.push(
+        'Limiting Conditions',
+        'Statement of Assumptions and Limiting Conditions',
+        'limiting_conditions_presence',
+        'limiting_conditions_pages'
+      );
+    } else if (
+      field === "Appraiser's Certification" ||
+      field === "Appraiser Certification" ||
+      field === "Certification Pages" ||
+      field === "Certification Presence"
+    ) {
+      candidateKeys.push(
+        "Appraiser's Certification",
+        "Appraiser Certification",
+        "certification_presence",
+        "certification_pages"
+      );
+    } else if (
+      field === 'UAD Details' ||
+      field === 'uad_details'
+    ) {
+      candidateKeys.push('UAD Details', 'uad_details', 'details_summary');
+    } else if (
+      field === 'UAD pages present in the report' ||
+      field === 'UAD Pages Present in the Report' ||
+      field === 'UAD Pages Present' ||
+      field === 'UAD Pages' ||
+      field === 'UAD Definitions Addendum'
+    ) {
+      candidateKeys.push(
+        'UAD pages present in the report',
+        'UAD Pages Present in the Report',
+        'UAD Pages Present',
+        'UAD Pages',
+        'UAD Definitions Addendum',
+        'has_uad_pages'
+      );
+    } else if (
       field === 'USPAP / Appraisal and Report Identification' ||
       field === 'Appraisal and Report Identification' ||
       field === 'USPAP Addendum' ||

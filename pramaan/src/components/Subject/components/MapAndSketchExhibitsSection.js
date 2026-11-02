@@ -504,17 +504,22 @@ const compareAddresses = (mapAddr, gridAddr) => {
   const mMapNum = normMap.match(/^(\d+)/);
   const mGridNum = normGrid.match(/^(\d+)/);
 
-  if (mMapNum && mGridNum && mMapNum[1] === mGridNum[1]) {
-    const mapWords = normMap.split(' ').slice(1);
-    const gridWords = normGrid.split(' ').slice(1);
-    const common = mapWords.filter(w => w.length > 1 && gridWords.some(gw => gw.includes(w) || w.includes(gw)));
-    if (common.length >= 1) {
-      return { status: 'match', label: 'Match' };
+  // If both addresses have a house number, they MUST match to be considered a match or near match
+  if (mMapNum && mGridNum) {
+    if (mMapNum[1] === mGridNum[1]) {
+      const mapWords = normMap.split(' ').slice(1);
+      const gridWords = normGrid.split(' ').slice(1);
+      const common = mapWords.filter(w => w.length > 1 && gridWords.some(gw => gw.includes(w) || w.includes(gw)));
+      if (common.length >= 1) {
+        return { status: 'match', label: 'Match' };
+      }
+      return { status: 'partial', label: 'Near Match' };
     }
-    return { status: 'partial', label: 'Near Match' };
+    // Different house numbers: DEFINITIVELY a mismatch (different properties on the same street)
+    return { status: 'mismatch', label: 'Mismatch' };
   }
 
-  // Check street words overlap if pin lacked house number
+  // Only check street words overlap if at least one address lacked a house number (e.g. street-only pin)
   const mapWords = normMap.split(' ');
   const gridWords = normGrid.split(' ');
   const common = mapWords.filter(w => w.length > 2 && gridWords.some(gw => gw === w));
@@ -528,7 +533,9 @@ const compareAddresses = (mapAddr, gridAddr) => {
 const getSubjectGridData = (data, allData) => {
   const root = { ...(allData || {}), ...(data || {}) };
   const subj = root.Subject || root.SUBJECT || {};
-  const sGrid = root.SALES_GRID || root['Sales Grid'] || {};
+  const sGrid = root.SALES_GRID || root['Sales Grid'] || root.sales_grid ||
+                root.clean_data?.['Sales Grid'] || root.fields?.['Sales Grid'] ||
+                root.clean_data?.SALES_GRID || root.fields?.SALES_GRID || {};
 
   const street = subj['Property Address'] || subj['Address'] || subj['Physical Address'] || root['Property Address'] || root['Physical Address'] || root['Full Address'] || sGrid['Subject Address'] || sGrid.Subject?.Address || '';
   const city = subj['City'] || root['City'] || '';
@@ -758,7 +765,104 @@ const getSketchGLA = (sketchItem) => {
   return '';
 };
 
-const evaluateRoomMatch = (sketchVal, impVal, gridVal, isBath = false, isGLA = false) => {
+const getPhotoRoomCounts = (data, allData) => {
+  const pc =
+    allData?.photo_room_counts ||
+    data?.photo_room_counts ||
+    allData?.clean_data?.photo_room_counts ||
+    data?.clean_data?.photo_room_counts ||
+    allData?.Subject?.photo_room_counts ||
+    data?.Subject?.photo_room_counts ||
+    allData?.PHOTO_ROOM_COUNTS ||
+    data?.PHOTO_ROOM_COUNTS ||
+    null;
+
+  let beds = pc?.bedroom_count ?? null;
+  let baths = pc?.full_bath_count !== undefined ? (pc.half_bath_count > 0 ? (pc.full_bath_count + 0.5) : pc.full_bath_count) : null;
+  let rooms = pc?.total_room_count ?? null;
+  let bedDisp = pc?.bedroom_display || '';
+  let bathDisp = pc?.bathroom_display || '';
+  let bathDet = pc?.bathroom_detail || '';
+  let roomDisp = pc?.total_room_display || '';
+
+  // Fallback to individual keys
+  if (beds === null) {
+    const b = allData?.['Bedroom Photo Count'] || data?.['Bedroom Photo Count'] || allData?.Subject?.['Bedroom Photo Count'] || data?.Subject?.['Bedroom Photo Count'];
+    if (b) {
+      beds = parseFloat(b);
+      bedDisp = `${beds} Bed${beds !== 1 ? 's' : ''}`;
+    }
+  }
+  if (baths === null) {
+    const ba = allData?.['Bathroom Photo Count'] || data?.['Bathroom Photo Count'] || allData?.Subject?.['Bathroom Photo Count'] || data?.Subject?.['Bathroom Photo Count'];
+    if (ba) {
+      const m = String(ba).match(/([0-9]+(?:\.[0-9]+)?)/);
+      if (m) baths = parseFloat(m[1]);
+      bathDisp = String(ba);
+    }
+  }
+  if (rooms === null) {
+    const r = allData?.['Total Rooms Photo Count'] || data?.['Total Rooms Photo Count'] || allData?.Subject?.['Total Rooms Photo Count'] || data?.Subject?.['Total Rooms Photo Count'];
+    if (r) {
+      rooms = parseFloat(r);
+      roomDisp = `${rooms} Rooms`;
+    }
+  }
+
+  // Fallback: analyze extracted_photos directly if needed
+  const photos = allData?.extracted_photos || data?.extracted_photos || allData?.clean_data?.extracted_photos || data?.clean_data?.extracted_photos || [];
+  if ((beds === null || baths === null) && photos.length > 0) {
+    const distinctBeds = new Set();
+    const distinctFullBaths = new Set();
+    const distinctHalfBaths = new Set();
+    const distinctLiving = new Set();
+    const distinctKitchen = new Set();
+    const distinctDining = new Set();
+
+    photos.forEach(p => {
+      const cat = (p?.category || '').toLowerCase();
+      if (cat.includes('comparable') || cat.includes('rental') || cat.includes('map') || cat.includes('sketch')) return;
+      const cap = (p?.caption || p?.title || p?.original_label || '').trim();
+      if (!cap) return;
+      const norm = cap.replace(/\s*\([a-zA-Z0-9]+\)$/, '').trim().toLowerCase();
+      if (/\b(?:bedroom|bdrm|bed\b|mbr\b|master\s*bed|primary\s*bed|guest\s*bed)\b/.test(norm)) distinctBeds.add(norm);
+      else if (/\b(?:half\s*bath|1\/2\s*bath|0?\.5\s*bath|powder\s*room)\b/.test(norm)) distinctHalfBaths.add(norm);
+      else if (/\b(?:full\s*bath|master\s*bath|primary\s*bath|bath\s*#?\s*\d|bathroom|bath\b)\b/.test(norm)) distinctFullBaths.add(norm);
+      else if (/\b(?:living|family\s*room|great\s*room)\b/.test(norm)) distinctLiving.add(norm);
+      else if (/\b(?:kitchen|kit\b)\b/.test(norm)) distinctKitchen.add(norm);
+      else if (/\b(?:dining|dinette)\b/.test(norm)) distinctDining.add(norm);
+    });
+
+    if (beds === null && distinctBeds.size > 0) {
+      beds = distinctBeds.size;
+      bedDisp = `${beds} Bed${beds !== 1 ? 's' : ''}`;
+    }
+    if (baths === null && (distinctFullBaths.size > 0 || distinctHalfBaths.size > 0)) {
+      const f = distinctFullBaths.size;
+      const h = distinctHalfBaths.size;
+      baths = h > 0 ? (f + 0.5) : f;
+      bathDisp = h > 0 ? `${f}.${h} Baths` : `${f}.0 Baths`;
+      bathDet = h > 0 ? `${f} Full, ${h} Half` : `${f} Full Bath${f !== 1 ? 's' : ''}`;
+    }
+    if (rooms === null && (distinctBeds.size > 0 || distinctLiving.size > 0 || distinctKitchen.size > 0)) {
+      rooms = distinctBeds.size + distinctLiving.size + distinctKitchen.size + distinctDining.size;
+      roomDisp = `${rooms} Rooms`;
+    }
+  }
+
+  return {
+    bedroom_count: beds,
+    bathroom_count: baths,
+    total_room_count: rooms,
+    bedroom_display: bedDisp || (beds !== null ? `${beds} Bed${beds !== 1 ? 's' : ''}` : '—'),
+    bathroom_display: bathDisp || (baths !== null ? `${baths} Bath(s)` : '—'),
+    bathroom_detail: bathDet || '',
+    total_room_display: roomDisp || (rooms !== null ? `${rooms} Rooms` : '—'),
+    gla_display: '—'
+  };
+};
+
+const evaluateRoomMatch = (sketchVal, impVal, gridVal, isBath = false, isGLA = false, photoVal = null) => {
   const parseNum = (v) => {
     if (v === null || v === undefined) return null;
     const m = String(v).replace(/,/g, '').match(/([0-9]+(?:\.[0-9]+)?)/);
@@ -768,8 +872,9 @@ const evaluateRoomMatch = (sketchVal, impVal, gridVal, isBath = false, isGLA = f
   const s = parseNum(sketchVal);
   const i = parseNum(impVal);
   const g = parseNum(gridVal);
+  const p = parseNum(photoVal);
 
-  if (s === null && i === null && g === null) {
+  if (s === null && i === null && g === null && p === null) {
     return { status: 'unknown', label: 'No Data', color: '#64748b', bg: '#f1f5f9', border: '#e2e8f0', isMatch: false };
   }
 
@@ -784,12 +889,49 @@ const evaluateRoomMatch = (sketchVal, impVal, gridVal, isBath = false, isGLA = f
     return `${num}`;
   };
 
-  // 3-Way Match
+  // 4-Way Match (All 4 sources match)
+  if (s !== null && i !== null && g !== null && p !== null && s === i && s === g && s === p) {
+    return {
+      status: 'match_4way',
+      label: '4-Way Match',
+      detail: `All 4 sources match: Sketch, Improvements, Sales Grid, and Photos (${fmt(s)})`,
+      color: '#15803d',
+      bg: '#dcfce7',
+      border: '#bbf7d0',
+      isMatch: true
+    };
+  }
+
+  // 3-Way Match across Sketch, Imp, Grid (with photo check)
   if (s !== null && i !== null && g !== null && s === i && s === g) {
+    if (p !== null && p === s) {
+      return {
+        status: 'match_4way',
+        label: '4-Way Match',
+        detail: `All 4 sources match (${fmt(s)})`,
+        color: '#15803d',
+        bg: '#dcfce7',
+        border: '#bbf7d0',
+        isMatch: true
+      };
+    }
+    return {
+      status: 'match_3way',
+      label: p !== null ? '3-Way Match' : '3-Way Match',
+      detail: `Sketch, Imp, and Grid match (${fmt(s)})${p !== null ? ` | Photos: ${fmt(p)}` : ''}`,
+      color: '#15803d',
+      bg: '#dcfce7',
+      border: '#bbf7d0',
+      isMatch: true
+    };
+  }
+
+  // If sketch is missing but Imp = Grid = Photo
+  if (s === null && i !== null && g !== null && p !== null && i === g && i === p) {
     return {
       status: 'match_3way',
       label: '3-Way Match',
-      detail: `All 3 sources match (${fmt(s)})`,
+      detail: `Improvements, Sales Grid, and Photos match (${fmt(i)})`,
       color: '#15803d',
       bg: '#dcfce7',
       border: '#bbf7d0',
@@ -929,7 +1071,11 @@ const getGridComparableData = (compIndex, compLabel, compStreet, data, allData, 
       `Comparable Sale ${i}`,
       `COMP_${i}`,
       `Comparable #${i} Address`,
-      `COMP_SALE_${i}`
+      `COMP_SALE_${i}`,
+      `Comparable Sale #${i}`,
+      `COMPARABLE SALE ${i}`,
+      `Comp #${i}`,
+      `Comp ${i}`
     ];
     let found = false;
     for (const k of candidateKeys) {
@@ -940,6 +1086,19 @@ const getGridComparableData = (compIndex, compLabel, compStreet, data, allData, 
           salesComps.push({ num: i, label: `Comp #${i}`, ...compData });
           found = true;
           break;
+        }
+      }
+    }
+    if (!found) {
+      const kPattern = new RegExp(`^(?:(?:COMPARABLE(?:\\s+SALE)?|COMP(?:_SALE)?)[_\\s]+#?\\s*${i}|${i})$`, 'i');
+      for (const [k, val] of Object.entries(sGrid)) {
+        if (kPattern.test(k.trim())) {
+          const compData = extractFromCompObj(val);
+          if (compData.address) {
+            salesComps.push({ num: i, label: `Comp #${i}`, ...compData });
+            found = true;
+            break;
+          }
         }
       }
     }
@@ -1023,9 +1182,24 @@ const getGridComparableData = (compIndex, compLabel, compStreet, data, allData, 
   if (compStreet && compStreet !== '—' && compStreet !== '(Address pin)') {
     if (isRentalLabel) {
       // Strictly match only against Rental Comps
+      // Pass 1: exact match
       for (const rc of rentalComps) {
         const cmpRes = compareAddresses(compStreet, rc.address);
-        if (cmpRes.status === 'match' || cmpRes.status === 'partial') {
+        if (cmpRes.status === 'match') {
+          return {
+            gridCompNum: rc.num,
+            gridCompLabel: rc.label,
+            ...rc,
+            isRental: true,
+            matchStatus: cmpRes.status,
+            matchLabel: cmpRes.label
+          };
+        }
+      }
+      // Pass 2: partial match (only if no exact match found)
+      for (const rc of rentalComps) {
+        const cmpRes = compareAddresses(compStreet, rc.address);
+        if (cmpRes.status === 'partial') {
           return {
             gridCompNum: rc.num,
             gridCompLabel: rc.label,
@@ -1038,9 +1212,24 @@ const getGridComparableData = (compIndex, compLabel, compStreet, data, allData, 
       }
     } else {
       // Strictly match only against Sales Comps
+      // Pass 1: exact match
       for (const sc of salesComps) {
         const cmpRes = compareAddresses(compStreet, sc.address);
-        if (cmpRes.status === 'match' || cmpRes.status === 'partial') {
+        if (cmpRes.status === 'match') {
+          return {
+            gridCompNum: sc.num,
+            gridCompLabel: sc.label,
+            ...sc,
+            isRental: false,
+            matchStatus: cmpRes.status,
+            matchLabel: cmpRes.label
+          };
+        }
+      }
+      // Pass 2: partial match (only if no exact match found)
+      for (const sc of salesComps) {
+        const cmpRes = compareAddresses(compStreet, sc.address);
+        if (cmpRes.status === 'partial') {
           return {
             gridCompNum: sc.num,
             gridCompLabel: sc.label,
@@ -1144,8 +1333,13 @@ const getGridComparableData = (compIndex, compLabel, compStreet, data, allData, 
 
 const buildProcessedExhibitsRows = (rawSourceList, mapItem, scanResult, data, allData, forceRental = false) => {
   const root = { ...(allData || {}), ...(data || {}) };
-  const sGrid = root.SALES_GRID || root['Sales Grid'] || {};
-  const rGrid = root.RENTAL_GRID || root['Rental Grid'] || root.RENTALS || root['Rentals'] || {};
+  const sGrid = root.SALES_GRID || root['Sales Grid'] || root.sales_grid ||
+                root.clean_data?.['Sales Grid'] || root.fields?.['Sales Grid'] ||
+                root.clean_data?.SALES_GRID || root.fields?.SALES_GRID || {};
+  const rGrid = root.RENTAL_GRID || root['Rental Grid'] || root.RENTALS || root['Rentals'] ||
+                root['Comparable Rental Data'] || root['Single Family Rent Schedule'] ||
+                root.clean_data?.['Comparable Rental Data'] || root.clean_data?.['Single Family Rent Schedule'] ||
+                root.fields?.['Comparable Rental Data'] || root.fields?.['Single Family Rent Schedule'] || {};
 
   // Dynamically count max sales comps and rental comps available in grid
   let maxSalesComps = 0;
@@ -1182,8 +1376,14 @@ const buildProcessedExhibitsRows = (rawSourceList, mapItem, scanResult, data, al
       ? (pinInfo.label?.toLowerCase()?.includes('rental') ? pinInfo.label : `Rental ${pinInfo.label || `#${idx + 1}`}`)
       : pinInfo.label;
 
-    const gridComp = getGridComparableData(idx, compLabel, pinInfo.street, data, allData, scanResult);
+    let gridComp = getGridComparableData(idx, compLabel, pinInfo.street, data, allData, scanResult);
     const photoComp = getComparablePhotoData({ ...pinInfo, gridComp, isRental }, idx, scanResult, allData, data);
+    if ((!gridComp || !gridComp.address || gridComp.address === '—') && photoComp?.address) {
+      const photoGridComp = getGridComparableData(idx, compLabel, photoComp.address, data, allData, scanResult);
+      if (photoGridComp && photoGridComp.address && photoGridComp.address !== '—') {
+        gridComp = photoGridComp;
+      }
+    }
 
     let num = null;
     if (gridComp?.gridCompNum) {
@@ -2830,16 +3030,17 @@ export const MapAndSketchExhibitsSection = ({
                             )}
                           </Stack>
 
-                          {/* Room Count & GLA Reconciliation: Building Sketch vs Improvements vs Sales Grid */}
+                          {/* Room Count & GLA Reconciliation: Building Sketch vs Improvements vs Sales Grid vs Photos */}
                           {(() => {
                             const impCounts = getImprovementsRoomCounts(data, allData);
                             const gridCounts = getSalesGridSubjectRoomCounts(data, allData);
+                            const photoCounts = getPhotoRoomCounts(data, allData);
                             const sketchGLA = getSketchGLA(sketchItem);
 
-                            const glaEval = evaluateRoomMatch(sketchGLA, impCounts.gla, gridCounts.gla, false, true);
-                            const bedEval = evaluateRoomMatch(roomSum.bedroom_count, impCounts.bedrooms, gridCounts.bedrooms, false);
-                            const bathEval = evaluateRoomMatch(roomSum.bathroom_count, impCounts.bathrooms, gridCounts.bathrooms, true);
-                            const totEval = evaluateRoomMatch(roomSum.total_rooms, impCounts.totalRooms, gridCounts.totalRooms, false);
+                            const glaEval = evaluateRoomMatch(sketchGLA, impCounts.gla, gridCounts.gla, false, true, null);
+                            const bedEval = evaluateRoomMatch(roomSum.bedroom_count, impCounts.bedrooms, gridCounts.bedrooms, false, false, photoCounts.bedroom_count);
+                            const bathEval = evaluateRoomMatch(roomSum.bathroom_count, impCounts.bathrooms, gridCounts.bathrooms, true, false, photoCounts.bathroom_count);
+                            const totEval = evaluateRoomMatch(roomSum.total_rooms, impCounts.totalRooms, gridCounts.totalRooms, false, false, photoCounts.total_room_count);
 
                             const rows = [
                               {
@@ -2849,6 +3050,8 @@ export const MapAndSketchExhibitsSection = ({
                                 sketchDetail: sketchGLA ? 'Calculated Floor Plan Area' : (sketchItem.areas?.length > 0 ? 'Canvas Area Extract' : 'See Area Table Below'),
                                 impDisplay: impCounts.gla ? `${Number(String(impCounts.gla).replace(/,/g, '')).toLocaleString()} Sq Ft` : '—',
                                 gridDisplay: gridCounts.gla ? `${Number(String(gridCounts.gla).replace(/,/g, '')).toLocaleString()} Sq Ft` : '—',
+                                photoDisplay: '—',
+                                photoDetail: 'Visual Only (Non-GLA)',
                                 eval: glaEval
                               },
                               {
@@ -2857,6 +3060,8 @@ export const MapAndSketchExhibitsSection = ({
                                 sketchDisplay: `${roomSum.bedroom_count} Bed${roomSum.bedroom_count !== 1 ? 's' : ''}`,
                                 impDisplay: impCounts.bedrooms ? `${impCounts.bedrooms} Bedrooms` : '—',
                                 gridDisplay: gridCounts.bedrooms ? `${gridCounts.bedrooms} Bedrooms` : '—',
+                                photoDisplay: photoCounts.bedroom_display || (photoCounts.bedroom_count ? `${photoCounts.bedroom_count} Bed${photoCounts.bedroom_count !== 1 ? 's' : ''}` : '—'),
+                                photoDetail: 'Photo Addendum Labels',
                                 eval: bedEval
                               },
                               {
@@ -2865,6 +3070,8 @@ export const MapAndSketchExhibitsSection = ({
                                 sketchDisplay: roomSum.bathroom_display || `${roomSum.bathroom_count} Bath`,
                                 impDisplay: impCounts.bathrooms ? `${impCounts.bathrooms} Bath(s)` : '—',
                                 gridDisplay: gridCounts.bathrooms ? `${gridCounts.bathrooms} Bath(s)` : '—',
+                                photoDisplay: photoCounts.bathroom_display || (photoCounts.bathroom_count ? `${photoCounts.bathroom_count} Bath(s)` : '—'),
+                                photoDetail: photoCounts.bathroom_detail || 'Full/Half Bath Count',
                                 eval: bathEval
                               },
                               {
@@ -2874,6 +3081,8 @@ export const MapAndSketchExhibitsSection = ({
                                 sketchDetail: '(Bedrooms + Living + Dining + Kitchen)',
                                 impDisplay: impCounts.totalRooms ? `${impCounts.totalRooms} Rooms` : '—',
                                 gridDisplay: gridCounts.totalRooms ? `${gridCounts.totalRooms} Rooms` : '—',
+                                photoDisplay: photoCounts.total_room_display || (photoCounts.total_room_count ? `${photoCounts.total_room_count} Rooms` : '—'),
+                                photoDetail: '(Bedrooms + Living + Dining + Kitchen)',
                                 eval: totEval
                               }
                             ];
@@ -2896,7 +3105,7 @@ export const MapAndSketchExhibitsSection = ({
                                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                     <LayersIcon fontSize="small" sx={{ color: '#4f46e5' }} />
                                     <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#0f172a' }}>
-                                      Room Count & GLA Reconciliation: Building Sketch vs Improvements vs Sales Grid
+                                      Room Count & GLA Reconciliation: Building Sketch vs Improvements vs Sales Grid vs Photos
                                     </Typography>
                                   </Box>
                                   <Chip
@@ -2917,10 +3126,11 @@ export const MapAndSketchExhibitsSection = ({
                                   <Table size="small">
                                     <TableHead sx={{ bgcolor: '#f8fafc' }}>
                                       <TableRow>
-                                        <TableCell sx={{ fontWeight: 700, width: '22%' }}>Appraisal Metric</TableCell>
-                                        <TableCell sx={{ fontWeight: 700, width: '26%' }}>Building Sketch Canvas</TableCell>
-                                        <TableCell sx={{ fontWeight: 700, width: '22%' }}>Improvements Section</TableCell>
-                                        <TableCell sx={{ fontWeight: 700, width: '18%' }}>Sales Grid (Subject)</TableCell>
+                                        <TableCell sx={{ fontWeight: 700, width: '18%' }}>Appraisal Metric</TableCell>
+                                        <TableCell sx={{ fontWeight: 700, width: '20%' }}>Building Sketch Canvas</TableCell>
+                                        <TableCell sx={{ fontWeight: 700, width: '18%' }}>Improvements Section</TableCell>
+                                        <TableCell sx={{ fontWeight: 700, width: '16%' }}>Sales Grid (Subject)</TableCell>
+                                        <TableCell sx={{ fontWeight: 700, width: '16%' }}>Photo Addendum (Labels)</TableCell>
                                         <TableCell sx={{ fontWeight: 700, width: '12%' }}>Audit Status</TableCell>
                                       </TableRow>
                                     </TableHead>
@@ -2962,6 +3172,16 @@ export const MapAndSketchExhibitsSection = ({
                                             </Typography>
                                           </TableCell>
                                           <TableCell sx={{ verticalAlign: 'middle' }}>
+                                            <Typography variant="body2" sx={{ fontWeight: 600, color: '#334155' }}>
+                                              {r.photoDisplay}
+                                            </Typography>
+                                            {r.photoDetail && (
+                                              <Typography variant="caption" sx={{ color: '#94a3b8', fontSize: '0.68rem', display: 'block' }}>
+                                                {r.photoDetail}
+                                              </Typography>
+                                            )}
+                                          </TableCell>
+                                          <TableCell sx={{ verticalAlign: 'middle' }}>
                                             <Tooltip title={r.eval.detail || r.eval.label} arrow>
                                               <Chip
                                                 size="small"
@@ -2984,7 +3204,7 @@ export const MapAndSketchExhibitsSection = ({
                                 </TableContainer>
 
                                 <Typography variant="caption" sx={{ color: '#64748b', mt: 1.25, display: 'block', fontSize: '0.72rem', fontStyle: 'italic' }}>
-                                  * Note: As per ANSI Z765 & Fannie Mae guidelines, Gross Living Area (GLA) measures finished above-grade exterior dimensions. Total Rooms includes finished above-grade living rooms, bedrooms, kitchens, and dining rooms; bathrooms, hallways, basements, and utility rooms are excluded. In multi-unit (Form 1025) appraisals, Improvements shows total property count while Sales Grid reflects the subject evaluation unit.
+                                  * Note: As per ANSI Z765 & Fannie Mae guidelines, Gross Living Area (GLA) measures finished above-grade exterior dimensions. Total Rooms includes finished above-grade living rooms, bedrooms, kitchens, and dining rooms; bathrooms, hallways, basements, and utility rooms are excluded. Photo Addendum counts reflect distinctly labeled interior photos. In multi-unit (Form 1025) appraisals, Improvements shows total property count while Sales Grid reflects the subject evaluation unit.
                                 </Typography>
                               </Paper>
                             );

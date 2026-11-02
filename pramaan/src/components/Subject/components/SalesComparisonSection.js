@@ -1,6 +1,7 @@
 import React from 'react';
 import { EditableField } from './FormComponents';
 import { Tooltip, IconButton, Paper, Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow } from '@mui/material';
+import { checkFinalValueBracketing, getOpinionOfMarketValue, getComparableSalesPrices } from '../../../validations/salesComparisonValidation';
 import LibraryBooksIcon from '@mui/icons-material/LibraryBooks';
 
 
@@ -59,6 +60,32 @@ const SalesComparisonSection = ({
   };
 
   const subjectObj = getSubjectData();
+  const fullData = allData || data;
+  const bracketingResult = checkFinalValueBracketing(
+    "OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $",
+    null,
+    fullData
+  );
+
+  const getAdditionalFieldValue = (field) => {
+    if (data && data[field] !== undefined && data[field] !== null && data[field] !== '') return data[field];
+    if (data?.SALES_TRANSFER && data.SALES_TRANSFER[field] !== undefined && data.SALES_TRANSFER[field] !== '') return data.SALES_TRANSFER[field];
+    if (data?.SALES_GRID && data.SALES_GRID[field] !== undefined && data.SALES_GRID[field] !== '') return data.SALES_GRID[field];
+    if (data?.RECONCILIATION && data.RECONCILIATION[field] !== undefined && data.RECONCILIATION[field] !== '') return data.RECONCILIATION[field];
+    const noDollar = typeof field === 'string' ? field.replace(/\s*\$\s*$/, '') : field;
+    const withDollar = typeof field === 'string' && !field.endsWith('$') ? `${field} $` : field;
+    if (data?.[noDollar] !== undefined && data[noDollar] !== '') return data[noDollar];
+    if (data?.[withDollar] !== undefined && data[withDollar] !== '') return data[withDollar];
+    if (allData) {
+      if (allData[field] !== undefined && allData[field] !== null && allData[field] !== '') return allData[field];
+      if (allData.SALES_TRANSFER && allData.SALES_TRANSFER[field] !== undefined && allData.SALES_TRANSFER[field] !== '') return allData.SALES_TRANSFER[field];
+      if (allData.SALES_GRID && allData.SALES_GRID[field] !== undefined && allData.SALES_GRID[field] !== '') return allData.SALES_GRID[field];
+      if (allData.RECONCILIATION && allData.RECONCILIATION[field] !== undefined && allData.RECONCILIATION[field] !== '') return allData.RECONCILIATION[field];
+      if (allData[noDollar] !== undefined && allData[noDollar] !== '') return allData[noDollar];
+      if (allData[withDollar] !== undefined && allData[withDollar] !== '') return allData[withDollar];
+    }
+    return '';
+  };
 
   return (
     <>
@@ -71,6 +98,19 @@ const SalesComparisonSection = ({
             </Tooltip>
           )}
         </Box>
+        {/* {bracketingResult && (
+          <Box sx={{ p: 1.5, pb: 0 }}>
+            <Alert
+              severity={bracketingResult.isError ? "error" : "success"}
+              sx={{
+                fontWeight: 500,
+                fontSize: '0.875rem'
+              }}
+            >
+              <strong>{bracketingResult.isError ? "Bracketing Error:" : "Bracketing Status:"}</strong> {bracketingResult.message}
+            </Alert>
+          </Box>
+        )} */}
         <TableContainer>
           <Table size="small" aria-label="sales comparison table" className="sales-comparison-table">
             <TableHead>
@@ -271,6 +311,74 @@ const SalesComparisonSection = ({
                   </React.Fragment>
                 );
               })}
+              {(() => {
+                const finalVal = getOpinionOfMarketValue(fullData);
+                const { salePrices, adjPrices } = getComparableSalesPrices(fullData);
+                if (!finalVal && salePrices.length === 0 && adjPrices.length === 0) return null;
+                const isError = bracketingResult?.isError;
+
+                return (
+                  <TableRow
+                    sx={{
+                      backgroundColor: isError ? '#ffebee' : '#f1f8e9',
+                      borderTop: '2px solid rgba(224, 224, 224, 1)'
+                    }}
+                  >
+                    <TableCell sx={{ fontWeight: 'bold', borderRight: '1px solid rgba(224, 224, 224, 1)' }}>
+                      Opinion of Market Value (Bracketing)
+                    </TableCell>
+                    <TableCell
+                      sx={{
+                        fontWeight: 'bold',
+                        borderRight: '1px solid rgba(224, 224, 224, 1)',
+                        backgroundColor: isError ? '#ffcdd2' : '#c8e6c9',
+                        color: isError ? '#b71c1c' : '#1b5e20'
+                      }}
+                    >
+                      <Tooltip title={bracketingResult?.message || "Opinion of Market Value"} arrow>
+                        <span>
+                          {finalVal ? `$${finalVal.toLocaleString()}` : 'N/A'}
+                          {isError ? ' ⚠️ (Unbracketed)' : ' ✓ (Bracketed)'}
+                        </span>
+                      </Tooltip>
+                    </TableCell>
+                    {comparableSales.map((sale, cidx) => {
+                      const compObj = getCompData(sale);
+                      const sp = compObj['Sale Price'] || compObj['Sale Price $'] || '';
+                      const asp = compObj['Adjusted Sale Price of Comparable'] || compObj['Adjusted Sale Price of Comparable $'] || compObj['Adjusted Sale Price'] || '';
+                      const getPctData = (val) => {
+                        if (!finalVal || !val) return null;
+                        const cleanNum = parseFloat(String(val).replace(/[^0-9.]/g, ''));
+                        if (isNaN(cleanNum) || cleanNum <= 0) return null;
+                        const pct = ((cleanNum - finalVal) / finalVal) * 100;
+                        const sign = pct > 0 ? '+' : '';
+                        return {
+                          cleanNum,
+                          pct,
+                          str: sign + pct.toFixed(1) + '%'
+                        };
+                      };
+                      const spData = getPctData(sp);
+                      const aspData = getPctData(asp);
+
+                      return (
+                        <TableCell
+                          key={cidx}
+                          sx={{
+                            borderRight: '1px solid rgba(224, 224, 224, 1)',
+                            fontSize: '0.8rem'
+                          }}
+                        >
+                          <div><strong>Sale:</strong> {sp || 'N/A'}{spData ? ` (${spData.str})` : ''}</div>
+                          <div>
+                            <strong>Adj:</strong> {asp || 'N/A'}{aspData ? ` (${aspData.str})` : ''}
+                          </div>
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                );
+              })()}
             </TableBody>
           </Table>
         </TableContainer>
@@ -290,10 +398,10 @@ const SalesComparisonSection = ({
                     <TableCell>
                       <EditableField
                         fieldPath={[field]}
-                        value={data[field] || ''}
+                        value={getAdditionalFieldValue(field)}
                         onDataChange={(path, val) => handleDataChange(path, val)} editingField={editingField} setEditingField={setEditingField}
                         isMissing={extractionAttempted && (!data[field] || data[field] === '')}
-                        allData={allData}
+                        allData={allData || data}
                         isEditable={true}
                         manualValidations={manualValidations}
                         handleManualValidation={handleManualValidation}

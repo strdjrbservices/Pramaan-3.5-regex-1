@@ -77,8 +77,8 @@ export const checkMaterialCondition = (field, text) => {
 export const checkHeatingFuel = (field, text) => {
     if (field !== 'Fuel') return null;
     const value = String(text || '').trim().toLowerCase();
-    if (value && !['gas', 'oil', 'electric', 'elec'].includes(value)) {
-        return { isError: true, message: `Fuel is '${text}'. Expected 'Gas' or 'Oil'. Please verify.` };
+    if (value && !['gas', 'oil', 'propane', 'electric', 'elec', 'Propane'].includes(value)) {
+        return { isError: true, message: `Fuel is '${text}'. Expected 'Propane', 'Gas' or 'Oil'. Please verify.` };
     }
     return { isMatch: true };
 };
