@@ -21,8 +21,22 @@ const Form1004And1007 = ({
   onSiteRevisionButtonClick, onImprovementsRevisionButtonClick, onSalesGridRevisionButtonClick,
   onReconciliationRevisionButtonClick, onCostApproachRevisionButtonClick, onCertificationRevisionButtonClick,
   on1007RevisionButtonClick, selectedFile, revisionHandlers
-}) => (
-  <>
+}) => {
+  const is1007Present = Boolean(
+    formType === '1004 + 1007' ||
+    allData?.formType === '1004 + 1007' ||
+    (typeof formType === 'string' && formType.includes('1007')) ||
+    (typeof allData?.formType === 'string' && allData?.formType.includes('1007')) ||
+    (typeof data?.['Form Type'] === 'string' && data['Form Type'].includes('1007')) ||
+    (typeof allData?.['Form Type'] === 'string' && allData['Form Type'].includes('1007')) ||
+    data?.has_1007 === true ||
+    allData?.has_1007 === true ||
+    data?.clean_data?.has_1007 === true ||
+    allData?.clean_data?.has_1007 === true
+  );
+
+  return (
+    <>
     <ActionButtons
       handleStateRequirementCheck={handleStateRequirementCheck}
       stateReqLoading={stateReqLoading}
@@ -173,7 +187,9 @@ const Form1004And1007 = ({
       revisionHandlers={revisionHandlers}
     />
 
-    <ComparableRentScheduleSection
+    {is1007Present && (
+      <>
+        <ComparableRentScheduleSection
       data={data}
       allData={allData}
       extractionAttempted={extractionAttempted}
@@ -212,6 +228,8 @@ const Form1004And1007 = ({
       handleManualValidation={handleManualValidation}
       revisionHandlers={revisionHandlers}
     />
+      </>
+    )}
 
     <GridInfoCard
       id="reconciliation-section"
@@ -366,6 +384,7 @@ const Form1004And1007 = ({
     <MapAndSketchExhibitsSection id="map-sketch-exhibits-section" data={data} allData={allData} selectedFile={selectedFile} />
     <PhotosGallerySection id="photos-exhibits-section" data={data} allData={allData} extractedPhotos={allData?.EXTRACTED_PHOTOS || data?.EXTRACTED_PHOTOS || []} />
   </>
-);
+  );
+};
 
 export default Form1004And1007;

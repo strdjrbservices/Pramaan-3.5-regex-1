@@ -15,6 +15,7 @@ import { checkLenderAddressInconsistency as checkLenderAddressHtmlInconsistency,
 import {
   checkLeaseDates,
   checkOtherBasement,
+  checkRentOtherBasementAdjustment,
   checkSubjectMonthlyRental,
   checkSubjectUtilities,
   checkSubjectFurniture,
@@ -32,7 +33,8 @@ import {
   checkRentSubjectGrossLivingAreaConsistency,
   checkRentGrossLivingAreaAdjustment,
   checkRentSubjectOtherConsistency,
-  checkRentOtherAdjustment
+  checkRentOtherAdjustment,
+  checkMinimumRentalComparables
 } from '../../../validations/rentScheduleValidation';
 import { checkIncomeApproachFieldsNotBlank, checkIncomeApproach1007Required, INCOME_APPROACH_1007_REQUIRED_FIELDS } from '../../../validations/incomeApproachValidation';
 import { checkPudInformationFieldsNotBlank, checkPudControlAndFees } from '../../../validations/pudInformationValidation';
@@ -296,7 +298,7 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'Vehicle Storage Adjustment': [checkVersion1VehicleStorageAdjustmentConsistency],
 
     // Sales Comparison Validations
-    'Address': [checkSubjectAddressInconsistency],
+    'Address': [checkSubjectAddressInconsistency, checkMinimumRentalComparables],
     'Condition': [checkRentSubjectConditionConsistency, checkRentConditionAdjustment, checkConditionAdjustment], 'Condition Adjustment': [checkRentConditionAdjustment, checkConditionAdjustment],
     'Age': [checkRentSubjectAgeConsistency, checkRentAgeAdjustment, checkActualAgeAdjustment, checkSubjectAgeConsistency], 'Age Adjustment': [checkRentAgeAdjustment, checkActualAgeAdjustment],
     'Bedrooms': [checkBedroomsAdjustment], 'Bedrooms Adjustment': [checkBedroomsAdjustment],
@@ -352,6 +354,15 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'Furniture': [checkSubjectFurniture],
     'Adjusted Monthly Rent': [checkSubjectAdjustedMonthlyRent],
     'Other (e.g., basement, etc.)': [checkOtherBasement],
+    'Other (e.g., basement)': [checkOtherBasement],
+    'Other (e.g., basement etc.)': [checkOtherBasement],
+    'Other Basement': [checkOtherBasement],
+    'Other (e.g., basement, etc.) Adjustment': [checkRentOtherBasementAdjustment],
+    'Other (e.g., basement) Adjustment': [checkRentOtherBasementAdjustment],
+    'Other Basement Adjustment': [checkRentOtherBasementAdjustment],
+    'Other (e.g., basement, etc.) Adj': [checkRentOtherBasementAdjustment],
+    'Other (e.g., basement) Adj': [checkRentOtherBasementAdjustment],
+    'Other Basement Adj': [checkRentOtherBasementAdjustment],
     'Other:': [checkRentSubjectOtherConsistency, checkRentOtherAdjustment],
     'Other: Adjustment': [checkRentOtherAdjustment],
     // 'Other': [checkRentSubjectOtherConsistency, checkRentOtherAdjustment],
@@ -776,7 +787,13 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
 
   const infoOfSalesFieldsToValidate = [
     "There are ____ comparable properties currently offered for sale in the subject neighborhood ranging in price from$ ___to $___",
-    "There are ___comparable sales in the subject neighborhoodwithin the past twelvemonths ranging in sale price from$___ to $____"
+    "There are ___comparable sales in the subject neighborhoodwithin the past twelvemonths ranging in sale price from$___ to $____",
+    "THERE ARE ____ COMPARABLE PROPERTIES CURRENTLY OFFERED FOR SALE IN THE SUBJECT NEIGHBORHOOD RANGING IN PRICE FROM $ ___ TO $ ___",
+    "THERE ARE ___ COMPARABLE PROPERTIES CURRENTLY OFFERED FOR SALE IN THE SUBJECT NEIGHBORHOOD RANGING IN PRICE FROM$ ___TO $___",
+    "THERE ARE ___COMPARABLE SALES IN THE SUBJECT NEIGHBORHOODWITHIN THE PAST TWELVEMONTHS RANGING IN SALE PRICE FROM$___ TO $____",
+    "THERE ARE ___ COMPARABLE SALES IN THE SUBJECT NEIGHBORHOOD WITHIN THE PAST TWELVE MONTHS RANGING IN SALE PRICE FROM $ ___ TO $ ___",
+    "Comparable Properties Currently Offered for Sale",
+    "Comparable Sales in the Subject Neighborhood within the Past Twelve Months"
   ];
   infoOfSalesFieldsToValidate.forEach(field => {
     if (!validationRegistry[field]) {
@@ -891,6 +908,15 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
 
     if (!validationResult) {
       let checksToRun = [...(validationRegistry[lookupField] || [])];
+      if (checksToRun.length === 0 && typeof lookupField === 'string') {
+        const lowerLookup = lookupField.toLowerCase();
+        if (lowerLookup.includes('comparable properties currently offered for sale') ||
+            lowerLookup.includes('properties currently offered for sale') ||
+            lowerLookup.includes('comparable sales in the subject neighborhood') ||
+            (lowerLookup.includes('comparable sales') && lowerLookup.includes('twelve'))) {
+          checksToRun = [checkInfoOfSalesFieldsNotBlank];
+        }
+      }
       if (isSupervisory && !checksToRun.includes(checkSupervisoryAppraiserFields)) {
         checksToRun = [checkSupervisoryAppraiserFields, ...checksToRun];
       }
@@ -999,14 +1025,7 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
               return <div style={{ whiteSpace: 'pre-wrap' }}>{value}</div>;
             }
             if (isValEmpty) {
-              const isSupervisoryField = String(fieldPath?.[fieldPath.length - 1] || '').toLowerCase().includes('supervisory') ||
-                (Array.isArray(fieldPath) && fieldPath.some(p => String(p).toLowerCase().includes('supervisory')));
-              const isGreenSupervisory = isSupervisoryField && validation?.style?.backgroundColor === '#91ff00ff';
-              return (
-                <span style={{ color: '#155724', fontStyle: 'italic', fontSize: '0.8rem', userSelect: 'none' }}>
-                  {isGreenSupervisory ? '(Not Present)' : ''}
-                </span>
-              );
+              return null;
             }
             return (
               <HighlightKeywords

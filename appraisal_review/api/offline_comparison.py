@@ -182,7 +182,7 @@ def extract_report_data_offline(file_path: str) -> Dict[str, Any]:
             # Estimate pages if not embedded PDF
             page_count = 1
     else:
-        pdf_res = extract_fields_from_pdf_offline(file_path, extract_eo_ocr=False)
+        pdf_res = extract_fields_from_pdf_offline(file_path)
         if isinstance(pdf_res, dict):
             raw_fields = pdf_res.get("fields")
             if isinstance(raw_fields, dict):
@@ -2944,50 +2944,161 @@ def compare_contract_offline(main_report_path: str, contract_path: str) -> List[
 
 def compare_engagement_letter_offline(main_report_path: str, letter_path: str) -> Dict[str, Any]:
     """
-    Compares Property Address and Appraiser Fee between main report and engagement letter offline.
+    Compares Property Address, Vendor's Fee, Lender Name, and Lender Address
+    between main report (hybrid PDF or XML) and engagement letter (PDF/DOC) offline.
     """
     rep = extract_report_data_offline(main_report_path)
-    letter_rep = extract_report_data_offline(letter_path)
-
     rep_fields = rep.get("fields", {})
-    letter_fields = letter_rep.get("fields", {})
+    subj_fields = rep_fields.get("SUBJECT", {})
 
-    rep_addr = str(_get_field_val(rep_fields, "SUBJECT", "Property Address") or "").strip()
-    rep_fee = _clean_numeric(_get_field_val(rep_fields, "SUBJECT", "Appraiser Fee") or _get_field_val(rep_fields, "CONTRACT", "Fee"))
+    # 1. Main Report - Property Address
+    rep_addr = str(
+        subj_fields.get("Full Address")
+        or subj_fields.get("Property Address")
+        or ""
+    ).strip()
+    city = subj_fields.get("City", "")
+    state = subj_fields.get("State", "")
+    zip_c = subj_fields.get("Zip Code", "") or subj_fields.get("Postal Code", "")
+    if rep_addr and city and str(city).lower() not in rep_addr.lower():
+        rep_addr = f"{rep_addr}, {city}, {state} {zip_c}".strip()
+    # Clean OCR labels or prefixes
+    rep_addr = re.sub(r'^(?:Property\s*Address\s*[:\s]*)', '', rep_addr, flags=re.IGNORECASE).strip()
+    rep_addr = re.sub(r'\s*State\b', '', rep_addr, flags=re.IGNORECASE)
+    rep_addr = re.sub(r'\s*Zip\s*Code\b', '', rep_addr, flags=re.IGNORECASE)
 
-    letter_addr = str(_get_field_val(letter_fields, "SUBJECT", "Property Address") or "").strip()
-    letter_fee = _clean_numeric(_get_field_val(letter_fields, "SUBJECT", "Appraiser Fee"))
+    # 2. Main Report - Vendor's Fee
+    rep_fee = _clean_numeric(
+        subj_fields.get("Appraiser Fee")
+        or subj_fields.get("Appraiser's Fee")
+        or rep_fields.get("CONTRACT", {}).get("Fee")
+        or rep_fields.get("INVOICE", {}).get("Fee Amount")
+        or rep_fields.get("INVOICE", {}).get("Invoice Amount")
+    )
+    if rep_fee is None:
+        fee_patterns = [
+            re.compile(r'(?:(?:Amount|Fee|compensation)\s+(?:paid|due)\s+to|(?:Amount|Fee)\s+paid\s+to|paid\s+to)\s+(?:the\s+)?appraiser[^0-9$\n]{0,50}\$?\s*([0-9,]+(?:\.\d{2})?)', re.IGNORECASE),
+            re.compile(r'(?:(?:has\s+|have\s+)?agreed\s+to\s+)?(?:compensate|pay)\s+(?:the\s+|an?\s+)?(?:independent\s+)?appraiser[^0-9$\n]{0,50}\$?\s*([0-9,]+(?:\.\d{2})?)', re.IGNORECASE),
+            re.compile(r"""(?:appraiser(?:'s)?\s+compensation|compensation\s+(?:paid\s+|due\s+)?to\s+(?:the\s+)?(?:independent\s+)?appraiser)[^0-9$\n]{0,50}\$?\s*([0-9,]+(?:\.\d{2})?)""", re.IGNORECASE),
+            re.compile(r'(?:Fee\s+disclosures?(?:\s+are|\s+is|\s+was)?|Appraisal\s+Fee\s+disclosure)[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)', re.IGNORECASE),
+            re.compile(r'Fee\s+paid\s+to\s+(?:the\s+)?appraiser[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)', re.IGNORECASE),
+            re.compile(r"""(?:Total\s+|Actual\s+|Agreed\s+)?(?:Appraiser(?:'s)?\s*Fee|Appraisal\s*Fee|Vendor(?:'s)?\s*Fee)[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)""", re.IGNORECASE),
+            re.compile(r'(?:Invoice\s*Amount|Invoice\s*Total|Total\s*Amount\s*Due|TOTAL\s*DUE|Amount\s*Due)[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)', re.IGNORECASE),
+            re.compile(r'\bFee\s+(?:for\s+(?:this|the)\s+appraisal\s+)?(?:is|was|of|:|=)\s*\$?\s*([0-9,]+(?:\.\d{2})?)', re.IGNORECASE)
+        ]
+        for pat in fee_patterns:
+            for p in rep.get("pages_text", []):
+                txt = p.get("text", "")
+                for m in pat.finditer(txt):
+                    snippet = txt[max(0, m.start() - 30):min(len(txt), m.end() + 30)].lower()
+                    if any(bad in snippet for bad in ['hoa', 'pud', 'per month', 'per year', 'late fee', 'cancellation', 'simple', 'sf', 'sq ft']):
+                        continue
+                    val = _clean_numeric(m.group(1))
+                    if val is not None and 50.0 <= val <= 25000.0:
+                        rep_fee = val
+                        break
+                if rep_fee is not None:
+                    break
 
-    if not letter_addr and letter_rep.get("pages_text"):
-        for p in letter_rep["pages_text"]:
-            m = re.search(r"property\s*address\s*[:\s]?\s*([^\n\r]+)", p["text"], re.IGNORECASE)
-            if m:
-                letter_addr = m.group(1).strip()
-                break
+    # 3. Main Report - Lender Name
+    rep_lender = str(
+        subj_fields.get("Lender/Client")
+        or subj_fields.get("Lender Name")
+        or subj_fields.get("Client")
+        or subj_fields.get("Lender")
+        or ""
+    ).strip()
 
-    if letter_fee is None and letter_rep.get("pages_text"):
-        for p in letter_rep["pages_text"]:
-            m = re.search(r"(?:appraisal|vendor)?\s*fee\s*[:\s\$]?\s*([\d,]+)", p["text"], re.IGNORECASE)
-            if m:
-                letter_fee = _clean_numeric(m.group(1))
-                break
+    # 4. Main Report - Lender Address
+    rep_lender_addr = str(
+        subj_fields.get("Address (Lender/Client)")
+        or subj_fields.get("Lender Address")
+        or subj_fields.get("Client Address")
+        or ""
+    ).strip()
 
-    addr_match = _addresses_match(rep_addr, letter_addr) if (rep_addr and letter_addr) else False
+    # --- Extract from Engagement Letter ---
+    letter_pages = _extract_full_text_with_pages(letter_path)
+    full_letter_text = "\n".join(p.get("text", "") for p in letter_pages)
+
+    # 1. Letter Property Address
+    m_l_addr = re.search(r'Property\s*Address\s*:\s*([^\n\r]+)', full_letter_text, re.IGNORECASE)
+    letter_addr = m_l_addr.group(1).strip() if m_l_addr else ""
+    if not letter_addr:
+        m_l_addr = re.search(r'(?:Subject\s+Property|Property\s+Location)\s*[:\s]?\s*([^\n\r]+)', full_letter_text, re.IGNORECASE)
+        if m_l_addr:
+            letter_addr = m_l_addr.group(1).strip()
+    letter_addr = re.sub(r'\s*\(\s*Additional\s*Resources\s*\)', '', letter_addr, flags=re.IGNORECASE).strip()
+
+    # 2. Letter Vendor's Fee
+    m_l_fee = re.search(r"""(?:Total\s+Vendor(?:'s)?\s*Fee|Net\s+Vendor(?:'s)?\s*Fee|(?:Vendor(?:'s)?|Apprais(?:al|er))\s*Fee|Appraisal\s*Cost|Agreed\s*Fee|Fee\s*Amount)\s*[:\$]?\s*([0-9,]+(?:\.\d{2})?)""", full_letter_text, re.IGNORECASE)
+    letter_fee = _clean_numeric(m_l_fee.group(1)) if m_l_fee else None
+    if letter_fee is None:
+        m_l_fee = re.search(r'(?:(?:appraisal|vendor)?\s*fee)\s*[:\s\$]?\s*([0-9,]+(?:\.\d{2})?)', full_letter_text, re.IGNORECASE)
+        if m_l_fee:
+            letter_fee = _clean_numeric(m_l_fee.group(1))
+
+    # 3. Letter Lender Name & Address
+    letter_lender_name = ""
+    letter_lender_addr = ""
+    m_both = re.search(
+        r'(?:Client|Lender)\s*:\s*(.+?)\s+(?:Client\s+Address|Lender\s+Address)\s*:\s*(.+?)(?=\n\s*\n|\n\s*(?:Branch|Vendor|Order|Loan|AMC|Product|Contact|Borrower|\Z))',
+        full_letter_text,
+        re.IGNORECASE | re.DOTALL
+    )
+    if m_both:
+        letter_lender_name = m_both.group(1).strip()
+        letter_lender_addr = re.sub(r'\s+', ' ', m_both.group(2)).strip()
+    else:
+        m_name = re.search(r'(?:Client|Lender)(?:\s+Name)?\s*:\s*([^\n\r]+)', full_letter_text, re.IGNORECASE)
+        if m_name:
+            letter_lender_name = m_name.group(1).strip()
+        m_addr_l = re.search(r'(?:Client|Lender)\s+Address\s*:\s*(.+?)(?=\n\s*\n|\n\s*(?:Branch|Vendor|Order|Loan|AMC|Product|Contact|\Z))', full_letter_text, re.IGNORECASE | re.DOTALL)
+        if m_addr_l:
+            letter_lender_addr = re.sub(r'\s+', ' ', m_addr_l.group(1)).strip()
+
+    # Comparisons
+    clean_rep_addr = re.sub(r'(?:Property\s*Address|State|Zip\s*Code)', ' ', rep_addr, flags=re.IGNORECASE).strip()
+    clean_letter_addr = re.sub(r'(?:Property\s*Address|State|Zip\s*Code)', ' ', letter_addr, flags=re.IGNORECASE).strip()
+    addr_match = _addresses_match(clean_rep_addr, clean_letter_addr) if (clean_rep_addr and clean_letter_addr) else False
+
     fee_match = (rep_fee is not None and letter_fee is not None and abs(rep_fee - letter_fee) < 1.0)
+    lender_match = _names_match(rep_lender, letter_lender_name) if (rep_lender and letter_lender_name) else False
+    lender_addr_match = _addresses_match(rep_lender_addr, letter_lender_addr) if (rep_lender_addr and letter_lender_addr) else False
 
     return {
         "comparison_results": [
             {
                 "field": "Property Address",
+                "main_report_value": rep_addr or "N/A",
                 "old_value": rep_addr or "N/A",
                 "engagement_letter_value": letter_addr or "N/A",
+                "new_value": letter_addr or "N/A",
                 "status": "Match" if addr_match else "Mismatch",
             },
             {
                 "field": "Vendor's Fee",
-                "old_value": f"${rep_fee:,.0f}" if rep_fee is not None else "N/A",
-                "engagement_letter_value": f"${letter_fee:,.0f}" if letter_fee is not None else "N/A",
+                "main_report_value": f"${rep_fee:,.2f}" if rep_fee is not None else "N/A",
+                "old_value": f"${rep_fee:,.2f}" if rep_fee is not None else "N/A",
+                "engagement_letter_value": f"${letter_fee:,.2f}" if letter_fee is not None else "N/A",
+                "new_value": f"${letter_fee:,.2f}" if letter_fee is not None else "N/A",
                 "status": "Match" if fee_match else "Mismatch",
+            },
+            {
+                "field": "Lender Name",
+                "main_report_value": rep_lender or "N/A",
+                "old_value": rep_lender or "N/A",
+                "engagement_letter_value": letter_lender_name or "N/A",
+                "new_value": letter_lender_name or "N/A",
+                "status": "Match" if lender_match else "Mismatch",
+            },
+            {
+                "field": "Lender Address",
+                "main_report_value": rep_lender_addr or "N/A",
+                "old_value": rep_lender_addr or "N/A",
+                "engagement_letter_value": letter_lender_addr or "N/A",
+                "new_value": letter_lender_addr or "N/A",
+                "status": "Match" if lender_addr_match else "Mismatch",
             },
         ]
     }

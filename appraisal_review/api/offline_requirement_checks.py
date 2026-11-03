@@ -320,26 +320,57 @@ def evaluate_state_requirements(pdf_path: str, extracted_data: Optional[Dict[str
         or _get_field_val(data, "Certification", "AMC Reg. Number")
         or data.get("AMC License #")
     )
-    if amc_lic_val and len(re.sub(r"[^A-Za-z0-9]", "", str(amc_lic_val))) < 2:
-        amc_lic_val = None
+    if amc_lic_val:
+        s_val = str(amc_lic_val).strip().strip(".,;:)")
+        if not re.search(r"\d", s_val) or s_val.lower() in {"number", "registration", "license", "tration", "istration", "none", "n/a", "na", "amc"}:
+            amc_lic_val = None
 
     amc_lic_page, amc_lic_snip = _find_keyword_in_pages(
+
         pages_text,
+
         [
-            r"(?:AMC\s*(?:Reg|License|Registration)(?:\.|\s)*#?|Registration\s*(?:No\.?|#)|AMC\s*#)\s*[:\-]?\s*([A-Za-z0-9\-]+)",
-            r"AMC\s*(?:License|Registration|Reg|#)[:\s]*([A-Z0-9\-]+)",
+
+            r"\bAMC\s*(?:Registration|License|Reg|Lic)?\b\.?\s*(?:Number|Num|No|#)?\b\.?\s*[:=\-#]\s*([A-Za-z0-9\.\-]+)",
+
+            r"\b(?:AMC\s+)?(?:Registration|License)\s*(?:Number|Num|No|#)\b\.?\s*[:=\-#]\s*([A-Za-z0-9\.\-]+)",
+
+            r"\bAMC\s*(?:Registration|License|Reg|Lic)?\b\.?\s*(?:Number|Num|No|#)?\b\.?\s*(?:is\b)?\s*([A-Za-z0-9\.\-]*\d[A-Za-z0-9\.\-]*)",
+
             r"(558\.?000312)",
+
         ]
+
     )
-    chosen_lic = amc_lic_snip or amc_lic_val
+
+    if amc_lic_snip:
+
+        s_snip = str(amc_lic_snip).strip().strip(".,;:)")
+
+        if not re.search(r"\d", s_snip) or s_snip.lower() in {"number", "registration", "license", "tration", "istration", "none", "n/a", "na", "amc"}:
+
+            amc_lic_snip = None
+
+
+
+    chosen_lic = amc_lic_val or amc_lic_snip
+
     if chosen_lic or amc_lic_page:
+
         lic_clean = str(chosen_lic or "").strip()
+
         lic_clean = re.sub(r"[\.,;:)]+$", "", lic_clean).strip()
-        if lic_clean and lic_clean.lower() not in ["none", "n/a", "na"]:
+
+        if lic_clean and lic_clean.lower() not in ["none", "n/a", "na", "tration", "istration", "registration", "license", "number"] and re.search(r"\d", lic_clean):
+
             disp_lic = f"AMC License/Registration number = {lic_clean}."
+
         else:
-            disp_lic = "AMC License/Registration number included."
+
+            disp_lic = "AMC License/Registration number included." 
+
         details.append({
+
             "requirement": "AMC License/Registration Number Included",
             "status": "Fulfilled",
             "value_or_comment": disp_lic
@@ -381,7 +412,72 @@ def evaluate_state_requirements(pdf_path: str, extracted_data: Optional[Dict[str
             details.append({
                 "requirement": "AMC Number and Expiration Date Included",
                 "status": "Not Fulfilled",
-                "value_or_comment": "Illinois requirement: AMC License #558000312 and expiration date (12/31/2026) missing."
+                "value_or_comment": "Please include our AMC License # 558000312 and Expiration date 12/31/2026 in the report.",
+                "rejection_comment": "Please include our AMC License # 558000312 and Expiration date 12/31/2026 in the report."
+            })
+
+    # Georgia Specific Checks: AMC Number 289 and CO Detectors after Year Built 2008
+    if subject_state == "GA":
+        ga_amc_lic_val = (
+            _get_field_val(data, "Subject", "AMC License #")
+            or _get_field_val(data, "Certification", "AMC License #")
+            or _get_field_val(data, "Subject", "AMC Reg. Number")
+            or _get_field_val(data, "Certification", "AMC Reg. Number")
+            or _get_field_val(data, "Subject", "AMC #")
+            or _get_field_val(data, "Certification", "AMC #")
+            or data.get("AMC License #")
+            or data.get("AMC Reg. Number")
+            or data.get("AMC #")
+            or ""
+        )
+        has_289_val = "289" in str(ga_amc_lic_val)
+        ga_289_page, ga_289_snip = _find_keyword_in_pages(
+            pages_text,
+            [
+                r"AMC\s*(?:License|Registration|Reg|#|Number)?[:\s\-]*289\b",
+                r"\b289\b"
+            ]
+        )
+        has_ga_amc = has_289_val or (ga_289_page is not None and "289" in str(ga_289_snip or ""))
+        details.append({
+            "requirement": "AMC Number 289 Included (GA)",
+            "status": "Fulfilled" if has_ga_amc else "Not Fulfilled",
+            "value_or_comment": "AMC # 289 included." if has_ga_amc else "Please include AMC Number 289 in the report.",
+            "rejection_comment": "" if has_ga_amc else "Please include AMC Number 289 in the report."
+        })
+
+        yr_built_val = _get_field_val(data, "Subject", "Year Built") or _get_field_val(data, "Improvements", "Year Built") or data.get("Year Built") or ""
+        m_yr = re.search(r"\b(19\d\d|20\d\d)\b", str(yr_built_val))
+        yr_built = int(m_yr.group(1)) if m_yr else 0
+        if yr_built > 2008:
+            ga_co_val = (
+                _get_field_val(data, "Subject", "CO detector comment")
+                or _get_field_val(data, "Subject", "CO detector(s) comment")
+                or _get_field_val(data, "Subject", "Smoke detector comment")
+                or _get_field_val(data, "Improvements", "Additional features")
+                or _get_field_val(data, "Subject", "Comments on Improvements")
+                or data.get("CO detector comment")
+                or ""
+            )
+            ga_co_page, _ = _find_keyword_in_pages(
+                pages_text,
+                [
+                    r"carbon\s*monoxide\s*detector(?:s)?",
+                    r"co\s*detector(?:s)?",
+                    r"co\s*alarm(?:s)?",
+                    r"smoke\s*(?:and|/|&)?\s*co\s*detector"
+                ]
+            )
+            has_ga_co = bool(ga_co_val or ga_co_page)
+            if has_ga_co and ga_co_val:
+                val_l = str(ga_co_val).lower()
+                if any(neg in val_l for neg in ["not installed", "missing", "not present", "no co detector", "no carbon monoxide"]):
+                    has_ga_co = False
+            details.append({
+                "requirement": "CO Detectors for Properties Built After 2008 (GA)",
+                "status": "Fulfilled" if has_ga_co else "Not Fulfilled",
+                "value_or_comment": "CO detectors installed in general sleeping areas." if has_ga_co else "For properties built after 2008, Georgia requires carbon monoxide detectors be installed in general sleeping areas in all new one- and two-family homes and townhomes of three stories or less.",
+                "rejection_comment": "" if has_ga_co else "For properties built after 2008, Georgia requires carbon monoxide detectors be installed in general sleeping areas in all new one- and two-family homes and townhomes of three stories or less."
             })
 
     # 4. AMC Fee Included in Report (NV, NM, UT)
@@ -391,8 +487,12 @@ def evaluate_state_requirements(pdf_path: str, extracted_data: Optional[Dict[str
     amc_fee_page, amc_fee_snip = _find_keyword_in_pages(
         pages_text,
         [
-            r"AMC\s*Fee[:\s]*\$?\s*([0-9,]+(?:\.\d{2})?)",
-            r"Management\s*Fee[:\s]*\$?\s*([0-9,]+(?:\.\d{2})?)",
+            r"(?:appraisal\s+management\s+company|amc)[^0-9$\n]{0,80}(?:retain(?:s|ed)?|fee|compensation|charge|amount|portion)[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)",
+            r"(?:retained\s+by\s+(?:the\s+)?(?:appraisal\s+management\s+company|amc)|amc\s+(?:portion|retain(?:s|ed)?))[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)",
+            r"\bAMC\s+Fee[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)",
+            r"(?:Appraisal\s+)?Management\s+(?:Company\s+)?Fee[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)",
+            r"\bAMC\s+Compensation[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)",
+            r"\bFee\s+paid\s+to\s+(?:the\s+)?(?:appraisal\s+management\s+company|amc)[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)",
         ]
     )
     if amc_fee_val or amc_fee_page:
@@ -412,7 +512,8 @@ def evaluate_state_requirements(pdf_path: str, extracted_data: Optional[Dict[str
         details.append({
             "requirement": "AMC Fee Included in Report",
             "status": "Not Fulfilled",
-            "value_or_comment": f"AMC fee is required for {subject_state} but not found."
+            "value_or_comment": f"AMC fee is required for {subject_state} but not found.",
+            "rejection_comment": f"AMC fee disclosure missing for {subject_state}."
         })
 
     # 5 & 6. California (CA) Specific Checks
@@ -547,8 +648,27 @@ def evaluate_state_requirements(pdf_path: str, extracted_data: Optional[Dict[str
             details.append({
                 "requirement": "CO Detector Presence Confirmed; Photos Provided",
                 "status": "Not Fulfilled",
-                "value_or_comment": "Illinois requirement: CO detector presence confirmation and photos required."
+                "value_or_comment": "Please comment if Carbon Monoxide detector is present and provide photos.",
+                "rejection_comment": "Please comment if Carbon Monoxide detector is present and provide photos."
             })
+
+        # Mandatory Appraisal Statement (Home Inspector License Act [225 ILCS 441] & 68 Ill. Adm. Code 1410)
+        stmt_page, _ = _find_keyword_in_pages(
+            pages_text,
+            [
+                r"225\s*ILCS\s*441",
+                r"Home\s+Inspector\s+License\s+Act",
+                r"68\s+Ill\.?\s+Adm\.?\s+Code\s+1410",
+                r"standards\s+of\s+practice.*?home\s+inspection"
+            ]
+        )
+        has_il_stmt = bool(stmt_page or "225 ILCS 441" in full_text or "Home Inspector License Act" in full_text)
+        details.append({
+            "requirement": "Mandatory Appraisal Statement (IL Home Inspector License Act)",
+            "status": "Fulfilled" if has_il_stmt else "Not Fulfilled",
+            "value_or_comment": "Mandatory Illinois Home Inspector License Act statement included." if has_il_stmt else "Mandatory Illinois statement regarding Home Inspector License Act [225 ILCS 441] and 68 Ill. Adm. Code 1410 is missing.",
+            "rejection_comment": "" if has_il_stmt else "Mandatory Illinois statement regarding Home Inspector License Act [225 ILCS 441] and 68 Ill. Adm. Code 1410 is missing."
+        })
 
     # 8. Invoice attached to report (NY except Plaza Home Mortgage; WI)
     if subject_state in ["NY", "WI"]:
@@ -569,6 +689,43 @@ def evaluate_state_requirements(pdf_path: str, extracted_data: Optional[Dict[str
                 "requirement": "Invoice Attached to Report",
                 "status": "Fulfilled" if has_invoice else "Not Fulfilled",
                 "value_or_comment": "Invoice attached to report." if has_invoice else "Wisconsin requirement: Copy of invoice must be attached to the report."
+            })
+
+            # Wisconsin requirement: Confirm CO detector(s) are installed
+            wi_co_val = (
+                _get_field_val(data, "Subject", "CO detector comment")
+                or _get_field_val(data, "Subject", "CO detector(s) comment")
+                or _get_field_val(data, "Subject", "Smoke detector comment")
+                or _get_field_val(data, "Improvements", "Additional features")
+                or _get_field_val(data, "Subject", "Comments on Improvements")
+                or data.get("CO detector comment")
+                or data.get("CO detector(s) comment")
+                or ""
+            )
+            wi_co_page, wi_co_snip = _find_keyword_in_pages(
+                pages_text,
+                [
+                    r"carbon\s*monoxide\s*detector(?:s)?",
+                    r"co\s*detector(?:s)?",
+                    r"smoke\s*(?:and|/|&)?\s*co\s*detector",
+                    r"co\s*alarm(?:s)?",
+                    r"(?:carbon\s*monoxide|co)\s*detector(?:s)?\s*(?:are\s*)?installed"
+                ]
+            )
+            photos = data.get("EXTRACTED_PHOTOS") or data.get("photos") or []
+            has_co_photo = any("CO" in str(p.get("caption", "")).upper() or "CARBON MONOXIDE" in str(p.get("caption", "")).upper() for p in photos if isinstance(p, dict))
+            has_co_installed = bool(wi_co_val or wi_co_page or has_co_photo)
+
+            if has_co_installed and wi_co_val:
+                val_lower = str(wi_co_val).lower()
+                if any(neg in val_lower for neg in ["not installed", "missing", "not present", "no co detector", "no carbon monoxide"]):
+                    has_co_installed = False
+
+            disp_co = str(wi_co_val).strip() if (has_co_installed and wi_co_val) else ("CO detector(s) are confirmed installed." if has_co_installed else "Wisconsin requirement: Confirm CO detector(s) are installed.")
+            details.append({
+                "requirement": "Confirm CO Detector(s) Are Installed",
+                "status": "Fulfilled" if has_co_installed else "Not Fulfilled",
+                "value_or_comment": disp_co
             })
         elif subject_state == "NY":
             lender_name = str(
@@ -689,7 +846,53 @@ def evaluate_state_requirements(pdf_path: str, extracted_data: Optional[Dict[str
     total_count = len(details)
     summary = f"State requirement analysis completed for State: {subject_state or 'General'}. {fulfilled_count} of {total_count} state checks fulfilled."
 
+    validation_results = []
+    final_rejection_comments = []
+    escalation_required = False
+    escalation_reason = ""
+
+    for d in details:
+        st = d.get("status", "Fulfilled")
+        req_name = d.get("requirement", "")
+        val_or_comm = d.get("value_or_comment", "")
+        rej_comm = d.get("rejection_comment", "")
+        evidence = val_or_comm if st in ["Fulfilled", "Pass", "OK"] else ""
+        issue = val_or_comm if st in ["Not Fulfilled", "Fail", "Needs Review"] else ""
+        if not rej_comm and st in ["Not Fulfilled", "Fail"]:
+            rej_comm = issue
+        if st == "Needs Review":
+            escalation_required = True
+            escalation_reason = issue
+        v_status = "PASS" if st in ["Fulfilled", "Pass", "OK"] else ("NOT_APPLICABLE" if st == "Not Applicable" else "FAIL")
+        if st == "Needs Review":
+            v_status = "ESCALATE"
+        validation_results.append({
+            "requirement": req_name,
+            "status": v_status,
+            "evidence_found": evidence,
+            "issue": issue,
+            "rejection_comment": rej_comm
+        })
+        if rej_comm and rej_comm not in final_rejection_comments:
+            final_rejection_comments.append(rej_comm)
+
+    if escalation_required:
+        overall_status = "ESCALATE"
+    elif any(d["status"] in ["Not Fulfilled", "Fail"] for d in details):
+        overall_status = "REJECT"
+    else:
+        overall_status = "PASS"
+
+    lender_client = _get_field_val(data, "Subject", "Lender/Client") or _get_field_val(data, "Subject", "Client Name") or data.get("Lender/Client") or ""
+
     return {
+        "property_state": subject_state or "",
+        "client_name": str(lender_client).strip(),
+        "overall_status": overall_status,
+        "validation_results": validation_results,
+        "final_rejection_comments": final_rejection_comments,
+        "escalation_required": escalation_required,
+        "escalation_reason": escalation_reason,
         "summary": summary,
         "details": details
     }

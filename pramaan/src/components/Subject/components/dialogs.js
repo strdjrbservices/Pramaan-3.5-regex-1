@@ -171,7 +171,8 @@ export const NotepadDialog = ({ open, onClose, notes, onNotesChange }) => {
     );
 };
 
-export const EngagementLetterDialog = ({ open, onClose, onCompare, loading, result, error, selectedFile, engagementLetterFile, mainData }) => {
+export const EngagementLetterDialog = ({ open, onClose, onCompare, loading, result, error, selectedFile, xmlFile, engagementLetterFile, mainData }) => {
+    const activeReportFile = selectedFile || xmlFile;
     const handleClose = () => {
         onClose();
     };
@@ -206,8 +207,8 @@ export const EngagementLetterDialog = ({ open, onClose, onCompare, loading, resu
                                 {result.map((item, index) => (
                                     <TableRow key={index} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
                                         <TableCell>{item.field}</TableCell>
-                                        <TableCell>{item.main_report_value || 'N/A'}</TableCell>
-                                        <TableCell>{item.engagement_letter_value || 'N/A'}</TableCell>
+                                        <TableCell>{item.main_report_value || item.old_value || 'N/A'}</TableCell>
+                                        <TableCell>{item.engagement_letter_value || item.new_value || 'N/A'}</TableCell>
                                         <TableCell align="center">
                                             {item.status === 'Match' ? <CheckCircleOutlineIcon color="success" /> : <ErrorOutlineIcon color="error" />}
                                         </TableCell>
@@ -218,14 +219,14 @@ export const EngagementLetterDialog = ({ open, onClose, onCompare, loading, resu
                     </TableContainer>
                 ) : !loading && (
                     <Typography>
-                        Click 'Compare' to check for consistency in Property Address and Vendor's Fee between the main report and the engagement letter.
+                        Click 'Compare' to check for consistency in Property Address, Vendor's Fee, Lender Name, and Lender Address between the main report and the engagement letter.
                     </Typography>
                 )}
             </DialogContent>
             <DialogActions>
                 <Button onClick={handleClose}>Close</Button>
                 {!result && (
-                    <Button onClick={onCompare} variant="contained" disabled={loading || !selectedFile || !engagementLetterFile}>Compare</Button>
+                    <Button onClick={onCompare} variant="contained" disabled={loading || !activeReportFile || !engagementLetterFile}>Compare</Button>
                 )}
                 {result && (
                     <Button onClick={onCompare} variant="contained" disabled={loading}>Reload</Button>

@@ -22,13 +22,18 @@ const Form1073 = ({
   comparableRents, RentSchedulesFIELDS2, rentScheduleReconciliationFields,
   selectedFile, revisionHandlers
 }) => {
-  const hasRentSchedule =
+  const is1007Present = Boolean(
     formType === '1073 + 1007' ||
     allData?.formType === '1073 + 1007' ||
-    Boolean(data?.['Comparable Rent Schedule Reconciliation']) ||
-    Boolean(allData?.['Comparable Rent Schedule Reconciliation']) ||
-    Boolean(data?.['Single Family Rent Schedule']) ||
-    Boolean(allData?.['Single Family Rent Schedule']);
+    (typeof formType === 'string' && formType.includes('1007')) ||
+    (typeof allData?.formType === 'string' && allData?.formType.includes('1007')) ||
+    (typeof data?.['Form Type'] === 'string' && data['Form Type'].includes('1007')) ||
+    (typeof allData?.['Form Type'] === 'string' && allData['Form Type'].includes('1007')) ||
+    data?.has_1007 === true ||
+    allData?.has_1007 === true ||
+    data?.clean_data?.has_1007 === true ||
+    allData?.clean_data?.has_1007 === true
+  );
 
   return (
     <>
@@ -240,7 +245,7 @@ const Form1073 = ({
         revisionHandlers={revisionHandlers}
       />
 
-      {hasRentSchedule && (
+      {is1007Present && (
         <>
           <ComparableRentScheduleSection
             data={data}

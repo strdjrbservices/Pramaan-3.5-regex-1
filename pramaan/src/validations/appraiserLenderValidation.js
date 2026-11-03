@@ -436,20 +436,14 @@ export const checkSupervisoryAppraiserFields = (field, text, allData, fieldPath)
 
     const isNotPresent = isBlankOrNotPresent(val);
 
-    // If values are NOT present in the fields -> SHOW VALIDATED (Green)
+    // Supervisory section is (only if required): if blank/not present, no validation error or false green match
     if (isNotPresent) {
-        return {
-            isMatch: true,
-            skipBlankFilter: true,
-            message: `'${displayField}' is not present (validated).`
-        };
+        return null;
     }
 
-    // If values ARE present in the fields -> SHOW ERROR (Red)
     return {
-        isError: true,
-        skipBlankFilter: true,
-        message: `'${displayField}' in SUPERVISORY APPRAISER (ONLY IF REQUIRED) section must be blank / not present.`
+        isMatch: true,
+        message: `'${displayField}' is verified.`
     };
 };
 
