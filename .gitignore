@@ -78,3 +78,8 @@ scratch_test/
 *.swo
 .DS_Store
 Thumbs.db
+
+# Sample appraisal XML and PDF files
+*.xml
+*.XML
+*.pdf

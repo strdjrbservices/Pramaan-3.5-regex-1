@@ -114,6 +114,12 @@ const ComparableRentScheduleSection = ({
   const getRentalCompObject = (rentKey) => {
     const rentAliases = getRentKeyAliases(rentKey);
     const containers = [
+      data?.['Comparable Rent Schedule'],
+      allData?.['Comparable Rent Schedule'],
+      data?.clean_data?.['Comparable Rent Schedule'],
+      allData?.clean_data?.['Comparable Rent Schedule'],
+      data?.['RENT_SCHEDULE_GRID'],
+      allData?.['RENT_SCHEDULE_GRID'],
       data?.['Comparable Rental Data'],
       allData?.['Comparable Rental Data'],
       data?.clean_data?.['Comparable Rental Data'],
@@ -199,13 +205,22 @@ const ComparableRentScheduleSection = ({
     return '';
   };
 
-  const activeComparableRents = (comparableRents || []).filter((rent, idx) => {
+  const isCompDataPresent = (rent) => {
     const rentData = getRentalCompObject(rent);
-    if (!rentData) return idx < 3;
-    const hasVal = Object.values(rentData).some(
-      (val) => val !== undefined && val !== null && String(val).trim() !== ''
+    if (!rentData || typeof rentData !== 'object') return false;
+    const addr = String(rentData['Address'] || rentData['Street Address'] || rentData['PropertyStreetAddress'] || '').trim();
+    if (addr && addr !== '0' && addr !== '-' && addr.toLowerCase() !== 'n/a') return true;
+    const rentVal = String(rentData['Monthly Rental'] || rentData['Adjusted Monthly Rent'] || rentData['MonthlyRentAmount'] || '').trim();
+    if (rentVal && rentVal !== '0' && rentVal !== '$0' && rentVal !== '-' && rentVal.toLowerCase() !== 'n/a') return true;
+    return Object.values(rentData).some(
+      (val) => val !== undefined && val !== null && typeof val !== 'object' && String(val).trim() !== ''
     );
-    return hasVal || idx < 3;
+  };
+
+  const presentCompsCount = (comparableRents || []).filter(rent => isCompDataPresent(rent)).length;
+
+  const activeComparableRents = (comparableRents || []).filter((rent, idx) => {
+    return isCompDataPresent(rent) || idx < 3;
   });
 
   return (
@@ -222,17 +237,50 @@ const ComparableRentScheduleSection = ({
           )}
         </div>
       </div>
+      {presentCompsCount < 3 && (
+        <div
+          className="alert alert-danger m-3 mb-2"
+          role="alert"
+          style={{
+            fontWeight: 600,
+            fontSize: '0.875rem',
+            backgroundColor: '#f8d7da',
+            color: '#721c24',
+            border: '1px solid #f5c6cb',
+            borderRadius: '4px',
+            padding: '10px 14px'
+          }}
+        >
+          <span style={{ marginRight: '8px' }}>⚠️</span>
+          <span>minimum 3 rental comparables will be present</span>
+        </div>
+      )}
       <div className="card-body p-0 table-container" style={{ overflowX: 'auto' }}>
         <table className="table table-bordered mb-0" style={{ fontSize: '0.8rem', borderCollapse: 'collapse', minWidth: '900px' }}>
           <thead className="table-light">
             <tr>
               <th className="border border-gray-400 p-1 bg-gray-200 align-middle" style={{ width: '18%' }}>ITEM</th>
               <th className="border border-gray-400 p-1 bg-gray-200 align-middle" style={{ width: '18%' }}>SUBJECT</th>
-              {activeComparableRents.map((rent, idx) => (
-                <th key={idx} colSpan={2} className="border border-gray-400 p-1 bg-gray-200 text-center align-middle">
-                  {rent}
-                </th>
-              ))}
+              {activeComparableRents.map((rent, idx) => {
+                const isPresent = isCompDataPresent(rent);
+                const isMissingRequired = idx < 3 && !isPresent;
+
+                return (
+                  <th
+                    key={idx}
+                    colSpan={2}
+                    className="border border-gray-400 p-1 bg-gray-200 text-center align-middle"
+                    style={isMissingRequired ? { backgroundColor: '#f8d7da', color: '#721c24' } : {}}
+                  >
+                    <div>{rent}</div>
+                    {isMissingRequired && (
+                      <div style={{ fontSize: '0.7rem', color: '#dc3545', fontWeight: 'bold' }}>
+                        (Missing - Required)
+                      </div>
+                    )}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>

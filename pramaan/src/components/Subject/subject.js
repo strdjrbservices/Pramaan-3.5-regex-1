@@ -177,6 +177,18 @@ const normalizeFullFileData = (raw) => {
   if (!normalized['Project Analysis'] || typeof normalized['Project Analysis'] !== 'object') {
     normalized['Project Analysis'] = normalized.PROJECT_ANALYSIS;
   }
+  if (!normalized.PROJECT_SITE || typeof normalized.PROJECT_SITE !== 'object') {
+    normalized.PROJECT_SITE = raw.PROJECT_SITE || raw['Project Site'] || raw.clean_data?.['Project Site'] || raw.SITE || {};
+  }
+  if (!normalized['Project Site'] || typeof normalized['Project Site'] !== 'object') {
+    normalized['Project Site'] = normalized.PROJECT_SITE;
+  }
+  if (!normalized.UNIT_DESCRIPTIONS || typeof normalized.UNIT_DESCRIPTIONS !== 'object') {
+    normalized.UNIT_DESCRIPTIONS = raw.UNIT_DESCRIPTIONS || raw['Unit Descriptions'] || raw.clean_data?.['Unit Descriptions'] || {};
+  }
+  if (!normalized['Unit Descriptions'] || typeof normalized['Unit Descriptions'] !== 'object') {
+    normalized['Unit Descriptions'] = normalized.UNIT_DESCRIPTIONS;
+  }
 
   const sectionKeyMap = {
     CONTRACT: [
@@ -219,6 +231,44 @@ const normalizeFullFileData = (raw) => {
         Object.keys(raw[secKey]).forEach(subKey => {
           if (subKey.toLowerCase() !== 'subject' && normalized[subKey] === undefined) {
             normalized[subKey] = raw[secKey][subKey];
+          }
+        });
+      } else if (secKey === 'Comparable Rental Data' || secKey === 'COMPARABLE_RENTAL_DATA') {
+        Object.keys(raw[secKey]).forEach(subKey => {
+          if (normalized[subKey] === undefined) {
+            normalized[subKey] = raw[secKey][subKey];
+          }
+          const m = subKey.match(/(\d+)/);
+          if (m) {
+            const num = m[1];
+            if (normalized[`COMPARABLE Rental No #${num}`] === undefined) {
+              normalized[`COMPARABLE Rental No #${num}`] = raw[secKey][subKey];
+            }
+            if (normalized[`COMPARABLE Rental No. #${num}`] === undefined) {
+              normalized[`COMPARABLE Rental No. #${num}`] = raw[secKey][subKey];
+            }
+            if (normalized[`Comparable Rental No #${num}`] === undefined) {
+              normalized[`Comparable Rental No #${num}`] = raw[secKey][subKey];
+            }
+          }
+          if (subKey.toLowerCase() === 'subject rental') {
+            normalized['Subject Rental'] = raw[secKey][subKey];
+          }
+        });
+      } else if (secKey === 'Comparable Rent Schedule' || secKey === 'RENT_SCHEDULE_GRID') {
+        Object.keys(raw[secKey]).forEach(subKey => {
+          if (normalized[subKey] === undefined) {
+            normalized[subKey] = raw[secKey][subKey];
+          }
+          const m = subKey.match(/(\d+)/);
+          if (m) {
+            const num = m[1];
+            if (normalized[`COMPARABLE NO. ${num}`] === undefined) {
+              normalized[`COMPARABLE NO. ${num}`] = raw[secKey][subKey];
+            }
+            if (normalized[`Comparable Rent #${num}`] === undefined) {
+              normalized[`Comparable Rent #${num}`] = raw[secKey][subKey];
+            }
           }
         });
       } else {
@@ -322,12 +372,13 @@ const detectFormTypeFromXmlString = (xmlString) => {
     }
 
     const combined = (reportAttrs + ' ' + formMatches.join(' ') + ' ' + formIdentifiers.join(' ')).toUpperCase();
+    const hasRentTag = /<(?:RESIDENTIAL_RENT_SCHEDULE|SINGLE_FAMILY_RENT_SCHEDULE)\b/i.test(xmlString);
     const has1007 = [...formMatches, ...formIdentifiers].some(f =>
       /\b(?:1007|FNM\s*1007|FRE\s*1000|SRX)\b|SINGLE\s*FAMILY\s*(?:COMPARABLE\s*)?RENT/i.test(f)
-    );
+    ) || (hasRentTag && !combined.includes('1025') && !combined.includes('SMALL RESIDENTIAL'));
 
     if (combined.includes('1025') || combined.includes('SMALL RESIDENTIAL') || combined.includes('2-4 UNIT') || combined.includes('FRE72')) {
-      return '1025';
+      return has1007 ? '1025 + 1007' : '1025';
     }
     if (combined.includes('1073') || combined.includes('CONDOMINIUM') || combined.includes('FRE465')) {
       return has1007 ? '1073 + 1007' : '1073';
@@ -514,6 +565,8 @@ const getCleanDisplayJson = (data) => {
     ['PUD_INFO', 'PUD Information'],
     ['PROJECT_INFO', 'Project Information'],
     ['PROJECT_ANALYSIS', 'Project Analysis'],
+    ['PROJECT_SITE', 'Project Site'],
+    ['UNIT_DESCRIPTIONS', 'Unit Descriptions'],
     ['MARKET_CONDITIONS', 'Market Conditions Addendum'],
     ['CONDO_COOP_PROJECTS', 'Condo / Coop Projects'],
     ['CONDO_FORECLOSURE', 'Condo Foreclosure'],
@@ -1039,7 +1092,7 @@ function Subject({ defaultFormType }) {
       'Vehicle Storage Spaces': [version1Validation.checkVersion1VehicleStorageAdjustmentConsistency],
       'Vehicle Storage Adjustment': [version1Validation.checkVersion1VehicleStorageAdjustmentConsistency],
 
-      'Address': [salesComparisonValidation.checkSubjectAddressInconsistency],
+      'Address': [salesComparisonValidation.checkSubjectAddressInconsistency, rentScheduleValidation.checkMinimumRentalComparables],
       'Condition': [salesComparisonValidation.checkConditionAdjustment], 'Condition Adjustment': [salesComparisonValidation.checkConditionAdjustment],
       'Bedrooms': [salesComparisonValidation.checkBedroomsAdjustment], 'Bedrooms Adjustment': [salesComparisonValidation.checkBedroomsAdjustment],
       'Baths': [salesComparisonValidation.checkBathsAdjustment], 'Baths Adjustment': [salesComparisonValidation.checkBathsAdjustment],
@@ -1227,6 +1280,16 @@ function Subject({ defaultFormType }) {
     infoOfSalesFields.forEach(field => {
       registry[field] = [infoOfSalesValidation.checkInfoOfSalesFieldsNotBlank];
     });
+    [
+      "THERE ARE ____ COMPARABLE PROPERTIES CURRENTLY OFFERED FOR SALE IN THE SUBJECT NEIGHBORHOOD RANGING IN PRICE FROM $ ___ TO $ ___",
+      "THERE ARE ___ COMPARABLE PROPERTIES CURRENTLY OFFERED FOR SALE IN THE SUBJECT NEIGHBORHOOD RANGING IN PRICE FROM$ ___TO $___",
+      "THERE ARE ___COMPARABLE SALES IN THE SUBJECT NEIGHBORHOODWITHIN THE PAST TWELVEMONTHS RANGING IN SALE PRICE FROM$___ TO $____",
+      "THERE ARE ___ COMPARABLE SALES IN THE SUBJECT NEIGHBORHOOD WITHIN THE PAST TWELVE MONTHS RANGING IN SALE PRICE FROM $ ___ TO $ ___",
+      "Comparable Properties Currently Offered for Sale",
+      "Comparable Sales in the Subject Neighborhood within the Past Twelve Months"
+    ].forEach(f => {
+      registry[f] = [infoOfSalesValidation.checkInfoOfSalesFieldsNotBlank];
+    });
 
     projectInfoFields.forEach(field => {
       registry[field] = [form1073Validation.checkProjectInfoFieldsNotBlank];
@@ -1391,6 +1454,7 @@ function Subject({ defaultFormType }) {
   };
 
   const rentScheduleValidationRegistry = {
+    'Address': [rentScheduleValidation.checkMinimumRentalComparables],
     'Proximity to Subject': [rentScheduleValidation.checkRentProximityToSubject],
     'Date Lease Begins': [rentScheduleValidation.checkLeaseDates],
     'Date Lease Expires': [rentScheduleValidation.checkLeaseDates],
@@ -1885,6 +1949,20 @@ function Subject({ defaultFormType }) {
         const path = ['Subject', fieldKey];
         runChecksForField('Rent Schedule', fieldKey, val, path, 'Subject', rentScheduleValidationRegistry);
       });
+
+      // Check minimum 3 rental comparables
+      const compCount = rentScheduleValidation.getPresentRentalCompsCount(allData);
+      if (compCount < 3) {
+        ['COMPARABLE NO. 1', 'COMPARABLE NO. 2', 'COMPARABLE NO. 3'].forEach(rentName => {
+          const compData = rentScheduleValidation.getRentalCompData(allData, rentName);
+          const isPresent = rentScheduleValidation.isRentalCompPresent(compData);
+          if (!isPresent) {
+            const addrVal = rentScheduleValidation.getRentalCompAddress(allData, rentName);
+            const path = [rentName, 'Address'];
+            runChecksForField('Rent Schedule', 'Address', addrVal, path, rentName, rentScheduleValidationRegistry);
+          }
+        });
+      }
     }
 
     const is1004And1007 = form1004And1007Validation.is1004And1007Form(allData, selectedFormType);
@@ -2215,6 +2293,14 @@ function Subject({ defaultFormType }) {
       } catch (e) { }
     }
 
+    const is1007ActiveSuccess = rentScheduleValidation.is1007Active(allData, selectedFormType);
+    if (is1007ActiveSuccess) {
+      const compCount = rentScheduleValidation.getPresentRentalCompsCount(allData);
+      if (compCount >= 3) {
+        successes.push(['Rent Schedule', 'Comparable Rental', `Valid: ${compCount} rental comparables are present (minimum 3 required).`, ['Rent Schedule', 'Comparable Rental']]);
+      }
+    }
+
         try {
       const finalValSuccess = salesComparisonValidation.getOpinionOfMarketValue ? salesComparisonValidation.getOpinionOfMarketValue(allData) : null;
       if (finalValSuccess) {
@@ -2351,11 +2437,28 @@ function Subject({ defaultFormType }) {
       } else if (flatPath.length === 2 && (flatPath[0] === 'Single Family Rent Schedule' || flatPath[0] === 'Subject Rent Schedule')) {
         if (!newData.Subject) newData.Subject = {};
         newData.Subject = { ...newData.Subject, [fieldKey]: value };
-      } else if (flatPath.length === 2 && (flatPath[0].startsWith('COMPARABLE NO') || flatPath[0].startsWith('COMPARABLE RENTAL') || flatPath[0].startsWith('Rental '))) {
+      } else if (flatPath.length === 2 && (flatPath[0].startsWith('COMPARABLE NO') || flatPath[0].startsWith('Comparable Rent #') || flatPath[0] === 'Comparable Rent Schedule')) {
+        const rentKey = flatPath[0];
+        if (!newData['Comparable Rent Schedule']) newData['Comparable Rent Schedule'] = {};
+        newData['Comparable Rent Schedule'][rentKey] = {
+          ...(newData['Comparable Rent Schedule'][rentKey] || {}),
+          [fieldKey]: value
+        };
+        if (!newData.RENT_SCHEDULE_GRID) newData.RENT_SCHEDULE_GRID = {};
+        newData.RENT_SCHEDULE_GRID[rentKey] = {
+          ...(newData.RENT_SCHEDULE_GRID[rentKey] || {}),
+          [fieldKey]: value
+        };
+      } else if (flatPath.length === 2 && (/^COMPARABLE\s*Rental\s*No/i.test(flatPath[0]) || /^Rental\s*\d+/i.test(flatPath[0]) || flatPath[0] === 'Subject Rental' || flatPath[0] === 'Comparable Rental Data')) {
         const rentKey = flatPath[0];
         if (!newData['Comparable Rental Data']) newData['Comparable Rental Data'] = {};
         newData['Comparable Rental Data'][rentKey] = {
           ...(newData['Comparable Rental Data'][rentKey] || {}),
+          [fieldKey]: value
+        };
+        if (!newData.COMPARABLE_RENTAL_DATA) newData.COMPARABLE_RENTAL_DATA = {};
+        newData.COMPARABLE_RENTAL_DATA[rentKey] = {
+          ...(newData.COMPARABLE_RENTAL_DATA[rentKey] || {}),
           [fieldKey]: value
         };
       }
@@ -2672,7 +2775,8 @@ function Subject({ defaultFormType }) {
   };
 
   const handleEngagementLetterCompare = async () => {
-    if (!selectedFile || !engagementLetterFile) {
+    const reportFile = (extractionSource === 'xml' ? (xmlFile || selectedFile) : (selectedFile || xmlFile)) || selectedFile || xmlFile;
+    if (!reportFile || !engagementLetterFile) {
       setNotification({ open: true, message: 'Please upload both the main report and the engagement letter.', severity: 'warning' });
       return;
     }
@@ -2681,7 +2785,7 @@ function Subject({ defaultFormType }) {
     setEngagementLetterCompareResult(null);
 
     const formData = new FormData();
-    formData.append('main_report_file', selectedFile);
+    formData.append('main_report_file', reportFile);
     formData.append('engagement_letter_file', engagementLetterFile);
 
     try {
@@ -3015,9 +3119,11 @@ function Subject({ defaultFormType }) {
 
   const statesRequiringAppraiserFee = ['AZ', 'CO', 'CT', 'GA', 'IL', 'LA', 'NJ', 'NV', 'NM', 'ND', 'OH', 'UT', 'VA', 'VT', 'WV'];
   const statesRequiringAmcLicense = ['GA', 'IL', 'MT', 'NJ', 'OH', 'VT'];
+  const statesRequiringAmcFee = ['NV', 'NM', 'UT'];
 
   const currentState = data?.State?.toUpperCase();
   const hasAppraiserFee = !!(data?.["Appraiser's Fee"] || data?.["Appraiser Fee"] || data?.Subject?.["Appraiser's Fee"] || data?.Subject?.["Appraiser Fee"] || data?.CERTIFICATION?.["Appraiser's Fee"] || data?.CERTIFICATION?.["Appraiser Fee"]);
+  const hasAmcFee = !!(data?.["AMC Fee"] || data?.Subject?.["AMC Fee"] || data?.CERTIFICATION?.["AMC Fee"]);
   const has1004mc = !!(
     data?.has_1004mc ||
     data?.['1004MC Addendum'] === 'Present' ||
@@ -3088,9 +3194,22 @@ function Subject({ defaultFormType }) {
         subjectFields.splice(feeIndex, 0, "Appraiser's Fee");
       }
     }
+    if ((currentState && statesRequiringAmcFee.includes(currentState)) || hasAmcFee) {
+      const stateIdx = subjectFields.indexOf('State');
+      let feeIdx = stateIdx !== -1 ? stateIdx + 1 : 0;
+      if (subjectFields.includes("Appraiser's Fee")) {
+        feeIdx = subjectFields.indexOf("Appraiser's Fee") + 1;
+      }
+      if (!subjectFields.includes("AMC Fee")) {
+        subjectFields.splice(feeIdx, 0, "AMC Fee");
+      }
+    }
     if (statesRequiringAmcLicense.includes(currentState)) {
       let amcIndex = subjectFields.indexOf('State') + 1;
       if (subjectFields.includes("Appraiser's Fee")) {
+        amcIndex++;
+      }
+      if (subjectFields.includes("AMC Fee")) {
         amcIndex++;
       }
       if (!subjectFields.includes('AMC License #')) {
@@ -3483,9 +3602,6 @@ function Subject({ defaultFormType }) {
     "State",
     "Expiration Date of Certification or License",
     "Effective Date of Appraisal",
-    "Appraiser Did not inspect subject property",
-    "Appraiser Did inspect exterior of subject property from street",
-    "Appraiser Did inspect interior and exterior of subject property",
     "Supervisory Signature",
     "Supervisory Signature Image",
     "Supervisory Name",
@@ -4441,6 +4557,7 @@ function Subject({ defaultFormType }) {
         normalizedFields['From Type'] = finalFormType;
         normalizedFields['formType'] = finalFormType;
         normalizedFields['selectedFormType'] = finalFormType;
+        normalizedFields['has_1007'] = result.has_1007 ?? (finalFormType ? finalFormType.includes('1007') : false);
         setNotification({
           open: true,
           message: `Form type automatically set to '${finalFormType}'.`,
@@ -4483,7 +4600,7 @@ function Subject({ defaultFormType }) {
       });
     }
 
-    // Unpack Comparable Rental Data comps
+    // 2. Unpack COMPARABLE RENTAL DATA comps (Form 1025 Multifamily ONLY)
     const rentGrid = result.fields?.['Comparable Rental Data'] ||
       result.fields?.['COMPARABLE_RENTAL_DATA'] ||
       result.clean_data?.['Comparable Rental Data'] ||
@@ -4495,16 +4612,42 @@ function Subject({ defaultFormType }) {
       normalizedFields["COMPARABLE_RENTAL_DATA"] = { ...(normalizedFields["COMPARABLE_RENTAL_DATA"] || {}), ...rentGrid };
       Object.keys(rentGrid).forEach(compKey => {
         if (typeof rentGrid[compKey] === 'object' && rentGrid[compKey] !== null) {
-          normalizedFields[compKey] = rentGrid[compKey];
+          if (compKey.toLowerCase() === 'subject rental') {
+            normalizedFields['Subject Rental'] = rentGrid[compKey];
+          } else {
+            normalizedFields[compKey] = rentGrid[compKey];
+            const m = compKey.match(/(\d+)/);
+            if (m) {
+              const num = m[1];
+              normalizedFields[`COMPARABLE Rental No #${num}`] = rentGrid[compKey];
+              normalizedFields[`COMPARABLE Rental No. #${num}`] = rentGrid[compKey];
+              normalizedFields[`Comparable Rental No #${num}`] = rentGrid[compKey];
+              normalizedFields[`COMPARABLE Rental No ${num}`] = rentGrid[compKey];
+              normalizedFields[`Rental ${num}`] = rentGrid[compKey];
+            }
+          }
+        }
+      });
+    }
+
+    // 3. Unpack Comparable Rent Schedule comps (Form 1007 Single Family ONLY)
+    const rentScheduleComps = result.fields?.['Comparable Rent Schedule'] ||
+      result.fields?.['RENT_SCHEDULE_GRID'] ||
+      result.clean_data?.['Comparable Rent Schedule'] ||
+      result.clean_data?.['RENT_SCHEDULE_GRID'] ||
+      result['Comparable Rent Schedule'];
+    if (rentScheduleComps && typeof rentScheduleComps === 'object') {
+      normalizedFields["Comparable Rent Schedule"] = { ...(normalizedFields["Comparable Rent Schedule"] || {}), ...rentScheduleComps };
+      normalizedFields["RENT_SCHEDULE_GRID"] = { ...(normalizedFields["RENT_SCHEDULE_GRID"] || {}), ...rentScheduleComps };
+      Object.keys(rentScheduleComps).forEach(compKey => {
+        if (typeof rentScheduleComps[compKey] === 'object' && rentScheduleComps[compKey] !== null) {
+          normalizedFields[compKey] = rentScheduleComps[compKey];
           const m = compKey.match(/(\d+)/);
           if (m) {
             const num = m[1];
-            normalizedFields[`COMPARABLE NO. ${num}`] = rentGrid[compKey];
-            normalizedFields[`COMPARABLE NO ${num}`] = rentGrid[compKey];
-            normalizedFields[`COMPARABLE RENTAL #${num}`] = rentGrid[compKey];
-            normalizedFields[`COMPARABLE #${num}`] = rentGrid[compKey];
-            normalizedFields[`Rental ${num}`] = rentGrid[compKey];
-            normalizedFields[`Comp ${num}`] = rentGrid[compKey];
+            normalizedFields[`COMPARABLE NO. ${num}`] = rentScheduleComps[compKey];
+            normalizedFields[`Comparable Rent #${num}`] = rentScheduleComps[compKey];
+            normalizedFields[`Comparable Rent Schedule Comp #${num}`] = rentScheduleComps[compKey];
           }
         }
       });
@@ -5636,7 +5779,7 @@ function Subject({ defaultFormType }) {
         visibleSectionIds = baseSections.filter(id => !['comparable-rental-data', 'subject-rent-schedule', 'improvements-section', 'site-section', 'pud-info-section'].includes(id));
         break;
       case '1007':
-        visibleSectionIds = ['subject-info', 'rent-schedule-section', 'appraiser-section', 'map-sketch-exhibits-section', 'photos-exhibits-section', 'raw-output'];
+        visibleSectionIds = ['subject-info', 'rent-schedule-section', 'rent-schedule-reconciliation-section', 'appraiser-section', 'map-sketch-exhibits-section', 'photos-exhibits-section', 'raw-output'];
         break;
       case '1004 + 1007':
         visibleSectionIds = baseSections.filter(id => !['comparable-rental-data', 'subject-rent-schedule', 'project-site-section', 'prior-sale-history-section', 'project-info-section', 'project-analysis-section', 'unit-descriptions-section'].includes(id));
@@ -8430,6 +8573,7 @@ function Subject({ defaultFormType }) {
             result={engagementLetterCompareResult}
             error={engagementLetterCompareError}
             selectedFile={selectedFile}
+            xmlFile={xmlFile}
             engagementLetterFile={engagementLetterFile}
             mainData={data}
           />

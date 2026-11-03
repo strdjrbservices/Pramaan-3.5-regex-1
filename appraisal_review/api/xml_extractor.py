@@ -3758,24 +3758,120 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
     rent_reconciliation: Dict[str, Any] = {}
 
     # 1. Form 1025 Multifamily Rental Data
+    mf_rentals_parent = root.find(".//MULTIFAMILY_RENTALS")
+    mf_analysis_comment = ""
+    if mf_rentals_parent is not None:
+        mf_analysis_comment = mf_rentals_parent.attrib.get("RentalDataAnalysisComment", "").strip()
+
     mf_rentals = root.findall(".//MULTIFAMILY_RENTAL")
     for r in mf_rentals:
-        rid = r.attrib.get("PropertySequenceIdentifier", "")
+        rid = r.attrib.get("PropertySequenceIdentifier", "").strip()
         r_loc = r.find("LOCATION")
-        r_addr = r_loc.attrib.get("PropertyStreetAddress", "") if r_loc is not None else ""
-        r_prox = r_loc.attrib.get("ProximityToSubjectDescription", "") if r_loc is not None else ""
-        r_rent = _clean_currency(r.attrib.get("MonthlyRentAmount", ""))
-        r_gba = r.attrib.get("GrossBuildingAreaSquareFeetCount", "")
-        r_src = r.attrib.get("DataSourceDescription", "")
-        
-        r_key = f"Rental {rid}" if rid != "0" else "Subject Rental"
-        comparable_rental_data[r_key] = {
-            "Address": r_addr or prop_addr,
+        st1 = r_loc.attrib.get("PropertyStreetAddress", "").strip() if r_loc is not None else ""
+        st2 = r_loc.attrib.get("PropertyStreetAddress2", "").strip() if r_loc is not None else ""
+        city = r_loc.attrib.get("CityName", "").strip() if r_loc is not None else ""
+        state = r_loc.attrib.get("StateOrProvinceCode", "").strip() if r_loc is not None else ""
+        zip_code = r_loc.attrib.get("PostalCode", "").strip() if r_loc is not None else ""
+        if st1 and st2:
+            r_addr = f"{st1}, {st2}"
+        elif st1 and (city or state or zip_code):
+            r_addr = ", ".join([p for p in [st1, city, f"{state} {zip_code}".strip()] if p])
+        else:
+            r_addr = st1 or st2 or (full_addr or prop_addr if rid == "0" else "")
+
+        r_prox = r_loc.attrib.get("ProximityToSubjectDescription", "").strip() if r_loc is not None else ""
+        r_rent = _clean_currency(r.attrib.get("MonthlyRentAmount", "").strip())
+        r_rent_gba = r.attrib.get("RentPerGrossBuildingAreaAmount", "").strip()
+        r_rent_control = r.attrib.get("RentControlStatusType", "").strip()
+        r_gba = r.attrib.get("GrossBuildingAreaSquareFeetCount", "").strip()
+        r_src = r.attrib.get("DataSourceDescription", "").strip()
+
+        r_lease = ""
+        r_location = ""
+        r_age = ""
+        r_condition = ""
+        r_utilities = ""
+        r_parking = ""
+        r_other = ""
+
+        for oft in r.findall("OTHER_FEATURE_DESCRIPTION"):
+            seq_id = oft.attrib.get("PropertyFeatureSequenceIdentifier", "").strip()
+            desc = oft.attrib.get("PropertyFeatureDescription", "").strip()
+            if seq_id == "1":
+                r_parking = desc
+            elif seq_id == "2":
+                r_other = desc
+
+        for ft in r.findall("RENTAL_FEATURE"):
+            ft_type = (ft.attrib.get("_Type", "") or "").strip().lower()
+            ft_other = (ft.attrib.get("_TypeOtherDescription", "") or "").strip().lower()
+            ft_desc = ft.attrib.get("_Description", "").strip()
+            if ft_type in ("lease", "dateoflease", "date_of_lease"):
+                r_lease = ft_desc
+            elif ft_type == "location":
+                r_location = ft_desc
+            elif ft_type in ("age", "actualage", "actual_age"):
+                r_age = ft_desc
+            elif ft_type in ("condition", "propertycondition"):
+                r_condition = ft_desc
+            elif ft_type in ("utilitiesincluded", "utilities_included", "utilities"):
+                r_utilities = ft_desc
+            elif "parking" in ft_other or "parking" in ft_desc.lower():
+                r_parking = ft_desc
+            elif ft_other == "other" or (ft_type == "other" and not r_other):
+                r_other = ft_desc
+
+        unit_data = {}
+        for u in r.findall("RENTAL_UNIT"):
+            u_seq = u.attrib.get("UnitSequenceIdentifier", "").strip()
+            if not u_seq:
+                continue
+            tot = u.attrib.get("TotalRoomCount", "").strip()
+            br = u.attrib.get("TotalBedroomCount", "").strip()
+            ba = u.attrib.get("TotalBathroomCount", "").strip()
+            size = u.attrib.get("SquareFeetCount", "").strip()
+            u_rent = _clean_currency(u.attrib.get("MonthlyRentAmount", "").strip())
+            unit_data[f"Unit Breakdown Rm Count Tot Unit # {u_seq}"] = tot
+            unit_data[f"Unit Breakdown Rm Count Br Unit # {u_seq}"] = br
+            unit_data[f"Unit Breakdown Rm Count Ba Unit # {u_seq}"] = ba
+            unit_data[f"Unit Breakdown Size Unit # {u_seq}"] = size
+            unit_data[f"Unit Breakdown Monthly Rent Unit # {u_seq}"] = u_rent
+
+        # Ensure keys for units 1..4 exist
+        for u_idx in range(1, 5):
+            u_str = str(u_idx)
+            unit_data.setdefault(f"Unit Breakdown Rm Count Tot Unit # {u_str}", "")
+            unit_data.setdefault(f"Unit Breakdown Rm Count Br Unit # {u_str}", "")
+            unit_data.setdefault(f"Unit Breakdown Rm Count Ba Unit # {u_str}", "")
+            unit_data.setdefault(f"Unit Breakdown Size Unit # {u_str}", "")
+            unit_data.setdefault(f"Unit Breakdown Monthly Rent Unit # {u_str}", "")
+
+        r_record = {
+            "Address": r_addr,
             "Proximity to Subject": r_prox,
             "Current Monthly Rent": r_rent,
-            "Gross Building Area": r_gba,
+            "Rent/Gross Bldg. Area": r_rent_gba,
+            "Rent Control": r_rent_control,
             "Data Source(s)": r_src,
+            "Date of Lease(s)": r_lease,
+            "Location": r_location,
+            "Actual Age": r_age,
+            "Condition": r_condition,
+            "Gross Building Area": r_gba,
+            "Utilities Included": r_utilities,
+            "Parking": r_parking,
+            "Other": r_other,
+            **unit_data,
         }
+
+        if rid == "0":
+            comparable_rental_data["Subject Rental"] = r_record
+        else:
+            comparable_rental_data[f"COMPARABLE Rental No #{rid}"] = r_record
+            comparable_rental_data[f"COMPARABLE Rental No. #{rid}"] = r_record
+            comparable_rental_data[f"Comparable Rental No #{rid}"] = r_record
+            comparable_rental_data[f"Rental {rid}"] = r_record
+            comparable_rental_data[f"Comparable Rental #{rid}"] = r_record
 
     # 2. Form 1007 Single Family Comparable Rent Schedule (MISMO 2.6 XML DOM)
     res_rent_sched = root.find(".//RESIDENTIAL_RENT_SCHEDULE")
@@ -3955,17 +4051,16 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
             except Exception:
                 pass
 
-    # Populate comparable_rental_data with Form 1007 Comps
+    # 2b. Form 1007 Single Family Comparable Rent Schedule (keep strictly separate from Form 1025 Comparable Rental Data)
+    comparable_rent_schedule: Dict[str, Any] = {}
     for comp_name, comp_dict in sf_rent_comps.items():
-        comparable_rental_data[comp_name] = comp_dict
+        comparable_rent_schedule[comp_name] = comp_dict
         m_cnum = re.search(r'\d+', comp_name)
         if m_cnum:
             c_num = m_cnum.group(0)
-            comparable_rental_data[f"Rental {c_num}"] = comp_dict
-            comparable_rental_data[f"Comparable Rental #{c_num}"] = comp_dict
-            comparable_rental_data[f"COMPARABLE RENTAL #{c_num}"] = comp_dict
-            comparable_rental_data[f"Comparable Rental No #{c_num}"] = comp_dict
-            comparable_rental_data[f"COMPARABLE Rental No #{c_num}"] = comp_dict
+            comparable_rent_schedule[f"COMPARABLE NO. {c_num}"] = comp_dict
+            comparable_rent_schedule[f"Comparable Rent #{c_num}"] = comp_dict
+            comparable_rent_schedule[f"Comparable Rent Schedule Comp #{c_num}"] = comp_dict
 
     # PUD & HOA
     pud_indicator = ""
@@ -4256,7 +4351,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
             pass
 
     # Exposure comment (compulsory field - checks USPAP Addendum page in embedded PDF first)
-    exposure_comment = "Not Present"
+    exposure_comment = ""
     if pdf_doc is not None:
         try:
             for page in pdf_doc:
@@ -4277,15 +4372,15 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
                                         if len(b2_t) > 30 and "my opinion of a reasonable" not in b2_t.lower():
                                             exposure_comment = f"{val} ({b2_t})"
                                             break
-                                if exposure_comment == "Not Present" and val:
+                                if not exposure_comment and val:
                                     exposure_comment = val
                                 break
-                    if exposure_comment != "Not Present":
+                    if exposure_comment:
                         break
         except Exception:
             pass
 
-    if exposure_comment == "Not Present":
+    if not exposure_comment:
         # Comprehensive scan across XML narrative and embedded document text
         exp_patterns = [
             re.compile(r'([^.?!;\n]*\b(?:reasonable\s+exposure\s+time\s+for\s+the\s+subject|exposure\s*(?:and\s*|or\s*|\/\s*|marketing\s*)?time\s+(?:for\s+the\s+subject\s+property\s+)?is\s+determined|exposure\s+marketing\s+time|estimated\s+exposure\s+time\s+is|opinion\s+of\s+(?:a\s+)?reasonable\s+exposure|opinion\s+of\s+exposure\s+time)\b[^.?!;\n]*[.?!]?)', re.IGNORECASE),
@@ -4303,7 +4398,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
                     break
 
     # Prior service comment (compulsory field - checks USPAP Addendum checkboxes first)
-    prior_service_comment = "Not Present"
+    prior_service_comment = ""
     if pdf_doc is not None:
         try:
             for page in pdf_doc:
@@ -4330,12 +4425,12 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
                                 elif opt_have_bbox and abs(w[1] - opt_have_bbox[1]) < 30:
                                     prior_service_comment = "I HAVE performed services, as an appraiser or in another capacity, regarding the property that is the subject of this report within the three-year period immediately preceding acceptance of this assignment."
                                     break
-                    if prior_service_comment != "Not Present":
+                    if prior_service_comment:
                         break
         except Exception:
             pass
 
-    if prior_service_comment == "Not Present":
+    if not prior_service_comment:
         prior_patterns = [
             re.compile(r'([^.?!;\n]*\b(?:performed\s+no\s+services|have\s+not\s+performed\s+(?:any\s+)?services|no\s+prior\s+services\s+performed|performed\s+any\s+prior\s+services)\b[^.?!;\n]*[.?!]?)', re.IGNORECASE),
             re.compile(r'([^.?!;\n]*\b(?:prior\s+services?)\s*[:\-]\s*[^.?!;\n]+[.?!]?)', re.IGNORECASE),
@@ -4352,7 +4447,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
                     break
 
     # USPAP Reporting Option (Appraisal Report vs Restricted Appraisal Report)
-    uspap_reporting_option = "Appraisal Report"
+    uspap_reporting_option = ""
     uspap_long_key = (
         "This report was prepared under the following USPAP reporting option:\n"
         "Appraisal Report A written report prepared under Standards Rule 2-2(a).\n"
@@ -4403,7 +4498,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
                             c_words.sort(key=lambda w: (round(w[1] / 5.0) * 5.0, w[0]))
                             uspap_comment = " ".join(w[4] for w in c_words).strip()
 
-                    if uspap_reporting_option != "Appraisal Report":
+                    if uspap_reporting_option:
                         break
         except Exception:
             pass
@@ -5324,29 +5419,12 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
                     appr_insp_int_ext = "No"
 
     uspap_identification_section = {
-        # General / Status
+        # General / Status (Strictly USPAP fields only)
         "USPAP / Appraisal and Report Identification": uspap_ident_str,
         "Appraisal and Report Identification": uspap_ident_str,
         "USPAP Addendum": uspap_ident_str,
         "has_uspap_identification": has_uspap_ident,
-        "UAD pages present in the report": uad_present_str,
-        "UAD Pages Present in the Report": uad_present_str,
-        "UAD Pages Present": "Yes" if has_uad_pages else "No",
-        "UAD Pages": uad_present_str,
-        "UAD Definitions Addendum": uad_present_str,
-        "UAD Dataset Pages": uad_present_str,
-        "has_uad_pages": has_uad_pages,
-        "uad_pages": uad_pages,
-        "uad_details": uad_details,
-        "Limiting Conditions": uad_details.get("limiting_conditions_presence", "Not Present"),
-        "Statement of Assumptions and Limiting Conditions": uad_details.get("limiting_conditions_presence", "Not Present"),
-        "limiting_conditions_pages": uad_details.get("limiting_conditions_pages", []),
-        "limiting_conditions_presence": uad_details.get("limiting_conditions_presence", "Not Present"),
-        "Appraiser's Certification": uad_details.get("certification_presence", "Not Present"),
-        "Appraiser Certification": uad_details.get("certification_presence", "Not Present"),
-        "certification_pages": uad_details.get("certification_pages", []),
-        "certification_presence": uad_details.get("certification_presence", "Not Present"),
-        "UAD Details": uad_details.get("details_summary", ""),
+        "has_appraiser_inspection": False,
         "USPAP Reporting Option": uspap_reporting_option,
         uspap_long_key: uspap_reporting_option,
         "This report was prepared under the following USPAP reporting option:": uspap_reporting_option,
@@ -5359,7 +5437,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "Comments on Appraisal and Report Identification": uspap_comment,
         "Restricted Appraisal Report Comment": uspap_comment,
 
-        # APPRAISER
+        # APPRAISER (extracted from XML/PDF, no hardcoded values)
         "Signature": appraiser_name,
         "Signature Image": appraiser_sig_b64,
         "Appraiser Signature Image": appraiser_sig_b64,
@@ -5374,38 +5452,40 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "Expiration Date of Certification or License": lic_exp,
         "Effective Date of Appraisal": effective_date,
         "Effective Date": effective_date,
-        "Appraiser Did not inspect subject property": appr_insp_none,
-        "Did not inspect subject property (Appraiser)": appr_insp_none,
-        "Appraiser Did Not Inspect": appr_insp_none,
-        "Appraiser Did inspect exterior of subject property from street": appr_insp_ext,
-        "Did inspect exterior of subject property from street (Appraiser)": appr_insp_ext,
-        "Appraiser Did Inspect Exterior": appr_insp_ext,
-        "Appraiser Subject Property Date of Inspection (Exterior)": appr_insp_ext_date,
-        "Appraiser Did inspect interior and exterior of subject property": appr_insp_int_ext,
-        "Did inspect interior and exterior of subject property (Appraiser)": appr_insp_int_ext,
-        "Appraiser Did Inspect Interior and Exterior": appr_insp_int_ext,
-        "Appraiser Subject Property Date of Inspection (Interior/Exterior)": appr_insp_int_ext_date,
 
-        # SUPERVISORY APPRAISER: (only if required)
+        # SUPERVISORY APPRAISER: (only if required - real extracted values only)
         "Supervisory Signature": sup_name if sup_name.strip() else "",
-        "Supervisory Signature Image": supervisory_sig_b64,
+        "Supervisory Signature Image": supervisory_sig_b64 if sup_name.strip() else "",
         "Supervisory Name": sup_name,
         "Supervisory Date Signed": signed_date if sup_name.strip() else "",
         "Supervisory State Certification #": sup_cert_no,
         "Supervisory or State License #": sup_lic_no,
         "Supervisory State": sup_lic_state,
         "Supervisory Expiration Date of Certification or License": sup_lic_exp,
-        "Did not inspect subject property": sup_insp_none,
-        "Did inspect exterior of subject property from street": sup_insp_ext,
-        "Subject Property Date of Inspection (Exterior)": sup_insp_ext_date,
-        "Did inspect interior and exterior of subject property": sup_insp_int_ext,
-        "Subject Property Date of Inspection (Interior/Exterior)": sup_insp_int_ext_date,
+        "Did not inspect subject property": sup_insp_none if sup_name.strip() else "",
+        "Did inspect exterior of subject property from street": sup_insp_ext if sup_name.strip() else "",
+        "Subject Property Date of Inspection (Exterior)": sup_insp_ext_date if sup_name.strip() else "",
+        "Did inspect interior and exterior of subject property": sup_insp_int_ext if sup_name.strip() else "",
+        "Subject Property Date of Inspection (Interior/Exterior)": sup_insp_int_ext_date if sup_name.strip() else "",
     }
 
     certification_section = {
         # Appraiser Fields
         "Signature": appraiser_name,
+        "Signature Image": appraiser_sig_b64,
+        "Appraiser Signature Image": appraiser_sig_b64,
         "Name": appraiser_name,
+        "Appraiser Did not inspect subject property": "",
+        "Did not inspect subject property (Appraiser)": "",
+        "Appraiser Did Not Inspect": "",
+        "Appraiser Did inspect exterior of subject property from street": "",
+        "Did inspect exterior of subject property from street (Appraiser)": "",
+        "Appraiser Did Inspect Exterior": "",
+        "Appraiser Subject Property Date of Inspection (Exterior)": "",
+        "Appraiser Did inspect interior and exterior of subject property": "",
+        "Did inspect interior and exterior of subject property (Appraiser)": "",
+        "Appraiser Did Inspect Interior and Exterior": "",
+        "Appraiser Subject Property Date of Inspection (Interior/Exterior)": "",
         "Appraiser Name": appraiser_name,
         "Company Name": appraiser_company,
         "Company Address": appraiser_address,
@@ -5426,6 +5506,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         
         # Supervisory Appraiser Fields
         "Supervisory Signature": sup_name if sup_name.strip() else "",
+        "Supervisory Signature Image": supervisory_sig_b64,
         "Supervisory Name": sup_name,
         "Supervisory Company Name": sup_company,
         "Supervisory Company Address": sup_address,
@@ -5562,13 +5643,28 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
                             "Appraiser's Certification", "Appraiser Certification",
                             "certification_pages", "certification_presence", "UAD Details"
                         }
+                        if "has_appraiser_inspection" in uspap_pdf_details:
+                            uspap_identification_section["has_appraiser_inspection"] = uspap_pdf_details["has_appraiser_inspection"]
                         for k, v in uspap_pdf_details.items():
-                            if k in metadata_keys:
-                                if not uspap_identification_section.get(k):
-                                    uspap_identification_section[k] = v
-                                continue
-                            if v is not None and v != "":
+                            if k not in metadata_keys and v is not None and v != "":
                                 uspap_identification_section[k] = v
+                        if not uspap_pdf_details.get("has_appraiser_inspection", False):
+                            uspap_identification_section["has_appraiser_inspection"] = False
+                            for ak in [
+                                "Appraiser Did not inspect subject property",
+                                "Did not inspect subject property (Appraiser)",
+                                "Appraiser Did Not Inspect",
+                                "Appraiser Did inspect exterior of subject property from street",
+                                "Did inspect exterior of subject property from street (Appraiser)",
+                                "Appraiser Did Inspect Exterior",
+                                "Appraiser Did inspect interior and exterior of subject property",
+                                "Did inspect interior and exterior of subject property (Appraiser)",
+                                "Appraiser Did Inspect Interior and Exterior",
+                                "Appraiser Date of Inspection",
+                                "Appraiser Subject Property Date of Inspection",
+                                "Date of Inspection (if applicable)",
+                            ]:
+                                uspap_identification_section[ak] = ""
                 except Exception:
                     pass
         except Exception as e:
@@ -5807,6 +5903,31 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
     if not clean_subject.get("Address"):
         clean_subject["Address"] = subj_addr_str
 
+    # Form 1025: Merge Subject Rental fields and Unit Breakdown into clean_subject
+    if "Subject Rental" in comparable_rental_data:
+        subj_rent_record = comparable_rental_data["Subject Rental"]
+        for sk, sv in subj_rent_record.items():
+            if sv and (sk not in clean_subject or not clean_subject[sk]):
+                clean_subject[sk] = sv
+            if sk.startswith("Unit Breakdown") and sv:
+                clean_subject[sk] = sv
+            if sk in ("Rent/Gross Bldg. Area", "Date of Lease(s)", "Utilities Included", "Current Monthly Rent", "Parking", "Other") and sv:
+                clean_subject[sk] = sv
+
+    # Always ensure clean_subject retains Property Address, City, State, Zip Code, County, Full Address
+    if not clean_subject.get("Property Address"):
+        clean_subject["Property Address"] = prop_addr
+    if not clean_subject.get("City"):
+        clean_subject["City"] = prop_city
+    if not clean_subject.get("State"):
+        clean_subject["State"] = prop_state
+    if not clean_subject.get("Zip Code"):
+        clean_subject["Zip Code"] = prop_zip
+    if not clean_subject.get("County"):
+        clean_subject["County"] = prop_county
+    if not clean_subject.get("Full Address"):
+        clean_subject["Full Address"] = full_addr
+
     sales_grid.update(info_of_sales_section)
     merged_info_of_sales = {**sales_grid, **info_of_sales_section}
 
@@ -5851,7 +5972,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
                     "proximity": v.get("Proximity to Subject") or "",
                     "sale_price": v.get("Sale Price") or ""
                 })
-        rgrid = comparable_rental_data or single_family_rent_schedule or {}
+        rgrid = comparable_rental_data or comparable_rent_schedule or single_family_rent_schedule or {}
         for k, v in rgrid.items():
             if isinstance(v, dict) and any(x in k.upper() for x in ["RENTAL", "COMPARABLE NO"]):
                 m = re.search(r'\d+', k)
@@ -6313,7 +6434,11 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "SINGLE_FAMILY_RENT_SCHEDULE": single_family_rent_schedule,
         "Comparable Rental Data": comparable_rental_data,
         "COMPARABLE_RENTAL_DATA": comparable_rental_data,
+        "Comparable Rent Schedule": comparable_rent_schedule,
+        "COMPARABLE_RENT_SCHEDULE": comparable_rent_schedule,
+        "RENT_SCHEDULE_GRID": comparable_rent_schedule,
         "Comparable Rent Schedule Reconciliation": rent_reconciliation,
+        "RENT_SCHEDULE_RECONCILIATION": rent_reconciliation,
         "EXTRACTED_PHOTOS": extracted_photos,
         "E&O": certification_section.get("E&O", "Absent"),
         "E&O Present": certification_section.get("E&O Present", "Absent"),
@@ -6344,9 +6469,23 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         if comp_name not in ("Subject", "SUBJECT") and comp_name not in fields:
             fields[comp_name] = comp_data
 
-    # Map individual rentals for Form1025 and Form 1007
+    fields["Subject"] = clean_subject
+    fields["SUBJECT"] = clean_subject
+
+    # Map individual rentals for Form 1025 (COMPARABLE RENTAL DATA)
     for rent_name, rent_data in comparable_rental_data.items():
-        fields[rent_name] = rent_data
+        if rent_name not in ("Subject", "SUBJECT"):
+            fields[rent_name] = rent_data
+
+    # Map individual rentals for Form 1007 (Comparable Rent Schedule)
+    for rc_name, rc_data in comparable_rent_schedule.items():
+        if rc_name not in ("Subject", "SUBJECT") and rc_name not in fields:
+            fields[rc_name] = rc_data
+
+    if mf_analysis_comment:
+        fields["Rental Data Analysis Comment"] = mf_analysis_comment
+        fields["RentalDataAnalysisComment"] = mf_analysis_comment
+        fields["Analysis of rental data and support for estimated market rents for the individual subject units reported below (including the adequacy of the comparables, rental concessions, etc.)"] = mf_analysis_comment
 
     # Map Form 1007 Rent Reconciliation fields
     for rk, rv in rent_reconciliation.items():
@@ -6412,6 +6551,20 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         clean_data["Subject Rent Schedule"] = subject_rent_schedule
     if comparable_rental_data and any(comparable_rental_data.values()):
         clean_data["Comparable Rental Data"] = comparable_rental_data
+        clean_data["COMPARABLE_RENTAL_DATA"] = comparable_rental_data
+        fields["Comparable Rental Data"] = comparable_rental_data
+        fields["COMPARABLE_RENTAL_DATA"] = comparable_rental_data
+    if comparable_rent_schedule and any(comparable_rent_schedule.values()):
+        clean_data["Comparable Rent Schedule"] = comparable_rent_schedule
+        clean_data["COMPARABLE_RENT_SCHEDULE"] = comparable_rent_schedule
+        clean_data["RENT_SCHEDULE_GRID"] = comparable_rent_schedule
+        fields["Comparable Rent Schedule"] = comparable_rent_schedule
+        fields["COMPARABLE_RENT_SCHEDULE"] = comparable_rent_schedule
+        fields["RENT_SCHEDULE_GRID"] = comparable_rent_schedule
+    if mf_analysis_comment:
+        clean_data["Rental Data Analysis Comment"] = mf_analysis_comment
+        clean_data["RentalDataAnalysisComment"] = mf_analysis_comment
+        clean_data["Analysis of rental data and support for estimated market rents for the individual subject units reported below (including the adequacy of the comparables, rental concessions, etc.)"] = mf_analysis_comment
     if rent_reconciliation and any(rent_reconciliation.values()):
         clean_data["Comparable Rent Schedule Reconciliation"] = rent_reconciliation
     if single_family_rent_schedule and any(single_family_rent_schedule.values()):
@@ -6470,7 +6623,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         rental_grid_addresses["Subject"] = subj_rent_addr
 
     seen_rent_nums = set()
-    rgrid = comparable_rental_data or single_family_rent_schedule or {}
+    rgrid = comparable_rental_data or comparable_rent_schedule or single_family_rent_schedule or {}
     for k, v in rgrid.items():
         if isinstance(v, dict) and any(x in k.upper() for x in ["RENTAL", "COMPARABLE NO", "COMPARABLE RENTAL"]):
             m = re.search(r'\d+', k)

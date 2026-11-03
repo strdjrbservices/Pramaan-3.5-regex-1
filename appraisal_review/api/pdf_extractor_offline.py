@@ -1396,6 +1396,46 @@ def extract_prior_service_comment_from_doc(doc=None, full_doc_text=""):
     return "Not Present"
 
 
+
+def _find_best_uspap_page(doc):
+    """
+    Finds the index and page object for the Appraisal and Report Identification / USPAP Addendum page
+    by scoring all pages to distinguish it from the main URAR (Form 1004) and certification pages.
+    """
+    if doc is None or len(doc) == 0:
+        return None, None
+    best_idx = None
+    best_score = -1
+    for idx, p in enumerate(doc):
+        t = (p.get_text() or "").upper()
+        score = 0
+        if "APPRAISAL AND REPORT IDENTIFICATION" in t:
+            score += 100
+        if "USPAP ADDENDUM" in t or "USPAP COMPLIANCE ADDENDUM" in t:
+            score += 80
+        if "FORM ID14AP" in t or "FORM ID00F" in t or "FORM ID20E" in t:
+            score += 60
+        if "APPRAISER:" in t and ("SUPERVISORY" in t or "CO-APPRAISER" in t):
+            score += 40
+        if "STANDARDS RULE 2-2" in t:
+            score += 20
+        if "REASONABLE EXPOSURE TIME" in t:
+            score += 20
+        if re.search(r'PAGE\s+[1-5]\s+OF\s+6', t):
+            score -= 100
+        if "SUBJECT PROPERTY PHOTOS" in t or "COMPARABLE PHOTOS" in t or "FLOOR PLAN" in t:
+            score -= 100
+        if "APPRAISER'S CERTIFICATION" in t and ("PAGE 6 OF 6" in t or "PAGE 5 OF 6" in t):
+            score -= 100
+
+        if score > best_score:
+            best_score = score
+            best_idx = idx
+
+    if best_score >= 40 and best_idx is not None:
+        return best_idx, doc[best_idx]
+    return None, None
+
 def extract_uspap_reporting_option_and_comment(doc=None, uspap_page_idx=None, full_doc_text=""):
     """
     Scans the PDF document for the USPAP Reporting Option on the Appraisal and Report Identification / USPAP Addendum page:
@@ -1411,12 +1451,17 @@ def extract_uspap_reporting_option_and_comment(doc=None, uspap_page_idx=None, fu
     if doc is not None:
         if uspap_page_idx is not None and 0 <= uspap_page_idx < len(doc):
             candidate_pages.append((uspap_page_idx, doc[uspap_page_idx]))
+        else:
+            b_idx, b_page = _find_best_uspap_page(doc)
+            if b_page is not None:
+                candidate_pages.append((b_idx, b_page))
         for idx, page in enumerate(doc):
-            if uspap_page_idx is not None and idx == uspap_page_idx:
+            if candidate_pages and idx == candidate_pages[0][0]:
                 continue
             t = (page.get_text() or "").upper()
             if "USPAP REPORTING OPTION" in t or "STANDARDS RULE 2-2" in t or "APPRAISAL AND REPORT IDENTIFICATION" in t or "USPAP ADDENDUM" in t:
-                candidate_pages.append((idx, page))
+                if not re.search(r'PAGE\s+[1-5]\s+OF\s+6', t):
+                    candidate_pages.append((idx, page))
 
     found_option = False
     for page_idx, page in candidate_pages:
@@ -1512,26 +1557,16 @@ def extract_uspap_identification_details(doc=None, uspap_page_idx=None, full_doc
     from the USPAP addendum page.
     This is completely independent from the CERTIFICATION section.
     """
+    best_idx, best_page = _find_best_uspap_page(doc) if doc is not None else (None, None)
+    if uspap_page_idx is not None and doc is not None and 0 <= uspap_page_idx < len(doc):
+        best_idx = uspap_page_idx
+        best_page = doc[uspap_page_idx]
+
     reporting_option, comment = extract_uspap_reporting_option_and_comment(
-        doc=doc, uspap_page_idx=uspap_page_idx, full_doc_text=full_doc_text
+        doc=doc, uspap_page_idx=best_idx, full_doc_text=full_doc_text
     )
 
-    uspap_page = None
-    if doc is not None:
-        if uspap_page_idx is not None and 0 <= uspap_page_idx < len(doc):
-            uspap_page = doc[uspap_page_idx]
-        else:
-            for idx, p in enumerate(doc):
-                t = (p.get_text() or "").upper()
-                if (
-                    "APPRAISAL AND REPORT IDENTIFICATION" in t
-                    or "USPAP ADDENDUM" in t
-                    or "FORM ID14AP" in t
-                    or ("USPAP" in t and ("STANDARDS RULE 2-2" in t or "REASONABLE EXPOSURE TIME" in t))
-                ):
-                    if not (("PAGE 6 OF 6" in t or "PAGE 5 OF 6" in t) and "APPRAISER'S CERTIFICATION" in t):
-                        uspap_page = p
-                        break
+    uspap_page = best_page
 
     exposure_time = ""
     prior_service = ""
@@ -1665,7 +1700,7 @@ def extract_uspap_identification_details(doc=None, uspap_page_idx=None, full_doc
                     res["Expiration Date of Certification or License"] = m_exp.group(1).strip()
 
             # 5. Date of Signature and Report
-            m_sig_date = re.search(r'Date\s+of\s+Signature(?:\s+and\s+Report)?\s*:\s*(.*?)(?=\n|$)', full_col_text, re.IGNORECASE)
+            m_sig_date = re.search(r'Date\s+(?:of\s+Signature(?:\s+and\s+Report)?|Signed)\s*:\s*(.*?)(?=\n|$)', full_col_text, re.IGNORECASE)
             if m_sig_date:
                 val = m_sig_date.group(1).strip()
                 val = re.split(r'\bEffective\b|\bInspection\b', val, flags=re.I)[0].strip()
@@ -1704,10 +1739,10 @@ def extract_uspap_identification_details(doc=None, uspap_page_idx=None, full_doc
                 words = []
 
         # Find APPRAISER signature section header top Y
-        appr_header_y = 800.0
+        appr_header_y = 600.0
         for w in words:
-            if "APPRAISER" in w.get("text", "").upper() and w.get("top", 0) > 600:
-                appr_header_y = w.get("top", 0) - 10
+            if "APPRAISER" in w.get("text", "").upper() and w.get("top", 0) > 500 and w.get("x0", 0) < 200:
+                appr_header_y = w.get("top", 0) - 5
                 break
 
         appr_col_words = [w for w in words if w.get("top", 0) >= appr_header_y and w.get("x0", 0) < 310]
@@ -1736,82 +1771,103 @@ def extract_uspap_identification_details(doc=None, uspap_page_idx=None, full_doc
         appr_fields = _parse_uspap_column_lines(appr_lines, is_supervisory=False)
         sup_fields = _parse_uspap_column_lines(sup_lines, is_supervisory=True)
 
-        # Inspection checkboxes detection
-        appr_did_not = "No"
-        appr_ext = "No"
-        appr_int_ext = "No"
-        sup_did_not = "No"
-        sup_ext = "No"
-        sup_int_ext = "No"
+        # Appraiser & Supervisory Inspection Detection (strictly when present on USPAP page)
+        has_appraiser_inspection = any("inspect" in w.get("text", "").lower() for w in appr_col_words)
+        has_supervisory_inspection = any("inspect" in w.get("text", "").lower() for w in sup_col_words)
+
+        appr_insp_y = min((w.get("top", 0) for w in appr_col_words if "inspect" in w.get("text", "").lower()), default=None) if has_appraiser_inspection else None
+        sup_insp_y = min((w.get("top", 0) for w in sup_col_words if "inspect" in w.get("text", "").lower()), default=None) if has_supervisory_inspection else None
+
+        appr_did_not = "No" if has_appraiser_inspection else ""
+        appr_ext = "No" if has_appraiser_inspection else ""
+        appr_int_ext = "No" if has_appraiser_inspection else ""
+        appr_insp_date = ""
+
+        sup_did_not = "No" if has_supervisory_inspection else ""
+        sup_ext = "No" if has_supervisory_inspection else ""
+        sup_int_ext = "No" if has_supervisory_inspection else ""
+        sup_insp_date = ""
 
         # Check vector diagonal cross lines (PyMuPDF drawings)
         if hasattr(uspap_page, "get_drawings"):
             try:
                 for d in uspap_page.get_drawings():
-                    if d.get("rect") and d["rect"][1] >= 900:
-                        for item in d.get("items", []):
-                            if item[0] == "l":
-                                p1, p2 = item[1], item[2]
-                                if abs(p1.x - p2.x) > 3 and abs(p1.y - p2.y) > 3:
-                                    cx = (p1.x + p2.x) / 2.0
-                                    if 100 <= cx <= 138:
-                                        appr_did_not = "Yes"
-                                    elif 145 <= cx <= 200:
-                                        appr_int_ext = "Yes"
-                                    elif 225 <= cx <= 275:
-                                        appr_ext = "Yes"
-                                    elif 380 <= cx <= 420:
-                                        sup_did_not = "Yes"
-                                    elif 425 <= cx <= 480:
-                                        sup_int_ext = "Yes"
-                                    elif 505 <= cx <= 555:
-                                        sup_ext = "Yes"
+                    rect = d.get("rect")
+                    if not rect:
+                        continue
+                    items = d.get("items", [])
+                    has_diag = False
+                    for it in items:
+                        if it[0] == "l":
+                            p1, p2 = it[1], it[2]
+                            if abs(p1.x - p2.x) > 3 and abs(p1.y - p2.y) > 3:
+                                has_diag = True
+                                break
+                    if not has_diag:
+                        continue
+                    cx = (rect[0] + rect[2]) / 2.0
+                    cy = (rect[1] + rect[3]) / 2.0
+
+                    if has_appraiser_inspection and appr_insp_y and abs(cy - appr_insp_y) < 25 and cx < 310:
+                        if cx < 170:
+                            appr_did_not = "Yes"
+                        elif 170 <= cx <= 220:
+                            appr_int_ext = "Yes"
+                        else:
+                            appr_ext = "Yes"
+
+                    if has_supervisory_inspection and sup_insp_y and abs(cy - sup_insp_y) < 25 and cx >= 310:
+                        if cx < 360 or (380 <= cx <= 420):
+                            sup_did_not = "Yes"
+                        elif (425 <= cx <= 485) or (480 <= cx <= 520):
+                            sup_int_ext = "Yes"
+                        else:
+                            sup_ext = "Yes"
             except Exception:
                 pass
 
-        # Check pdfplumber lines
-        if hasattr(uspap_page, "lines"):
-            try:
-                diag_lines = [l for l in uspap_page.lines if l.get('top', 0) >= 900 and l.get('width', 0) > 3 and l.get('height', 0) > 3]
-                for l in diag_lines:
-                    cx = (l['x0'] + l['x1']) / 2.0
-                    if 100 <= cx <= 138:
-                        appr_did_not = "Yes"
-                    elif 145 <= cx <= 200:
-                        appr_int_ext = "Yes"
-                    elif 225 <= cx <= 275:
-                        appr_ext = "Yes"
-                    elif 380 <= cx <= 420:
-                        sup_did_not = "Yes"
-                    elif 425 <= cx <= 480:
-                        sup_int_ext = "Yes"
-                    elif 505 <= cx <= 555:
-                        sup_ext = "Yes"
-            except Exception:
-                pass
-
-        # Check character marks (X, 8)
+        # Check character marks (X, 8, etc.)
         for w in words:
-            if w.get("top", 0) >= 920 and w.get("text", "").upper() in ('X', 'YES', '8', '☒', '☑'):
+            wt = w.get("text", "").upper()
+            if wt in ('X', 'YES', '8', '☒', '☑', '✓'):
                 cx = (w.get("x0", 0) + w.get("x1", 0)) / 2.0
-                if 100 <= cx <= 138:
-                    appr_did_not = "Yes"
-                elif 145 <= cx <= 200:
-                    appr_int_ext = "Yes"
-                elif 225 <= cx <= 275:
-                    appr_ext = "Yes"
-                elif 380 <= cx <= 420:
-                    sup_did_not = "Yes"
-                elif 425 <= cx <= 480:
-                    sup_int_ext = "Yes"
-                elif 505 <= cx <= 555:
-                    sup_ext = "Yes"
+                cy = (w.get("top", 0) + w.get("bottom", 0)) / 2.0
+                if has_appraiser_inspection and appr_insp_y and abs(cy - appr_insp_y) < 20 and cx < 310:
+                    if cx < 170:
+                        appr_did_not = "Yes"
+                    elif 170 <= cx <= 220:
+                        appr_int_ext = "Yes"
+                    else:
+                        appr_ext = "Yes"
+                if has_supervisory_inspection and sup_insp_y and abs(cy - sup_insp_y) < 20 and cx >= 310:
+                    if cx < 360 or (380 <= cx <= 420):
+                        sup_did_not = "Yes"
+                    elif (425 <= cx <= 485) or (480 <= cx <= 520):
+                        sup_int_ext = "Yes"
+                    else:
+                        sup_ext = "Yes"
 
-        # Default Appraiser inspection to Interior & Exterior if none detected on standard 1004
-        if appr_did_not != "Yes" and appr_ext != "Yes" and appr_int_ext != "Yes":
-            appr_int_ext = "Yes"
+        if has_appraiser_inspection and appr_insp_y:
+            for w in appr_col_words:
+                if w.get("top", 0) > appr_insp_y:
+                    m_d = re.search(r'\b\d{1,2}/\d{1,2}/\d{4}\b', w.get("text", ""))
+                    if m_d:
+                        appr_insp_date = m_d.group(0)
+                        break
+            if not appr_insp_date:
+                appr_insp_date = appr_fields.get("Date of Inspection", "")
 
-    appr_name = appr_fields.get("Name", "")
+        if has_supervisory_inspection and sup_insp_y:
+            for w in sup_col_words:
+                if w.get("top", 0) > sup_insp_y:
+                    m_d = re.search(r'\b\d{1,2}/\d{1,2}/\d{4}\b', w.get("text", ""))
+                    if m_d:
+                        sup_insp_date = m_d.group(0)
+                        break
+            if not sup_insp_date:
+                sup_insp_date = sup_fields.get("Date of Inspection", "")
+
+        appr_name = appr_fields.get("Name", "")
     sup_name = sup_fields.get("Name", "")
 
     return {
@@ -1819,7 +1875,8 @@ def extract_uspap_identification_details(doc=None, uspap_page_idx=None, full_doc
         "Appraisal and Report Identification": "Present" if has_uspap else "Not Present",
         "USPAP Addendum": "Present" if has_uspap else "Not Present",
         "has_uspap_identification": has_uspap,
-        "USPAP Reporting Option": reporting_option if has_uspap else "Not Present",
+        "has_appraiser_inspection": has_appraiser_inspection,
+        "USPAP Reporting Option": reporting_option if has_uspap else "",
         "Reasonable Exposure Time": exposure_time,
         "Prior Service Statement": prior_service,
         "Comments on Appraisal and Report Identification": comment,
@@ -1838,8 +1895,11 @@ def extract_uspap_identification_details(doc=None, uspap_page_idx=None, full_doc
         "Expiration Date of Certification or License": appr_fields.get("Expiration Date of Certification or License", ""),
         "Effective Date of Appraisal": appr_fields.get("Effective Date of Appraisal", ""),
         "Effective Date": appr_fields.get("Effective Date of Appraisal", ""),
-        "Date of Inspection (if applicable)": appr_fields.get("Date of Inspection", ""),
-        "Appraiser Date of Inspection": appr_fields.get("Date of Inspection", ""),
+        "Date of Inspection (if applicable)": appr_insp_date if has_appraiser_inspection else "",
+        "Appraiser Date of Inspection": appr_insp_date if has_appraiser_inspection else "",
+        "Appraiser Subject Property Date of Inspection": appr_insp_date if has_appraiser_inspection else "",
+        "has_supervisory_inspection": has_supervisory_inspection,
+        "Supervisory Date of Inspection": sup_insp_date if has_supervisory_inspection else "",
         "Appraiser Did not inspect subject property": appr_did_not,
         "Did not inspect subject property (Appraiser)": appr_did_not,
         "Appraiser Did Not Inspect": appr_did_not,
@@ -1925,6 +1985,51 @@ def extract_appraiser_fee_from_doc(doc=None, full_doc_text=""):
     return ""
 
 
+def extract_amc_fee_from_doc(doc=None, full_doc_text=""):
+    """
+    Extracts the AMC Fee / compensation across all pages of the document.
+    """
+    candidate_texts = []
+    if doc is not None:
+        for page in doc:
+            t = page.get_text("text") or ""
+            candidate_texts.append(t)
+    if not candidate_texts and full_doc_text:
+        candidate_texts.append(full_doc_text)
+
+    amc_fee_patterns = [
+        re.compile(
+            r'(?:appraisal\s+management\s+company|amc)[^0-9$\n]{0,80}(?:retain(?:s|ed)?|fee|compensation|charge|amount|portion)'
+            r'[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)',
+            re.IGNORECASE
+        ),
+        re.compile(
+            r'(?:retained\s+by\s+(?:the\s+)?(?:appraisal\s+management\s+company|amc)|amc\s+(?:portion|retain(?:s|ed)?))'
+            r'[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)',
+            re.IGNORECASE
+        ),
+        re.compile(r'\bAMC\s+Fee[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)', re.IGNORECASE),
+        re.compile(r'(?:Appraisal\s+)?Management\s+(?:Company\s+)?Fee[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)', re.IGNORECASE),
+        re.compile(r'\bAMC\s+Compensation[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)', re.IGNORECASE),
+        re.compile(r'\bFee\s+paid\s+to\s+(?:the\s+)?(?:appraisal\s+management\s+company|amc)[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)', re.IGNORECASE),
+    ]
+
+    for pat in amc_fee_patterns:
+        for txt in candidate_texts:
+            for m in pat.finditer(txt):
+                snippet = txt[max(0, m.start() - 30):min(len(txt), m.end() + 30)].lower()
+                if any(bad in snippet for bad in ['hoa', 'pud', 'per month', 'per year', 'late fee', 'cancellation', 'sf', 'sq ft']):
+                    continue
+                raw_num = m.group(1).replace(",", "").strip()
+                try:
+                    num_val = float(raw_num)
+                    if 10.0 <= num_val <= 25000.0:
+                        return f"{num_val:.2f}"
+                except ValueError:
+                    pass
+
+    return ""
+
 def extract_amc_info_from_doc(doc=None, full_doc_text=""):
     """
     Extracts AMC Name, AMC License # / Registration #, and AMC Expiration Date across all pages.
@@ -1951,11 +2056,19 @@ def extract_amc_info_from_doc(doc=None, full_doc_text=""):
                 amc_name = "COAST TO COAST APPRAISAL SERVICES, INC"
 
         if not amc_lic:
-            m_lic = re.search(r'(?:AMC\s*(?:Reg|License|Registration)(?:\.|\s)*#?|Registration\s*(?:No\.?|#)|AMC\s*#)\s*[:\-]?\s*([A-Za-z0-9\-]+)', txt, re.IGNORECASE)
-            if m_lic:
-                raw_lic = m_lic.group(1).strip()
-                if len(re.sub(r'[^A-Za-z0-9]', '', raw_lic)) >= 2:
-                    amc_lic = raw_lic
+            amc_patterns = [
+                re.compile(r'\bAMC\s*(?:Registration|License|Reg|Lic)?\b\.?\s*(?:Number|Num|No|#)?\b\.?\s*[:=\-#]\s*([A-Za-z0-9\.\-]+)', re.IGNORECASE),
+                re.compile(r'\b(?:AMC\s+)?(?:Registration|License)\s*(?:Number|Num|No|#)\b\.?\s*[:=\-#]\s*([A-Za-z0-9\.\-]+)', re.IGNORECASE),
+                re.compile(r'\bAMC\s*(?:Registration|License|Reg|Lic)?\b\.?\s*(?:Number|Num|No|#)?\b\.?\s*(?:is\b)?\s*([A-Za-z0-9\.\-]*\d[A-Za-z0-9\.\-]*)', re.IGNORECASE),
+            ]
+            for p in amc_patterns:
+                for m in p.finditer(txt):
+                    val = m.group(1).strip().strip(".,;:)")
+                    if re.search(r'\d', val) and val.lower() not in {"number", "registration", "license", "tration", "istration", "none", "n/a", "na", "amc"}:
+                        amc_lic = val
+                        break
+                if amc_lic:
+                    break
 
     return {
         "amc_name": amc_name,
@@ -2333,10 +2446,12 @@ def extract_page_1_fields(page, full_doc_text="", fitz_page=None):
     subject["CO detector comment"] = initial_det.get("co_comment", "")
     subject["Water heater double-strapped comment"] = initial_det.get("water_heater_comment", "")
 
-    # Appraiser's Fee
+    # Appraiser's Fee & AMC Fee
     fee_val = extract_appraiser_fee_from_doc(doc=None, full_doc_text=full_doc_text)
     subject["Appraiser's Fee"] = fee_val
     subject["Appraiser Fee"] = fee_val
+    amc_fee_val = extract_amc_fee_from_doc(doc=None, full_doc_text=full_doc_text)
+    subject["AMC Fee"] = amc_fee_val
 
     # CONTRACT
     y_contract = find_label_y(words, "Contract", max_x=120) or 210.0
@@ -4718,6 +4833,8 @@ def extract_certification_section(pdf_path, full_doc_text=""):
         fee_val = extract_appraiser_fee_from_doc(doc=doc, full_doc_text=full_doc_text)
         cert["Appraiser's Fee"] = fee_val
         cert["Appraiser Fee"] = fee_val
+        amc_fee_val = extract_amc_fee_from_doc(doc=doc, full_doc_text=full_doc_text)
+        cert["AMC Fee"] = amc_fee_val
 
     # Extract E&O Insurance details (Policy Number, Policy Period From, Policy Period To, etc.)
     try:
@@ -7017,7 +7134,7 @@ def extract_fields_from_pdf_offline(pdf_path):
                 data["Subject"]["Prior Service Comment"] = prior_doc_comment
                 data["Subject"]["Prior Service"] = prior_doc_comment
 
-            # Extract Appraiser's Fee across entire document
+            # Extract Appraiser's Fee & AMC Fee across entire document
             appraiser_fee_doc = extract_appraiser_fee_from_doc(doc=doc, full_doc_text=full_doc_text)
             if appraiser_fee_doc:
                 data["Appraiser's Fee"] = appraiser_fee_doc
@@ -7028,6 +7145,14 @@ def extract_fields_from_pdf_offline(pdf_path):
                 if "CERTIFICATION" in data and isinstance(data["CERTIFICATION"], dict):
                     data["CERTIFICATION"]["Appraiser's Fee"] = appraiser_fee_doc
                     data["CERTIFICATION"]["Appraiser Fee"] = appraiser_fee_doc
+
+            amc_fee_doc = extract_amc_fee_from_doc(doc=doc, full_doc_text=full_doc_text)
+            if amc_fee_doc:
+                data["AMC Fee"] = amc_fee_doc
+                if "SUBJECT" in data and isinstance(data["SUBJECT"], dict):
+                    data["SUBJECT"]["AMC Fee"] = amc_fee_doc
+                if "CERTIFICATION" in data and isinstance(data["CERTIFICATION"], dict):
+                    data["CERTIFICATION"]["AMC Fee"] = amc_fee_doc
 
             # Extract AMC details across entire document
             amc_info = extract_amc_info_from_doc(doc=doc, full_doc_text=full_doc_text)

@@ -55,6 +55,16 @@ export const getSubjectRentFieldVal = (allData, fieldName) => {
         aliases.push('Gross Living Area (GLA)', 'Square Feet of Gross Living Area Above Grade', 'GLA');
     } else if (fieldName === 'Other:') {
         aliases.push('Other', 'Other Feature', 'Other Description');
+    } else if (fieldName === 'Other (e.g., basement, etc.)' || fieldName === 'Other (e.g., basement)' || fieldName === 'Other Basement') {
+        aliases.push(
+            'Other (e.g., basement, etc.)',
+            'Other (e.g., basement)',
+            'Other (e.g., basement etc.)',
+            'Other Basement',
+            'Basement (Other)',
+            'Other (Basement)',
+            'Basement & Finished Rooms Below Grade'
+        );
     }
 
     for (const f of aliases) {
@@ -65,6 +75,8 @@ export const getSubjectRentFieldVal = (allData, fieldName) => {
             allData?.clean_data?.['Subject Rent Schedule']?.[f] ??
             allData?.Subject?.[f] ??
             allData?.clean_data?.Subject?.[f] ??
+            allData?.SALES_GRID?.Subject?.[f] ??
+            allData?.['Sales Grid']?.Subject?.[f] ??
             allData?.[f];
 
         if (val !== undefined && val !== null) {
@@ -435,41 +447,6 @@ export const checkSubjectAdjustedMonthlyRent = (field, text, allData, path, sale
     return null;
 };
 
-export const checkOtherBasement = (field, text, allData, path, saleName) => {
-    if (field !== 'Other (e.g., basement, etc.)' && field !== 'Other (e.g., basement)' && field !== 'Other Basement') {
-        return null;
-    }
-
-    if (!saleName || !saleName.startsWith('COMPARABLE')) {
-        return null;
-    }
-
-    const subjRent = allData?.['Single Family Rent Schedule'] ||
-        allData?.clean_data?.['Single Family Rent Schedule'] ||
-        allData?.['Subject Rent Schedule'] ||
-        allData?.clean_data?.['Subject Rent Schedule'] ||
-        allData?.Subject ||
-        allData?.clean_data?.Subject ||
-        {};
-
-    const subjectValue = subjRent['Other (e.g., basement, etc.)'] ??
-        subjRent['Other (e.g., basement)'] ??
-        subjRent['Other Basement'] ??
-        allData?.Subject?.['Other (e.g., basement, etc.)'] ??
-        allData?.Subject?.['Other (e.g., basement)'] ??
-        allData?.Subject?.['Other Basement'];
-    const comparableValue = text;
-
-    const subjectValueStr = String(subjectValue || '').trim();
-    const comparableValueStr = String(comparableValue || '').trim();
-
-    if (subjectValueStr === comparableValueStr) {
-        return { isMatch: true };
-    } else {
-        return { isError: true, message: `Value (${comparableValueStr || 'empty'}) does not match Subject's value (${subjectValueStr || 'empty'}).` };
-    }
-};
-
 const normalizeForCompare = (val) =>
     String(val || '')
         .toLowerCase()
@@ -485,6 +462,245 @@ const parseAdjustmentValue = (adjStr) => {
     if (isNaN(num)) return 0;
     return isNegative ? -num : num;
 };
+
+/**
+ * Validates 'Other (e.g., basement, etc.)' and its Adjustment in the Comparable Rent Schedule (Form 1007).
+ * Rule:
+ * - If Comp basement is the same as Subject: valid (adjustment should be 0 or blank; non-zero adjustment is flagged).
+ * - If Comp basement is NOT the same as Subject: an adjustment is required (0, +, -).
+ *   - If adjustment is provided: valid.
+ *   - If adjustment is blank/missing: error.
+ */
+export const checkOtherBasement = (field, text, allData, fieldPath, saleName) => {
+    const isDescField =
+        field === 'Other (e.g., basement, etc.)' ||
+        field === 'Other (e.g., basement)' ||
+        field === 'Other (e.g., basement etc.)' ||
+        field === 'Other Basement' ||
+        field === 'Basement (Other)' ||
+        field === 'Other (Basement)';
+
+    const isAdjField =
+        field === 'Other (e.g., basement, etc.) Adjustment' ||
+        field === 'Other (e.g., basement) Adjustment' ||
+        field === 'Other Basement Adjustment' ||
+        field === 'Other (e.g., basement, etc.) Adj' ||
+        field === 'Other (e.g., basement) Adj' ||
+        field === 'Other Basement Adj';
+
+    if (!isDescField && !isAdjField) {
+        return null;
+    }
+
+    if (!saleName || saleName === 'Subject' || !allData) {
+        return null;
+    }
+
+    // 1. Get Subject basement value
+    const subjRent = allData?.['Single Family Rent Schedule'] ||
+        allData?.clean_data?.['Single Family Rent Schedule'] ||
+        allData?.['Subject Rent Schedule'] ||
+        allData?.clean_data?.['Subject Rent Schedule'] ||
+        allData?.Subject ||
+        allData?.clean_data?.Subject ||
+        {};
+
+    const subjAliases = [
+        'Other (e.g., basement, etc.)',
+        'Other (e.g., basement)',
+        'Other (e.g., basement etc.)',
+        'Other Basement',
+        'Basement (Other)',
+        'Other (Basement)',
+        'Basement & Finished Rooms Below Grade'
+    ];
+
+    let rawSubjVal = getSubjectRentFieldVal(allData, 'Other (e.g., basement, etc.)');
+    if (!rawSubjVal) {
+        for (const alias of subjAliases) {
+            const val =
+                subjRent?.[alias] ??
+                allData?.Subject?.[alias] ??
+                allData?.clean_data?.Subject?.[alias] ??
+                allData?.SALES_GRID?.Subject?.[alias] ??
+                allData?.['Sales Grid']?.Subject?.[alias];
+            if (val !== undefined && val !== null && String(val).trim() !== '') {
+                rawSubjVal = val;
+                break;
+            }
+        }
+    }
+
+    const subjectValueStr = String(
+        typeof rawSubjVal === 'object' && rawSubjVal !== null ? (rawSubjVal.value ?? '') : rawSubjVal
+    ).trim();
+
+    // 2. Identify comp and adj containers
+    const rentAliases = [saleName];
+    const numMatch = String(saleName).match(/(\d+)/);
+    if (numMatch) {
+        const n = numMatch[1];
+        const nPadded = n.padStart(2, '0');
+        rentAliases.push(
+            `COMPARABLE NO. ${n}`,
+            `COMPARABLE NO ${n}`,
+            `COMPARABLE NO. ${nPadded}`,
+            `COMPARABLE NO ${nPadded}`,
+            `COMPARABLE RENTAL #${n}`,
+            `Comparable Rental #${n}`,
+            `Comparable Rental No #${n}`,
+            `COMPARABLE Rental No #${n}`,
+            `Comparable Rental ${n}`,
+            `Rental ${n}`,
+            `Rental #${n}`,
+            `RENTAL_${n}`,
+            `RENTAL_${nPadded}`,
+            `Comparable ${n}`,
+            `Comp ${n}`
+        );
+    }
+
+    const containers = [
+        allData?.['Comparable Rent Schedule'],
+        allData?.clean_data?.['Comparable Rent Schedule'],
+        allData?.fields?.['Comparable Rent Schedule'],
+        allData?.['Comparable Rental Data'],
+        allData?.clean_data?.['Comparable Rental Data'],
+        allData?.['Single Family Rent Schedule'],
+        allData?.clean_data?.['Single Family Rent Schedule'],
+        allData?.RENTAL_GRID,
+        allData?.fields?.['Comparable Rental Data']
+    ];
+
+    let compObj = allData?.[saleName] && typeof allData[saleName] === 'object' ? allData[saleName] : {};
+    for (const container of containers) {
+        if (container && typeof container === 'object') {
+            for (const r of rentAliases) {
+                if (container[r] && typeof container[r] === 'object') {
+                    compObj = container[r];
+                    break;
+                }
+            }
+            if (compObj && Object.keys(compObj).length > 0) break;
+        }
+    }
+    if (!compObj || Object.keys(compObj).length === 0) {
+        for (const r of rentAliases) {
+            if (allData?.[r] && typeof allData[r] === 'object') {
+                compObj = allData[r];
+                break;
+            }
+        }
+    }
+
+    let adjObj = compObj;
+    const adjContainers = [
+        allData?.['Comparable Rent Adjustments'],
+        allData?.clean_data?.['Comparable Rent Adjustments']
+    ];
+    for (const container of adjContainers) {
+        if (container && typeof container === 'object') {
+            for (const r of rentAliases) {
+                if (container[r] && typeof container[r] === 'object') {
+                    adjObj = container[r];
+                    break;
+                }
+            }
+        }
+    }
+    for (const r of rentAliases) {
+        if (allData?.[`${r} Adjustments`] && typeof allData[`${r} Adjustments`] === 'object') {
+            adjObj = allData[`${r} Adjustments`];
+            break;
+        }
+    }
+
+    // 3. Extract Comp basement description
+    const descAliases = [
+        'Other (e.g., basement, etc.)',
+        'Other (e.g., basement)',
+        'Other (e.g., basement etc.)',
+        'Other Basement',
+        'Basement (Other)',
+        'Other (Basement)',
+        'Basement & Finished Rooms Below Grade'
+    ];
+
+    let rawCompVal = '';
+    if (isDescField && text !== undefined && text !== null) {
+        rawCompVal = typeof text === 'object' ? (text.value ?? '') : text;
+    } else {
+        for (const alias of descAliases) {
+            if (compObj[alias] !== undefined && compObj[alias] !== null && String(compObj[alias]).trim() !== '') {
+                rawCompVal = compObj[alias];
+                break;
+            }
+        }
+    }
+    const comparableValueStr = String(
+        typeof rawCompVal === 'object' && rawCompVal !== null ? (rawCompVal.value ?? '') : rawCompVal
+    ).trim();
+
+    // 4. Extract Comp basement adjustment
+    const adjAliases = [
+        'Other (e.g., basement, etc.) Adjustment',
+        'Other (e.g., basement) Adjustment',
+        'Other Basement Adjustment',
+        'Other (e.g., basement, etc.) Adj',
+        'Other (e.g., basement) Adj',
+        'Other Basement Adj'
+    ];
+
+    let rawAdjVal = '';
+    if (isAdjField && text !== undefined && text !== null) {
+        rawAdjVal = typeof text === 'object' ? (text.value ?? '') : text;
+    } else {
+        for (const alias of adjAliases) {
+            const val = adjObj?.[alias] ?? compObj?.[alias];
+            if (val !== undefined && val !== null && String(val).trim() !== '') {
+                rawAdjVal = val;
+                break;
+            }
+        }
+    }
+    const adjStr = String(
+        typeof rawAdjVal === 'object' && rawAdjVal !== null ? (rawAdjVal.value ?? '') : rawAdjVal
+    ).trim();
+
+    // 5. Compare Subject and Comp
+    const normSubj = normalizeForCompare(subjectValueStr);
+    const normComp = normalizeForCompare(comparableValueStr);
+
+    if (!normSubj && !normComp) {
+        return null;
+    }
+
+    // Same basement description: valid (adjustment should be 0 or blank)
+    if (normSubj === normComp) {
+        if (adjStr !== '' && adjStr !== '0' && adjStr !== '$0' && parseAdjustmentValue(adjStr) !== 0) {
+            return {
+                isError: true,
+                message: `Other (e.g., basement, etc.) is the same as Subject (${subjectValueStr}), but adjustment is not $0.`
+            };
+        }
+        return { isMatch: true };
+    }
+
+    // Different basement description: adjustment is required (0, -, +)
+    if (adjStr === '') {
+        return {
+            isError: true,
+            message: `Other (e.g., basement, etc.) mismatch (Subject: '${subjectValueStr || 'None'}', Comp: '${comparableValueStr || 'None'}'). An adjustment is required (0, +, -).`
+        };
+    }
+
+    return {
+        isMatch: true,
+        message: `Other (e.g., basement, etc.) differs from Subject; adjustment provided (${adjStr}).`
+    };
+};
+
+export const checkRentOtherBasementAdjustment = checkOtherBasement;
 
 const parseAreaToSqFt = (areaStr) => {
     if (areaStr === null || areaStr === undefined) return NaN;
@@ -1499,6 +1715,132 @@ export const checkRentOtherAdjustment = (field, text, allData, fieldPath, rentNa
 
     return { isMatch: true };
 };
+
+export const getRentalCompData = (allData, compNumberOrName) => {
+    if (!allData || typeof allData !== 'object') return null;
+    let n = null;
+    if (typeof compNumberOrName === 'number') {
+        n = compNumberOrName;
+    } else {
+        const match = String(compNumberOrName).match(/\d+/);
+        if (match) n = parseInt(match[0], 10);
+    }
+    if (!n) return null;
+
+    const nPadded = String(n).padStart(2, '0');
+    const aliases = [
+        `COMPARABLE NO. ${n}`,
+        `COMPARABLE NO ${n}`,
+        `COMPARABLE NO. ${nPadded}`,
+        `COMPARABLE NO ${nPadded}`,
+        `COMPARABLE RENTAL #${n}`,
+        `Comparable Rental #${n}`,
+        `Comparable Rental No #${n}`,
+        `COMPARABLE Rental No #${n}`,
+        `Comparable Rental ${n}`,
+        `Rental ${n}`,
+        `Rental #${n}`,
+        `RENTAL_${n}`,
+        `RENTAL_${nPadded}`,
+        `Comparable ${n}`,
+        `Comp ${n}`
+    ];
+
+    const containers = [
+        allData?.['Comparable Rental Data'],
+        allData?.clean_data?.['Comparable Rental Data'],
+        allData?.['Single Family Rent Schedule'],
+        allData?.clean_data?.['Single Family Rent Schedule'],
+        allData?.RENTAL_GRID,
+        allData?.fields?.['Comparable Rental Data']
+    ];
+
+    for (const container of containers) {
+        if (container && typeof container === 'object') {
+            for (const alias of aliases) {
+                if (container[alias] && typeof container[alias] === 'object') {
+                    return container[alias];
+                }
+            }
+        }
+    }
+
+    for (const alias of aliases) {
+        if (allData?.[alias] && typeof allData[alias] === 'object') {
+            return allData[alias];
+        }
+    }
+
+    return null;
+};
+
+export const getRentalCompAddress = (allData, compNumberOrName) => {
+    const comp = getRentalCompData(allData, compNumberOrName);
+    if (!comp || typeof comp !== 'object') return '';
+    const addr = comp['Address'] || comp['Street Address'] || comp['PropertyStreetAddress'] || comp['Property Address'] || '';
+    if (typeof addr === 'object' && addr !== null) {
+        return String(addr.value ?? '').trim();
+    }
+    return String(addr || '').trim();
+};
+
+export const isRentalCompPresent = (compObj) => {
+    if (!compObj || typeof compObj !== 'object') return false;
+    const addr = String(compObj['Address'] || compObj['Street Address'] || compObj['PropertyStreetAddress'] || compObj['Property Address'] || '').trim();
+    if (addr && addr !== '0' && addr !== '-' && addr.toLowerCase() !== 'n/a') return true;
+
+    const rent = String(compObj['Monthly Rental'] || compObj['Adjusted Monthly Rent'] || compObj['MonthlyRentAmount'] || compObj['Gross Monthly Rent'] || '').trim();
+    if (rent && rent !== '0' && rent !== '$0' && rent !== '-' && rent.toLowerCase() !== 'n/a') return true;
+
+    return Object.entries(compObj).some(([k, val]) => {
+        if (val === undefined || val === null) return false;
+        const v = typeof val === 'object' ? (val.value ?? '') : val;
+        const s = String(v).trim();
+        return s !== '' && s !== '-' && s.toLowerCase() !== 'n/a';
+    });
+};
+
+export const getPresentRentalCompsCount = (allData) => {
+    let count = 0;
+    for (let i = 1; i <= 20; i++) {
+        const comp = getRentalCompData(allData, i);
+        if (isRentalCompPresent(comp)) {
+            count++;
+        }
+    }
+    return count;
+};
+
+export const checkMinimumRentalComparables = (field, text, allData, fieldPath, saleName, formType) => {
+    if (!is1007Active(allData, formType)) {
+        return null;
+    }
+
+    if (!saleName || saleName === 'Subject') {
+        return null;
+    }
+
+    const compMatch = String(saleName).match(/\d+/);
+    const compNum = compMatch ? parseInt(compMatch[0], 10) : null;
+
+    const presentCount = getPresentRentalCompsCount(allData);
+
+    if (presentCount < 3) {
+        if (compNum !== null && compNum <= 3) {
+            return {
+                isError: true,
+                message: 'minimum 3 rental comparables will be present',
+                skipBlankFilter: true
+            };
+        }
+    }
+
+    return {
+        isMatch: true,
+        message: 'Valid: Minimum 3 rental comparables are present.'
+    };
+};
+
 
 export {
     checkRentScheduleAsOfDateConsistency,

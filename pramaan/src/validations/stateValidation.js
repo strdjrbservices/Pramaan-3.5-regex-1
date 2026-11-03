@@ -95,7 +95,11 @@ export const checkAmcLicense = (data) => {
         if (val !== undefined && val !== null) {
             const raw = typeof val === 'object' && val.value !== undefined ? val.value : val;
             const str = String(raw).trim();
-            if (str && !['none', 'n/a', 'na'].includes(str.toLowerCase())) {
+            if (
+                str &&
+                !['none', 'n/a', 'na', 'tration', 'istration', 'registration', 'license', 'number'].includes(str.toLowerCase()) &&
+                /\d/.test(str)
+            ) {
                 return true;
             }
         }
@@ -139,7 +143,8 @@ export const checkAmcFee = (data) => {
         getVal(data, 'Certification', "AMC Fee"),
         getVal(data, 'Subject', "AMC Fee"),
         getVal(data, 'Reconciliation', "AMC Fee"),
-        data?.["AMC Fee"]
+        data?.["AMC Fee"],
+        data?.["AMC Fee Disclosure"]
     ];
 
     for (const val of feeSources) {
@@ -153,6 +158,57 @@ export const checkAmcFee = (data) => {
             }
         }
     }
+
+    // Fallback: search narrative and clarification comments for AMC fee disclosure
+    const commentSources = [
+        getVal(data, 'Subject', 'Clarification Comment'),
+        getVal(data, 'Subject', 'Comments on Appraisal and Report Identification'),
+        getVal(data, 'Subject', 'Restricted Appraisal Report Comment'),
+        getVal(data, 'Subject', 'Appraisal Addendum'),
+        getVal(data, 'Subject', 'Additional Comments'),
+        getVal(data, 'Subject', 'USPAP Addendum'),
+        getVal(data, 'Subject', 'Comments on Sales Comparison'),
+        getVal(data, 'Certification', 'Clarification Comment'),
+        getVal(data, 'Certification', 'Comments on Appraisal and Report Identification'),
+        getVal(data, 'Certification', 'Restricted Appraisal Report Comment'),
+        data?.['Clarification Comment'],
+        data?.['Comments on Appraisal and Report Identification'],
+        data?.['Restricted Appraisal Report Comment'],
+        data?.['Appraisal Addendum'],
+        data?.['Additional Comments'],
+        data?.['USPAP Addendum'],
+        data?.['Reconciliation Comments'],
+        data?.['Comments on Sales Comparison']
+    ];
+
+    const amcPatterns = [
+        /(?:appraisal\s+management\s+company|amc)[^0-9$\n]{0,80}(?:retain(?:s|ed)?|fee|compensation|charge|amount|portion)[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)/i,
+        /(?:retained\s+by\s+(?:the\s+)?(?:appraisal\s+management\s+company|amc)|amc\s+(?:portion|retain(?:s|ed)?))[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)/i,
+        /\bAMC\s+Fee[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)/i,
+        /(?:Appraisal\s+)?Management\s+(?:Company\s+)?Fee[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)/i,
+        /\bAMC\s+Compensation[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)/i,
+        /\bFee\s+paid\s+to\s+(?:the\s+)?(?:appraisal\s+management\s+company|amc)[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)/i
+    ];
+
+    for (const val of commentSources) {
+        if (val !== undefined && val !== null) {
+            const raw = typeof val === 'object' && val.value !== undefined ? val.value : val;
+            const str = String(raw).trim();
+            for (const pat of amcPatterns) {
+                const match = str.match(pat);
+                if (match && match[1]) {
+                    const num = parseFloat(match[1].replace(/,/g, ''));
+                    if (!isNaN(num) && num > 0) {
+                        if (data && !data['AMC Fee']) {
+                            data['AMC Fee'] = num.toFixed(2);
+                        }
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+
     return false;
 };
 
@@ -253,6 +309,81 @@ export const checkIllinoisCoDetectorAndPhotos = (data) => {
     return hasComment;
 };
 
+// Check CO detector(s) are installed (WI)
+export const checkCoDetectorInstalled = (data) => {
+    const sources = [
+        getVal(data, 'Subject', 'CO detector comment'),
+        getVal(data, 'Subject', 'CO detector(s) comment'),
+        getVal(data, 'Subject', 'Smoke detector comment'),
+        getVal(data, 'Improvements', 'Additional features'),
+        getVal(data, 'Subject', 'Comments on Improvements'),
+        getVal(data, 'Improvements', 'Comments on Improvements'),
+        getVal(data, 'Subject', 'Condition of the Property'),
+        getVal(data, 'Improvements', 'Condition of the Property'),
+        data?.['CO detector comment'],
+        data?.['CO detector(s) comment'],
+        data?.['CO detector installed'],
+        data?.['CO Detector Installed'],
+        data?.['CO Detectors Installed'],
+        data?.['Smoke detector comment']
+    ];
+
+    for (const val of sources) {
+        if (val !== undefined && val !== null) {
+            const raw = typeof val === 'object' && val.value !== undefined ? val.value : val;
+            const str = String(raw).trim().toLowerCase();
+            if (
+                str.includes('carbon monoxide') ||
+                str.includes('co detector') ||
+                str.includes('co alarm') ||
+                str.includes('co/smoke') ||
+                str.includes('smoke/co') ||
+                str.includes('smoke and co') ||
+                str.includes('co and smoke')
+            ) {
+                if (
+                    str.includes('not installed') ||
+                    str.includes('not present') ||
+                    str.includes('missing') ||
+                    str.includes('no co detector') ||
+                    str.includes('no carbon monoxide')
+                ) {
+                    return false;
+                }
+                return true;
+            }
+        }
+    }
+
+    // Check photos for CO detector
+    const photos = data?.EXTRACTED_PHOTOS || data?.photos || data?.photo_labels || [];
+    if (Array.isArray(photos)) {
+        for (const p of photos) {
+            const caption = typeof p === 'string' ? p : (p?.caption || p?.label || p?.title || '');
+            const capLower = String(caption).toLowerCase();
+            if (capLower.includes('co detector') || capLower.includes('carbon monoxide') || capLower.includes('co alarm')) {
+                return true;
+            }
+        }
+    }
+
+    // Check full document text fallback
+    const fullText = String(data?.raw || data?.full_doc_text || '').toLowerCase();
+    if (fullText) {
+        if (
+            /(?:carbon\s*monoxide|co)\s*detector(?:s)?\s*(?:are\s*)?(?:installed|present|equipped|in\s*place|operational|operable)/i.test(fullText) ||
+            /smoke\s*(?:and|\/)\s*(?:carbon\s*monoxide|co)\s*detector(?:s)?\s*(?:are\s*)?(?:installed|present)/i.test(fullText) ||
+            /(?:installed|equipped\s*with)\s*(?:smoke\s*(?:and|\/)\s*)?(?:carbon\s*monoxide|co)\s*detector/i.test(fullText)
+        ) {
+            if (!/(?:co|carbon\s*monoxide)\s*detector(?:s)?\s*(?:not\s*installed|missing|not\s*present)/i.test(fullText)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+};
+
 // 8. Invoice attached to report (NY except Plaza Home Mortgage; WI)
 export const checkInvoiceAttached = (data) => {
     // 1. Direct flag fields across sections
@@ -333,6 +464,65 @@ export const checkPhiladelphiaReportEscalation = (data) => {
 };
 
 // State Requirement Checker mapping to the 11 requirements
+// Georgia: AMC Number must be 289
+export const checkGeorgiaAmcNumber = (data) => {
+    const amcLic = String(
+        getVal(data, 'Subject', 'AMC License #') ||
+        getVal(data, 'Certification', 'AMC License #') ||
+        getVal(data, 'Subject', 'AMC Reg. Number') ||
+        getVal(data, 'Certification', 'AMC Reg. Number') ||
+        getVal(data, 'Subject', 'AMC #') ||
+        getVal(data, 'Certification', 'AMC #') ||
+        data?.['AMC License #'] ||
+        data?.['AMC Reg. Number'] ||
+        data?.['AMC #'] ||
+        ''
+    ).trim();
+    if (amcLic.includes('289')) return true;
+
+    const fullText = String(data?.raw || data?.full_doc_text || '');
+    if (/AMC\s*(?:#|License|Registration|Reg|Number)[:\s]*289\b/i.test(fullText) || /\b289\b/.test(amcLic)) {
+        return true;
+    }
+    return false;
+};
+
+// Georgia: For properties built after 2008, CO detectors required in general sleeping areas
+export const checkGeorgiaCoDetector = (data) => {
+    const rawYear = String(
+        getVal(data, 'Subject', 'Year Built') ||
+        getVal(data, 'Improvements', 'Year Built') ||
+        data?.['Year Built'] ||
+        ''
+    ).trim();
+    const yearMatch = rawYear.match(/\b(19\d\d|20\d\d)\b/);
+    const year = yearMatch ? parseInt(yearMatch[1], 10) : 0;
+    if (year > 2008) {
+        return checkCoDetectorInstalled(data);
+    }
+    return true;
+};
+
+// Illinois: Mandatory Appraisal Statement (Home Inspector License Act [225 ILCS 441] & 68 Ill. Adm. Code 1410)
+export const checkIllinoisMandatoryStatement = (data) => {
+    const fullText = String(
+        data?.raw ||
+        data?.full_doc_text ||
+        getVal(data, 'Subject', 'Comments on Improvements') ||
+        getVal(data, 'Subject', 'Appraisal Comments') ||
+        getVal(data, 'Certification', 'Appraiser Comments') ||
+        getVal(data, 'Reconciliation', 'Comments') ||
+        ''
+    ).toLowerCase();
+
+    return (
+        fullText.includes('225 ilcs 441') ||
+        fullText.includes('home inspector license act') ||
+        fullText.includes('68 ill. adm. code 1410') ||
+        (fullText.includes('standards of practice') && fullText.includes('home inspection'))
+    );
+};
+
 export const checkStateRequirements = (field, text, data) => {
     if (field !== 'State') return null;
 
@@ -344,83 +534,101 @@ export const checkStateRequirements = (field, text, data) => {
 
     const missing = [];
 
-    // 1. Appraiser fee disclosed in report body (AZ, CO, CT, GA, IL, LA, NJ, NV, NM, ND, OH, UT, VA, VT, WV)
+    // A. Appraiser fee disclosed in report body (AZ, CO, CT, GA, IL, LA, NJ, NV, NM, ND, OH, UT, VA, VT, WV)
     const feeStates = ['AZ', 'CO', 'CT', 'GA', 'IL', 'LA', 'NJ', 'NV', 'NM', 'ND', 'OH', 'UT', 'VA', 'VT', 'WV'];
     if (feeStates.includes(state)) {
         if (!checkAppraiserFee(data)) {
-            missing.push("Appraiser's Fee");
+            missing.push("Appraiser fee disclosure missing from report body");
         }
     }
 
-    // 2. AMC license/registration number included (GA, IL, MT, NJ, OH, VT)
+    // B. AMC license/registration number included (GA, IL, MT, NJ, OH, VT)
     const amcLicStates = ['GA', 'IL', 'MT', 'NJ', 'OH', 'VT'];
-    if (amcLicStates.includes(state)) {
+    if (amcLicStates.includes(state) && state !== 'GA' && state !== 'IL') {
         if (!checkAmcLicense(data)) {
-            missing.push("AMC License #");
+            missing.push("AMC License/Registration Number");
         }
     }
 
-    // 3 & 7. Illinois (IL) specific checks
+    // C & G. Illinois (IL) specific checks
     if (state === 'IL') {
         const ilLicMissing = checkAmcLicenseAndExpiration(data);
-        ilLicMissing.forEach(item => {
-            if (!missing.includes(item)) missing.push(item);
-        });
+        if (ilLicMissing.length > 0) {
+            missing.push("Please include our AMC License # 558000312 and Expiration date 12/31/2026 in the report.");
+        }
         if (!checkIllinoisCoDetectorAndPhotos(data)) {
-            missing.push("CO detector confirmation / commentary");
+            missing.push("Please comment if Carbon Monoxide detector is present and provide photos.");
+        }
+        if (!checkIllinoisMandatoryStatement(data)) {
+            missing.push("Mandatory Illinois statement regarding Home Inspector License Act [225 ILCS 441] and 68 Ill. Adm. Code 1410 is missing.");
         }
     }
 
-    // 4. AMC fee included in report (NV, NM, UT)
+    // D. AMC fee included in report (NV, NM, UT)
     const amcFeeStates = ['NV', 'NM', 'UT'];
     if (amcFeeStates.includes(state)) {
         if (!checkAmcFee(data)) {
-            missing.push("AMC Fee");
+            missing.push("AMC Fee disclosure");
         }
     }
 
-    // 5 & 6. California (CA) specific checks
+    // E. California (CA) specific checks
     if (state === 'CA') {
         if (!checkSmokeCoDetector(data)) {
-            missing.push("Smoke/CO detector presence and legal requirement comment");
+            missing.push("Please address if smoke/co detector were present and required by law.");
         }
         if (!checkWaterHeaterDoubleStrapping(data)) {
-            missing.push("Water heater double-strapped comment");
+            missing.push("Please indicate if the hot water heater is properly double strapped (earthquake straps).");
         }
     }
 
-    // 6. Utah (UT) specific check for Averra Financial LLC
+    // F. Georgia (GA) specific checks: AMC # 289 and CO Detectors after year built 2008
+    if (state === 'GA') {
+        if (!checkGeorgiaAmcNumber(data)) {
+            missing.push("Please include AMC Number 289 in the report.");
+        }
+        if (!checkGeorgiaCoDetector(data)) {
+            missing.push("For properties built after 2008, Georgia requires carbon monoxide detectors be installed in general sleeping areas in all new one- and two-family homes and townhomes of three stories or less.");
+        }
+    }
+
+    // H. Utah (UT) specific check for Averra Financial LLC
     if (state === 'UT') {
         const lender = getLenderClientName(data);
-        if (lender.includes('AVERRA')) {
+        if (lender.includes('AVERRA') || lender.includes('THE LOAN STORE') || lender.includes('LOAN STORE')) {
             if (!checkWaterHeaterDoubleStrapping(data)) {
-                missing.push("Double-strapped water heater comment (Required for Averra Financial LLC)");
+                missing.push("For Averra Financial LLC, Utah requires double strapped water heaters. Please address if water heater is double strapped.");
             }
         }
     }
 
-    // 8. Invoice attached to report (NY except Plaza Home Mortgage; WI)
-    if (state === 'WI') {
-        if (!checkInvoiceAttached(data)) {
-            missing.push("Invoice copy attached to report");
+    // I. Virginia (VA) Smoke/CO detector confirmation
+    if (state === 'VA') {
+        if (!checkSmokeCoDetector(data)) {
+            missing.push("Please confirm if smoke/CO detector are installed.");
         }
     }
 
+    // J. Wisconsin (WI) Invoice and CO detector requirements
+    if (state === 'WI') {
+        if (!checkInvoiceAttached(data)) {
+            missing.push("Please attach a copy of invoice to the report.");
+        }
+        if (!checkCoDetectorInstalled(data)) {
+            missing.push("Appraiser to confirm CO detector(s) are installed.");
+        }
+    }
+
+    // K. New York (NY) Invoice requirement (Plaza Home Mortgage exempt)
     if (state === 'NY') {
         const lender = getLenderClientName(data);
         const isPlaza = lender.includes('PLAZA HOME') || lender.includes('PLAZA');
         if (!isPlaza && !checkInvoiceAttached(data)) {
-            missing.push("Invoice copy attached to report (exempt for Plaza Home Mortgage)");
+            missing.push("Please attach a copy of the invoice to the report.");
         }
     }
 
-    // 9. Invoice included or omitted without rejection (OK)
-    if (state === 'OK') {
-        // Always passes in Oklahoma without rejection
-        return { isMatch: true, message: `All state requirements for ${state} appear to be met (Invoice included or omitted without rejection).` };
-    }
-
-    // 10. Philadelphia report escalation (PA: escalate only if value seems high; no escalation for 1004D)
+    // L. Pennsylvania (PA) Philadelphia escalation rules
     if (state === 'PA') {
         const phillyEscalation = checkPhiladelphiaReportEscalation(data);
         if (phillyEscalation.length > 0) {
@@ -428,15 +636,14 @@ export const checkStateRequirements = (field, text, data) => {
         }
     }
 
-    // 11. Smoke/CO detector installation confirmed (VA)
-    if (state === 'VA') {
-        if (!checkSmokeCoDetector(data)) {
-            missing.push("Smoke and CO detector installation confirmation");
-        }
+    // M. Oklahoma (OK) Invoice policy (do not reject for including or omitting)
+    if (state === 'OK') {
+        return { isMatch: true, message: `All state requirements for ${state} appear to be met (Invoice included or omitted without rejection).` };
     }
 
     if (missing.length > 0) {
-        return { isError: true, message: `Missing for ${state}: ${missing.join(', ')}.` };
+        const cleanMissing = missing.map(m => String(m).trim().replace(/\.+$/, ''));
+        return { isError: true, message: `Missing for ${state}: ${cleanMissing.join(', ')}.` };
     }
 
     return { isMatch: true, message: `All state requirements for ${state} appear to be met.` };

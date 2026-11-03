@@ -574,7 +574,7 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
         ?? allData?.CERTIFICATION?.["USPAP Reporting Option"]
 
-        ?? (allData?.has_uspap_identification ? "Appraisal Report (USPAP Standards Rule 2-2(a))" : "");
+        ?? "";
 
       if (uspapVal) return renderValue(uspapVal);
 
@@ -730,6 +730,18 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
       ?? data?.clean_data?.['Project Analysis']?.[field]
 
+      ?? data?.UNIT_DESCRIPTIONS?.[field]
+
+      ?? data?.['Unit Descriptions']?.[field]
+
+      ?? data?.PROJECT_SITE?.[field]
+
+      ?? data?.['Project Site']?.[field]
+
+      ?? data?.clean_data?.['Unit Descriptions']?.[field]
+
+      ?? data?.clean_data?.['Project Site']?.[field]
+
       ?? data?.SITE?.[field]
 
       ?? data?.SUBJECT?.[field]
@@ -759,6 +771,18 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
       ?? allData?.clean_data?.['Project Information']?.[field]
 
       ?? allData?.clean_data?.['Project Analysis']?.[field]
+
+      ?? allData?.UNIT_DESCRIPTIONS?.[field]
+
+      ?? allData?.['Unit Descriptions']?.[field]
+
+      ?? allData?.PROJECT_SITE?.[field]
+
+      ?? allData?.['Project Site']?.[field]
+
+      ?? allData?.clean_data?.['Unit Descriptions']?.[field]
+
+      ?? allData?.clean_data?.['Project Site']?.[field]
 
       ?? allData?.SITE?.[field]
 
@@ -868,7 +892,7 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
             revisionHandlers={revisionHandlers}
 
-            showBlankValidation={showBlankValidation}
+            showBlankValidation={showBlankValidation || id === 'info-of-sales-section'}
 
             inputStyle={{ width: '100%', border: 'none', background: 'transparent', padding: 0, height: 'auto', resize: 'vertical', fontSize: '0.9rem', color: '#1f2937' }}
 
@@ -926,7 +950,7 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
           handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers}
 
-          showBlankValidation={showBlankValidation}
+          showBlankValidation={showBlankValidation || id === 'info-of-sales-section'}
 
           inputStyle={{ width: '100%', border: 'none', background: 'transparent', padding: 0, height: 'auto', resize: usePre ? 'vertical' : 'none' }}
 
@@ -1102,7 +1126,7 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
         ?? allData?.CERTIFICATION?.["USPAP Reporting Option"]
 
-        ?? (data?.has_uspap_identification ? "Appraisal Report (USPAP Standards Rule 2-2(a))" : "")
+        ?? ""
 
       );
 
@@ -3587,850 +3611,421 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
 
   if (id === 'uspap-identification-section' || id === 'uspap-section' || title === 'USPAP / Report Identification' || title === 'USPAP / Appraisal and Report Identification') {
-
-    const sigImg = data?.["Signature Image"] || data?.["Appraiser Signature Image"] || allData?.USPAP_IDENTIFICATION?.["Signature Image"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Signature Image"] || allData?.clean_data?.["Signature Image"] || allData?.["Signature Image"];
-
-    const supSigImg = data?.["Supervisory Signature Image"] || allData?.["Supervisory Signature Image"] || allData?.USPAP_IDENTIFICATION?.["Supervisory Signature Image"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Supervisory Signature Image"] || allData?.clean_data?.["Supervisory Signature Image"];
-
     const uspapRepOpt = data?.["USPAP Reporting Option"] || data?.["This report was prepared under the following USPAP reporting option:"] || allData?.["USPAP Reporting Option"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["USPAP Reporting Option"] || '';
-
     const exposureTime = data?.["Reasonable Exposure Time"] || data?.["Reasonable Exposure Time Comment"] || data?.["Exposure Comment"] || allData?.["Reasonable Exposure Time"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Reasonable Exposure Time"] || '';
-
-    const priorServices = data?.["Prior Service Statement"] || data?.["Prior service comment"] || data?.["Prior Service Comment"] || allData?.["Prior Service Statement"] || allData?.["Prior service comment"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Prior Service Statement"] || '';
-
+    const priorServices = data?.["Prior Service Statement"] || data?.["Prior service comment"] || data?.["Prior Service Comment"] || allData?.["Prior Service Statement"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Prior Service Statement"] || '';
     const uspapComments = data?.["Comments on Appraisal and Report Identification"] || data?.["Restricted Appraisal Report Comment"] || allData?.["Comments on Appraisal and Report Identification"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Comments on Appraisal and Report Identification"] || '';
-
-    const uspapStatus = data?.["USPAP / Appraisal and Report Identification"] || data?.["Appraisal and Report Identification"] || allData?.["USPAP / Appraisal and Report Identification"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["USPAP / Appraisal and Report Identification"] || 'Present';
-
-
-
-    const isCorruptUspapVal = (val) => {
-
-      if (!val) return false;
-
-      const s = String(val).trim();
-
-      return (
-
-        s.startsWith('#: #:') ||
-
-        /^[:#-]+$/.test(s) ||
-
-        /^Date of (Certification|Appraisal|Signature|Inspection)/i.test(s) ||
-
-        /^Report:\s*/i.test(s) ||
-
-        /^Exterior-Only$/i.test(s) ||
-
-        /^None$/i.test(s) ||
-
-        /^Interior and Exterior$/i.test(s) ||
-
-        /by a la mode/i.test(s) ||
-
-        /1-800-ALAMODE/i.test(s)
-
-      );
-
-    };
-
-
-
-    const renderUspapField = (label, fieldKey, isCheckbox = false, altKeys = []) => {
-
-      if (isCheckbox) {
-
-        const checkKeys = [fieldKey, ...(Array.isArray(altKeys) ? altKeys : [altKeys])];
-
-        let isChecked = false;
-
-        let matchedKey = fieldKey;
-
-        for (const k of checkKeys) {
-
-          const v = data?.[k] ??
-
-                    allData?.clean_data?.USPAP_IDENTIFICATION?.[k] ??
-
-                    allData?.USPAP_IDENTIFICATION?.[k] ??
-
-                    allData?.[k] ??
-
-                    allData?.clean_data?.Certification?.[k] ??
-
-                    allData?.Certification?.[k];
-
-          if (v === 'Yes' || v === true || String(v).toLowerCase() === 'x' || String(v).toLowerCase() === 'yes') {
-
-            isChecked = true;
-
-            matchedKey = k;
-
-            break;
-
-          }
-
-        }
-
-        const handleToggle = () => {
-
-          const newValue = isChecked ? 'No' : 'Yes';
-
-          onDataChange([fieldKey], newValue);
-
-          if (matchedKey !== fieldKey) {
-
-            onDataChange([matchedKey], newValue);
-
-          }
-
-        };
-
-        return (
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '4px 0' }}>
-
-            <input
-
-              type="checkbox"
-
-              checked={isChecked}
-
-              onChange={handleToggle}
-
-              style={{ width: '14px', height: '14px', cursor: 'pointer' }}
-
-            />
-
-            <span style={{ fontSize: '0.75rem', fontWeight: '500', color: '#495057' }}>{label}</span>
-
-          </div>
-
-        );
-
-      }
-
-
-
-      let rawVal = data?.[fieldKey];
-
-      if (rawVal === undefined || rawVal === null || isCorruptUspapVal(rawVal)) {
-
-        rawVal = allData?.clean_data?.USPAP_IDENTIFICATION?.[fieldKey] ??
-
-                 allData?.USPAP_IDENTIFICATION?.[fieldKey] ??
-
-                 allData?.clean_data?.Certification?.[fieldKey] ??
-
-                 allData?.Certification?.[fieldKey] ??
-
-                 allData?.[fieldKey] ?? '';
-
-        if (isCorruptUspapVal(rawVal)) {
-
-          rawVal = '';
-
-        }
-
-      }
-
-
-
-      // Appraiser-specific fallback mappings
-
-      if (!rawVal) {
-
-        if (fieldKey === 'Name') {
-
-          rawVal = allData?.clean_data?.Certification?.['Name'] || allData?.clean_data?.Subject?.['Appraiser Name'] || allData?.['Appraiser Name'] || allData?.['Name'] || '';
-
-        } else if (fieldKey === 'Date Signed') {
-
-          rawVal = allData?.clean_data?.Certification?.['Date of Signature and Report'] || allData?.clean_data?.Certification?.['Date of Signature'] || allData?.clean_data?.Certification?.['Report Signed Date'] || allData?.['Date Signed'] || '';
-
-        } else if (fieldKey === 'State Certification #') {
-
-          rawVal = allData?.clean_data?.Certification?.['State Certification #'] || allData?.clean_data?.Certification?.['Appraiser License'] || allData?.['State Certification #'] || '';
-
-        } else if (fieldKey === 'State') {
-
-          rawVal = allData?.clean_data?.Certification?.['State'] || allData?.['State'] || '';
-
-        } else if (fieldKey === 'Expiration Date of Certification or License') {
-
-          rawVal = allData?.clean_data?.Certification?.['Expiration Date of Certification or License'] || allData?.clean_data?.Certification?.['Expiration Date'] || allData?.['Expiration Date'] || '';
-
-        } else if (fieldKey === 'Effective Date of Appraisal') {
-
-          rawVal = allData?.clean_data?.Certification?.['Effective Date of Appraisal'] || allData?.clean_data?.Certification?.['Effective Date'] || allData?.clean_data?.Subject?.['Effective Date of Appraisal'] || allData?.['Effective Date of Appraisal'] || '';
-
-        }
-
-      }
-
-
-
-      // If supervisory field and rawVal is still corrupt or not present, clean it
-
-      if (String(fieldKey).toLowerCase().includes('supervisory') && isCorruptUspapVal(rawVal)) {
-
-        rawVal = '';
-
-      }
-
-
-
-      const val = renderValue(rawVal);
-
-      return (
-
-        <div style={{ borderBottom: '1px solid #dee2e6', paddingBottom: '4px', marginBottom: '8px' }}>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-
-            <span style={{ fontWeight: 'bold', color: '#495057', fontSize: '0.75rem', minWidth: '95px', whiteSpace: 'nowrap' }}>
-
-              {label}:
-
-            </span>
-
-            <div style={{ flexGrow: 1 }}>
-
-              <EditableField
-
-                fieldPath={[fieldKey]}
-
-                value={val}
-
-                onDataChange={onDataChange}
-
-                editingField={editingField}
-
-                setEditingField={setEditingField}
-
-                isEditable={true}
-
-                allData={allData}
-
-                manualValidations={manualValidations}
-
-                handleManualValidation={handleManualValidation}
-
-                revisionHandlers={revisionHandlers}
-
-                inputClassName="form-control form-control-sm field-value"
-
-                inputStyle={{ width: '100%', fontSize: '0.85rem' }}
-
-              />
-
-            </div>
-
-          </div>
-
-        </div>
-
-      );
-
-    };
-
-
-
-
-
-    return (
-
-      <Paper id={id} elevation={1} sx={{ mb: 2, borderRadius: 2, overflow: 'hidden', borderTop: '3px solid', borderTopColor: borderColor || '#0d6efd' }}>
-
-        <Box
-
-          sx={{
-
-            p: 1.5,
-
-            bgcolor: 'grey.50',
-
-            color: 'text.primary',
-
-            borderBottom: '1px solid',
-
-            borderColor: 'grey.200',
-
-            display: 'flex',
-
-            justifyContent: 'space-between',
-
-            alignItems: 'center',
-
-          }}>
-
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-
-            <Typography variant="h6" component="h5" sx={{ fontSize: '1.05rem', fontWeight: 'bold' }}>
-
-              {title || "USPAP / Report Identification"}
-
-            </Typography>
-
-            <span style={{
-
-              fontSize: '0.75rem',
-
-              fontWeight: 'bold',
-
-              padding: '2px 8px',
-
-              borderRadius: '4px',
-
-              backgroundColor: String(uspapStatus).includes('Present') ? '#d4edda' : '#f8d7da',
-
-              color: String(uspapStatus).includes('Present') ? '#155724' : '#721c24'
-
-            }}>
-
-              {uspapStatus}
-
-            </span>
-
-          </Box>
-
-          {onRevisionButtonClick && (
-
-            <Tooltip title="Revision Language">
-
-              <IconButton onClick={onRevisionButtonClick} size="small" sx={{ color: 'text.secondary', ml: 'auto' }}>
-
-                <LibraryBooksIcon />
-
-              </IconButton>
-
-            </Tooltip>
-
-          )}
-
-        </Box>
-
-        {loading && loadingSection === id && (
-
-          <Box sx={{ width: '100%' }}><LinearProgress /></Box>
-
-        )}
-
-        <div className="card-body p-3" style={{ fontSize: '0.8rem', backgroundColor: '#fff' }}>
-
-          
-
-          {/* Top Section: USPAP Options & Compliance Statements */}
-
-          <div style={{ marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #dee2e6' }}>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
-
-              
-
-              {/* USPAP Reporting Option */}
-
-              <div style={{ borderBottom: '1px solid #f1f3f5', paddingBottom: '6px' }}>
-
-                <span style={{ fontWeight: 'bold', color: '#495057', fontSize: '0.75rem', display: 'block', marginBottom: '2px' }}>
-
-                  This report was prepared under the following USPAP reporting option:
-
-                </span>
-
-                <EditableField
-
-                  fieldPath={["USPAP Reporting Option"]}
-
-                  value={renderValue(uspapRepOpt)}
-
-                  onDataChange={onDataChange}
-
-                  editingField={editingField}
-
-                  setEditingField={setEditingField}
-
-                  isEditable={true}
-
-                  allData={allData}
-
-                  manualValidations={manualValidations}
-
-                  handleManualValidation={handleManualValidation}
-
-                  revisionHandlers={revisionHandlers}
-
-                  inputClassName="form-control form-control-sm field-value"
-
-                  inputStyle={{ width: '100%', fontSize: '0.85rem' }}
-
-                />
-
-              </div>
-
-
-
-              {/* Reasonable Exposure Time */}
-
-              <div style={{ borderBottom: '1px solid #f1f3f5', paddingBottom: '6px' }}>
-
-                <span style={{ fontWeight: 'bold', color: '#495057', fontSize: '0.75rem', display: 'block', marginBottom: '2px' }}>
-
-                  Reasonable Exposure Time:
-
-                </span>
-
-                <EditableField
-
-                  fieldPath={["Reasonable Exposure Time"]}
-
-                  value={renderValue(exposureTime)}
-
-                  onDataChange={onDataChange}
-
-                  editingField={editingField}
-
-                  setEditingField={setEditingField}
-
-                  isEditable={true}
-
-                  allData={allData}
-
-                  manualValidations={manualValidations}
-
-                  handleManualValidation={handleManualValidation}
-
-                  revisionHandlers={revisionHandlers}
-
-                  inputClassName="form-control form-control-sm field-value"
-
-                  inputStyle={{ width: '100%', fontSize: '0.85rem' }}
-
-                />
-
-              </div>
-
-
-
-              {/* Prior Services Statement (3-Year Period) */}
-
-              <div style={{ borderBottom: '1px solid #f1f3f5', paddingBottom: '6px' }}>
-
-                <span style={{ fontWeight: 'bold', color: '#495057', fontSize: '0.75rem', display: 'block', marginBottom: '2px' }}>
-
-                  Prior Services (3-Year Period Disclosure):
-
-                </span>
-
-                <EditableField
-
-                  fieldPath={["Prior Service Statement"]}
-
-                  value={renderValue(priorServices)}
-
-                  onDataChange={onDataChange}
-
-                  editingField={editingField}
-
-                  setEditingField={setEditingField}
-
-                  isEditable={true}
-
-                  allData={allData}
-
-                  manualValidations={manualValidations}
-
-                  handleManualValidation={handleManualValidation}
-
-                  revisionHandlers={revisionHandlers}
-
-                  inputClassName="form-control form-control-sm field-value"
-
-                  inputStyle={{ width: '100%', fontSize: '0.85rem' }}
-
-                />
-
-              </div>
-
-
-
-              {/* Comments on Appraisal and Report Identification */}
-
-              <div>
-
-                <span style={{ fontWeight: 'bold', color: '#495057', fontSize: '0.75rem', display: 'block', marginBottom: '2px' }}>
-
-                  Comments on Appraisal and Report Identification:
-
-                </span>
-
-                <EditableField
-
-                  fieldPath={["Comments on Appraisal and Report Identification"]}
-
-                  value={renderValue(uspapComments)}
-
-                  onDataChange={onDataChange}
-
-                  editingField={editingField}
-
-                  setEditingField={setEditingField}
-
-                  isEditable={true}
-
-                  allData={allData}
-
-                  manualValidations={manualValidations}
-
-                  handleManualValidation={handleManualValidation}
-
-                  revisionHandlers={revisionHandlers}
-
-                  inputClassName="form-control form-control-sm field-value"
-
-                  inputStyle={{ width: '100%', fontSize: '0.85rem' }}
-
-                />
-
-              </div>
-
-
-
-            </div>
-
-          </div>
-
-
-
-          {/* Addenda & Certification Presence (UAD Metadata) */}
-
-              {(() => {
-
-                const uadDetails = data?.uad_details || allData?.uad_details || allData?.clean_data?.uad_details || {};
-
-                const limVal = data?.["Limiting Conditions"] || data?.["Statement of Assumptions and Limiting Conditions"] || allData?.["Limiting Conditions"] || allData?.clean_data?.["Limiting Conditions"] || uadDetails?.limiting_conditions_presence || (uadDetails?.limiting_conditions_pages?.length ? `Present (Page${uadDetails.limiting_conditions_pages.length > 1 ? 's' : ''} ${uadDetails.limiting_conditions_pages.join(', ')})` : 'Not Present');
-
-                const certVal = data?.["Appraiser's Certification"] || data?.["Appraiser Certification"] || allData?.["Appraiser's Certification"] || allData?.clean_data?.["Appraiser's Certification"] || uadDetails?.certification_presence || (uadDetails?.certification_pages?.length ? `Present (Page${uadDetails.certification_pages.length > 1 ? 's' : ''} ${uadDetails.certification_pages.join(', ')})` : 'Not Present');
-
-                const uadDefVal = data?.["UAD Definitions Addendum"] || data?.["UAD pages present in the report"] || allData?.["UAD pages present in the report"] || allData?.clean_data?.["UAD pages present in the report"] || uadDetails?.uad_presence || uadDetails?.description || (uadDetails?.uad_pages?.length ? `Present (Page${uadDetails.uad_pages.length > 1 ? 's' : ''} ${uadDetails.uad_pages.join(', ')})` : 'Not Present');
-
-
-
-                return (
-
-                  <div style={{ marginTop: '12px', marginBottom: '16px', paddingTop: '10px', borderTop: '1px dashed #dee2e6' }}>
-
-                    <span style={{ fontWeight: 'bold', color: '#0d6efd', fontSize: '0.78rem', display: 'block', marginBottom: '6px' }}>
-
-                      Addenda & Certification Presence (UAD Metadata):
-
-                    </span>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '8px' }}>
-
-                      <div style={{ backgroundColor: String(limVal).includes('Present') ? '#f0fdf4' : '#f8f9fa', padding: '6px 10px', borderRadius: '4px', border: '1px solid', borderColor: String(limVal).includes('Present') ? '#bbf7d0' : '#e9ecef' }}>
-
-                        <span style={{ fontSize: '0.70rem', color: '#6c757d', display: 'block', fontWeight: 600 }}>Limiting Conditions</span>
-
-                        <span style={{ fontSize: '0.80rem', fontWeight: 'bold', color: String(limVal).includes('Present') ? '#155724' : '#6c757d' }}>{renderValue(limVal)}</span>
-
-                      </div>
-
-                      <div style={{ backgroundColor: String(certVal).includes('Present') ? '#f0fdf4' : '#f8f9fa', padding: '6px 10px', borderRadius: '4px', border: '1px solid', borderColor: String(certVal).includes('Present') ? '#bbf7d0' : '#e9ecef' }}>
-
-                        <span style={{ fontSize: '0.70rem', color: '#6c757d', display: 'block', fontWeight: 600 }}>Appraiser's Certification</span>
-
-                        <span style={{ fontSize: '0.80rem', fontWeight: 'bold', color: String(certVal).includes('Present') ? '#155724' : '#6c757d' }}>{renderValue(certVal)}</span>
-
-                      </div>
-
-                      <div style={{ backgroundColor: String(uadDefVal).includes('Present') ? '#f0fdf4' : '#f8f9fa', padding: '6px 10px', borderRadius: '4px', border: '1px solid', borderColor: String(uadDefVal).includes('Present') ? '#bbf7d0' : '#e9ecef' }}>
-
-                        <span style={{ fontSize: '0.70rem', color: '#6c757d', display: 'block', fontWeight: 600 }}>UAD Definitions Addendum</span>
-
-                        <span style={{ fontSize: '0.80rem', fontWeight: 'bold', color: String(uadDefVal).includes('Present') ? '#155724' : '#6c757d' }}>{renderValue(uadDefVal)}</span>
-
-                      </div>
-
-                    </div>
-
-                  </div>
-
-                );
-
-              })()}
-
-
-
-              {/* Bottom Section: Two-Column Signature Block (Matching Fannie Mae USPAP Addendum / User Image) */}
-
-          <div style={{ display: 'flex', gap: '24px' }}>
-
-            
-
-            {/* Left Column: APPRAISER */}
-
-            <div style={{ flex: 1, minWidth: 0, border: '1px solid #ced4da', borderRadius: '4px', padding: '14px', backgroundColor: '#fcfcfc' }}>
-
-              <div style={{ fontWeight: 'bold', fontSize: '0.95rem', marginBottom: '14px', borderBottom: '2px solid #343a40', paddingBottom: '4px', color: '#212529' }}>
-
-                APPRAISER:
-
-              </div>
-
-
-
-              {/* Signature Line */}
-
-              <div style={{ borderBottom: '1px solid #dee2e6', paddingBottom: '4px', marginBottom: '8px' }}>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-
-                  <span style={{ fontWeight: 'bold', color: '#495057', fontSize: '0.75rem', minWidth: '95px', whiteSpace: 'nowrap' }}>Signature:</span>
-
-                  <div style={{ flexGrow: 1 }}>
-
-                    {sigImg && (
-
-                      <div style={{ marginBottom: '4px' }}>
-
-                        <img src={sigImg} alt="Appraiser Signature" style={{ maxHeight: '48px', maxWidth: '100%', objectFit: 'contain' }} />
-
-                      </div>
-
-                    )}
-
-                    <EditableField
-
-                      fieldPath={["Signature"]}
-
-                      value={renderValue(data?.["Signature"] || data?.["Name"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Signature"] || allData?.clean_data?.Certification?.["Name"] || allData?.["Name"] || '')}
-
-                      onDataChange={onDataChange}
-
-                      editingField={editingField}
-
-                      setEditingField={setEditingField}
-
-                      isEditable={true}
-
-                      allData={allData}
-
-                      manualValidations={manualValidations}
-
-                      handleManualValidation={handleManualValidation}
-
-                      revisionHandlers={revisionHandlers}
-
-                      inputClassName="form-control form-control-sm field-value"
-
-                      inputStyle={{ width: '100%', border: 'none', background: 'transparent', padding: 0, fontSize: '0.85rem', height: 'auto' }}
-
-                      valueStyle={{ fontFamily: "'Caveat', 'Dancing Script', 'Brush Script MT', cursive, sans-serif", fontSize: '1.25rem', color: '#1a252c', fontStyle: 'italic' }}
-
-                    />
-
-                  </div>
-
-                </div>
-
-              </div>
-
-
-
-              {renderUspapField("Name", "Name")}
-
-              {renderUspapField("Date Signed", "Date Signed")}
-
-              {renderUspapField("State Certification #", "State Certification #")}
-
-              {renderUspapField("or State License #", "or State License #")}
-
-              {renderUspapField("State", "State")}
-
-              {renderUspapField("Expiration Date of Certification or License", "Expiration Date of Certification or License")}
-
-              {renderUspapField("Effective Date of Appraisal", "Effective Date of Appraisal")}
-
-
-
-              {/* Appraiser Inspection of Subject Property */}
-
-              <div style={{ marginTop: '14px', borderTop: '1px dashed #dee2e6', paddingTop: '10px' }}>
-
-                <div style={{ fontWeight: 'bold', fontSize: '0.75rem', color: '#495057', marginBottom: '6px' }}>
-
-                  Appraiser Inspection of Subject Property:
-
-                </div>
-
-                {renderUspapField("Did Not", "Appraiser Did not inspect subject property", true, [
-
-                  "Did not inspect subject property (Appraiser)",
-
-                  "Appraiser Did Not Inspect"
-
-                ])}
-
-                {renderUspapField("Exterior-only from Street", "Appraiser Did inspect exterior of subject property from street", true, [
-
-                  "Did inspect exterior of subject property from street (Appraiser)",
-
-                  "Appraiser Did Inspect Exterior"
-
-                ])}
-
-                {renderUspapField("Interior and Exterior", "Appraiser Did inspect interior and exterior of subject property", true, [
-
-                  "Did inspect interior and exterior of subject property (Appraiser)",
-
-                  "Appraiser Did Inspect Interior and Exterior"
-
-                ])}
-
-              </div>
-
-            </div>
-
-
-
-            {/* Right Column: SUPERVISORY APPRAISER (only if required) */}
-
-            <div style={{ flex: 1, minWidth: 0, border: '1px solid #ced4da', borderRadius: '4px', padding: '14px', backgroundColor: '#fcfcfc' }}>
-
-              <div style={{ fontWeight: 'bold', fontSize: '0.95rem', marginBottom: '14px', borderBottom: '2px solid #343a40', paddingBottom: '4px', color: '#212529' }}>
-
-                SUPERVISORY APPRAISER: <span style={{ fontSize: '0.8rem', fontWeight: 'normal', color: '#6c757d' }}>(only if required)</span>
-
-              </div>
-
-
-
-              {/* Signature Line */}
-
-              <div style={{ borderBottom: '1px solid #dee2e6', paddingBottom: '4px', marginBottom: '8px' }}>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-
-                  <span style={{ fontWeight: 'bold', color: '#495057', fontSize: '0.75rem', minWidth: '95px', whiteSpace: 'nowrap' }}>Signature:</span>
-
-                  <div style={{ flexGrow: 1 }}>
-
-                    {supSigImg && (
-
-                      <div style={{ marginBottom: '4px' }}>
-
-                        <img src={supSigImg} alt="Supervisory Signature" style={{ maxHeight: '48px', maxWidth: '100%', objectFit: 'contain' }} />
-
-                      </div>
-
-                    )}
-
-                    <EditableField
-
-                      fieldPath={["Supervisory Signature"]}
-
-                      value={renderValue(data?.["Supervisory Signature"] || data?.["Supervisory Name"] || '')}
-
-                      onDataChange={onDataChange}
-
-                      editingField={editingField}
-
-                      setEditingField={setEditingField}
-
-                      isEditable={true}
-
-                      allData={allData}
-
-                      manualValidations={manualValidations}
-
-                      handleManualValidation={handleManualValidation}
-
-                      revisionHandlers={revisionHandlers}
-
-                      inputClassName="form-control form-control-sm field-value"
-
-                      inputStyle={{ width: '100%', border: 'none', background: 'transparent', padding: 0, fontSize: '0.85rem', height: 'auto' }}
-
-                      valueStyle={{ fontFamily: "'Caveat', 'Dancing Script', 'Brush Script MT', cursive, sans-serif", fontSize: '1.25rem', color: '#1a252c', fontStyle: 'italic' }}
-
-                    />
-
-                  </div>
-
-                </div>
-
-              </div>
-
-
-
-              {renderUspapField("Name", "Supervisory Name")}
-
-              {renderUspapField("Date Signed", "Supervisory Date Signed")}
-
-              {renderUspapField("State Certification #", "Supervisory State Certification #")}
-
-              {renderUspapField("or State License #", "Supervisory or State License #")}
-
-              {renderUspapField("State", "Supervisory State")}
-
-              {renderUspapField("Expiration Date of Certification or License", "Supervisory Expiration Date of Certification or License")}
-
-
-
-              {/* Supervisory Inspection of Subject Property */}
-
-              <div style={{ marginTop: '14px', borderTop: '1px dashed #dee2e6', paddingTop: '10px' }}>
-
-                <div style={{ fontWeight: 'bold', fontSize: '0.75rem', color: '#495057', marginBottom: '6px' }}>
-
-                  Supervisory Appraiser Inspection of Subject Property:
-
-                </div>
-
-                {renderUspapField("Did Not", "Did not inspect subject property", true, [
-
-                  "Supervisory Did not inspect subject property",
-
-                  "Supervisory Did Not Inspect"
-
-                ])}
-
-                {renderUspapField("Exterior-only from Street", "Did inspect exterior of subject property from street", true, [
-
-                  "Supervisory Did inspect exterior of subject property from street",
-
-                  "Supervisory Did Inspect Exterior"
-
-                ])}
-
-                {renderUspapField("Interior and Exterior", "Did inspect interior and exterior of subject property", true, [
-
-                  "Supervisory Did inspect interior and exterior of subject property",
-
-                  "Supervisory Did Inspect Interior and Exterior"
-
-                ])}
-
-              </div>
-
-            </div>
-
-
-
-          </div>
-
-
-
-        </div>
-
-      </Paper>
-
+    const uspapStatus = data?.["USPAP / Appraisal and Report Identification"] || data?.["Appraisal and Report Identification"] || allData?.["USPAP / Appraisal and Report Identification"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["USPAP / Appraisal and Report Identification"] || (allData?.has_uspap_identification ? 'Present' : (allData ? 'Not Present' : ''));
+
+    const isPresent = String(uspapStatus).includes('Present') && !String(uspapStatus).toLowerCase().includes('not');
+    const hasAppraiserInspection = Boolean(
+      data?.has_appraiser_inspection ??
+      allData?.clean_data?.USPAP_IDENTIFICATION?.has_appraiser_inspection ??
+      allData?.USPAP_IDENTIFICATION?.has_appraiser_inspection ??
+      (
+        (data?.["Appraiser Did not inspect subject property"] && data?.["Appraiser Did not inspect subject property"] === 'Yes') ||
+        (data?.["Appraiser Did inspect exterior of subject property from street"] && data?.["Appraiser Did inspect exterior of subject property from street"] === 'Yes') ||
+        (data?.["Appraiser Did inspect interior and exterior of subject property"] && data?.["Appraiser Did inspect interior and exterior of subject property"] === 'Yes')
+      )
     );
 
+    const sigImg = data?.["Signature Image"] || data?.["Appraiser Signature Image"] || allData?.USPAP_IDENTIFICATION?.["Signature Image"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Signature Image"] || allData?.clean_data?.CERTIFICATION?.["Signature Image"] || allData?.clean_data?.["Signature Image"] || allData?.["Signature Image"] || '';
+    const supSigImg = data?.["Supervisory Signature Image"] || allData?.["Supervisory Signature Image"] || allData?.USPAP_IDENTIFICATION?.["Supervisory Signature Image"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Supervisory Signature Image"] || allData?.clean_data?.CERTIFICATION?.["Supervisory Signature Image"] || '';
+
+    const isCorruptUspapVal = (val) => {
+      if (!val) return false;
+      const s = String(val).trim();
+      return (
+        s.startsWith('#: #:') ||
+        /^[:#-]+$/.test(s) ||
+        /^Date of (Certification|Appraisal|Signature|Inspection)/i.test(s) ||
+        /^Report:\s*/i.test(s) ||
+        /^Exterior-Only$/i.test(s) ||
+        /^None$/i.test(s) ||
+        /^Interior and Exterior$/i.test(s) ||
+        /by a la mode/i.test(s) ||
+        /1-800-ALAMODE/i.test(s)
+      );
+    };
+
+    const renderUspapField = (label, fieldKey, isCheckbox = false, altKeys = []) => {
+      if (isCheckbox) {
+        const checkKeys = [fieldKey, ...(Array.isArray(altKeys) ? altKeys : [altKeys])];
+        let isChecked = false;
+        let matchedKey = fieldKey;
+        for (const k of checkKeys) {
+          const isApprInspKey = k.toLowerCase().includes('appraiser did') || k.toLowerCase().includes('did not inspect subject property (appraiser)');
+          const v = data?.[k] ??
+                    allData?.clean_data?.USPAP_IDENTIFICATION?.[k] ??
+                    allData?.USPAP_IDENTIFICATION?.[k] ??
+                    (!isApprInspKey ? (allData?.clean_data?.CERTIFICATION?.[k] ?? allData?.clean_data?.Certification?.[k] ?? allData?.CERTIFICATION?.[k] ?? allData?.[k]) : undefined);
+          if (v === 'Yes' || v === true || String(v).toLowerCase() === 'x' || String(v).toLowerCase() === 'yes') {
+            isChecked = true;
+            matchedKey = k;
+            break;
+          }
+        }
+        const handleToggle = () => {
+          const newValue = isChecked ? 'No' : 'Yes';
+          onDataChange([fieldKey], newValue);
+          if (matchedKey !== fieldKey) {
+            onDataChange([matchedKey], newValue);
+          }
+        };
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '4px 0' }}>
+            <input
+              type="checkbox"
+              checked={isChecked}
+              onChange={handleToggle}
+              style={{ width: '14px', height: '14px', cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: '0.75rem', fontWeight: '500', color: '#495057' }}>{label}</span>
+          </div>
+        );
+      }
+
+      let rawVal = data?.[fieldKey];
+      if (rawVal === undefined || rawVal === null || isCorruptUspapVal(rawVal)) {
+        rawVal = allData?.clean_data?.USPAP_IDENTIFICATION?.[fieldKey] ??
+                 allData?.USPAP_IDENTIFICATION?.[fieldKey] ??
+                 allData?.clean_data?.CERTIFICATION?.[fieldKey] ??
+                 allData?.clean_data?.Certification?.[fieldKey] ??
+                 allData?.CERTIFICATION?.[fieldKey] ??
+                 allData?.[fieldKey] ?? '';
+        if (isCorruptUspapVal(rawVal)) {
+          rawVal = '';
+        }
+      }
+
+      // Appraiser-specific fallback mappings
+      if (!rawVal) {
+        if (fieldKey === 'Name') {
+          rawVal = allData?.clean_data?.CERTIFICATION?.['Name'] || allData?.clean_data?.Certification?.['Name'] || allData?.clean_data?.Subject?.['Appraiser Name'] || allData?.['Appraiser Name'] || allData?.['Name'] || '';
+        } else if (fieldKey === 'Date Signed') {
+          rawVal = allData?.clean_data?.CERTIFICATION?.['Date of Signature and Report'] || allData?.clean_data?.CERTIFICATION?.['Date of Signature'] || allData?.clean_data?.Certification?.['Date of Signature and Report'] || allData?.clean_data?.Certification?.['Date of Signature'] || allData?.clean_data?.Certification?.['Report Signed Date'] || allData?.['Date Signed'] || '';
+        } else if (fieldKey === 'State Certification #') {
+          rawVal = allData?.clean_data?.CERTIFICATION?.['State Certification #'] || allData?.clean_data?.CERTIFICATION?.['Appraiser License'] || allData?.clean_data?.Certification?.['State Certification #'] || allData?.clean_data?.Certification?.['Appraiser License'] || allData?.['State Certification #'] || '';
+        } else if (fieldKey === 'or State License #') {
+          rawVal = allData?.clean_data?.CERTIFICATION?.['or State License #'] || allData?.clean_data?.Certification?.['or State License #'] || allData?.['or State License #'] || '';
+        } else if (fieldKey === 'State') {
+          rawVal = allData?.clean_data?.CERTIFICATION?.['State'] || allData?.clean_data?.Certification?.['State'] || allData?.['State'] || '';
+        } else if (fieldKey === 'Expiration Date of Certification or License') {
+          rawVal = allData?.clean_data?.CERTIFICATION?.['Expiration Date of Certification or License'] || allData?.clean_data?.CERTIFICATION?.['Expiration Date'] || allData?.clean_data?.Certification?.['Expiration Date of Certification or License'] || allData?.clean_data?.Certification?.['Expiration Date'] || allData?.['Expiration Date'] || '';
+        } else if (fieldKey === 'Effective Date of Appraisal') {
+          rawVal = allData?.clean_data?.CERTIFICATION?.['Effective Date of Appraisal'] || allData?.clean_data?.CERTIFICATION?.['Effective Date'] || allData?.clean_data?.Certification?.['Effective Date of Appraisal'] || allData?.clean_data?.Certification?.['Effective Date'] || allData?.clean_data?.Subject?.['Effective Date of Appraisal'] || allData?.['Effective Date of Appraisal'] || '';
+        }
+      }
+
+      // If supervisory field and not present in XML/PDF, ensure it is completely blank (no hardcoded fallback)
+      if (String(fieldKey).toLowerCase().includes('supervisory') && (isCorruptUspapVal(rawVal) || rawVal === 'Not Present' || rawVal === 'N/A' || rawVal === 'NA')) {
+        rawVal = '';
+      }
+
+      const val = renderValue(rawVal);
+      return (
+        <div style={{ borderBottom: '1px solid #dee2e6', paddingBottom: '4px', marginBottom: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontWeight: 'bold', color: '#495057', fontSize: '0.75rem', minWidth: '95px', whiteSpace: 'nowrap' }}>
+              {label}:
+            </span>
+            <div style={{ flexGrow: 1 }}>
+              <EditableField
+                fieldPath={[fieldKey]}
+                value={val}
+                onDataChange={onDataChange}
+                editingField={editingField}
+                setEditingField={setEditingField}
+                isEditable={true}
+                allData={allData}
+                manualValidations={manualValidations}
+                handleManualValidation={handleManualValidation}
+                revisionHandlers={revisionHandlers}
+                inputClassName="form-control form-control-sm field-value"
+                inputStyle={{ width: '100%', border: 'none', background: 'transparent', padding: 0, fontSize: '0.85rem', height: 'auto' }}
+              />
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    return (
+      <Paper id={id} elevation={1} sx={{ mb: 2, borderRadius: 2, overflow: 'hidden', borderTop: '3px solid', borderTopColor: borderColor }}>
+        <Box
+          sx={{
+            p: 1.5,
+            bgcolor: 'grey.50',
+            color: 'text.primary',
+            borderBottom: '1px solid',
+            borderColor: 'grey.200',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Typography variant="h6" component="h5" sx={{ fontSize: '1.05rem', fontWeight: 'bold' }}>
+              {title || "USPAP / Appraisal and Report Identification"}
+            </Typography>
+            {uspapStatus && (
+              <span style={{
+                fontSize: '0.75rem',
+                fontWeight: 'bold',
+                padding: '2px 8px',
+                borderRadius: '4px',
+                backgroundColor: isPresent ? '#d4edda' : '#f8d7da',
+                color: isPresent ? '#155724' : '#721c24'
+              }}>
+                {uspapStatus}
+              </span>
+            )}
+          </Box>
+          {onRevisionButtonClick && (
+            <Tooltip title="Revision Language">
+              <IconButton onClick={onRevisionButtonClick} size="small" sx={{ color: 'text.secondary', ml: 'auto' }}>
+                <LibraryBooksIcon />
+              </IconButton>
+            </Tooltip>
+          )}
+        </Box>
+        {loading && loadingSection === id && (
+          <Box sx={{ width: '100%' }}><LinearProgress /></Box>
+        )}
+        <div className="card-body p-3" style={{ fontSize: '0.8rem', backgroundColor: '#fff' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
+            {/* USPAP Reporting Option */}
+            <div style={{ borderBottom: '1px solid #f1f3f5', paddingBottom: '6px' }}>
+              <span style={{ fontWeight: 'bold', color: '#495057', fontSize: '0.75rem', display: 'block', marginBottom: '2px' }}>
+                This report was prepared under the following USPAP reporting option:
+              </span>
+              <EditableField
+                fieldPath={["USPAP Reporting Option"]}
+                value={renderValue(uspapRepOpt)}
+                onDataChange={onDataChange}
+                editingField={editingField}
+                setEditingField={setEditingField}
+                isEditable={true}
+                allData={allData}
+                manualValidations={manualValidations}
+                handleManualValidation={handleManualValidation}
+                revisionHandlers={revisionHandlers}
+                inputClassName="form-control form-control-sm field-value"
+                inputStyle={{ width: '100%', fontSize: '0.85rem' }}
+              />
+            </div>
+
+            {/* Reasonable Exposure Time */}
+            <div style={{ borderBottom: '1px solid #f1f3f5', paddingBottom: '6px' }}>
+              <span style={{ fontWeight: 'bold', color: '#495057', fontSize: '0.75rem', display: 'block', marginBottom: '2px' }}>
+                Reasonable Exposure Time:
+              </span>
+              <EditableField
+                fieldPath={["Reasonable Exposure Time"]}
+                value={renderValue(exposureTime)}
+                onDataChange={onDataChange}
+                editingField={editingField}
+                setEditingField={setEditingField}
+                isEditable={true}
+                allData={allData}
+                manualValidations={manualValidations}
+                handleManualValidation={handleManualValidation}
+                revisionHandlers={revisionHandlers}
+                inputClassName="form-control form-control-sm field-value"
+                inputStyle={{ width: '100%', fontSize: '0.85rem' }}
+              />
+            </div>
+
+            {/* Prior Services Statement (3-Year Period) */}
+            <div style={{ borderBottom: '1px solid #f1f3f5', paddingBottom: '6px' }}>
+              <span style={{ fontWeight: 'bold', color: '#495057', fontSize: '0.75rem', display: 'block', marginBottom: '2px' }}>
+                Prior Services (3-Year Period Disclosure):
+              </span>
+              <EditableField
+                fieldPath={["Prior Service Statement"]}
+                value={renderValue(priorServices)}
+                onDataChange={onDataChange}
+                editingField={editingField}
+                setEditingField={setEditingField}
+                isEditable={true}
+                allData={allData}
+                manualValidations={manualValidations}
+                handleManualValidation={handleManualValidation}
+                revisionHandlers={revisionHandlers}
+                inputClassName="form-control form-control-sm field-value"
+                inputStyle={{ width: '100%', fontSize: '0.85rem' }}
+              />
+            </div>
+
+            {/* Comments on Appraisal and Report Identification */}
+            <div>
+              <span style={{ fontWeight: 'bold', color: '#495057', fontSize: '0.75rem', display: 'block', marginBottom: '2px' }}>
+                Comments on Appraisal and Report Identification:
+              </span>
+              <EditableField
+                fieldPath={["Comments on Appraisal and Report Identification"]}
+                value={renderValue(uspapComments)}
+                onDataChange={onDataChange}
+                editingField={editingField}
+                setEditingField={setEditingField}
+                isEditable={true}
+                allData={allData}
+                manualValidations={manualValidations}
+                handleManualValidation={handleManualValidation}
+                revisionHandlers={revisionHandlers}
+                inputClassName="form-control form-control-sm field-value"
+                inputStyle={{ width: '100%', fontSize: '0.85rem' }}
+              />
+            </div>
+
+            {/* Bottom Section: Two-Column Signature Block (APPRAISER & SUPERVISORY APPRAISER) */}
+            <div style={{ display: 'flex', gap: '24px', marginTop: '16px', borderTop: '1px solid #dee2e6', paddingTop: '16px' }}>
+              {/* Left Column: APPRAISER */}
+              <div style={{ flex: 1, minWidth: 0, border: '1px solid #ced4da', borderRadius: '4px', padding: '14px', backgroundColor: '#fcfcfc' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '0.95rem', marginBottom: '14px', borderBottom: '2px solid #343a40', paddingBottom: '4px', color: '#212529' }}>
+                  APPRAISER:
+                </div>
+
+                {/* Signature Line */}
+                <div style={{ borderBottom: '1px solid #dee2e6', paddingBottom: '4px', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontWeight: 'bold', color: '#495057', fontSize: '0.75rem', minWidth: '95px', whiteSpace: 'nowrap' }}>Signature:</span>
+                    <div style={{ flexGrow: 1 }}>
+                      {sigImg && (
+                        <div style={{ marginBottom: '4px' }}>
+                          <img src={sigImg} alt="Appraiser Signature" style={{ maxHeight: '48px', maxWidth: '100%', objectFit: 'contain' }} />
+                        </div>
+                      )}
+                      <EditableField
+                        fieldPath={["Signature"]}
+                        value={renderValue(data?.["Signature"] || data?.["Name"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Signature"] || allData?.clean_data?.CERTIFICATION?.["Signature"] || allData?.clean_data?.CERTIFICATION?.["Name"] || allData?.["Name"] || '')}
+                        onDataChange={onDataChange}
+                        editingField={editingField}
+                        setEditingField={setEditingField}
+                        isEditable={true}
+                        allData={allData}
+                        manualValidations={manualValidations}
+                        handleManualValidation={handleManualValidation}
+                        revisionHandlers={revisionHandlers}
+                        inputClassName="form-control form-control-sm field-value"
+                        inputStyle={{ width: '100%', border: 'none', background: 'transparent', padding: 0, fontSize: '0.85rem', height: 'auto' }}
+                        valueStyle={{ fontFamily: "'Caveat', 'Dancing Script', 'Brush Script MT', cursive, sans-serif", fontSize: '1.25rem', color: '#1a252c', fontStyle: 'italic' }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {renderUspapField("Name", "Name")}
+                {renderUspapField("Date Signed", "Date Signed")}
+                {renderUspapField("State Certification #", "State Certification #")}
+                {renderUspapField("or State License #", "or State License #")}
+                {renderUspapField("State", "State")}
+                {renderUspapField("Expiration Date of Certification or License", "Expiration Date of Certification or License")}
+                {renderUspapField("Effective Date of Appraisal", "Effective Date of Appraisal")}
+
+                {/* Appraiser Inspection of Subject Property - Only rendered if present in the USPAP report */}
+                {hasAppraiserInspection && (
+                  <div style={{ marginTop: '14px', borderTop: '1px dashed #dee2e6', paddingTop: '10px' }}>
+                    <div style={{ fontWeight: 'bold', fontSize: '0.75rem', color: '#495057', marginBottom: '6px' }}>
+                      Appraiser Inspection of Subject Property:
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                      {renderUspapField("Did Not", "Appraiser Did not inspect subject property", true, [
+                        "Did not inspect subject property (Appraiser)",
+                        "Appraiser Did Not Inspect"
+                      ])}
+                      {renderUspapField("Exterior-only from Street", "Appraiser Did inspect exterior of subject property from street", true, [
+                        "Did inspect exterior of subject property from street (Appraiser)",
+                        "Appraiser Did Inspect Exterior"
+                      ])}
+                      {renderUspapField("Interior and Exterior", "Appraiser Did inspect interior and exterior of subject property", true, [
+                        "Did inspect interior and exterior of subject property (Appraiser)",
+                        "Appraiser Did Inspect Interior and Exterior"
+                      ])}
+                    </div>
+                    {(data?.["Appraiser Date of Inspection"] || data?.["Date of Inspection (if applicable)"] || data?.["Date of Inspection"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Appraiser Date of Inspection"]) && (
+                      <div style={{ marginTop: '8px' }}>
+                        {renderUspapField("Date of Inspection (if applicable)", "Appraiser Date of Inspection", false, [
+                          "Date of Inspection (if applicable)",
+                          "Date of Inspection",
+                          "Appraiser Inspection Date"
+                        ])}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+
+              </div>
+
+              {/* Right Column: SUPERVISORY APPRAISER (only if required) */}
+              <div style={{ flex: 1, minWidth: 0, border: '1px solid #ced4da', borderRadius: '4px', padding: '14px', backgroundColor: '#fcfcfc' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '0.95rem', marginBottom: '14px', borderBottom: '2px solid #343a40', paddingBottom: '4px', color: '#212529' }}>
+                  SUPERVISORY APPRAISER: <span style={{ fontSize: '0.8rem', fontWeight: 'normal', color: '#6c757d' }}>(only if required)</span>
+                </div>
+
+                {/* Signature Line */}
+                <div style={{ borderBottom: '1px solid #dee2e6', paddingBottom: '4px', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontWeight: 'bold', color: '#495057', fontSize: '0.75rem', minWidth: '95px', whiteSpace: 'nowrap' }}>Signature:</span>
+                    <div style={{ flexGrow: 1 }}>
+                      {supSigImg && (
+                        <div style={{ marginBottom: '4px' }}>
+                          <img src={supSigImg} alt="Supervisory Signature" style={{ maxHeight: '48px', maxWidth: '100%', objectFit: 'contain' }} />
+                        </div>
+                      )}
+                      <EditableField
+                        fieldPath={["Supervisory Signature"]}
+                        value={renderValue(data?.["Supervisory Signature"] || data?.["Supervisory Name"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Supervisory Signature"] || allData?.clean_data?.CERTIFICATION?.["Supervisory Signature"] || allData?.CERTIFICATION?.["Supervisory Signature"] || '')}
+                        onDataChange={onDataChange}
+                        editingField={editingField}
+                        setEditingField={setEditingField}
+                        isEditable={true}
+                        allData={allData}
+                        manualValidations={manualValidations}
+                        handleManualValidation={handleManualValidation}
+                        revisionHandlers={revisionHandlers}
+                        inputClassName="form-control form-control-sm field-value"
+                        inputStyle={{ width: '100%', border: 'none', background: 'transparent', padding: 0, fontSize: '0.85rem', height: 'auto' }}
+                        valueStyle={{ fontFamily: "'Caveat', 'Dancing Script', 'Brush Script MT', cursive, sans-serif", fontSize: '1.25rem', color: '#1a252c', fontStyle: 'italic' }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {renderUspapField("Name", "Supervisory Name")}
+                {renderUspapField("Date Signed", "Supervisory Date Signed")}
+                {renderUspapField("State Certification #", "Supervisory State Certification #")}
+                {renderUspapField("or State License #", "Supervisory or State License #")}
+                {renderUspapField("State", "Supervisory State")}
+                {renderUspapField("Expiration Date of Certification or License", "Supervisory Expiration Date of Certification or License")}
+
+                {/* Supervisory Inspection of Subject Property */}
+                <div style={{ marginTop: '14px', borderTop: '1px dashed #dee2e6', paddingTop: '10px' }}>
+                  <div style={{ fontWeight: 'bold', fontSize: '0.75rem', color: '#495057', marginBottom: '6px' }}>
+                    Supervisory Appraiser Inspection of Subject Property:
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                    {renderUspapField("Did Not", "Did not inspect subject property", true, [
+                      "Supervisory Did not inspect subject property",
+                      "Supervisory Did Not Inspect"
+                    ])}
+                    {renderUspapField("Exterior-only from Street", "Did inspect exterior of subject property from street", true, [
+                      "Supervisory Did inspect exterior of subject property from street",
+                      "Supervisory Did Inspect Exterior"
+                    ])}
+                    {renderUspapField("Interior and Exterior", "Did inspect interior and exterior of subject property", true, [
+                      "Supervisory Did inspect interior and exterior of subject property",
+                      "Supervisory Did Inspect Interior and Exterior"
+                    ])}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Paper>
+    );
   }
-
-
 
   if (id === 'appraiser-section') {
 
