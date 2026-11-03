@@ -4539,7 +4539,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
     amc_license = ""
 
     # Check AMC license in narrative & attributes
-    m_lic = re.search(r'AMC\s+(?:License|Lic|Reg|Registration)(?:\.|\s)*#?\s*(?:is|#|:)?\s*([A-Za-z0-9\-]+)', full_narrative, re.IGNORECASE)
+    m_lic = re.search(r'AMC\s+(?:License|Lic\.?|Reg\.?|Registration)\b(?:\s*(?:Number|No\.?|#|:|-|is))*\s*[:\-#]?\s*([A-Za-z0-9][A-Za-z0-9\-]*\d[A-Za-z0-9\-]*)', full_narrative, re.IGNORECASE)
     if m_lic:
         amc_license = m_lic.group(1).strip()
 
@@ -4550,7 +4550,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
                 pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
                 for page in pdf_doc:
                     ptxt = page.get_text() or ""
-                    ml = re.search(r'AMC\s+(?:License|Lic|Reg|Registration)(?:\.|\s)*#?\s*[:=\-]?\s*([A-Za-z0-9\-]+)', ptxt, re.IGNORECASE)
+                    ml = re.search(r'AMC\s+(?:License|Lic\.?|Reg\.?|Registration)\b(?:\s*(?:Number|No\.?|#|:|-|is))*\s*[:\-#]?\s*([A-Za-z0-9][A-Za-z0-9\-]*\d[A-Za-z0-9\-]*)', ptxt, re.IGNORECASE)
                     if ml:
                         amc_license = ml.group(1).strip()
                         break
@@ -4673,15 +4673,6 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "Water heater double-strapped comment": water_heater_comment,
         "Water Heater Double-Strapped Comment": water_heater_comment,
         "Water Heater Double Strapped Comment": water_heater_comment,
-        "Appraiser's Fee": appraiser_fee,
-        "Appraiser Fee": appraiser_fee,
-        "Appraisal Fee": appraiser_fee,
-        "AMC License #": amc_license,
-        "AMC License": amc_license,
-        "AMC Name": amc_name,
-        "Appraiser Name": appraiser_name,
-        "Appraiser Company": appraiser_company,
-        "Appraiser Address": appraiser_address,
         "File #": file_id,
         "Loan #": loan_num,
         "From Type": form_type,

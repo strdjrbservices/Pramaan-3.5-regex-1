@@ -62,7 +62,7 @@ def _extract_full_text_with_pages(pdf_path: str) -> list[Dict[str, Any]]:
                     if len(t) > 3 and not t.startswith("<?xml"):
                         dom_texts.append(t)
             if dom_texts:
-                pages_text.append({"page_no": "XML Data", "text": "\n".join(dom_texts)})
+                pages_text.append({"page_no": 1, "text": "\n".join(dom_texts)})
         except Exception:
             pass
 

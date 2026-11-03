@@ -1412,7 +1412,7 @@ def _find_pages_for_keywords(pages: List[Dict[str, Any]], keywords: List[str], m
         if min_page <= p_no_int <= max_page:
             p_text = p.get("text", "").lower()
             if any(k.lower() in p_text for k in keywords):
-                matching_pages.append(p_no)
+                matching_pages.append(p_no_int)
     return matching_pages
 
 
@@ -1722,6 +1722,10 @@ def verify_revision_request_offline(
                 for p in new_pages:
                     p_txt = p.get("text", "")
                     p_no_val = p.get("page_no", 1)
+                    try:
+                        p_no_val = int(p_no_val)
+                    except (ValueError, TypeError):
+                        p_no_val = 1
                     if st_key.lower() in p_txt.lower():
                         c_found = True
                         rov_pages.add(p_no_val)
@@ -1770,6 +1774,10 @@ def verify_revision_request_offline(
             for p in new_pages:
                 p_t = p.get("text", "")
                 p_n = p.get("page_no", 1)
+                try:
+                    p_n = int(p_n)
+                except (ValueError, TypeError):
+                    p_n = 1
                 if re.search(r"interior\s*photos?|subject\s*photos?|photo\s*addendum", p_t, re.I):
                     photo_pages_found.append(p_n)
                     for line in [ln.strip() for ln in p_t.split("\n") if ln.strip()]:
@@ -2823,6 +2831,7 @@ def compare_documents_offline(
         "CERTIFICATION",
     ]
 
+    seen_field_changes = set()  # deduplication: (normalized_key, old_val, new_val)
     for sec in SECTIONS_TO_COMPARE:
         new_sec_data = new_fields.get(sec, {})
         old_sec_data = old_fields.get(sec, {})
@@ -2840,6 +2849,10 @@ def compare_documents_offline(
                     sub_old_v = old_v.get(sub_k, "")
                     if str(sub_new_v).strip() != str(sub_old_v).strip():
                         if str(sub_new_v).strip() or str(sub_old_v).strip():
+                            _dedup_key = (f"{k}:{sub_k}".lower().strip(), str(sub_old_v).strip(), str(sub_new_v).strip())
+                            if _dedup_key in seen_field_changes:
+                                continue
+                            seen_field_changes.add(_dedup_key)
                             comparison_summary.append({
                                 "field": f"{k}: {sub_k}",
                                 "original_value": str(sub_old_v) if str(sub_old_v).strip() else "Not Present",
@@ -2854,6 +2867,14 @@ def compare_documents_offline(
             s_old = str(old_v).strip()
             if s_new != s_old:
                 if s_new or s_old:
+                    # Normalize known alias groups so duplicate aliases collapse to one entry
+                    _k_norm = k.lower().strip()
+                    _k_norm = re.sub(r"appraiser\W*s?\s*fee|appraisal\s*fee", "appraiser_fee_alias", _k_norm)
+                    _k_norm = re.sub(r"amc\s*licen[cs]e\s*#?|amc\s*reg\.?\s*(?:number)?", "amc_license_alias", _k_norm)
+                    _dedup_key = (_k_norm, s_old, s_new)
+                    if _dedup_key in seen_field_changes:
+                        continue
+                    seen_field_changes.add(_dedup_key)
                     page_hint = "1" if sec in ["SUBJECT", "CONTRACT", "NEIGHBORHOOD", "SITE", "IMPROVEMENTS"] else "2"
                     comparison_summary.append({
                         "field": f"{sec}: {k}",
