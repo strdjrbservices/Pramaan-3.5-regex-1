@@ -1871,6 +1871,58 @@ def verify_revision_request_offline(
                     finding = f"Confirmed: Lender name verified as '{new_lender}' on {page_no}."
 
         # ---------------------------------------------------------------------
+        # 0C. Assignment Type / Transaction Type Checkbox
+        # ---------------------------------------------------------------------
+        elif any(k in item_lower for k in ["assignment type", "transaction type", "purchase transaction", "refinance transaction"]):
+            section = "Subject / Assignment Type"
+            page_no = "Page 1"
+            new_assign = str(
+                _get_field_val(new_fields, "SUBJECT", "Assignment Type")
+                or _get_field_val(new_fields, "SUBJECT", "Transaction Type")
+                or ""
+            ).strip()
+            old_assign = str(
+                _get_field_val(old_fields, "SUBJECT", "Assignment Type")
+                or _get_field_val(old_fields, "SUBJECT", "Transaction Type")
+                or ""
+            ).strip() if old_fields else ""
+
+            if not new_assign and page_1_text:
+                if re.search(r"(?:\[x\]|\[X\]|\bchecked\b|\bmarked\b)\s*purchase\s*transaction|purchase\s*transaction\s*(?:\[x\]|\[X\])", page_1_text, re.I):
+                    new_assign = "Purchase Transaction"
+                elif re.search(r"(?:\[x\]|\[X\]|\bchecked\b|\bmarked\b)\s*refinance\s*transaction|refinance\s*transaction\s*(?:\[x\]|\[X\])", page_1_text, re.I):
+                    new_assign = "Refinance Transaction"
+
+            expected = "Purchase Transaction" if "purchase" in item_lower else ("Refinance Transaction" if "refinance" in item_lower else "")
+
+            original_finding = f"Prior Assignment Type: '{old_assign}'" if old_assign else f"Revision Requested: {expected or 'Update Assignment Type'}"
+            revised_finding = f"Assignment Type: '{new_assign}'" if new_assign else "Assignment Type not located"
+
+            if expected and new_assign and expected.lower() in new_assign.lower():
+                status = "Fulfilled"
+                comment = f"Assignment Type checkbox verified as '{new_assign}' on Page 1."
+                finding = f"Confirmed: Assignment Type checkbox in Subject section verified as '{new_assign}' on Page 1."
+                evidence["excerpt"] = f"Subject Section (Page 1): Assignment Type checkbox is checked as '{new_assign}'."
+                evidence["source"] = "Subject Section (Page 1)"
+                evidence["page_no"] = "Page 1"
+                evidence["section"] = section
+            elif old_assign and new_assign and old_assign.lower() != new_assign.lower():
+                status = "Fulfilled"
+                comment = f"Assignment Type updated from '{old_assign}' to '{new_assign}' on Page 1."
+                finding = f"Confirmed: Assignment Type updated from '{old_assign}' to '{new_assign}' on Page 1."
+                evidence["excerpt"] = f"Subject Section (Page 1): Assignment Type updated to '{new_assign}'."
+                evidence["source"] = "Subject Section (Page 1)"
+                evidence["page_no"] = "Page 1"
+                evidence["section"] = section
+            elif new_assign:
+                status = "Fulfilled" if (expected and expected.lower() in new_assign.lower()) else "Not Fulfilled"
+                comment = f"Assignment Type in report is '{new_assign}'."
+                finding = f"Discrepancy: Assignment Type is '{new_assign}' on Page 1, expected '{expected}'."
+            else:
+                status = "Not Fulfilled"
+                comment = "Assignment Type checkbox could not be verified on Page 1."
+                finding = f"Revision not fulfilled: Assignment Type checkbox not verified on Page 1."
+        # ---------------------------------------------------------------------
         # 1. Borrower / Co-Borrower Name
         # ---------------------------------------------------------------------
         elif any(k in item_lower for k in ["borrower", "co-borrower", "coborrower", "buyer name", "purchaser name"]):
