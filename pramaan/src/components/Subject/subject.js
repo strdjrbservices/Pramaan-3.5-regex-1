@@ -1015,7 +1015,16 @@ function Subject({ defaultFormType }) {
       'Lender Address': [htmlDataValidation.checkLenderAddressInconsistency],
       'LENDER ADDRESS': [htmlDataValidation.checkLenderAddressInconsistency],
 
-      'one unit housing price(high,low,pred)': [neighborhoodValidation.checkHousingPriceAndAge, neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
+      'one unit housing price(high,low,pred)': [
+        neighborhoodValidation.checkHousingPriceAndAge,
+        neighborhoodValidation.checkPredominantPriceVsIndicatedValue,
+        neighborhoodValidation.checkNeighborhoodFieldsNotBlank
+      ],
+      'ONE UNIT HOUSING PRICE(HIGH,LOW,PRED)': [
+        neighborhoodValidation.checkHousingPriceAndAge,
+        neighborhoodValidation.checkPredominantPriceVsIndicatedValue,
+        neighborhoodValidation.checkNeighborhoodFieldsNotBlank
+      ],
       'one unit housing age(high,low,pred)': [neighborhoodValidation.checkHousingPriceAndAge, neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
       "One-Unit": [neighborhoodValidation.checkNeighborhoodUsageConsistency, neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
       "2-4 Unit": [neighborhoodValidation.checkNeighborhoodUsageConsistency, neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
@@ -1155,12 +1164,12 @@ function Subject({ defaultFormType }) {
       'Location': [salesComparisonValidation.checkLocationConsistency, neighborhoodValidation.checkLocation, neighborhoodValidation.checkNeighborhoodFieldsNotBlank, version1Validation.checkVersion1LocationAdjustmentConsistency],
       'Location Adjustment': [salesComparisonValidation.checkLocationConsistency, version1Validation.checkVersion1LocationAdjustmentConsistency],
 
-      'Indicated Value by Sales Comparison Approach $': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkFinalValueConsistency],
-      'Indicated Value by: Sales Comparison Approach $': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkFinalValueConsistency, reconciliationValidation.checkCostApproachDeveloped],
+      'Indicated Value by Sales Comparison Approach $': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkFinalValueConsistency, neighborhoodValidation.checkPredominantPriceVsIndicatedValue],
+      'Indicated Value by: Sales Comparison Approach $': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkFinalValueConsistency, reconciliationValidation.checkCostApproachDeveloped, neighborhoodValidation.checkPredominantPriceVsIndicatedValue],
       'opinion of the market value, as defined, of the real property that is the subject of this report is $': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkFinalValueConsistency],
       'OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkFinalValueConsistency],
       'Opinion of Market Value': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkFinalValueConsistency],
-      'Indicated Value by Sales Comparison Approach': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkFinalValueConsistency],
+      'Indicated Value by Sales Comparison Approach': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkFinalValueConsistency, neighborhoodValidation.checkPredominantPriceVsIndicatedValue],
       'APPRAISED VALUE OF SUBJECT PROPERTY $': [reconciliationValidation.checkFinalValueConsistency],
       'Cost Approach (if developed)': [reconciliationValidation.checkCostApproachDeveloped, form1004And1007Validation.checkCostApproachMatchConsistency],
       'This appraisal is made "as is", subject to completion per plans and specifications on the basis of a hypothetical condition that the improvements have been completed, subject to the following repairs or alterations on the basis of a hypothetical condition that the repairs or alterations have been completed, or subject to the following required inspection based on the extraordinary assumption that the condition or deficiency does not require alteration or repair:': [reconciliationValidation.checkAppraisalCondition],
