@@ -352,6 +352,7 @@ class GemmaVerifier:
                     outputs = self._model.generate(
                         **inputs,
                         max_new_tokens=self.max_new_tokens,
+                        max_length=None,
                         temperature=self.temperature,
                         do_sample=False,
                         pad_token_id=self._tokenizer.eos_token_id,
