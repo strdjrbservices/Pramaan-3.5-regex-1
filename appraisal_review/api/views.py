@@ -1578,3 +1578,73 @@ def extract_maps_view(request):
                     pass
 
 
+
+
+@api_view(["POST"])
+@parser_classes([MultiPartParser, FormParser])
+def verify_revision_endpoint(request):
+    """
+    Direct API endpoint for Appraisal Revision Verification.
+    Utilizes PyMuPDF, pdfplumber, OpenCV, Tesseract OCR, spaCy, RapidFuzz, pandas, and difflib.
+    Accepts:
+      - 'pdf_file' / 'new_file': Revised report (PDF or XML)
+      - 'old_file' / 'old_pdf_file': (Optional) Original prior report
+      - 'comment' / 'revision_request' / 'html_file': Revision stipulations/reasons
+    Returns:
+      - Full verification summary, status per stipulation, table deltas, and evidence excerpts.
+    """
+    pdf_file = request.data.get("pdf_file") or request.data.get("new_file")
+    old_file = request.data.get("old_file") or request.data.get("old_pdf_file")
+    comment = request.data.get("comment") or request.data.get("revision_request")
+    html_file = request.data.get("html_file")
+
+    if not pdf_file:
+        return Response(
+            {"status": "error", "message": "A revised report file ('pdf_file' or 'new_file') is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    pdf_tmp_path = ""
+    old_tmp_path = ""
+    html_tmp_path = ""
+
+    try:
+        pdf_tmp_path = _save_temp_file(pdf_file)
+        if old_file:
+            old_tmp_path = _save_temp_file(old_file)
+
+        if not comment and html_file:
+            html_tmp_path = _save_temp_file(html_file)
+            h_data = extract_fields_from_html_offline(html_tmp_path)
+            comment = h_data.get("report_rejection_reason", "")
+
+        if not comment:
+            return Response(
+                {"status": "error", "message": "No revision request prompt or comment found."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        results = verify_revision_request_offline(
+            new_path=pdf_tmp_path,
+            revision_request=comment,
+            old_path=old_tmp_path if old_tmp_path else None
+        )
+
+        return Response({
+            "status": "success",
+            **results
+        })
+
+    except Exception as exc:
+        traceback.print_exc()
+        return Response(
+            {"status": "error", "message": str(exc)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    finally:
+        for p in [pdf_tmp_path, old_tmp_path, html_tmp_path]:
+            if p and os.path.exists(p):
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass

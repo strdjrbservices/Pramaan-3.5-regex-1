@@ -29,9 +29,33 @@ except ImportError:
         _get_field_val,
     )
 
+try:
+    from .revision_verifier import (
+        AppraisalRevisionVerifier,
+        DocumentImageEnhancer,
+        PDFExtractor,
+        AppraisalTableAnalyzer,
+        NLPRevisionMatcher,
+        fuzz,
+    )
+except ImportError:
+    try:
+        from revision_verifier import (
+            AppraisalRevisionVerifier,
+            DocumentImageEnhancer,
+            PDFExtractor,
+            AppraisalTableAnalyzer,
+            NLPRevisionMatcher,
+            fuzz,
+        )
+    except ImportError:
+        AppraisalRevisionVerifier = None
+        DocumentImageEnhancer = None
+        PDFExtractor = None
+        AppraisalTableAnalyzer = None
+        NLPRevisionMatcher = None
+        fuzz = None
 
-# -------------------------------------------------------------------------
-# Helper Utilities
 # -------------------------------------------------------------------------
 
 STREET_ABBREVIATIONS = {
@@ -792,6 +816,28 @@ def evaluate_confirmation_checklist_offline(old_path: str, new_path: str) -> Dic
         except Exception:
             pass
 
+    # OpenCV + Tesseract OCR fallback for scanned pages
+    if len(new_full_text) < 500 and os.path.exists(new_path) and new_path.lower().endswith(".pdf") and PDFExtractor:
+        try:
+            ocr_extracted = PDFExtractor.extract_document(new_path)
+            if ocr_extracted:
+                new_pages = [{"page_no": p_num, "text": p_info["text"]} for p_num, p_info in ocr_extracted.items()]
+                new_full_text = " ".join([p.get("text", "") for p in new_pages]).lower()
+                new_rep["pages_text"] = new_pages
+        except Exception as ocr_err:
+            pass
+
+    # Table Grid & Numerical Extraction via pdfplumber + pandas
+    all_table_deltas = []
+    if AppraisalTableAnalyzer and new_path and new_path.lower().endswith(".pdf") and os.path.exists(new_path):
+        try:
+            rev_tables = AppraisalTableAnalyzer.extract_tables(new_path)
+            orig_tables = AppraisalTableAnalyzer.extract_tables(old_path) if (old_path and os.path.exists(old_path) and old_path.lower().endswith(".pdf")) else {}
+            if orig_tables and rev_tables:
+                all_table_deltas = AppraisalTableAnalyzer.compare_tables(orig_tables, rev_tables)
+        except Exception as tbl_err:
+            pass
+
     details = []
 
     # 1. Appraised Value Changed
@@ -1125,6 +1171,28 @@ def evaluate_1004d_comparison_offline(old_path: str, new_path: str, revision_req
             with open(new_path, "r", encoding="utf-8", errors="ignore") as f:
                 new_full_text += " " + f.read().lower()
         except Exception:
+            pass
+
+    # OpenCV + Tesseract OCR fallback for scanned pages
+    if len(new_full_text) < 500 and os.path.exists(new_path) and new_path.lower().endswith(".pdf") and PDFExtractor:
+        try:
+            ocr_extracted = PDFExtractor.extract_document(new_path)
+            if ocr_extracted:
+                new_pages = [{"page_no": p_num, "text": p_info["text"]} for p_num, p_info in ocr_extracted.items()]
+                new_full_text = " ".join([p.get("text", "") for p in new_pages]).lower()
+                new_rep["pages_text"] = new_pages
+        except Exception as ocr_err:
+            pass
+
+    # Table Grid & Numerical Extraction via pdfplumber + pandas
+    all_table_deltas = []
+    if AppraisalTableAnalyzer and new_path and new_path.lower().endswith(".pdf") and os.path.exists(new_path):
+        try:
+            rev_tables = AppraisalTableAnalyzer.extract_tables(new_path)
+            orig_tables = AppraisalTableAnalyzer.extract_tables(old_path) if (old_path and os.path.exists(old_path) and old_path.lower().endswith(".pdf")) else {}
+            if orig_tables and rev_tables:
+                all_table_deltas = AppraisalTableAnalyzer.compare_tables(orig_tables, rev_tables)
+        except Exception as tbl_err:
             pass
 
     details = []
@@ -1589,7 +1657,30 @@ def _extract_detailed_appraiser_evidence(
                 continue
 
             score = len(matched_kw) * 20 + len(matched_num) * 45
-            is_new = bool(old_full_text and (clean_p.lower() not in old_full_text.lower()))
+
+            # Enhanced fuzzy matching (RapidFuzz)
+            if fuzz:
+                rf_ratio = fuzz.partial_token_set_ratio(item_clean.lower(), p_lower)
+                if rf_ratio >= 75:
+                    score += int(rf_ratio * 0.4)
+
+            # Enhanced semantic intent matching (spaCy)
+            if NLPRevisionMatcher:
+                try:
+                    sem_sim, _ = NLPRevisionMatcher.find_semantic_match(item_clean, [clean_p])
+                    if sem_sim >= 70:
+                        score += int(sem_sim * 0.5)
+                except Exception:
+                    pass
+
+            # Sequence diffing (difflib / RapidFuzz) to verify genuinely new content
+            is_new = False
+            if old_full_text:
+                if clean_p.lower() not in old_full_text.lower():
+                    if fuzz:
+                        is_new = (fuzz.partial_ratio(clean_p.lower()[:200], old_full_text.lower()) < 85)
+                    else:
+                        is_new = True
             if is_new:
                 score += 50
             if any(term in p_lower for term in ["adjusted at", "full bath", "half bath", "matched pair", "outside entry", "sump pump", "reconsideration", "different town", "miles away"]):
@@ -1669,6 +1760,28 @@ def verify_revision_request_offline(
             with open(new_path, "r", encoding="utf-8", errors="ignore") as f:
                 new_full_text += " " + f.read().lower()
         except Exception:
+            pass
+
+    # OpenCV + Tesseract OCR fallback for scanned pages
+    if len(new_full_text) < 500 and os.path.exists(new_path) and new_path.lower().endswith(".pdf") and PDFExtractor:
+        try:
+            ocr_extracted = PDFExtractor.extract_document(new_path)
+            if ocr_extracted:
+                new_pages = [{"page_no": p_num, "text": p_info["text"]} for p_num, p_info in ocr_extracted.items()]
+                new_full_text = " ".join([p.get("text", "") for p in new_pages]).lower()
+                new_rep["pages_text"] = new_pages
+        except Exception as ocr_err:
+            pass
+
+    # Table Grid & Numerical Extraction via pdfplumber + pandas
+    all_table_deltas = []
+    if AppraisalTableAnalyzer and new_path and new_path.lower().endswith(".pdf") and os.path.exists(new_path):
+        try:
+            rev_tables = AppraisalTableAnalyzer.extract_tables(new_path)
+            orig_tables = AppraisalTableAnalyzer.extract_tables(old_path) if (old_path and os.path.exists(old_path) and old_path.lower().endswith(".pdf")) else {}
+            if orig_tables and rev_tables:
+                all_table_deltas = AppraisalTableAnalyzer.compare_tables(orig_tables, rev_tables)
+        except Exception as tbl_err:
             pass
 
     items = _parse_revision_request_items(revision_request)
@@ -2375,9 +2488,15 @@ def verify_revision_request_offline(
                     comment = f"GLA mismatch remains: Improvements shows {imp_gla:,.0f} Sq Ft while Sales Grid shows {grid_gla:,.0f} Sq Ft."
                     finding = f"Discrepancy: GLA mismatch between Improvements ({imp_gla:,.0f} Sq Ft) and Sales Grid ({grid_gla:,.0f} Sq Ft) on {page_no}."
             else:
-                status = "Fulfilled" if (imp_gla or grid_gla) else "Not Fulfilled"
-                comment = f"GLA verified as {imp_gla or grid_gla:,.0f} Sq Ft in report."
-                finding = f"Confirmed: GLA verified on {page_no}."
+                gla_val = imp_gla or grid_gla
+                if gla_val:
+                    status = "Fulfilled"
+                    comment = f"GLA verified as {gla_val:,.0f} Sq Ft in report."
+                    finding = f"Confirmed: GLA verified as {gla_val:,.0f} Sq Ft on {page_no}."
+                else:
+                    status = "Not Fulfilled"
+                    comment = "GLA was requested but could not be verified in Improvements or Sales Grid."
+                    finding = f"Discrepancy: GLA not located on {page_no}."
 
         # ---------------------------------------------------------------------
         # 9. Flood Zone / FEMA Map / Panel / Date
@@ -2702,6 +2821,23 @@ def verify_revision_request_offline(
                     revised_finding = "Not Found in Revised Report"
                     finding = f"Revision not fulfilled: Requested explanation not located in revised report on {page_no}."
 
+        # Check if numerical table delta addresses this item
+        matched_deltas = []
+        if 'all_table_deltas' in locals() and all_table_deltas:
+            for td in all_table_deltas:
+                td_txt = f"{td.get('column', '')} {td.get('original_value', '')} {td.get('revised_value', '')}".lower()
+                clean_words = [w for w in re.findall(r"\b[a-zA-Z]{3,}\b", item_lower) if w not in ["the", "and", "for", "with", "please", "ensure", "check", "report"]]
+                if any(w in td_txt for w in clean_words):
+                    matched_deltas.append(td)
+
+        if matched_deltas and status != "Fulfilled":
+            status = "Fulfilled"
+            td0 = matched_deltas[0]
+            revised_finding = f"Grid Delta: '{td0['column']}' changed from '{td0['original_value']}' to '{td0['revised_value']}'"
+            finding = f"Confirmed: Numerical grid delta on Page {td0['page']} ({td0['column']}: {td0['original_value']} -> {td0['revised_value']})."
+            comment = f"Appraiser addressed revision by updating {td0['column']} from '{td0['original_value']}' to '{td0['revised_value']}' on Page {td0['page']}."
+            page_no = f"Page {td0['page']} (Table)"
+
         if status == "Fulfilled":
             fulfilled_count += 1
 
@@ -2718,6 +2854,7 @@ def verify_revision_request_offline(
             "excerpt": evidence.get("excerpt", ""),
             "is_new": evidence.get("is_new", False),
             "source": evidence.get("source", ""),
+            "table_deltas": matched_deltas,
         })
 
     total_count = len(comparison_summary)
@@ -2753,6 +2890,7 @@ def verify_revision_request_offline(
     result_payload = {
         "summary": summary_text,
         "comparison_summary": comparison_summary,
+        "table_deltas": all_table_deltas if 'all_table_deltas' in locals() else [],
     }
     if rejection_comment:
         result_payload["rejection_comment"] = rejection_comment
