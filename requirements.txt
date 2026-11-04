@@ -21,6 +21,10 @@ playwright>=1.40.0
 pytest-playwright>=0.4.0
 
 # Document Processing & OCR
+transformers>=4.40.0
+accelerate
+sentencepiece
+protobuf
 google-generativeai
 PyPDF2
 pypdf

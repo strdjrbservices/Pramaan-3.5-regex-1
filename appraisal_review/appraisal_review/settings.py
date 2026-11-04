@@ -20,6 +20,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 APIKEY = os.environ.get("APIKEY", os.environ.get("GEMINI_API_KEY", ""))
 
+# Local In-Process Gemma Model Configuration (Option B)
+GEMMA_MODEL_ID = os.environ.get("GEMMA_MODEL_ID", "google/gemma-2-2b-it")
+GEMMA_GGUF_PATH = os.environ.get("GEMMA_GGUF_PATH", "")
+ENABLE_GEMMA = os.environ.get("ENABLE_GEMMA", "false").lower() in ("true", "1", "yes")
+
 SECRET_KEY = os.environ.get("SECRET_KEY", "django-insecure-zx9!0$38f(!jbn(7=-m-4gc)ixt8lq&-37=mau-qikbw+kkm5+")
 DEBUG = True
 
