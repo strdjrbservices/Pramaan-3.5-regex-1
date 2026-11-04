@@ -133,7 +133,9 @@ export const is1007Active = (allData, selectedFormType) => {
         normalized.includes('1004+1007') ||
         normalized.includes('1007') ||
         normalized.includes('1025') ||
-        Boolean(allData?.RENTAL_GRID || allData?.['Comparable Rental Data'] || allData?.clean_data?.['Comparable Rental Data'])
+        Boolean(allData?.RENTAL_GRID || allData?.['Comparable Rental Data'] || allData?.clean_data?.['Comparable Rental Data'] ||
+                allData?.['Comparable Rent Schedule'] || allData?.clean_data?.['Comparable Rent Schedule'] ||
+                allData?.['Single Family Rent Schedule'] || allData?.clean_data?.['Single Family Rent Schedule'])
     );
 };
 
@@ -1734,6 +1736,10 @@ export const getRentalCompData = (allData, compNumberOrName) => {
 
     const nPadded = String(n).padStart(2, '0');
     const aliases = [
+        `Comparable Rent Schedule Comp #${n}`,
+        `Comparable Rent Schedule Comp ${n}`,
+        `Comparable Rent #${n}`,
+        `Comparable Rent ${n}`,
         `COMPARABLE NO. ${n}`,
         `COMPARABLE NO ${n}`,
         `COMPARABLE NO. ${nPadded}`,
@@ -1747,24 +1753,48 @@ export const getRentalCompData = (allData, compNumberOrName) => {
         `Rental #${n}`,
         `RENTAL_${n}`,
         `RENTAL_${nPadded}`,
+        `Comparable #${n}`,
         `Comparable ${n}`,
-        `Comp ${n}`
+        `Comp #${n}`,
+        `Comp ${n}`,
+        String(n)
     ];
 
     const containers = [
+        allData?.['Comparable Rent Schedule'],
+        allData?.clean_data?.['Comparable Rent Schedule'],
+        allData?.fields?.['Comparable Rent Schedule'],
+        allData?.['RENT_SCHEDULE_GRID'],
+        allData?.clean_data?.['RENT_SCHEDULE_GRID'],
         allData?.['Comparable Rental Data'],
         allData?.clean_data?.['Comparable Rental Data'],
         allData?.['Single Family Rent Schedule'],
         allData?.clean_data?.['Single Family Rent Schedule'],
         allData?.RENTAL_GRID,
-        allData?.fields?.['Comparable Rental Data']
+        allData?.clean_data?.RENTAL_GRID,
+        allData?.fields?.['Comparable Rental Data'],
+        allData?.data
     ];
 
     for (const container of containers) {
         if (container && typeof container === 'object') {
-            for (const alias of aliases) {
-                if (container[alias] && typeof container[alias] === 'object') {
-                    return container[alias];
+            if (Array.isArray(container)) {
+                if (container[n - 1] && typeof container[n - 1] === 'object') {
+                    return container[n - 1];
+                }
+            } else {
+                for (const alias of aliases) {
+                    if (container[alias] && typeof container[alias] === 'object') {
+                        return container[alias];
+                    }
+                }
+                for (const [k, v] of Object.entries(container)) {
+                    if (v && typeof v === 'object') {
+                        const m = k.match(/(?:comp|rental|comparable|rental_).*?\b0*(${n})\b/i);
+                        if (m && parseInt(m[1], 10) === n) {
+                            return v;
+                        }
+                    }
                 }
             }
         }
@@ -1846,6 +1876,217 @@ export const checkMinimumRentalComparables = (field, text, allData, fieldPath, s
     };
 };
 
+
+export const getComparableIndicatedMonthlyMarketRents = (allData) => {
+    if (!allData || typeof allData !== 'object') return [];
+
+    const rentFieldAliases = [
+        'Indicated Monthly Market Rent',
+        'Indicated Monthly Market Rent $',
+        'INDICATED MONTHLY MARKET RENT',
+        'Indicated Market Rent',
+        'Indicated Market Rent $',
+        'Indicated Monthly Rent',
+        'Market Adjusted Monthly Rent',
+        'MarketAdjustedMonthlyRentAmount',
+        'Market Adjusted Monthly Rent Amount',
+        'Adjusted Monthly Rent',
+        'Adjusted Monthly Rent $'
+    ];
+
+    const results = [];
+    const seenCompNums = new Set();
+
+    const extractRentFromComp = (compObj) => {
+        if (!compObj || typeof compObj !== 'object') return null;
+        for (const alias of rentFieldAliases) {
+            if (compObj[alias] !== undefined && compObj[alias] !== null) {
+                const v = typeof compObj[alias] === 'object' ? (compObj[alias].value ?? '') : compObj[alias];
+                if (String(v).trim() !== '') {
+                    const num = parseRentalAmount(v);
+                    if (num !== null && !isNaN(num) && num > 0) return num;
+                }
+            }
+        }
+        for (const [k, v] of Object.entries(compObj)) {
+            const kLower = k.toLowerCase();
+            if (kLower.includes('indicated') && kLower.includes('rent')) {
+                const cleanV = typeof v === 'object' && v !== null ? (v.value ?? '') : v;
+                if (String(cleanV).trim() !== '') {
+                    const num = parseRentalAmount(cleanV);
+                    if (num !== null && !isNaN(num) && num > 0) return num;
+                }
+            }
+        }
+        return null;
+    };
+
+    for (let i = 1; i <= 20; i++) {
+        const comp = getRentalCompData(allData, i);
+        if (comp) {
+            const num = extractRentFromComp(comp);
+            if (num !== null && num > 0 && !seenCompNums.has(i)) {
+                seenCompNums.add(i);
+                results.push({
+                    compNum: i,
+                    compLabel: `Comparable #${i}`,
+                    rent: num
+                });
+            }
+        }
+    }
+
+    return results;
+};
+
+export const getRentScheduleToBeValue = (allData, text) => {
+    if (text !== undefined && text !== null && String(text).trim() !== '') {
+        const num = parseRentalAmount(text);
+        if (num !== null && !isNaN(num) && num > 0) return num;
+    }
+
+    if (!allData || typeof allData !== 'object') return null;
+
+    const rentSections = [
+        "Comparable Rent Schedule Reconciliation",
+        "RENT_SCHEDULE_RECONCILIATION",
+        "Rent Schedule Reconciliation",
+        "rent_schedule_reconciliation",
+        "Single Family Rent Schedule",
+        "Comparable Rent Schedule"
+    ];
+    const rentFieldNames = ["TO BE $", "To be $", "TO BE", "To Be $", "TO BE ($)", "to be $"];
+
+    for (const sec of rentSections) {
+        const secObj = allData[sec] || allData?.clean_data?.[sec];
+        if (secObj && typeof secObj === 'object') {
+            for (const f of rentFieldNames) {
+                if (secObj[f] !== undefined && secObj[f] !== null) {
+                    const num = parseRentalAmount(secObj[f]);
+                    if (num !== null && !isNaN(num) && num > 0) return num;
+                }
+            }
+        }
+    }
+
+    for (const f of rentFieldNames) {
+        if (allData[f] !== undefined && allData[f] !== null) {
+            const num = parseRentalAmount(allData[f]);
+            if (num !== null && !isNaN(num) && num > 0) return num;
+        }
+    }
+
+    return null;
+};
+
+export const checkRentScheduleToBeBracketing = (field, text, allData, fieldPath, saleName, formType) => {
+    let actualText = text;
+    let actualData = allData;
+    if (actualData === undefined || actualData === null || typeof actualData !== 'object') {
+        if (typeof actualText === 'object' && actualText !== null) {
+            actualData = actualText;
+            actualText = null;
+        }
+    }
+
+    if (!actualData) return null;
+
+    const fieldLower = String(field || '').toLowerCase().trim();
+    const isToBeField = fieldLower === 'to be $' || fieldLower === 'to be' || fieldLower === 'to be ($)';
+    if (!isToBeField) return null;
+
+    const toBeRent = getRentScheduleToBeValue(actualData, actualText);
+    if (!toBeRent || isNaN(toBeRent) || toBeRent <= 0) {
+        return null;
+    }
+
+    const comps = getComparableIndicatedMonthlyMarketRents(actualData);
+    if (!comps || comps.length === 0) {
+        return null;
+    }
+
+    const rents = comps.map(c => c.rent);
+    const minRent = Math.min(...rents);
+    const maxRent = Math.max(...rents);
+
+    const isBracketed = (toBeRent >= minRent && toBeRent <= maxRent);
+
+    const minPct = (((minRent - toBeRent) / toBeRent) * 100).toFixed(1);
+    const maxPct = (((maxRent - toBeRent) / toBeRent) * 100).toFixed(1);
+    const minSign = Number(minPct) > 0 ? '+' : '';
+    const maxSign = Number(maxPct) > 0 ? '+' : '';
+
+    const rangeSummary = `Range: $${minRent.toLocaleString()} (${minSign}${minPct}%) to $${maxRent.toLocaleString()} (${maxSign}${maxPct}%)`;
+
+    if (isBracketed) {
+        return {
+            isBracketed: true,
+            isMatch: true,
+            section: 'Comparable Rent Schedule Reconciliation',
+            field: 'TO BE $',
+            message: `Valid: TO BE $ ($${toBeRent.toLocaleString()}) is bracketed by Indicated Monthly Market Rent of comparables (${rangeSummary}).`
+        };
+    }
+
+    if (toBeRent < minRent) {
+        return {
+            isBracketed: false,
+            isError: true,
+            section: 'Comparable Rent Schedule Reconciliation',
+            field: 'TO BE $',
+            message: `TO BE $ ($${toBeRent.toLocaleString()}) is unbracketed by Indicated Monthly Market Rent (all comparables are higher). Lowest is $${minRent.toLocaleString()} (${minSign}${minPct}%). ${rangeSummary}.`
+        };
+    }
+
+    return {
+        isBracketed: false,
+        isError: true,
+        section: 'Comparable Rent Schedule Reconciliation',
+        field: 'TO BE $',
+        message: `TO BE $ ($${toBeRent.toLocaleString()}) is unbracketed by Indicated Monthly Market Rent (all comparables are lower). Highest is $${maxRent.toLocaleString()} (${maxSign}${maxPct}%). ${rangeSummary}.`
+    };
+};
+
+export const checkCompIndicatedMonthlyMarketRentBracketing = (field, text, allData, fieldPath, saleName, formType) => {
+    let actualText = text;
+    let actualData = allData;
+    let actualSaleName = saleName;
+
+    if (actualData === undefined || actualData === null || typeof actualData !== 'object') {
+        if (typeof actualText === 'object' && actualText !== null) {
+            actualData = actualText;
+            actualText = null;
+            actualSaleName = fieldPath;
+        }
+    }
+
+    if (!actualData) return null;
+    if (actualSaleName && String(actualSaleName).toLowerCase() === 'subject') return null;
+
+    const fieldLower = String(field || '').toLowerCase().trim();
+    if (!fieldLower.includes('indicated') && !fieldLower.includes('rent')) return null;
+
+    const toBeRent = getRentScheduleToBeValue(actualData, null);
+    if (!toBeRent || isNaN(toBeRent) || toBeRent <= 0) return null;
+
+    const rawCompRent = (actualText !== null && actualText !== undefined && String(actualText).trim() !== '')
+        ? actualText
+        : null;
+
+    const compRent = parseRentalAmount(rawCompRent);
+    if (!compRent || isNaN(compRent) || compRent <= 0) return null;
+
+    const pct = ((compRent - toBeRent) / toBeRent) * 100;
+    const sign = pct > 0 ? '+' : '';
+    const compLabel = actualSaleName || 'Comparable';
+
+    return {
+        isMatch: true,
+        section: 'Comparable Rent Schedule',
+        field: 'Indicated Monthly Market Rent',
+        message: `${compLabel} Indicated Monthly Market Rent ($${compRent.toLocaleString()}, ${sign}${pct.toFixed(1)}%) vs TO BE $ ($${toBeRent.toLocaleString()}).`
+    };
+};
 
 export {
     checkRentScheduleAsOfDateConsistency,
