@@ -916,8 +916,14 @@ function Subject({ defaultFormType }) {
 
   const buildValidationRegistry = () => {
     const registry = {
+      'Lender/Client Company Name': [
+        htmlDataValidation.checkSubjectLenderNameVsHtml,
+        appraiserLenderValidation.checkClientNameHtmlConsistency,
+        appraiserLenderValidation.checkLenderNameInconsistency,
+        appraiserLenderValidation.checkUnpaidLender
+      ],
       'LENDER/CLIENT Name': [
-        appraiserLenderValidation.checkClientNameHtmlConsistency
+        appraiserLenderValidation.checkUnpaidLender
       ],
       'Client Name': [
         appraiserLenderValidation.checkClientNameHtmlConsistency

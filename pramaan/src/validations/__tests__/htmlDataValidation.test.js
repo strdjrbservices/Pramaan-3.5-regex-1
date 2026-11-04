@@ -287,6 +287,41 @@ describe('HTML Transaction Type vs Report Assignment Type Validation', () => {
                 expect(result.isError).toBe(true);
                 expect(result.message).toContain('mismatch');
             });
+
+            test('matches when HTML Client/Lender on Report is checked against CERTIFICATION Lender/Client Company Name', () => {
+                const allData = {
+                    CERTIFICATION: {
+                        'Lender/Client Company Name': 'United Mortgage Corp.',
+                        'LENDER/CLIENT Name': 'Fastapp Appraisal Management Company'
+                    }
+                };
+                const result = checkSubjectLenderNameVsHtml('Client/Lender on Report', 'United Mortgage Corp.', allData);
+                expect(result).not.toBeNull();
+                expect(result.isMatch).toBe(true);
+            });
+        });
+
+        describe('Certification Section Lender/Client Validation', () => {
+            test('validates Lender/Client Company Name against HTML Client/Lender on Report', () => {
+                const allData = {
+                    comparisonData: {
+                        'Client/Lender on Report': 'United Mortgage Corp.'
+                    }
+                };
+                const result = checkSubjectLenderNameVsHtml('Lender/Client Company Name', 'United Mortgage Corp.', allData);
+                expect(result).not.toBeNull();
+                expect(result.isMatch).toBe(true);
+            });
+
+            test('does NOT validate LENDER/CLIENT Name (AMC/contact name) against HTML Client/Lender on Report (returns null)', () => {
+                const allData = {
+                    comparisonData: {
+                        'Client/Lender on Report': 'United Mortgage Corp.'
+                    }
+                };
+                const result = checkSubjectLenderNameVsHtml('LENDER/CLIENT Name', 'Fastapp Appraisal Management Company', allData);
+                expect(result).toBeNull();
+            });
         });
 
         describe('checkLenderClientHtmlConsistency alias', () => {

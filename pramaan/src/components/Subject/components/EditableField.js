@@ -185,7 +185,8 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'Property Rights Appraised': [checkSubjectFieldsNotBlank],
     'Lender/Client': [checkSubjectLenderNameVsHtml, checkLenderNameInconsistency, checkUnpaidLender, checkSubjectFieldsNotBlank],
     'LENDER/CLIENT': [checkSubjectLenderNameVsHtml, checkLenderNameInconsistency, checkUnpaidLender, checkSubjectFieldsNotBlank],
-    'Client/Lender Company Name': [checkUnpaidLender, checkClientNameHtmlConsistency, checkLenderNameInconsistency],
+    'Lender/Client Company Name': [checkSubjectLenderNameVsHtml, checkLenderNameInconsistency, checkUnpaidLender, checkClientNameHtmlConsistency],
+    'Client/Lender Company Name': [checkSubjectLenderNameVsHtml, checkUnpaidLender, checkClientNameHtmlConsistency, checkLenderNameInconsistency],
     'Name': [checkAppraiserVendorNameConsistency],
     'Address (Lender/Client)': [checkLenderAddressHtmlInconsistency, checkLenderAddressInconsistency, checkSubjectFieldsNotBlank],
     'ADDRESS (LENDER/CLIENT)': [checkLenderAddressHtmlInconsistency, checkLenderAddressInconsistency, checkSubjectFieldsNotBlank],
@@ -528,7 +529,8 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
   });
 
   validationRegistry['Lender/Client Company Address'].push(checkLenderAddressInconsistency);
-  validationRegistry['LENDER/CLIENT Name'].push(checkLenderNameInconsistency, checkClientNameHtmlConsistency, checkUnpaidLender);
+  validationRegistry['Lender/Client Company Name'].push(checkSubjectLenderNameVsHtml, checkLenderNameInconsistency, checkClientNameHtmlConsistency, checkUnpaidLender);
+  validationRegistry['LENDER/CLIENT Name'].push(checkUnpaidLender);
   validationRegistry['LICENSE/REGISTRATION/CERTIFICATION #'] = [checkAppraiserLicenseConsistency];
 
   // HTML Data Validations

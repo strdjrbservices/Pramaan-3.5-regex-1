@@ -162,8 +162,8 @@ export const checkSubjectLenderNameVsHtml = (field, text, allData) => {
         fieldLower === 'lender / client' ||
         fieldLower === 'client/lender' ||
         fieldLower === 'client / lender' ||
-        fieldLower === 'lender/client name' ||
-        fieldLower === 'lender/client company name'
+        fieldLower === 'lender/client company name' ||
+        fieldLower === 'client/lender company name'
     );
 
     const isHtmlSide = (
@@ -209,7 +209,6 @@ export const checkSubjectLenderNameVsHtml = (field, text, allData) => {
             allData?.CERTIFICATION?.['Lender/Client Company Name'] ||
             allData?.['Lender/Client Company Name'] ||
             allData?.clean_data?.CERTIFICATION?.['Lender/Client Company Name'] ||
-            allData?.CERTIFICATION?.['LENDER/CLIENT Name'] ||
             ''
         ).trim();
     };
