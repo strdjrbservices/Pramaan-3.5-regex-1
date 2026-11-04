@@ -11,7 +11,7 @@ import { checkLenderAddressInconsistency, checkLenderNameInconsistency, checkUnp
 import { checkCostNew, checkSourceOfCostData, checkIndicatedValueByCostApproach, checkCostApproachFieldsNotBlank, checkOpinionOfSiteValue, checkRemainingEconomicLife } from '../../../validations/costApproachValidation';
 import { checkResearchHistory, checkSubjectPriorSales, checkComparablePriorSales, checkDataSourceNotBlank, checkEffectiveDateIsCurrentYear, checkSubjectPriorSaleDate, checkCompPriorSaleDate } from '../../../validations/salesHistoryValidation';
 import { checkStateRequirements } from '../../../validations/stateValidation';
-import { checkLenderAddressInconsistency as checkLenderAddressHtmlInconsistency, checkSubjectLenderNameVsHtml, checkBorrowerNameVsHtml } from '../../../validations/htmldatavaliadtion';
+import { checkLenderAddressInconsistency as checkLenderAddressHtmlInconsistency, checkSubjectLenderNameVsHtml, checkBorrowerNameVsHtml, checkTransactionTypeHtmlConsistency } from '../../../validations/htmldatavaliadtion';
 import {
   checkLeaseDates,
   checkOtherBasement,
@@ -184,9 +184,11 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'Occupancy': [checkOccupancy],
     'Property Rights Appraised': [checkSubjectFieldsNotBlank],
     'Lender/Client': [checkSubjectLenderNameVsHtml, checkLenderNameInconsistency, checkUnpaidLender, checkSubjectFieldsNotBlank],
+    'LENDER/CLIENT': [checkSubjectLenderNameVsHtml, checkLenderNameInconsistency, checkUnpaidLender, checkSubjectFieldsNotBlank],
     'Client/Lender Company Name': [checkUnpaidLender, checkClientNameHtmlConsistency, checkLenderNameInconsistency],
     'Name': [checkAppraiserVendorNameConsistency],
     'Address (Lender/Client)': [checkLenderAddressHtmlInconsistency, checkLenderAddressInconsistency, checkSubjectFieldsNotBlank],
+    'ADDRESS (LENDER/CLIENT)': [checkLenderAddressHtmlInconsistency, checkLenderAddressInconsistency, checkSubjectFieldsNotBlank],
 
     // Neighborhood Validations
     'one unit housing price(high,low,pred)': [checkHousingPriceAndAge, checkNeighborhoodFieldsNotBlank],
@@ -239,6 +241,8 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     '# of Stories': [checkNumberOfStories],
     'Type': [checkPropertyType],
     'Existing/Proposed/Under Const.': [checkConstructionStatusAndReconciliation],
+    'Status': [checkConstructionStatusAndReconciliation],
+    'Construction Status': [checkConstructionStatusAndReconciliation],
     'Design (Style)': [checkDesignStyle, checkSubjectDesignStyleConsistency, checkDesignStyleAdjustment],
     'Design and Appeal': [checkRentSubjectDesignStyleConsistency, checkRentDesignAppealAdjustment],
     'Design and Appeal Adjustment': [checkRentDesignAppealAdjustment],
@@ -254,8 +258,11 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'Describe the condition of the property': [checkPropertyConditionDescription],
     'Are there any physical deficiencies or adverse conditions that affect the livability, soundness, or structural integrity of the property? If Yes, describe': [checkPhysicalDeficienciesImprovements],
     'Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? If No, describe': [checkNeighborhoodConformity],
+    'Foundation': [checkFoundationType],
     'Foundation Type': [checkFoundationType],
+    'Basement Area': [checkBasementDetails],
     'Basement Area sq.ft.': [checkBasementDetails],
+    'Basement Finish': [checkBasementDetails],
     'Basement Finish %': [checkBasementDetails],
     'Infestation': [checkEvidenceOf], 'Dampness': [checkEvidenceOf], 'Settlement': [checkEvidenceOf],
     'Foundation Walls (Material/Condition)': [checkMaterialCondition], 'Exterior Walls (Material/Condition)': [checkMaterialCondition],
@@ -379,6 +386,7 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'APPRAISED VALUE OF SUBJECT PROPERTY $': [checkFinalValueConsistency],
     'Cost Approach (if developed)': [checkCostApproachDeveloped, checkCostApproachMatchConsistency],
     'This appraisal is made "as is", subject to completion per plans and specifications on the basis of a hypothetical condition that the improvements have been completed, subject to the following repairs or alterations on the basis of a hypothetical condition that the repairs or alterations have been completed, or subject to the following required inspection based on the extraordinary assumption that the condition or deficiency does not require alteration or repair:': [checkAppraisalCondition],
+    'Reconciliation Status': [checkAppraisalCondition],
     'as of': [checkAsOfDate, checkRentScheduleAsOfDateConsistency],
 
     'final value': [checkFinalValueBracketing, checkReconciliationFieldsNotBlank],
@@ -439,7 +447,8 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'This Report is one of the following types:': [checkUspapReportingOption],
 
     // General Validations
-    'Assignment Type': [checkAssignmentTypeConsistency],
+    'Assignment Type': [checkAssignmentTypeConsistency, checkTransactionTypeHtmlConsistency],
+    'ASSIGNMENT TYPE': [checkAssignmentTypeConsistency, checkTransactionTypeHtmlConsistency],
 
     // Contract Section Validations
     "I did did not analyze the contract for sale for the subject purchase transaction. Explain the results of the analysis of the contract for sale or why the analysis was not performed.": [checkContractFieldsMandatory, checkContractAnalysisConsistency],
@@ -523,9 +532,17 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
   validationRegistry['LICENSE/REGISTRATION/CERTIFICATION #'] = [checkAppraiserLicenseConsistency];
 
   // HTML Data Validations
-  validationRegistry['Client Name'] = [checkClientNameHtmlConsistency];
-  validationRegistry['Client Address'] = [checkClientAddressHtmlConsistency];
+  validationRegistry['Client Name'] = [checkSubjectLenderNameVsHtml, checkClientNameHtmlConsistency];
+  validationRegistry['CLIENT NAME'] = [checkSubjectLenderNameVsHtml, checkClientNameHtmlConsistency];
+  validationRegistry['Client/Lender on Report'] = [checkSubjectLenderNameVsHtml, checkClientNameHtmlConsistency];
+  validationRegistry['CLIENT/LENDER ON REPORT'] = [checkSubjectLenderNameVsHtml, checkClientNameHtmlConsistency];
+  validationRegistry['Client Address'] = [checkLenderAddressHtmlInconsistency, checkClientAddressHtmlConsistency];
+  validationRegistry['CLIENT ADDRESS'] = [checkLenderAddressHtmlInconsistency, checkClientAddressHtmlConsistency];
+  validationRegistry['Lender Address'] = [checkLenderAddressHtmlInconsistency, checkClientAddressHtmlConsistency];
+  validationRegistry['LENDER ADDRESS'] = [checkLenderAddressHtmlInconsistency, checkClientAddressHtmlConsistency];
   validationRegistry['Borrower (and Co-Borrower)'] = [checkBorrowerHtmlConsistency];
+  validationRegistry['Transaction Type'] = [checkTransactionTypeHtmlConsistency];
+  validationRegistry['TRANSACTION TYPE'] = [checkTransactionTypeHtmlConsistency];
 
   validationRegistry['Policy Period To'] = [checkDateGreaterThanToday];
   validationRegistry['License Vaild To'] = [checkDateGreaterThanToday];
@@ -911,10 +928,14 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
       if (checksToRun.length === 0 && typeof lookupField === 'string') {
         const lowerLookup = lookupField.toLowerCase();
         if (lowerLookup.includes('comparable properties currently offered for sale') ||
-            lowerLookup.includes('properties currently offered for sale') ||
-            lowerLookup.includes('comparable sales in the subject neighborhood') ||
-            (lowerLookup.includes('comparable sales') && lowerLookup.includes('twelve'))) {
+          lowerLookup.includes('properties currently offered for sale') ||
+          lowerLookup.includes('comparable sales in the subject neighborhood') ||
+          (lowerLookup.includes('comparable sales') && lowerLookup.includes('twelve'))) {
           checksToRun = [checkInfoOfSalesFieldsNotBlank];
+        } else if (lowerLookup.includes('this appraisal is made') || lowerLookup === 'reconciliation status') {
+          checksToRun = [checkAppraisalCondition];
+        } else if (lowerLookup === 'existing/proposed/under const.' || lowerLookup === 'status' || lowerLookup === 'construction status' || lowerLookup.includes('existing/proposed')) {
+          checksToRun = [checkConstructionStatusAndReconciliation];
         }
       }
       if (isSupervisory && !checksToRun.includes(checkSupervisoryAppraiserFields)) {

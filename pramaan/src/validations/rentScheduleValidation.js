@@ -129,7 +129,12 @@ export const is1007Active = (allData, selectedFormType) => {
         return false;
     }
 
-    return normalized.includes('1004+1007') || normalized.includes('1007');
+    return (
+        normalized.includes('1004+1007') ||
+        normalized.includes('1007') ||
+        normalized.includes('1025') ||
+        Boolean(allData?.RENTAL_GRID || allData?.['Comparable Rental Data'] || allData?.clean_data?.['Comparable Rental Data'])
+    );
 };
 
 export const checkRentProximityToSubject = (field, text, allData, path, saleName) => {
@@ -1829,7 +1834,7 @@ export const checkMinimumRentalComparables = (field, text, allData, fieldPath, s
         if (compNum !== null && compNum <= 3) {
             return {
                 isError: true,
-                message: 'minimum 3 rental comparables will be present',
+                message: `Minimum 3 rental comparables are required in the report. Found only ${presentCount}. Please verify in report.`,
                 skipBlankFilter: true
             };
         }

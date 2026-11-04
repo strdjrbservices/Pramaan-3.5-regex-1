@@ -1,10 +1,14 @@
 import io
 import re
 import datetime
+import warnings
 from typing import Dict, Any, Optional
 import pymupdf
 import numpy as np
 from PIL import Image
+
+warnings.filterwarnings("ignore", message=".*pin_memory.*")
+warnings.filterwarnings("ignore", category=UserWarning, module="torch.*")
 
 _EASYOCR_READER = None
 
@@ -107,7 +111,7 @@ def parse_eo_text(text: str) -> Dict[str, str]:
 
     # 3. ACORD / Multi-column Date Pattern: "<PolicyNumber> <DateFrom> <DateTo>"
     m_acord = re.search(
-        r'(?:Professional\s*Liability|Errors\s*(?:and|&)\s*Omissions|Claims\s*made)[^\n\r]*?\b([A-Za-z0-9\-_]{5,25})\s+([0-1]?\d[/.-][0-3]?\d[/.-]\d{2,4})\s+([0-1]?\d[/.-][0-3]?\d[/.-]\d{2,4})',
+        r'(?:Professional\s*Liability|Errors\s*(?:and|&)\s*Omissions|E\s*[\/&]\s*O(?:\s*Insurance)?|Claims\s*made)[^\n\r]*?\b([A-Za-z0-9\-_]{5,25})\s+([0-1]?\d[/.-][0-3]?\d[/.-]\d{2,4})\s+([0-1]?\d[/.-][0-3]?\d[/.-]\d{2,4})',
         text,
         re.I
     )
@@ -162,6 +166,18 @@ def parse_eo_text(text: str) -> Dict[str, str]:
             if is_valid_policy_number(cand):
                 res['E&O Insurance'] = cand
 
+    # Explicit E&O / E/O / E&O Insurance policy number pattern: "E&O Policy #", "E/O Policy: ...", "E&O Insurance: ..."
+    if not res['E&O Insurance']:
+        m_eo_pol = re.search(
+            r'(?:E\s*[\/&]\s*O|E\s+and\s+O)\s*(?:Insurance)?\s*(?:Policy)?\s*(?:Number|No\.?|#)?\s*[:\-]?\s*[\n\r\s]*([A-Za-z0-9\-_/]{5,30})',
+            text,
+            re.I
+        )
+        if m_eo_pol:
+            cand = m_eo_pol.group(1).strip()
+            if is_valid_policy_number(cand):
+                res['E&O Insurance'] = cand
+
     # 6. E&O Insured Name
     m_ins = re.search(
         r'(?:NAMED\s*INSURED(?:\s*AND\s*MAILING\s*ADDRESS|\s*AND\s*ADDRESS)?|INSURED)\s*[:\-]?\s*[\n\r\s]*([^\n\r]{3,70})',
@@ -208,7 +224,7 @@ def parse_eo_text(text: str) -> Dict[str, str]:
 
     # Determine E&O Present vs Absent
     is_eo_doc = bool(re.search(
-        r'\bE\s*&\s*O\b|Errors\s*(?:and|&)\s*Omissions|Certificate\s*of\s*(?:Liability\s*)?Insurance|Appraisers\s*Advantage|Professional\s*Liability',
+        r'\b(?:E\s*[\/&]\s*O|E\s+and\s+O|E-O)(?:\s*Insurance)?\b|Errors\s*(?:and|&)\s*Omissions(?:\s*Insurance)?|Certificate\s*of\s*(?:Liability\s*)?Insurance|Appraisers\s*Advantage|Professional\s*Liability',
         text,
         re.I
     ))
@@ -263,24 +279,29 @@ def extract_eo_insurance_from_doc(doc: pymupdf.Document) -> Dict[str, str]:
         is_eo_page = False
         for hl in header_lines:
             hl_upper = hl.upper()
-            if re.search(r'^\s*(?:E\s*&\s*O|ERRORS\s*(?:AND|&)\s*OMISSIONS)\s*$', hl, re.I):
+            if re.search(r'^\s*(?:E\s*[\/&]\s*O|E\s+and\s+O|ERRORS\s*(?:AND|&)\s*OMISSIONS)(?:\s*INSURANCE)?\s*$', hl, re.I):
                 is_eo_page = True
                 break
-            if 'E&O' in hl_upper or 'ERRORS & OMISSIONS' in hl_upper or 'ERRORS AND OMISSIONS' in hl_upper:
+            if re.search(r'\b(?:E\s*[\/&]\s*O|E\s+and\s+O)(?:\s*INSURANCE)?\b', hl_upper):
+                is_eo_page = True
+                break
+            if 'ERRORS & OMISSIONS' in hl_upper or 'ERRORS AND OMISSIONS' in hl_upper:
                 is_eo_page = True
                 break
             if 'CERTIFICATE OF' in hl_upper and 'INSURANCE' in hl_upper:
                 is_eo_page = True
                 break
-            if 'APPRAISERS ADVANTAGE' in hl_upper:
+            if 'APPRAISERS ADVANTAGE' in hl_upper or 'PROFESSIONAL LIABILITY' in hl_upper:
                 is_eo_page = True
                 break
 
-        if not is_eo_page and re.search(r'Errors\s*(?:and|&)\s*Omissions', t, re.I):
+        if not is_eo_page and re.search(r'\b(?:E\s*[\/&]\s*O|E\s+and\s+O)(?:\s*Insurance)?\b', t, re.I):
+            is_eo_page = True
+        if not is_eo_page and re.search(r'Errors\s*(?:and|&)\s*Omissions(?:\s*Insurance)?', t, re.I):
             is_eo_page = True
         if not is_eo_page and re.search(r'Certificate\s+of\s+(?:Liability\s+)?Insurance', t, re.I):
             is_eo_page = True
-        if not is_eo_page and re.search(r'Appraisers\s+Advantage|Professional\s+Liability\s+Insurance', t, re.I):
+        if not is_eo_page and re.search(r'Appraisers\s+Advantage|Professional\s+Liability(?:\s+Insurance)?', t, re.I):
             is_eo_page = True
 
         if is_eo_page:
@@ -292,7 +313,7 @@ def extract_eo_insurance_from_doc(doc: pymupdf.Document) -> Dict[str, str]:
         for idx in range(len(doc)):
             p = doc[idx]
             t = p.get_text('text')
-            if re.search(r'\bE&O\b|\bErrors\s*(?:and|&)\s*Omissions\b|Certificate\s+of\s+Liability\s+Insurance', t, re.I):
+            if re.search(r'\b(?:E\s*[\/&]\s*O|E\s+and\s+O)(?:\s*Insurance)?\b|\bErrors\s*(?:and|&)\s*Omissions(?:\s*Insurance)?\b|Certificate\s+of\s+(?:Liability\s+)?Insurance|Professional\s+Liability', t, re.I):
                 eo_page_idx = idx
                 break
 

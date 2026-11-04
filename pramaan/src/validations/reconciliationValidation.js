@@ -103,12 +103,17 @@ export const checkCostApproachDeveloped = (field, text, allData, path, saleName,
     return { isMatch: true };
 };
 
-export const checkAppraisalCondition = (field, text) => {
-    if (field !== 'This appraisal is made "as is", subject to completion per plans and specifications on the basis of a hypothetical condition that the improvements have been completed, subject to the following repairs or alterations on the basis of a hypothetical condition that the repairs or alterations have been completed, or subject to the following required inspection based on the extraordinary assumption that the condition or deficiency does not require alteration or repair:') return null;
+export const checkAppraisalCondition = (field, text, allData) => {
+    const fLower = String(field || '').trim().toLowerCase();
+    const isReconField =
+        fLower.includes('this appraisal is made') ||
+        fLower === 'reconciliation status';
+
+    if (!isReconField) return null;
 
     const value = String(text || '').trim().toLowerCase();
-    const hasAsIs = value.includes('as is');
-    const hasSubjectTo = value.includes('subject to');
+    const hasAsIs = value.includes('as is') || value.includes('as-is') || value.includes('asis');
+    const hasSubjectTo = value.includes('subject to') || value.includes('subject-to') || value.includes('subject');
 
     if (!hasAsIs && !hasSubjectTo) {
         return { isError: true, message: "Either 'as is' or 'subject to' must be selected." };
@@ -116,6 +121,50 @@ export const checkAppraisalCondition = (field, text) => {
     if (hasAsIs && hasSubjectTo) {
         return { isError: true, message: "Only one of 'as is' or 'subject to' can be selected." };
     }
+
+    // Cross-check with Construction Status
+    const normalize = (val) =>
+        String(val || '')
+            .toLowerCase()
+            .replace(/[^a-z]/g, '');
+
+    const rawStatus =
+        allData?.['Existing/Proposed/Under Const.'] ||
+        allData?.['Status'] ||
+        allData?.['Construction Status'] ||
+        allData?.IMPROVEMENTS?.['Existing/Proposed/Under Const.'] ||
+        allData?.IMPROVEMENTS?.['Status'] ||
+        allData?.IMPROVEMENTS?.['Construction Status'] ||
+        allData?.Improvements?.['Existing/Proposed/Under Const.'] ||
+        allData?.Improvements?.['Status'] ||
+        allData?.Improvements?.['Construction Status'] ||
+        allData?.Subject?.['Existing/Proposed/Under Const.'] ||
+        allData?.Subject?.['Status'] ||
+        allData?.Subject?.['Construction Status'] ||
+        '';
+
+    const statusClean = normalize(rawStatus);
+
+    let status = null;
+    if (statusClean.startsWith('existing')) status = 'existing';
+    else if (statusClean.startsWith('proposed')) status = 'proposed';
+    else if (statusClean.includes('under') && statusClean.includes('const'))
+        status = 'under const.';
+
+    if (status === 'existing' && !hasAsIs) {
+        return {
+            isError: true,
+            message: "If construction status is 'Existing', reconciliation must be 'As Is'."
+        };
+    }
+
+    if ((status === 'proposed' || status === 'under const.') && !hasSubjectTo) {
+        return {
+            isError: true,
+            message: "If construction status is 'Proposed' or 'Under Const.', reconciliation must be 'Subject To'."
+        };
+    }
+
     return { isMatch: true };
 };
 

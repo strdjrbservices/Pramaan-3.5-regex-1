@@ -481,7 +481,7 @@ export const checkLocation = (field, arg2, arg3, arg4, arg5) => {
 };
 
 export const checkOtherLandUse = (field, text, allData) => {
-    const dataObj = allData?.NEIGHBORHOOD || allData;
+    const dataObj = allData?.NEIGHBORHOOD || allData?.Neighborhood || allData?.clean_data?.NEIGHBORHOOD || allData?.clean_data?.Neighborhood || allData;
     if (!dataObj) {
         return null;
     }
@@ -489,18 +489,18 @@ export const checkOtherLandUse = (field, text, allData) => {
         return null;
     }
 
-    const neighborhoodData = allData?.NEIGHBORHOOD || (allData?.Other !== undefined ? allData : {});
+    const neighborhoodData = allData?.NEIGHBORHOOD || allData?.Neighborhood || allData?.clean_data?.NEIGHBORHOOD || allData?.clean_data?.Neighborhood || (allData?.Other !== undefined ? allData : {});
     const otherValueText = String(neighborhoodData['Other'] || '0').trim();
     const otherValue = parseFloat(otherValueText.replace('%', '')) || 0;
 
     const presentLandUseValue = String(
         (text !== undefined && text !== null && field === 'Present Land Use for other')
             ? text
-            : (neighborhoodData['Present Land Use for other'] || '')
+            : (neighborhoodData['Present Land Use for other'] || allData?.['Present Land Use for other'] || '')
     ).trim();
 
-    if (otherValue > 0 && !presentLandUseValue) {
-        return { isError: true, message: "'Present Land Use for other' cannot be blank when 'Other' is greater than 0%." };
+    if (otherValue > 0 && (!presentLandUseValue || presentLandUseValue.toLowerCase() === 'other')) {
+        return { isError: true, message: "'Present Land Use for other' cannot be blank or 'Other' when 'Other' is greater than 0%." };
     }
 
     if (otherValue > 0 && presentLandUseValue) {
@@ -514,16 +514,16 @@ export const checkOtherLandUse = (field, text, allData) => {
 export const checkOtherLandUseComment = (field, text, data) => {
     if (field !== 'Other' || !data) return null;
 
-    const neighborhoodData = data.NEIGHBORHOOD || data;
+    const neighborhoodData = data.NEIGHBORHOOD || data.Neighborhood || data.clean_data?.NEIGHBORHOOD || data.clean_data?.Neighborhood || data;
     const otherValue = parseFloat(String(text || neighborhoodData['Other'] || '0').replace('%', '').trim());
     if (isNaN(otherValue) || otherValue <= 0) {
         return null;
     }
 
     const commentField = 'Present Land Use for other';
-    const commentValue = String(neighborhoodData[commentField] || '').trim();
+    const commentValue = String(neighborhoodData[commentField] || data?.[commentField] || '').trim();
 
-    if (!commentValue) {
+    if (!commentValue || commentValue.toLowerCase() === 'other') {
         return { isError: true, message: `A comment in '${commentField}' is required when 'Other' land use is greater than 0%.` };
     }
 

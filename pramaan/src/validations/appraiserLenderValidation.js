@@ -1,4 +1,5 @@
 import { findUnpaidLenderMatch } from '../utils/unpaidLenders';
+import { areLenderNamesMatching, checkSubjectLenderNameVsHtml, checkLenderAddressHtmlConsistency } from './htmldatavaliadtion';
 
 const checkNotBlank = (field, text, fieldName) => {
     if (field === fieldName) {
@@ -44,92 +45,11 @@ export const checkLenderAddressInconsistency = (field, text, data) => {
 };
 
 export const checkClientNameHtmlConsistency = (field, text, allData) => {
-    if (field === 'LENDER/CLIENT Company Name') {
-        const certificationClientName = String(text || '').trim();
-        const htmlClientName = String(allData?.comparisonData?.['Client/Lender on Report'] || allData?.comparisonData?.['Company Name'] || '').trim();
-
-        if (htmlClientName && certificationClientName && htmlClientName.toLowerCase() !== certificationClientName.toLowerCase()) {
-            return {
-                isError: true,
-                message: `Client Name mismatch. HTML: '${htmlClientName}', Report: '${certificationClientName}'.`
-            };
-        }
-        return { isMatch: true };
-    } else if (field === 'Client Name') {
-        const htmlClientName = String(text || '').trim();
-        const certLenderClientName = String(allData?.CERTIFICATION?.['Lender/Client Company Name'] || allData?.Subject?.['Lender/Client'] || '').trim();
-
-        if (!htmlClientName || !certLenderClientName || htmlClientName === 'N/A') return null;
-
-        if (htmlClientName.toLowerCase() !== certLenderClientName.toLowerCase()) {
-            return {
-                isError: true,
-                message: `Client Name mismatch. HTML: '${htmlClientName}', Report: '${certLenderClientName}'.`
-            };
-        }
-        return { isMatch: true };
-    }
-    return null;
+    return checkSubjectLenderNameVsHtml(field, text, allData);
 };
 
 export const checkClientAddressHtmlConsistency = (field, text, allData) => {
-    const normalize = (str) => {
-        let s = String(str || '').toLowerCase();
-        s = s.replace(/\bstreet\b/g, 'st')
-            .replace(/\bavenue\b/g, 'ave')
-            .replace(/\broad\b/g, 'rd')
-            .replace(/\bdrive\b/g, 'dr')
-            .replace(/\bboulevard\b/g, 'blvd')
-            .replace(/\blane\b/g, 'ln')
-            .replace(/\bplace\b/g, 'pl')
-            .replace(/\bcircle\b/g, 'cir')
-            .replace(/\bcourt\b/g, 'ct')
-            .replace(/\bsuite\b/g, 'ste');
-        return s.replace(/[\s.,#\-']/g, '');
-    };
-
-    if (field === 'Address (Lender/Client)') {
-        if (!allData.comparisonData || !allData.comparisonData['Client Address'] || allData.comparisonData['Client Address'] === 'N/A') {
-            return null;
-        }
-
-        const certLenderAddress = String(text || '').trim();
-        const htmlClientAddress = String(allData.comparisonData['Client Address'] || '').trim();
-
-        if (!htmlClientAddress || !certLenderAddress) {
-            return null;
-        }
-
-        const normCert = normalize(certLenderAddress);
-        const normHtml = normalize(htmlClientAddress);
-
-        if (normHtml !== normCert && !normHtml.includes(normCert) && !normCert.includes(htmlClientAddress)) {
-            return {
-                isError: true,
-                message: `Client Address mismatch. HTML: '${htmlClientAddress}', Report: '${certLenderAddress}'.`
-            };
-        }
-        return { isMatch: true };
-    } else if (field === 'Client Address') {
-        const htmlClientAddress = String(text || '').trim();
-        const certLenderAddress = String(allData?.Subject?.['Address (Lender/Client)'] || allData?.CERTIFICATION?.['Lender/Client Company Address'] || '').trim();
-
-        if (!htmlClientAddress || !certLenderAddress || htmlClientAddress === 'N/A') {
-            return null;
-        }
-
-        const normCert = normalize(certLenderAddress);
-        const normHtml = normalize(htmlClientAddress);
-
-        if (normHtml !== normCert && !normHtml.includes(normCert) && !normCert.includes(htmlClientAddress)) {
-            return {
-                isError: true,
-                message: `Client Address mismatch. HTML: '${htmlClientAddress}', Report: '${certLenderAddress}'.`
-            };
-        }
-        return { isMatch: true };
-    }
-    return null;
+    return checkLenderAddressHtmlConsistency(field, text, allData);
 };
 
 export const checkBorrowerHtmlConsistency = (field, text, allData) => {
@@ -285,36 +205,34 @@ export const checkAppraiserFieldsNotBlank = (field, text, allData, fieldPath) =>
         "E&O Insurance",
         "E&O",
         "E&O Present",
+        "E/O",
+        "E/O Present",
+        "E/O Insurance",
         "LICENSE/REGISTRATION/CERTIFICATION #"
     ];
     return checkNotBlank(field, text, fieldsToCheck.find(f => f === field));
 };
 
 export const checkLenderNameInconsistency = (field, text, data) => {
-    if (field !== 'Lender/Client' && field !== 'Lender/Client Company Name') return null;
+    const fLower = String(field || '').toLowerCase().trim();
+    if (fLower !== 'lender/client' && fLower !== 'lender/client company name' && fLower !== 'client/lender on report') return null;
 
-    const subjectLenderName = String(data.Subject?.['Lender/Client'] || '').trim();
-    const appraiserCompanyName = String(data.CERTIFICATION?.['Lender/Client Company Name'] || '').trim();
+    const subjectLenderName = String((fLower === 'lender/client' ? text : null) || data?.Subject?.['Lender/Client'] || data?.['Lender/Client'] || data?.clean_data?.Subject?.['Lender/Client'] || '').trim();
+    const appraiserCompanyName = String((fLower === 'lender/client company name' ? text : null) || data?.CERTIFICATION?.['Lender/Client Company Name'] || data?.['Lender/Client Company Name'] || '').trim();
     const appraiserLenderName = appraiserCompanyName;
-    const htmlLenderName = String(data.comparisonData?.['Client/Lender on Report'] || '').trim();
-
-    const normalize = (str) => String(str).toLowerCase().replace(/[\s.,#\-']/g, '');
-
-    const normSubject = subjectLenderName ? normalize(subjectLenderName) : '';
-    const normAppraiser = appraiserLenderName ? normalize(appraiserLenderName) : '';
-    const normHtml = (htmlLenderName && htmlLenderName !== 'N/A') ? normalize(htmlLenderName) : '';
+    const htmlLenderName = String((fLower === 'client/lender on report' ? text : null) || data?.comparisonData?.['Client/Lender on Report'] || data?.comparisonData?.['CLIENT/LENDER ON REPORT'] || data?.comparisonData?.['Client Name'] || '').trim();
 
     const mismatches = [];
 
-    if (normSubject && normAppraiser && normSubject !== normAppraiser && !normSubject.includes(normAppraiser) && !normAppraiser.includes(normSubject)) {
+    if (subjectLenderName && appraiserLenderName && !areLenderNamesMatching(subjectLenderName, appraiserLenderName)) {
         mismatches.push(`Subject ('${subjectLenderName}') vs Certification ('${appraiserLenderName}')`);
     }
 
-    if (normSubject && normHtml && normSubject !== normHtml && !normSubject.includes(normHtml) && !normHtml.includes(normSubject)) {
+    if (subjectLenderName && htmlLenderName && htmlLenderName !== 'N/A' && !areLenderNamesMatching(subjectLenderName, htmlLenderName)) {
         mismatches.push(`Subject ('${subjectLenderName}') vs HTML ('${htmlLenderName}')`);
     }
 
-    if (normAppraiser && normHtml && normAppraiser !== normHtml && !normAppraiser.includes(normHtml) && !normHtml.includes(normAppraiser)) {
+    if (appraiserLenderName && htmlLenderName && htmlLenderName !== 'N/A' && !areLenderNamesMatching(appraiserLenderName, htmlLenderName)) {
         mismatches.push(`Certification ('${appraiserLenderName}') vs HTML ('${htmlLenderName}')`);
     }
 

@@ -10,30 +10,114 @@ export const checkUnits = (field, text) => {
     return { isMatch: true };
 };
 
-export const checkBasementDetails = (field, text, data) => {
-    const basementFields = ['Basement Area sq.ft.', 'Basement Finish %'];
-    if (!basementFields.includes(field)) return null;
+export const getFoundationStatus = (data = {}) => {
+    const checkIsYes = (val) => {
+        if (!val) return false;
+        const s = String(val).trim().toLowerCase();
+        return s === 'yes' || s === 'true' || s === '1' || s === 'checked';
+    };
 
-    const hasFullBasement = String(data['Full Basement'] || '').toLowerCase() === 'yes';
-    const hasPartialBasement = String(data['Partial Basement'] || '').toLowerCase() === 'yes';
+    let hasFullBasement = checkIsYes(data['Full Basement']) ||
+        checkIsYes(data?.Subject?.['Full Basement']) ||
+        checkIsYes(data?.IMPROVEMENTS?.['Full Basement']) ||
+        checkIsYes(data?.Improvements?.['Full Basement']);
+
+    let hasPartialBasement = checkIsYes(data['Partial Basement']) ||
+        checkIsYes(data?.Subject?.['Partial Basement']) ||
+        checkIsYes(data?.IMPROVEMENTS?.['Partial Basement']) ||
+        checkIsYes(data?.Improvements?.['Partial Basement']);
+
+    let hasConcreteSlab = checkIsYes(data['Concrete Slab']) ||
+        checkIsYes(data?.Subject?.['Concrete Slab']) ||
+        checkIsYes(data?.IMPROVEMENTS?.['Concrete Slab']) ||
+        checkIsYes(data?.Improvements?.['Concrete Slab']);
+
+    let hasCrawlSpace = checkIsYes(data['Crawl Space']) ||
+        checkIsYes(data?.Subject?.['Crawl Space']) ||
+        checkIsYes(data?.IMPROVEMENTS?.['Crawl Space']) ||
+        checkIsYes(data?.Improvements?.['Crawl Space']);
+
+    const foundStr = String(
+        data['Foundation Type'] ||
+        data['Foundation'] ||
+        data?.Subject?.['Foundation Type'] ||
+        data?.Subject?.['Foundation'] ||
+        data?.IMPROVEMENTS?.['Foundation Type'] ||
+        data?.IMPROVEMENTS?.['Foundation'] ||
+        data?.Improvements?.['Foundation Type'] ||
+        data?.Improvements?.['Foundation'] ||
+        ''
+    ).toLowerCase();
+
+    if (foundStr) {
+        if (foundStr.includes('full basement') || (foundStr.includes('basement') && !foundStr.includes('partial'))) {
+            hasFullBasement = true;
+        }
+        if (foundStr.includes('partial')) {
+            hasPartialBasement = true;
+        }
+        if (foundStr.includes('slab')) {
+            hasConcreteSlab = true;
+        }
+        if (foundStr.includes('crawl')) {
+            hasCrawlSpace = true;
+        }
+    }
+
+    return { hasFullBasement, hasPartialBasement, hasConcreteSlab, hasCrawlSpace };
+};
+
+export const checkBasementDetails = (field, text, data = {}) => {
+    const basementAreaFields = ['Basement Area sq.ft.', 'Basement Area'];
+    const basementFinishFields = ['Basement Finish %', 'Basement Finish'];
+    if (!basementAreaFields.includes(field) && !basementFinishFields.includes(field)) return null;
+
+    const { hasFullBasement, hasPartialBasement, hasConcreteSlab, hasCrawlSpace } = getFoundationStatus(data);
 
     if (hasFullBasement && hasPartialBasement) {
         return { isError: true, message: "Only one of 'Full Basement' or 'Partial Basement' can be selected." };
     }
 
-    if (hasFullBasement || hasPartialBasement) {
-        if (field === 'Basement Area sq.ft.') {
-            const area = parseFloat(String(text || '0').replace(/[^0-9.]/g, ''));
-            if (isNaN(area) || area <= 0) {
-                return { isError: true, message: "'Basement Area' must be a non-zero value if a basement type is checked." };
+    if (basementAreaFields.includes(field)) {
+        const rawStr = String(text ?? '').trim();
+        const numStr = rawStr.replace(/[^0-9.]/g, '');
+        const area = numStr === '' ? NaN : parseFloat(numStr);
+
+        if (hasFullBasement || hasPartialBasement) {
+            if (isNaN(area) || area <= 1) {
+                return {
+                    isError: true,
+                    message: "'Basement Area' must be greater than 1 when Full Basement or Partial Basement is selected."
+                };
             }
-        }
-        if (field === 'Basement Finish %') {
-            if (!String(text || '').trim()) {
-                return { isError: true, message: "'Basement Finish %' cannot be blank if a basement type is checked." };
+            return {
+                isMatch: true,
+                message: `Valid: Basement Area (${rawStr}) is greater than 1.`
+            };
+        } else if (hasConcreteSlab || hasCrawlSpace) {
+            const isZero = area === 0 || rawStr === '0' || rawStr.toLowerCase() === '0 sq.ft.' || rawStr.toLowerCase() === '0 sq ft';
+            if (!isZero) {
+                return {
+                    isError: true,
+                    message: "'Basement Area' must be '0' when Concrete Slab or Crawl Space is selected."
+                };
             }
+            return {
+                isMatch: true,
+                message: "Valid: Basement Area is '0' for Concrete Slab / Crawl Space."
+            };
         }
     }
+
+    if (basementFinishFields.includes(field)) {
+        if (hasFullBasement || hasPartialBasement) {
+            if (!String(text ?? '').trim()) {
+                return { isError: true, message: "'Basement Finish %' cannot be blank if a basement type is checked." };
+            }
+            return { isMatch: true, message: "Valid: Basement Finish is provided." };
+        }
+    }
+
     return { isMatch: true };
 };
 
@@ -77,8 +161,12 @@ export const checkMaterialCondition = (field, text) => {
 export const checkHeatingFuel = (field, text) => {
     if (field !== 'Fuel') return null;
     const value = String(text || '').trim().toLowerCase();
-    if (value && !['gas', 'oil', 'propane', 'electric', 'elec', 'Propane'].includes(value)) {
-        return { isError: true, message: `Fuel is '${text}'. Expected 'Propane', 'Gas' or 'Oil'. Please verify.` };
+    if (!value) return null;
+    const validFuels = ['gas', 'oil', 'propane', 'electric', 'elec', 'ele', 'solar', 'wood', 'pellet', 'coal', 'geo', 'geothermal'];
+    const parts = value.split(/[/,\s]+/).map(p => p.trim()).filter(Boolean);
+    const allValid = parts.length > 0 && parts.every(part => validFuels.includes(part));
+    if (!allValid) {
+        return { isError: true, message: `Fuel is '${text}'. Expected 'Propane', 'Gas', 'Electric', or 'Oil'. Please verify.` };
     }
     return { isMatch: true };
 };
@@ -198,7 +286,14 @@ export const checkConstructionStatusAndReconciliation = (
     text,
     data
 ) => {
-    if (field !== 'Existing/Proposed/Under Const.') return null;
+    const fLower = String(field || '').trim().toLowerCase();
+    const isStatusField =
+        fLower === 'existing/proposed/under const.' ||
+        fLower === 'status' ||
+        fLower === 'construction status' ||
+        fLower.includes('existing/proposed');
+
+    if (!isStatusField) return null;
 
     const normalize = (val) =>
         String(val || '')
@@ -210,7 +305,16 @@ export const checkConstructionStatusAndReconciliation = (
     const reconciliationField =
         'This appraisal is made "as is", subject to completion per plans and specifications on the basis of a hypothetical condition that the improvements have been completed, subject to the following repairs or alterations on the basis of a hypothetical condition that the repairs or alterations have been completed, or subject to the following required inspection based on the extraordinary assumption that the condition or deficiency does not require alteration or repair:';
 
-    const reconciliationRaw = normalize(data?.[reconciliationField]);
+    const rawReconciliation =
+        data?.[reconciliationField] ||
+        data?.RECONCILIATION?.[reconciliationField] ||
+        data?.Reconciliation?.[reconciliationField] ||
+        data?.['Reconciliation Status'] ||
+        data?.RECONCILIATION?.['Reconciliation Status'] ||
+        data?.Reconciliation?.['Reconciliation Status'] ||
+        '';
+
+    const reconciliationRaw = normalize(rawReconciliation);
 
     let status = null;
 
@@ -227,7 +331,10 @@ export const checkConstructionStatusAndReconciliation = (
         };
     }
 
-    if (status === 'existing' && !reconciliationRaw.includes('asis')) {
+    const hasAsIs = reconciliationRaw.includes('asis');
+    const hasSubjectTo = reconciliationRaw.includes('subject');
+
+    if (status === 'existing' && !hasAsIs) {
         return {
             isError: true,
             message:
@@ -237,7 +344,7 @@ export const checkConstructionStatusAndReconciliation = (
 
     if (
         (status === 'proposed' || status === 'under const.') &&
-        !reconciliationRaw.includes('subjectto')
+        !hasSubjectTo
     ) {
         return {
             isError: true,
@@ -246,7 +353,7 @@ export const checkConstructionStatusAndReconciliation = (
         };
     }
 
-    return null;
+    return { isMatch: true };
 };
 
 export const checkDesignStyle = (field, text, allData, fieldPath, saleName) => {
@@ -466,12 +573,54 @@ export const checkNeighborhoodConformity = (field, text) => {
     return { isMatch: true };
 };
 
-export const checkFoundationType = (field, text) => {
-    if (field !== 'Foundation Type') return null;
-    if (!String(text || '').trim()) {
+export const checkFoundationType = (field, text, data = {}) => {
+    if (field !== 'Foundation Type' && field !== 'Foundation') return null;
+    const value = String(text ?? '').trim();
+    if (!value) {
         return { isError: true, message: "'Foundation Type' cannot be blank." };
     }
-    return { isMatch: true };
+
+    const { hasFullBasement, hasPartialBasement, hasConcreteSlab, hasCrawlSpace } = getFoundationStatus({
+        ...data,
+        [field]: value
+    });
+
+    if (hasFullBasement && hasPartialBasement) {
+        return { isError: true, message: "Only one of 'Full Basement' or 'Partial Basement' can be selected." };
+    }
+
+    const areaRaw = String(
+        data['Basement Area sq.ft.'] ??
+        data['Basement Area'] ??
+        data?.Subject?.['Basement Area sq.ft.'] ??
+        data?.Subject?.['Basement Area'] ??
+        data?.IMPROVEMENTS?.['Basement Area sq.ft.'] ??
+        data?.IMPROVEMENTS?.['Basement Area'] ??
+        data?.Improvements?.['Basement Area sq.ft.'] ??
+        data?.Improvements?.['Basement Area'] ??
+        ''
+    ).trim();
+    const numStr = areaRaw.replace(/[^0-9.]/g, '');
+    const area = numStr === '' ? NaN : parseFloat(numStr);
+
+    if (hasFullBasement || hasPartialBasement) {
+        if (isNaN(area) || area <= 1) {
+            return {
+                isError: true,
+                message: "'Basement Area' must be greater than 1 when Full Basement or Partial Basement is selected."
+            };
+        }
+    } else if (hasConcreteSlab || hasCrawlSpace) {
+        const isZero = area === 0 || areaRaw === '0' || areaRaw.toLowerCase() === '0 sq.ft.' || areaRaw.toLowerCase() === '0 sq ft';
+        if (!isZero) {
+            return {
+                isError: true,
+                message: "'Basement Area' must be '0' when Concrete Slab or Crawl Space is selected."
+            };
+        }
+    }
+
+    return { isMatch: true, message: "Valid: Foundation Type and Basement Area are consistent." };
 };
 
 export const checkImprovementsFieldsNotBlank = (field, text) => {

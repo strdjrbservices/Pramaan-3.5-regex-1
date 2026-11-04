@@ -5,8 +5,12 @@ import re
 import base64
 import io
 import tempfile
+import warnings
 import xml.etree.ElementTree as ET
 from typing import Dict, Any, Optional, Tuple, List
+
+warnings.filterwarnings("ignore", message=".*pin_memory.*")
+warnings.filterwarnings("ignore", category=UserWarning, module="torch.*")
 
 try:
     import pymupdf as fitz
@@ -446,6 +450,97 @@ def _extract_nonconforming_rebuild_comment(
     )
     if m:
         return m.group(0).strip(" \t\r\n-•*\"'")
+
+    return ""
+
+
+def _extract_other_land_use_comment(
+    full_narrative: str = "",
+    dom_narratives: Optional[List[str]] = None,
+    nb_texts: Optional[List[str]] = None,
+    other_percent: str = "",
+    root: Optional[ET.Element] = None
+) -> str:
+    """
+    Extracts comment/description for 'Present Land Use for other' from neighborhood narratives,
+    improvements narratives, supplemental addenda, and DOM text when 'Other' land use > 0%
+    or when the grid description is generic (e.g. 'Other', 'See Addendum').
+    Keywords: other, vacant, park, playground, public, education, commercial, open space, recreation, church, school, etc.
+    """
+    search_texts = []
+    if nb_texts:
+        search_texts.extend([t for t in nb_texts if t])
+    if dom_narratives:
+        search_texts.extend([t for t in dom_narratives if t])
+    if full_narrative:
+        search_texts.append(full_narrative)
+
+    if root is not None:
+        for elem in root.iter():
+            for k, v in elem.attrib.items():
+                if v and any(kw in v.lower() for kw in ["other is", "land use", "vacant", "park", "playground"]):
+                    search_texts.append(v)
+            if elem.text and not elem.text.startswith("JVBERi"):
+                elem_t = elem.text.strip()
+                if any(kw in elem_t.lower() for kw in ["other is", "land use", "vacant", "park", "playground"]):
+                    search_texts.append(elem_t)
+
+    KEYWORDS = [
+        "vacant", "park", "parks", "playground", "playgrounds", "open space", "public",
+        "education", "commercial", "recreation", "church", "churches", "school", "schools",
+        "agricultural", "wooded", "golf course", "industrial", "common area", "conservation",
+        "greenbelt", "undeveloped", "forest", "preserve", "civic", "government", "institutional"
+    ]
+
+    pct_str = re.sub(r'[^0-9]', '', other_percent or '')
+
+    specific_patterns = [
+        re.compile(r'(?:\b(?:\d{1,2}%|\d{1,2}\s*percent)\s*other\b[^\.\n;\r]*?(?:is\s+|are\s+|includes\s+|consists\s+of\s+|[:\-])\s*)([^\.\n;\r]+)', re.IGNORECASE),
+        re.compile(r'(?:(?:\bother\s*(?:present\s+)?land\s*use\b|present\s+land\s+use\s+(?:for\s+)?other\b)[^\.\n;\r]*?(?:is\s+|are\s+|includes\s+|consists\s+of\s+|[:\-])\s*)([^\.\n;\r]+)', re.IGNORECASE),
+        re.compile(r'(?:\bother\s+(?:land\s+use\s*)?(?:is|are|includes|consists\s+of|[:\-])\s*)([^\.\n;\r]+)', re.IGNORECASE),
+        re.compile(r'(?:\bother\s*[:\-]\s*)([^\.\n;\r]+)', re.IGNORECASE),
+    ]
+
+    for t in search_texts:
+        if not t:
+            continue
+        for pat in specific_patterns:
+            for m in pat.finditer(t):
+                candidate = m.group(1).strip()
+                clean_cand = re.sub(r'^(?:is\s+|are\s+|includes\s+|consists\s+of\s+|[:\-\s]+)+', '', candidate, flags=re.IGNORECASE)
+                clean_cand = clean_cand.strip(" \t\r\n.,;:\"'-")
+                
+                if not clean_cand or len(clean_cand) < 2 or len(clean_cand) > 150:
+                    continue
+                cand_lower = clean_cand.lower()
+                if cand_lower in ["other", "see addendum", "see attached", "see addenda", "n/a", "none", "see narrative", "see comments", "unknown"]:
+                    continue
+                
+                if any(kw in cand_lower for kw in KEYWORDS):
+                    return clean_cand
+                if "land use" in m.group(0).lower():
+                    return clean_cand
+
+    for t in search_texts:
+        if not t:
+            continue
+        sentences = re.split(r'(?<=[.?!;])\s+|[\r\n]+', t)
+        for s in sentences:
+            s_clean = s.strip(" \t\r\n-•*\"'")
+            if len(s_clean) < 5 or len(s_clean) > 250:
+                continue
+            s_lower = s_clean.lower()
+            if ("other" in s_lower or (pct_str and f"{pct_str}%" in s_lower)) and any(kw in s_lower for kw in KEYWORDS):
+                extracted = re.sub(
+                    r'^(?:.*?\b(?:(?:\d{1,2}%|\d{1,2}\s*percent)\s*)?other\s*(?:present\s+)?(?:land\s*use\s*)?(?:is\s+|are\s+|includes\s+|consists\s+of\s+|[:\-])\s*)',
+                    '',
+                    s_clean,
+                    flags=re.IGNORECASE
+                ).strip(" \t\r\n.,;:\"'-")
+                if extracted and len(extracted) > 2 and extracted.lower() not in ["other", "see addendum", "n/a"]:
+                    return extracted
+                if len(s_clean) <= 120:
+                    return s_clean
 
     return ""
 
@@ -2711,13 +2806,21 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
             if sa_elem is not None:
                 effective_age = sa_elem.attrib.get("EffectiveAgeYearsCount", "")
             
-            found_elem = struct_elem.find("FOUNDATION")
-            if found_elem is not None:
-                ft = found_elem.attrib.get("_Type", "")
-                if "Basement" in ft:
-                    foundation_type = "Full Basement" if struct_elem.find("BASEMENT") is not None else ft
-                else:
-                    foundation_type = ft
+            found_elems = struct_elem.findall("FOUNDATION")
+            for fe in found_elems:
+                if not fe.attrib or fe.attrib.get("_ExistsIndicator", "Y") == "N":
+                    continue
+                ft_cand = fe.attrib.get("_Type", "")
+                cond_cand = fe.attrib.get("_ConditionDescription", "")
+                if "partial" in ft_cand.lower() or "partial" in cond_cand.lower() or fe.attrib.get("_PartialBasementIndicator") == "Y":
+                    foundation_type = "Partial Basement"
+                    break
+                elif "full" in ft_cand.lower() or "full" in cond_cand.lower() or fe.attrib.get("_FullBasementIndicator") == "Y" or ft_cand.lower() == "basement":
+                    foundation_type = "Full Basement"
+                    break
+                elif ft_cand:
+                    foundation_type = ft_cand
+                    break
 
     # Site
     site_dim = ""
@@ -2914,7 +3017,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
     multi_family = ""
     commercial = ""
     other_use = ""
-    other_desc = ""
+    other_land_use_desc = ""
 
     housing_price = ""
     housing_age = ""
@@ -3015,7 +3118,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
             elif ptype == "Other":
                 other_use = pval
                 if pdesc:
-                    other_desc = pdesc
+                    other_land_use_desc = pdesc
 
         # Housing (high, low, pred)
         housing_elems = nb_elem.findall("_HOUSING")
@@ -3380,17 +3483,17 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
                 atype = adj.attrib.get("_Type", "")
                 adesc = adj.attrib.get("_Description", "")
                 aamt = _clean_currency(adj.attrib.get("_Amount", ""))
-                other_desc = adj.attrib.get("_TypeOtherDescription", "")
+                adj_other_desc = adj.attrib.get("_TypeOtherDescription", "")
 
                 # Line 1 (Bedrooms Adjustment) and Line 2 (Baths Adjustment) in MISMO XML
-                if other_desc in ["RoomAboveGradeLine1", "RoomAboveGrade1"] or atype == "Bedroom" or "bedroom" in other_desc.lower():
+                if adj_other_desc in ["RoomAboveGradeLine1", "RoomAboveGrade1"] or atype == "Bedroom" or "bedroom" in adj_other_desc.lower():
                     line1_adj = aamt
                     line1_found = True
-                elif other_desc in ["RoomAboveGradeLine2", "RoomAboveGrade2"] or atype == "Bathroom" or "bath" in other_desc.lower():
+                elif adj_other_desc in ["RoomAboveGradeLine2", "RoomAboveGrade2"] or atype == "Bathroom" or "bath" in adj_other_desc.lower():
                     line2_adj = aamt
                     line2_found = True
 
-                adj_key = f"{atype}_{other_desc}" if (atype == "Other" and other_desc) else atype
+                adj_key = f"{atype}_{adj_other_desc}" if (atype == "Other" and adj_other_desc) else atype
                 adjustments[adj_key] = {"desc": adesc, "amount": aamt}
                 if atype not in adjustments or not adjustments[atype].get("amount"):
                     adjustments[atype] = {"desc": adesc, "amount": aamt}
@@ -4692,6 +4795,17 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "Financial Assistance Comment": concessions_text,
     }
 
+    if not other_land_use_desc or other_land_use_desc.strip().lower() in ["", "other", "see addendum", "see attached", "see addenda", "n/a", "none", "see narrative", "see comments", "unknown"]:
+        extracted_other_comment = _extract_other_land_use_comment(
+            full_narrative=full_narrative,
+            dom_narratives=dom_narratives,
+            nb_texts=[nb_bound, nb_desc, nb_mkt, addendum_text],
+            other_percent=other_use,
+            root=root
+        )
+        if extracted_other_comment:
+            other_land_use_desc = extracted_other_comment
+
     neighborhood_section = {
         "Neighborhood Name": nb_name,
         "Location": nb_loc,
@@ -4705,7 +4819,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "Multi-Family": multi_family,
         "Commercial": commercial,
         "Other": other_use,
-        "Present Land Use for other": other_desc,
+        "Present Land Use for other": other_land_use_desc,
         "one unit housing price(high,low,pred)": housing_price,
         "one unit housing age(high,low,pred)": housing_age,
         "Neighborhood Boundaries": nb_bound,
@@ -4781,6 +4895,9 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
             elif t == "Stairs": attic_features.append("Stairs")
             elif t == "Finished": attic_features.append("Finished")
             elif t == "Heated": attic_features.append("Heated")
+            elif t == "Other" or af.attrib.get("_OtherIndicator") == "Y":
+                desc = (af.attrib.get("_TypeOtherDescription") or af.attrib.get("_Description") or "").strip()
+                attic_features.append(f"Other: {desc}" if desc and desc.lower() != "other" else "Other")
             elif t and t != "None": attic_features.append(t)
     attic_val = ", ".join(attic_features) if attic_features else "None"
 
@@ -4790,46 +4907,115 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         for ke in struct_elem.findall("KITCHEN_EQUIPMENT"):
             if ke.attrib.get("_ExistsIndicator", "Y") == "Y":
                 t = ke.attrib.get("_Type", "")
+                desc = (
+                    ke.attrib.get("_TypeOtherDescription") or 
+                    ke.attrib.get("_OtherDescription") or 
+                    ke.attrib.get("_Description") or 
+                    ke.attrib.get("_Comment") or ""
+                ).strip()
                 if t == "RangeOven": app_list.append("Range/Oven")
                 elif t == "WasherDryer": app_list.append("Washer/Dryer")
-                elif t == "Other":
-                    desc = ke.attrib.get("_TypeOtherDescription", "Other")
-                    app_list.append(desc if desc else "Other")
+                elif t == "Other" or ke.attrib.get("_OtherIndicator") == "Y":
+                    app_list.append(f"Other: {desc}" if desc and desc.lower() != "other" else "Other")
                 elif t: app_list.append(t)
     appliances_val = ", ".join(app_list) if app_list else "None"
 
     # Foundation
-    found_types = []
+    found_elems = []
     if struct_elem is not None:
-        for f_elem in struct_elem.findall("FOUNDATION"):
-            if f_elem.attrib.get("_ExistsIndicator", "Y") != "N":
-                ft = f_elem.attrib.get("_Type", "")
-                if "slab" in ft.lower(): found_types.append("Concrete Slab")
-                elif "crawl" in ft.lower(): found_types.append("Crawl Space")
-                elif "partial" in ft.lower(): found_types.append("Partial Basement")
-                elif "basement" in ft.lower(): found_types.append("Full Basement")
+        found_elems = struct_elem.findall("FOUNDATION")
+    if not found_elems and property_elem is not None:
+        found_elems = property_elem.findall(".//FOUNDATION")
+    if not found_elems:
+        found_elems = root.findall(".//FOUNDATION")
+
+    has_partial_declared = any(
+        (f.attrib.get("_Type") == "PartialBasement" or 
+         "partial" in (f.attrib.get("_Type") or "").lower() or
+         "partial" in (f.attrib.get("_ConditionDescription") or "").lower() or
+         f.attrib.get("_PartialBasementIndicator") == "Y")
+        and f.attrib.get("_ExistsIndicator", "Y") != "N"
+        for f in found_elems
+    )
+
+    found_types = []
+    for f_elem in found_elems:
+        if not f_elem.attrib:
+            continue
+        if f_elem.attrib.get("_ExistsIndicator", "Y") == "N":
+            continue
+
+        ft = (f_elem.attrib.get("_Type") or "").strip()
+        ft_lower = ft.lower()
+        cond_desc = (f_elem.attrib.get("_ConditionDescription") or "").strip().lower()
+
+        if "slab" in ft_lower or f_elem.attrib.get("_ConcreteSlabIndicator") == "Y":
+            if "Concrete Slab" not in found_types:
+                found_types.append("Concrete Slab")
+
+        if "crawl" in ft_lower or f_elem.attrib.get("_CrawlSpaceIndicator") == "Y":
+            if "Crawl Space" not in found_types:
+                found_types.append("Crawl Space")
+
+        if "partial" in ft_lower or "partial" in cond_desc or f_elem.attrib.get("_PartialBasementIndicator") == "Y":
+            if "Partial Basement" not in found_types:
+                found_types.append("Partial Basement")
+        elif "full" in ft_lower or "full" in cond_desc or f_elem.attrib.get("_FullBasementIndicator") == "Y":
+            if "Full Basement" not in found_types:
+                found_types.append("Full Basement")
+        elif ft_lower == "basement":
+            if not has_partial_declared and cond_desc != "partial":
+                if "Full Basement" not in found_types:
+                    found_types.append("Full Basement")
+
     bm_elem = struct_elem.find("BASEMENT") if struct_elem is not None else None
-    bm_sqft = bm_elem.attrib.get("SquareFeetCount", "0") if bm_elem is not None else "0"
-    bm_finish = bm_elem.attrib.get("_FinishedPercent", "0") if bm_elem is not None else "0"
-    if not found_types:
-        if bm_elem is not None and int(float(bm_sqft or "0")) > 0:
-            found_types.append("Full Basement")
-        else:
-            found_types.append("Concrete Slab")
-    found_val = found_types[0]
+    if bm_elem is None and property_elem is not None:
+        bm_elem = property_elem.find(".//BASEMENT")
+    if bm_elem is None:
+        bm_elem = root.find(".//BASEMENT")
+
+    # If no foundation type matched from FOUNDATION tags but a BASEMENT element with area/percent exists
+    if not found_types and bm_elem is not None and (bm_elem.attrib.get("SquareFeetCount") or bm_elem.attrib.get("_FinishedPercent")):
+        found_types.append("Full Basement")
+
+    bm_sqft = (bm_elem.attrib.get("SquareFeetCount") or "").strip() if bm_elem is not None else ""
+    bm_finish = (bm_elem.attrib.get("_FinishedPercent") or "").strip() if bm_elem is not None else ""
+    # if not bm_sqft and ("Concrete Slab" in found_types or "Crawl Space" in found_types) and "Full Basement" not in found_types and "Partial Basement" not in found_types:
+    #     bm_sqft = "0"
+    found_val = ", ".join(found_types) if found_types else ""
 
     # Basement Details
     bm_details_list = []
+    bm_feat_elems = []
     if bm_elem is not None:
-        for bf in bm_elem.findall("BASEMENT_FEATURE"):
-            if bf.attrib.get("_ExistsIndicator", "Y") == "Y":
-                bt = bf.attrib.get("_Type", "")
-                if bt == "OutsideEntry": bm_details_list.append("Outside Entry/Exit")
-                elif bt: bm_details_list.append(bt)
+        bm_feat_elems.extend(bm_elem.findall("BASEMENT_FEATURE"))
+    if not bm_feat_elems and struct_elem is not None:
+        bm_feat_elems.extend(struct_elem.findall(".//BASEMENT_FEATURE"))
+    if not bm_feat_elems:
+        bm_feat_elems = root.findall(".//BASEMENT_FEATURE")
+
+    for bf in bm_feat_elems:
+        if bf.attrib.get("_ExistsIndicator", "Y") == "Y":
+            bt = bf.attrib.get("_Type", "")
+            if bt == "OutsideEntry":
+                if "Outside Entry/Exit" not in bm_details_list:
+                    bm_details_list.append("Outside Entry/Exit")
+            elif bt and bt not in bm_details_list:
+                bm_details_list.append(bt)
+
+    found_feat_elems = []
     if struct_elem is not None:
-        for ff in struct_elem.findall("FOUNDATION_FEATURE"):
-            if ff.attrib.get("_ExistsIndicator", "Y") == "Y" and ff.attrib.get("_Type") == "SumpPump":
+        found_feat_elems.extend(struct_elem.findall("FOUNDATION_FEATURE"))
+    if not found_feat_elems and property_elem is not None:
+        found_feat_elems.extend(property_elem.findall(".//FOUNDATION_FEATURE"))
+    if not found_feat_elems:
+        found_feat_elems = root.findall(".//FOUNDATION_FEATURE")
+
+    for ff in found_feat_elems:
+        if ff.attrib.get("_ExistsIndicator", "Y") == "Y" and ff.attrib.get("_Type") == "SumpPump":
+            if "Sump Pump" not in bm_details_list:
                 bm_details_list.append("Sump Pump")
+
     bm_details = ", ".join(bm_details_list) if bm_details_list else "None"
 
     # Evidence of
@@ -4843,46 +5029,93 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
     evidence_val = ", ".join(evidence_list) if evidence_list else "None"
 
     # Heating & Cooling
-    ht_raw = ""
-    hf_raw = ""
-    if struct_elem is not None:
-        for h in struct_elem.findall("HEATING"):
-            if not ht_raw and h.attrib.get("_Type"): ht_raw = h.attrib.get("_Type")
-            if not hf_raw and h.attrib.get("_FuelDescription"): hf_raw = h.attrib.get("_FuelDescription")
-    ht_val = ""
-    if ht_raw:
-        if "warm" in ht_raw.lower() or "forced" in ht_raw.lower():
-            ht_val = "FWA"
-        elif "baseboard" in ht_raw.lower():
-            ht_val = "HWBB"
-        elif "radiant" in ht_raw.lower():
-            ht_val = "Radiant"
-        else:
-            ht_val = ht_raw
+    ht_list = []
+    hf_list = []
+    heat_elems = struct_elem.findall("HEATING") if struct_elem is not None else root.findall(".//HEATING")
+    for h in heat_elems:
+        f = (h.attrib.get("_FuelDescription") or "").strip()
+        if f and f not in hf_list:
+            hf_list.append(f)
+        
+        ht_type = (h.attrib.get("_Type") or "").strip()
+        is_other = (
+            ht_type.lower() == "other" or 
+            h.attrib.get("_OtherIndicator") == "Y"
+        )
+        ht_other_desc = (
+            h.attrib.get("_TypeOtherDescription") or 
+            h.attrib.get("_OtherDescription") or 
+            h.attrib.get("_UnitDescription") or 
+            h.attrib.get("_Description") or 
+            h.attrib.get("_Comment") or ""
+        ).strip()
+
+        if "warm" in ht_type.lower() or "forced" in ht_type.lower() or ht_type.upper() == "FWA":
+            if "FWA" not in ht_list:
+                ht_list.append("FWA")
+        elif "baseboard" in ht_type.lower() or ht_type.upper() == "HWBB" or "hot water" in ht_type.lower():
+            if "HWBB" not in ht_list:
+                ht_list.append("HWBB")
+        elif "radiant" in ht_type.lower():
+            if "Radiant" not in ht_list:
+                ht_list.append("Radiant")
+        elif is_other:
+            desc_str = f"Other: {ht_other_desc}" if ht_other_desc and ht_other_desc.lower() != "other" else "Other"
+            if desc_str not in ht_list:
+                ht_list.append(desc_str)
+        elif ht_type and ht_type.lower() not in ["none", ""]:
+            if ht_type not in ht_list:
+                ht_list.append(ht_type)
+
+    ht_val = ", ".join(ht_list) if ht_list else ""
 
     hf_val = ""
+    hf_raw = ", ".join(hf_list) if hf_list else ""
     if hf_raw:
-        if "gas" in hf_raw.lower():
+        if "/" in hf_raw or "," in hf_raw:
+            hf_val = hf_raw.strip()
+        elif "gas" in hf_raw.lower():
             hf_val = "Gas"
         elif "elec" in hf_raw.lower():
             hf_val = "Electric"
         elif "oil" in hf_raw.lower():
             hf_val = "Oil"
+        elif "solar" in hf_raw.lower():
+            hf_val = "Solar"
+        elif "wood" in hf_raw.lower() or "pellet" in hf_raw.lower():
+            hf_val = "Wood/Pellet"
         else:
-            hf_val = hf_raw.title()
+            hf_val = hf_raw.title() if hf_raw.isupper() else hf_raw.strip()
 
-    cooling_elem = struct_elem.find("COOLING") if struct_elem is not None else None
-    cooling_val = ""
-    if cooling_elem is not None:
-        c_central = cooling_elem.attrib.get("_CentralizedIndicator", "N")
-        c_indiv = cooling_elem.attrib.get("_IndividualIndicator", "N")
-        c_desc = cooling_elem.attrib.get("_Description", "") or cooling_elem.attrib.get("_Type", "")
-        if c_central == "Y":
-            cooling_val = "Central Air Conditioning"
-        elif c_indiv == "Y":
-            cooling_val = "Individual"
-        elif c_desc:
-            cooling_val = c_desc
+    cooling_list = []
+    cool_elems = struct_elem.findall("COOLING") if struct_elem is not None else root.findall(".//COOLING")
+    for c in cool_elems:
+        c_central = c.attrib.get("_CentralizedIndicator", "N")
+        c_indiv = c.attrib.get("_IndividualIndicator", "N")
+        c_other = c.attrib.get("_OtherIndicator", "N")
+        c_type = (c.attrib.get("_Type") or "").strip()
+        c_desc = (
+            c.attrib.get("_TypeOtherDescription") or 
+            c.attrib.get("_UnitDescription") or 
+            c.attrib.get("_Description") or 
+            c.attrib.get("_Comment") or ""
+        ).strip()
+
+        if c_central == "Y" or "central" in c_type.lower():
+            if "Central Air Conditioning" not in cooling_list:
+                cooling_list.append("Central Air Conditioning")
+        if c_indiv == "Y" or "individual" in c_type.lower():
+            if "Individual" not in cooling_list:
+                cooling_list.append("Individual")
+        if c_other == "Y" or c_type.lower() == "other" or (c_desc and c_central != "Y" and c_indiv != "Y" and "central" not in c_type.lower() and "individual" not in c_type.lower()):
+            desc_str = f"Other: {c_desc}" if c_desc and c_desc.lower() != "other" else "Other"
+            if desc_str not in cooling_list:
+                cooling_list.append(desc_str)
+        elif c_type and c_type.lower() not in ["none", ""]:
+            if c_type not in cooling_list:
+                cooling_list.append(c_type)
+
+    cooling_val = ", ".join(cooling_list) if cooling_list else ""
 
     # Exterior Features (Material / Condition)
     ext_dict = {ef.attrib.get("_Type", ""): ef.attrib.get("_Description", "") for ef in struct_elem.findall("EXTERIOR_FEATURE")} if struct_elem is not None else {}
@@ -4902,25 +5135,45 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
             at = am.attrib.get("_Type", "")
             ex = am.attrib.get("_ExistsIndicator", "N")
             cnt = am.attrib.get("_Count", "0")
-            desc = am.attrib.get("_DetailedDescription", "") or am.attrib.get("_TypeOtherDescription", "")
-            if at == "WoodStove" and cnt not in ["0", ""]:
-                amenities_list.append("WoodStove")
-                amenity_details["Woodstove(s) #"] = cnt
-            elif at == "Fireplace" and (ex == "Y" or cnt not in ["0", ""]):
-                amenities_list.append("Fireplace")
-                amenity_details["Fireplace(s) #"] = cnt if cnt not in ["0", ""] else "1"
-            elif at == "Fence" and (ex == "Y" or (desc and desc.lower() != "none")):
-                amenities_list.append("Fence")
+            desc = (
+                am.attrib.get("_DetailedDescription") or 
+                am.attrib.get("_TypeOtherDescription") or 
+                am.attrib.get("_OtherDescription") or 
+                am.attrib.get("_Description") or 
+                am.attrib.get("_Comment") or ""
+            ).strip()
+            if at == "WoodStove" and (ex == "Y" or cnt not in ["0", ""] or (desc and desc.lower() not in ["none", "no"])):
+                detail = desc or (cnt if cnt not in ["0", ""] else "")
+                item = f"WoodStove: {detail}" if detail and detail.lower() not in ["none", "no", "woodstove"] else "WoodStove"
+                amenities_list.append(item)
+                amenity_details["Woodstove(s) #"] = cnt or detail or "1"
+            elif at == "Fireplace" and (ex == "Y" or cnt not in ["0", ""] or (desc and desc.lower() not in ["none", "no"])):
+                detail = desc or (cnt if cnt not in ["0", ""] else "")
+                item = f"Fireplace: {detail}" if detail and detail.lower() not in ["none", "no", "fireplace"] else "Fireplace"
+                amenities_list.append(item)
+                amenity_details["Fireplace(s) #"] = cnt if cnt not in ["0", ""] else (detail or "1")
+            elif at == "Fence" and (ex == "Y" or (desc and desc.lower() not in ["none", "no"])):
+                item = f"Fence: {desc}" if desc and desc.lower() not in ["none", "no", "yes", "fence"] else "Fence"
+                amenities_list.append(item)
                 amenity_details["Fence"] = desc if desc else "Yes"
-            elif at in ["Patio", "Deck"] and (ex == "Y" or (desc and desc.lower() != "none")):
-                amenities_list.append("Patio/Deck")
+            elif at in ["Patio", "Deck"] and (ex == "Y" or (desc and desc.lower() not in ["none", "no"])):
+                item = f"Patio/Deck: {desc}" if desc and desc.lower() not in ["none", "no", "yes", "patio/deck"] else "Patio/Deck"
+                amenities_list.append(item)
                 amenity_details["Patio/Deck"] = desc if desc else at
-            elif at == "Porch" and (ex == "Y" or (desc and desc.lower() != "none")):
-                amenities_list.append("Porch")
+            elif at == "Porch" and (ex == "Y" or (desc and desc.lower() not in ["none", "no"])):
+                item = f"Porch: {desc}" if desc and desc.lower() not in ["none", "no", "yes"] else "Porch"
+                amenities_list.append(item)
                 amenity_details["Porch"] = desc if desc else at
-            elif at == "Pool" and (ex == "Y" or (desc and desc.lower() != "none")):
-                amenities_list.append("Pool")
+            elif at == "Pool" and (ex == "Y" or (desc and desc.lower() not in ["none", "no"])):
+                item = f"Pool: {desc}" if desc and desc.lower() not in ["none", "no", "yes", "pool"] else "Pool"
+                amenities_list.append(item)
                 amenity_details["Pool"] = desc if desc else "Yes"
+            elif at == "Other" or am.attrib.get("_OtherIndicator") == "Y":
+                if ex == "Y" or (desc and desc.lower() not in ["none", "no"]):
+                    desc_str = f"Other: {desc}" if desc and desc.lower() != "other" else "Other"
+                    amenities_list.append(desc_str)
+                    amenity_details["Other Amenities"] = desc if desc else "Yes"
+                    amenity_details["Other"] = desc if desc else "Yes"
     amenities_val = ", ".join(dict.fromkeys(amenities_list)) if amenities_list else "None"
 
     # Interior Features (Material / Condition)
@@ -4939,6 +5192,13 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
 
     # Check all CAR_STORAGE elements in the entire XML tree
     for cs in root.findall(".//CAR_STORAGE"):
+        cs_exists = cs.attrib.get("_ExistsIndicator", "Y")
+        if cs_exists == "N":
+            driveway_cars = "0"
+            garage_cars = "0"
+            carport_cars = "0"
+            break
+
         att = cs.attrib.get("_AttachmentType", "") or cs.attrib.get("AttachmentType", "")
         if att and not garage_att:
             a_low = att.lower()
@@ -4965,43 +5225,24 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
                 elif "det" in la_low:
                     garage_att = "Detached"
             if lt == "Driveway" and ex != "N":
-                driveway_cars = cnt if cnt != "0" else "1"
+                driveway_cars = cnt
             elif lt == "Garage" and ex != "N":
                 garage_cars = cnt
             elif lt == "Carport" and ex != "N":
                 carport_cars = cnt
 
-    # If garage_att still empty, check STRUCTURE AttachmentType
-    if not garage_att:
-        for st in root.findall(".//STRUCTURE"):
-            st_att = st.attrib.get("AttachmentType", "") or st.attrib.get("_AttachmentType", "")
-            if st_att:
-                sa_low = st_att.lower()
-                if "built" in sa_low:
-                    garage_att = "Built-in"
-                    break
-                elif "att" in sa_low:
-                    garage_att = "Attached"
-                    break
-                elif "det" in sa_low:
-                    garage_att = "Detached"
-                    break
+    # Only if garage or carport exists with count > 0 can there be an Att/Det/Built-in attachment
+    try:
+        g_cars_num = int(float(garage_cars or "0"))
+    except Exception:
+        g_cars_num = 0
+    try:
+        c_cars_num = int(float(carport_cars or "0"))
+    except Exception:
+        c_cars_num = 0
 
-    # If garage_att still empty, check sales grid subject car storage feature adjustment
-    if not garage_att:
-        for feat in root.findall(".//_FEATURE_ADJUSTMENT"):
-            ft = (feat.attrib.get("_Type", "") or "").lower()
-            if "carstorage" in ft or "garage" in ft:
-                desc = (feat.attrib.get("_Description", "") or "").lower()
-                if "att" in desc or re.search(r'\d+ga\b', desc):
-                    garage_att = "Attached"
-                    break
-                elif "det" in desc or re.search(r'\d+gd\b', desc):
-                    garage_att = "Detached"
-                    break
-                elif "built" in desc or re.search(r'\d+gbi\b', desc):
-                    garage_att = "Built-in"
-                    break
+    if g_cars_num == 0 and c_cars_num == 0:
+        garage_att = ""
 
     driveway_surface = ""
     for sf in root.findall(".//SITE_FEATURE"):
@@ -5146,14 +5387,14 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         # Foundation
         "Foundation": found_val,
         "Foundation Type": found_val,
-        "Full Basement": "Yes" if found_val == "Full Basement" else "No",
-        "Partial Basement": "Yes" if found_val == "Partial Basement" else "No",
-        "Concrete Slab": "Yes" if found_val == "Concrete Slab" else "No",
-        "Crawl Space": "Yes" if found_val == "Crawl Space" else "No",
+        "Full Basement": "Yes" if "Full Basement" in found_types else "No",
+        "Partial Basement": "Yes" if "Partial Basement" in found_types else "No",
+        "Concrete Slab": "Yes" if "Concrete Slab" in found_types else "No",
+        "Crawl Space": "Yes" if "Crawl Space" in found_types else "No",
         "Basement Area sq.ft.": bm_sqft,
         "Basement Area": bm_sqft,
-        "Basement Finish %": f"{bm_finish}%",
-        "Basement Finish": f"{bm_finish}%",
+        "Basement Finish %": f"{bm_finish}%" if bm_finish != "" and not bm_finish.endswith("%") else bm_finish,
+        "Basement Finish": f"{bm_finish}%" if bm_finish != "" and not bm_finish.endswith("%") else bm_finish,
         "Basement Details": bm_details,
         "Evidence of": evidence_val,
         "Evidence of (Foundation)": evidence_val,
@@ -5605,8 +5846,11 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
                 if eo_info.get("E&O"):
                     certification_section["E&O"] = eo_info["E&O"]
                     certification_section["E&O Present"] = eo_info.get("E&O Present", eo_info["E&O"])
+                    certification_section["E/O"] = eo_info["E&O"]
+                    certification_section["E/O Present"] = eo_info.get("E&O Present", eo_info["E&O"])
                 if eo_info.get("E&O Insurance"):
                     certification_section["E&O Insurance"] = eo_info["E&O Insurance"]
+                    certification_section["E/O Insurance"] = eo_info["E&O Insurance"]
                 if eo_info.get("Policy Period From"):
                     certification_section["Policy Period From"] = eo_info["Policy Period From"]
                 if eo_info.get("Policy Period To"):
@@ -6391,6 +6635,8 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "SUBJECT": clean_subject,
         "CONTRACT": contract_section,
         "NEIGHBORHOOD": neighborhood_section,
+        "Neighborhood": neighborhood_section,
+        "Present Land Use for other": other_land_use_desc,
         "Legal Nonconforming (Grandfathered Use) comment": nonconforming_comment,
         "Legal Nonconforming comment": nonconforming_comment,
         "Nonconforming comment": nonconforming_comment,
@@ -6433,6 +6679,10 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "EXTRACTED_PHOTOS": extracted_photos,
         "E&O": certification_section.get("E&O", "Absent"),
         "E&O Present": certification_section.get("E&O Present", "Absent"),
+        "E/O": certification_section.get("E/O", certification_section.get("E&O", "Absent")),
+        "E/O Present": certification_section.get("E/O Present", certification_section.get("E&O Present", "Absent")),
+        "E&O Insurance": certification_section.get("E&O Insurance", ""),
+        "E/O Insurance": certification_section.get("E/O Insurance", certification_section.get("E&O Insurance", "")),
         "Invoice Attached": certification_section.get("Invoice Attached", inv_present_str),
         "Invoice Present": certification_section.get("Invoice Present", inv_present_str),
         "has_invoice": has_invoice,
@@ -6515,6 +6765,8 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "Subject": clean_subject,
         "Contract": contract_section,
         "Neighborhood": neighborhood_section,
+        "NEIGHBORHOOD": neighborhood_section,
+        "Present Land Use for other": other_land_use_desc,
         "Site": site_section,
         "Improvements": improvements_section,
         "Sales Grid": clean_sales_grid,
@@ -6733,7 +6985,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
             norm_cap = re.sub(r'\s*\([a-zA-Z0-9]+\)$', '', cap).strip().lower()
             if re.search(r'\b(?:bedroom|bdrm|bed\b|mbr\b|master\s*bed|primary\s*bed|guest\s*bed)\b', norm_cap):
                 distinct_beds.add(norm_cap)
-            elif re.search(r'\b(?:half\s*bath|1\/2\s*bath|0?\.5\s*bath|powder\s*room|half\s*ba|lavatory|lav\b)\b', norm_cap):
+            elif re.search(r'(?:^|[\s\b])(?:half[\s-]*(?:bath(?:room)?|ba)|1\/2[\s-]*(?:bath(?:room)?|ba)|0?\.5[\s-]*(?:bath(?:room)?|ba)|(?:bath(?:room)?|ba)\s*(?:\(\s*)?(?:half|1\/2|0?\.5)(?:\s*\))?|powder(?:\s*room)?|lav(?:atory)?|wc)\b', norm_cap):
                 distinct_half_baths.add(norm_cap)
             elif re.search(r'\b(?:full\s*bath|full\s*ba|master\s*bath|primary\s*bath|guest\s*bath|hall\s*bath|bath\s*#?\s*\d|bathroom|bath\b|3\/4\s*bath)\b', norm_cap):
                 distinct_full_baths.add(norm_cap)
@@ -6820,6 +7072,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "certification_pages": uad_details.get("certification_pages", []),
         "certification_presence": uad_details.get("certification_presence", "Not Present"),
         "UAD Details": uad_details.get("details_summary", ""),
+        "Present Land Use for other": other_land_use_desc,
         "fields": fields,
         "unified_fields": fields,
         "clean_data": clean_data,

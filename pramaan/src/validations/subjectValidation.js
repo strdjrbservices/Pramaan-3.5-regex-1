@@ -355,3 +355,5 @@ export const checkOccupancy = (field, text, allData) => {
 
     return { isMatch: true };
 };
+
+export { checkTransactionTypeHtmlConsistency, checkAssignmentTypeHtmlConsistency, checkSubjectLenderNameVsHtml, checkLenderAddressHtmlConsistency, checkLenderAddressInconsistency } from './htmldatavaliadtion';

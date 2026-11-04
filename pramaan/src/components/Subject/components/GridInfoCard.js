@@ -600,23 +600,55 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
     }
 
-    if (field === "E&O" || field === "E&O Present") {
+    if (field === "E&O" || field === "E&O Present" || field === "E/O" || field === "E/O Present" || field === "E&O Insurance" || field === "E/O Insurance") {
 
       const eoVal = data?.["E&O"]
 
         ?? data?.["E&O Present"]
 
+        ?? data?.["E/O"]
+
+        ?? data?.["E/O Present"]
+
+        ?? data?.["E&O Insurance"]
+
+        ?? data?.["E/O Insurance"]
+
         ?? data?.CERTIFICATION?.["E&O"]
 
         ?? data?.CERTIFICATION?.["E&O Present"]
+
+        ?? data?.CERTIFICATION?.["E/O"]
+
+        ?? data?.CERTIFICATION?.["E/O Present"]
+
+        ?? data?.CERTIFICATION?.["E&O Insurance"]
+
+        ?? data?.CERTIFICATION?.["E/O Insurance"]
 
         ?? allData?.["E&O"]
 
         ?? allData?.["E&O Present"]
 
+        ?? allData?.["E/O"]
+
+        ?? allData?.["E/O Present"]
+
+        ?? allData?.["E&O Insurance"]
+
+        ?? allData?.["E/O Insurance"]
+
         ?? allData?.CERTIFICATION?.["E&O"]
 
-        ?? allData?.CERTIFICATION?.["E&O Present"];
+        ?? allData?.CERTIFICATION?.["E&O Present"]
+
+        ?? allData?.CERTIFICATION?.["E/O"]
+
+        ?? allData?.CERTIFICATION?.["E/O Present"]
+
+        ?? allData?.CERTIFICATION?.["E&O Insurance"]
+
+        ?? allData?.CERTIFICATION?.["E/O Insurance"];
 
       if (eoVal) return renderValue(eoVal);
 
@@ -1060,9 +1092,9 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
     }
 
-    if ((certVal === undefined || certVal === null || certVal === '') && (fieldPath === 'E&O' || fieldPath === 'E&O Present')) {
+    if ((certVal === undefined || certVal === null || certVal === '') && (fieldPath === 'E&O' || fieldPath === 'E&O Present' || fieldPath === 'E/O' || fieldPath === 'E/O Present' || fieldPath === 'E&O Insurance' || fieldPath === 'E/O Insurance')) {
 
-      certVal = renderValue(data?.['E&O'] ?? data?.['E&O Present'] ?? data?.CERTIFICATION?.['E&O'] ?? data?.CERTIFICATION?.['E&O Present'] ?? allData?.['E&O'] ?? allData?.['E&O Present'] ?? allData?.CERTIFICATION?.['E&O'] ?? allData?.CERTIFICATION?.['E&O Present'] ?? '');
+      certVal = renderValue(data?.['E&O'] ?? data?.['E&O Present'] ?? data?.['E/O'] ?? data?.['E/O Present'] ?? data?.['E&O Insurance'] ?? data?.['E/O Insurance'] ?? data?.CERTIFICATION?.['E&O'] ?? data?.CERTIFICATION?.['E&O Present'] ?? data?.CERTIFICATION?.['E/O'] ?? data?.CERTIFICATION?.['E/O Present'] ?? allData?.['E&O'] ?? allData?.['E&O Present'] ?? allData?.['E/O'] ?? allData?.['E/O Present'] ?? allData?.CERTIFICATION?.['E&O'] ?? allData?.CERTIFICATION?.['E&O Present'] ?? allData?.CERTIFICATION?.['E/O'] ?? allData?.CERTIFICATION?.['E/O Present'] ?? '');
 
     }
 
@@ -1188,7 +1220,7 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
 
 
-    if (fieldPath === 'E&O' || fieldPath === 'E&O Present') {
+    if (fieldPath === 'E&O' || fieldPath === 'E&O Present' || fieldPath === 'E/O' || fieldPath === 'E/O Present') {
 
       const isPresent = String(certVal || '').trim().toLowerCase() === 'present';
 
@@ -1772,7 +1804,7 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
       if (o === 'carport' && (tClean.includes('carport') || tClean === 'carport')) return true;
 
-      if (o.includes('other') && tClean.includes('other')) return true;
+      if (o.includes('other') && (tClean.includes('other') || tClean.startsWith('other') || tClean === 'none' || tClean === 'no')) return true;
 
     }
 
@@ -1833,6 +1865,30 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
                 const newVal = items.join(', ');
 
                 onDataChange(targetPath, newVal);
+
+                if (keys.includes('Foundation Type') || keys.includes('Foundation')) {
+
+                  const altKey = actualKey === 'Foundation Type' ? 'Foundation' : 'Foundation Type';
+
+                  onDataChange(getFieldPath(altKey), newVal);
+
+                  const isFull = newVal.toLowerCase().includes('full basement') || (newVal.toLowerCase().includes('basement') && !newVal.toLowerCase().includes('partial'));
+
+                  const isPartial = newVal.toLowerCase().includes('partial');
+
+                  const isSlab = newVal.toLowerCase().includes('slab');
+
+                  const isCrawl = newVal.toLowerCase().includes('crawl');
+
+                  onDataChange(getFieldPath('Full Basement'), isFull ? 'Yes' : 'No');
+
+                  onDataChange(getFieldPath('Partial Basement'), isPartial ? 'Yes' : 'No');
+
+                  onDataChange(getFieldPath('Concrete Slab'), isSlab ? 'Yes' : 'No');
+
+                  onDataChange(getFieldPath('Crawl Space'), isCrawl ? 'Yes' : 'No');
+
+                }
 
               };
 
@@ -2086,7 +2142,7 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
                 {renderImpField("Screens", ["Screens"])}
 
-                {renderImpField("Amenities", ["Amenities", "Patio/Deck", "Fence", "Porch", "Pool"], ["WoodStove", "Fireplace", "Fence", "Patio/Deck", "Porch", "Pool"])}
+                {renderImpField("Amenities", ["Amenities", "Patio/Deck", "Fence", "Porch", "Pool", "Other Amenities"], ["WoodStove", "Fireplace", "Fence", "Patio/Deck", "Porch", "Pool", "Other"])}
 
               </div>
 
@@ -2540,8 +2596,6 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
                         "Garage Type",
 
-                        "Attachment Type",
-
                         "Vehicle Storage Detail",
 
                         "ATT./DET./BUILT-IN"
@@ -2558,27 +2612,25 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
                       const { value: garBuiltFlag } = getImpValue(["Garage Built-in", "Garage Built-In", "Garage Builtin"]);
 
-                      const { value: subjAttType } = getImpValue(["Subject Attachment Type", "Dwelling Attachment Type"]);
+                      const { value: carportVal } = getImpValue(["Carport", "Carport # of Cars", "Carport Cars"]);
+
+                      const isNoneChecked = checkOptionMatches(csVal, "None");
+
+                      const hasGarage = checkOptionMatches(csVal, "Garage") || (parseInt(garVal, 10) > 0);
+
+                      const hasCarport = checkOptionMatches(csVal, "Carport") || (parseInt(carportVal, 10) > 0);
+
+                      const canHaveAttachment = !isNoneChecked && (hasGarage || hasCarport);
+
+                      const combinedStr = `${attVal} ${garAttFlag} ${garDetFlag} ${garBuiltFlag}`.toLowerCase();
 
 
 
-                      const subjAtt = subjAttType || allData?.Subject?.["Attachment Type"] || allData?.Subject?.AttachmentType || data?.Subject?.["Attachment Type"] || '';
-
-
-
-                      const combinedStr = `${attVal} ${csVal} ${garVal} ${subjAtt}`.toLowerCase();
-
-
-
-                      const isAtt = (
+                      const isAtt = canHaveAttachment && (
 
                         checkOptionMatches(attVal, "Att") ||
 
                         checkOptionMatches(attVal, "Attached") ||
-
-                        checkOptionMatches(csVal, "Att") ||
-
-                        checkOptionMatches(csVal, "Attached") ||
 
                         checkOptionMatches(garAttFlag, "Yes") ||
 
@@ -2590,15 +2642,11 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
 
 
-                      const isDet = (
+                      const isDet = canHaveAttachment && (
 
                         checkOptionMatches(attVal, "Det") ||
 
                         checkOptionMatches(attVal, "Detached") ||
-
-                        checkOptionMatches(csVal, "Det") ||
-
-                        checkOptionMatches(csVal, "Detached") ||
 
                         checkOptionMatches(garDetFlag, "Yes") ||
 
@@ -2610,17 +2658,13 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
 
 
-                      const isBuiltin = (
+                      const isBuiltin = canHaveAttachment && (
 
                         checkOptionMatches(attVal, "Built-in") ||
 
                         checkOptionMatches(attVal, "Built") ||
 
                         checkOptionMatches(attVal, "BuiltIn") ||
-
-                        checkOptionMatches(csVal, "Built-in") ||
-
-                        checkOptionMatches(csVal, "Built") ||
 
                         checkOptionMatches(garBuiltFlag, "Yes") ||
 

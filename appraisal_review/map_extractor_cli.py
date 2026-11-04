@@ -434,7 +434,7 @@ class MapExtractor:
                 (r'\bbed\s*\d+\b', 'Bedroom'),
             ],
             'bathrooms': [
-                (r'\b(?:bath\s*\(\s*(?:half|1\/2)\s*\)|half\s*bath|1\/2\s*bath|powder(?:\s*room)?\b)', 'Half Bath'),
+                (r'(?:^|[\s\b])(?:half[\s-]*(?:bath(?:room)?|ba)|1\/2[\s-]*(?:bath(?:room)?|ba)|0?\.5[\s-]*(?:bath(?:room)?|ba)|(?:bath(?:room)?|ba)\s*(?:\(\s*)?(?:half|1\/2|0?\.5)(?:\s*\))?|powder(?:\s*room)?|lav(?:atory)?|wc)\b', 'Half Bath'),
                 (r'\b(?:main|master|primary)\s+bath(?:room)?\b', 'Main Bath'),
                 (r'\b(?:full\s+)?bath(?:room)?\s*\d*\b', 'Bath'),
                 (r'\bba\b', 'Bath'),
@@ -504,7 +504,28 @@ class MapExtractor:
             b_cat = {c: [] for c in ROOM_CATEGORIES}
             labels = []
 
-            for line in candidate_lines:
+            # Pre-pass: merge split adjacent tokens (e.g., ["1/2", "Bath"] -> "1/2 Bath", ["0.5", "BA"] -> "0.5 BA")
+            merged_lines = []
+            ci = 0
+            cn = len(candidate_lines)
+            while ci < cn:
+                curr = candidate_lines[ci].strip()
+                nxt = candidate_lines[ci + 1].strip() if ci + 1 < cn else ""
+
+                is_curr_half = bool(re.match(r'^(?:1\/2|0?\.5|half)$', curr, re.I))
+                is_nxt_bath = bool(re.match(r'^(?:bath(?:room)?|ba)$', nxt, re.I))
+                is_curr_bath = bool(re.match(r'^(?:bath(?:room)?|ba)$', curr, re.I))
+                is_nxt_half = bool(re.match(r'^(?:1\/2|0?\.5|half)$', nxt, re.I))
+
+                if (is_curr_half and is_nxt_bath) or (is_curr_bath and is_nxt_half):
+                    merged_lines.append(f"{curr} {nxt}")
+                    ci += 2
+                    continue
+
+                merged_lines.append(curr)
+                ci += 1
+
+            for line in merged_lines:
                 if any(re.search(pat, line, re.I) for pat in ignore_patterns):
                     continue
 
@@ -803,7 +824,8 @@ class MapExtractor:
             has_explicit_apn = bool(re.search(r'\b(?:APN|PARCEL(?:\s*ID)?|TAX\s*ID)[:\s]+', combined, re.I))
 
             has_street = bool(re.search(r'\b[0-9]{1,6}\s+[A-Za-z]', combined))
-            is_colored_comp = (pin_color in ("blue", "teal", "yellow", "purple", "green")) and has_street
+            has_suffix = bool(re.search(r'\b' + STREET_SUFFIX + r'\b', combined, re.I))
+            is_colored_comp = (pin_color in ("blue", "teal", "yellow", "purple", "green")) and has_street and has_suffix
 
             if not is_sub and not (has_explicit_hdr or has_explicit_dist or has_explicit_price or has_explicit_apn or is_colored_comp):
                 return None
@@ -2185,7 +2207,8 @@ class MapExtractor:
                             c["address"] = c["street"]
 
                 # Match with Reference Grid records
-                grid_candidates = refs["rental_comps"] if is_rental_pin else refs["sales_comps"]
+                # On Location Maps, check sales comps first so dual sale/rental comps stay in sales comps
+                grid_candidates = refs["sales_comps"] if is_loc else (refs["rental_comps"] if is_rental_pin else refs["sales_comps"])
                 matched_grid = None
                 c_st = (c.get("street") or c.get("address") or "").lower()
                 m_c_nums = re.findall(r'\b\d{1,6}\b', c_st)
@@ -2205,6 +2228,10 @@ class MapExtractor:
 
                 if matched_grid:
                     c["grid_data"] = matched_grid
+                    if is_loc and matched_grid in refs.get("sales_comps", []):
+                        c["item_type"] = "Comparable"
+                        c["label"] = f"Comparable #{matched_grid.get('comp_num')}"
+                        is_rental_pin = False
                     if not c.get("street") or c.get("street") == "—":
                         c["street"] = matched_grid.get("street", "")
                         c["address"] = matched_grid.get("address", "")
