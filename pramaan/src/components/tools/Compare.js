@@ -20,6 +20,8 @@ import {
   ToggleButtonGroup,
   Container,
   Tooltip,
+  FormControlLabel,
+  Switch,
 } from '@mui/material';
 import { LoadingButton } from '@mui/lab';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -211,6 +213,7 @@ const Compare = () => {
   const [timer, setTimer] = useState(0);
   const [statusFilter, setStatusFilter] = useState('all');
   const [copiedFindings, setCopiedFindings] = useState(false);
+  const [useGemma, setUseGemma] = useState(true);
   const timerRef = useRef(null);
 
   const keywordGroups = [
@@ -396,6 +399,7 @@ const Compare = () => {
       if (htmlFile) {
         formData.append('html_file', htmlFile);
       }
+      formData.append('use_gemma', useGemma ? 'true' : 'false');
       endpoint = `${API_BASE_URL}/api/extract/`;
     } else if (mode === 'checklist') {
       if (!oldPdfFile || !newPdfFile) {
@@ -739,6 +743,15 @@ const Compare = () => {
                         sx={{ mt: 0.5, fontSize: '0.72rem', height: '20px' }}
                       />
                     )}
+                    {change.verified_by && (
+                      <Chip
+                        label="Gemma"
+                        size="small"
+                        color="secondary"
+                        variant="outlined"
+                        sx={{ mt: 0.5, ml: 0.5, fontSize: '0.68rem', height: '20px', fontWeight: 'bold' }}
+                      />
+                    )}
                   </TableCell>
                   <TableCell sx={{ fontSize: '0.85rem' }}>
                     <Typography variant="body2" color="text.secondary">
@@ -1000,6 +1013,29 @@ const Compare = () => {
               fullWidth
               sx={{ bgcolor: 'background.paper' }}
             />
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 2, pt: 1.5, borderTop: '1px dashed', borderColor: 'divider', flexWrap: 'wrap', gap: 1 }}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={useGemma}
+                    onChange={(e) => setUseGemma(e.target.checked)}
+                    color="primary"
+                    size="small"
+                  />
+                }
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="body2" fontWeight="bold">
+                      Gemma Verification (Option B - In-Process)
+                    </Typography>
+                    <Chip size="small" label="Gemma 2" color="primary" variant="outlined" sx={{ height: 20, fontSize: '0.65rem', fontWeight: 'bold' }} />
+                  </Box>
+                }
+              />
+              <Typography variant="caption" color="text.secondary">
+                Deep semantic reasoning & QC analysis powered by local Gemma model
+              </Typography>
+            </Box>
           </Paper>
         )}
 

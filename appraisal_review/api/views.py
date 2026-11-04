@@ -610,7 +610,8 @@ def compare_html_to_pdf_with_prompt(request):
                 data["details"] = data["comparison_results"]
             return Response(data)
 
-        pdf_results = verify_revision_request_offline(pdf_tmp_path, comment, old_path=old_tmp_path if old_tmp_path else None)
+        use_gemma = str(request.data.get("use_gemma", "false")).lower() in ["true", "1", "yes"]
+        pdf_results = verify_revision_request_offline(pdf_tmp_path, comment, old_path=old_tmp_path if old_tmp_path else None, use_gemma=use_gemma)
         if "comparison_summary" in pdf_results:
             pdf_results["details"] = pdf_results["comparison_summary"]
 
@@ -858,7 +859,8 @@ def extract_pdf(request):
                     if old_file:
                         old_tmp_path = _save_temp_file(old_file)
                     try:
-                        return Response(verify_revision_request_offline(tmp_path, rev_req, old_path=old_tmp_path if old_tmp_path else None))
+                        use_gemma = str(request.data.get("use_gemma", "false")).lower() in ["true", "1", "yes"]
+                        return Response(verify_revision_request_offline(tmp_path, rev_req, old_path=old_tmp_path if old_tmp_path else None, use_gemma=use_gemma))
                     finally:
                         if old_tmp_path and os.path.exists(old_tmp_path):
                             os.remove(old_tmp_path)

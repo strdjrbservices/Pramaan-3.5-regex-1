@@ -1633,7 +1633,8 @@ def _extract_detailed_appraiser_evidence(
 def verify_revision_request_offline(
     new_path: str,
     revision_request: str,
-    old_path: Optional[str] = None
+    old_path: Optional[str] = None,
+    use_gemma: bool = False
 ) -> Dict[str, Any]:
     """
     High-accuracy, 100% offline appraisal revision verification engine.
@@ -2720,9 +2721,48 @@ def verify_revision_request_offline(
             "source": evidence.get("source", ""),
         })
 
+    if use_gemma or os.environ.get("ENABLE_GEMMA", "").lower() in ["true", "1", "yes"]:
+        try:
+            from api.gemma_verifier import get_gemma_verifier
+            gemma_engine = get_gemma_verifier()
+            if gemma_engine.is_available():
+                for comp_item in comparison_summary:
+                    raw_item_text = comp_item.get("revision_request", "")
+                    cand_evidence = {
+                        "excerpt": comp_item.get("excerpt", ""),
+                        "source": comp_item.get("source", ""),
+                        "page_no": comp_item.get("page_no", "")
+                    }
+                    gemma_eval = gemma_engine.verify_item(
+                        item_no=comp_item.get("item_no", 1),
+                        revision_item=raw_item_text,
+                        new_rep=new_rep,
+                        old_rep=old_rep,
+                        candidate_evidence=cand_evidence
+                    )
+                    if gemma_eval and isinstance(gemma_eval, dict):
+                        if gemma_eval.get("status"):
+                            comp_item["status"] = gemma_eval["status"]
+                        if gemma_eval.get("section"):
+                            comp_item["section"] = gemma_eval["section"]
+                        if gemma_eval.get("page_no") and gemma_eval["page_no"] != "N/A":
+                            comp_item["page_no"] = gemma_eval["page_no"]
+                        if gemma_eval.get("revised_finding"):
+                            comp_item["revised_finding"] = gemma_eval["revised_finding"]
+                        if gemma_eval.get("finding"):
+                            comp_item["finding"] = gemma_eval["finding"]
+                        if gemma_eval.get("comment"):
+                            comp_item["comment"] = gemma_eval["comment"]
+                        if gemma_eval.get("excerpt"):
+                            comp_item["excerpt"] = gemma_eval["excerpt"]
+                        comp_item["verified_by"] = gemma_engine.get_backend_name()
+                fulfilled_count = sum(1 for it in comparison_summary if str(it.get("status", "")).lower() in ["fulfilled", "corrected", "pass", "match"])
+        except Exception as e:
+            logger.warning(f"Gemma semantic verification skipped due to: {e}")
+
     total_count = len(comparison_summary)
     summary_text = (
-        f"Verification completed offline: {fulfilled_count} of {total_count} requested revision items verified as fulfilled in the revised report."
+        f"Verification completed offline{(' (Verified with Gemma)' if any(it.get('verified_by') for it in comparison_summary) else '')}: {fulfilled_count} of {total_count} requested revision items verified as fulfilled in the revised report."
         + (f" ({total_count - fulfilled_count} item(s) unfulfilled or require review)." if fulfilled_count < total_count else " All items successfully verified.")
     )
 
