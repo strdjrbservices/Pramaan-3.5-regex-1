@@ -62,6 +62,7 @@ import {
   EngagementLetterDialog,
   PdfXmlDiffDialog,
 } from './components/dialogs.js';
+import { EngagementLetterSection } from './components/EngagementLetterSection.js';
 import { SalesComparisonSection, ComparisonResultTable, SubjectRentScheduleTable } from './components/tables.js';
 import { getComparisonStyle, playSound, API_BASE_URL } from './utils/utils.js';
 
@@ -907,7 +908,7 @@ function Subject({ defaultFormType }) {
   const unpaidLenderComment = unpaidLenderStatus.comment;
   const unpaidLenderName = unpaidLenderStatus.matchedLender;
 
-  const eoVal = data?.['E&O'] ?? data?.['E&O Present'] ?? data?.CERTIFICATION?.['E&O'] ?? data?.CERTIFICATION?.['E&O Present'] ?? (data?.['E&O Insurance'] || data?.CERTIFICATION?.['E&O Insurance'] ? 'Present' : '') ?? 'Absent';
+  const eoVal = data?.['E&O'] ?? data?.['E&O Present'] ?? data?.['E/O'] ?? data?.['E/O Present'] ?? data?.['E&O Insurance'] ?? data?.['E/O Insurance'] ?? data?.CERTIFICATION?.['E&O'] ?? data?.CERTIFICATION?.['E&O Present'] ?? data?.CERTIFICATION?.['E/O'] ?? data?.CERTIFICATION?.['E/O Present'] ?? data?.CERTIFICATION?.['E&O Insurance'] ?? data?.CERTIFICATION?.['E/O Insurance'] ?? (data?.['E&O Insurance'] || data?.['E/O Insurance'] || data?.CERTIFICATION?.['E&O Insurance'] || data?.CERTIFICATION?.['E/O Insurance'] ? 'Present' : '') ?? 'Absent';
   const isEoPresent = String(eoVal).trim().toLowerCase() === 'present';
 
   const invVal = data?.['Invoice Attached'] ?? data?.['Invoice Present'] ?? data?.CERTIFICATION?.['Invoice Attached'] ?? data?.CERTIFICATION?.['Invoice Present'] ?? data?.SUBJECT?.['Invoice Attached'] ?? data?.Subject?.['Invoice Attached'] ?? (data?.INVOICE?.['Invoice Attached'] || data?.INVOICE ? 'Yes' : '') ?? 'No';
@@ -925,7 +926,8 @@ function Subject({ defaultFormType }) {
         htmlDataValidation.checkLenderAddressInconsistency,
         appraiserLenderValidation.checkLenderAddressInconsistency,
       ],
-      'Client Address': [appraiserLenderValidation.checkClientAddressHtmlConsistency],
+      'Client Address': [htmlDataValidation.checkLenderAddressInconsistency, appraiserLenderValidation.checkClientAddressHtmlConsistency],
+      'CLIENT ADDRESS': [htmlDataValidation.checkLenderAddressInconsistency, appraiserLenderValidation.checkClientAddressHtmlConsistency],
       'Borrower (and Co-Borrower)': [appraiserLenderValidation.checkBorrowerHtmlConsistency],
 
       // Site Validations
@@ -999,7 +1001,13 @@ function Subject({ defaultFormType }) {
       'Occupancy': [subjectValidation.checkOccupancy],
       'Property Rights Appraised': [subjectValidation.checkSubjectFieldsNotBlank, subjectValidation.checkPropertyRightsInconsistency],
       'Lender/Client': [subjectValidation.checkSubjectFieldsNotBlank, appraiserLenderValidation.checkLenderNameInconsistency, htmlDataValidation.checkSubjectLenderNameVsHtml],
+      'LENDER/CLIENT': [subjectValidation.checkSubjectFieldsNotBlank, appraiserLenderValidation.checkLenderNameInconsistency, htmlDataValidation.checkSubjectLenderNameVsHtml],
+      'Client/Lender on Report': [htmlDataValidation.checkSubjectLenderNameVsHtml],
+      'CLIENT/LENDER ON REPORT': [htmlDataValidation.checkSubjectLenderNameVsHtml],
       'Address (Lender/Client)': [subjectValidation.checkSubjectFieldsNotBlank, htmlDataValidation.checkLenderAddressInconsistency, appraiserLenderValidation.checkLenderAddressInconsistency],
+      'ADDRESS (LENDER/CLIENT)': [subjectValidation.checkSubjectFieldsNotBlank, htmlDataValidation.checkLenderAddressInconsistency, appraiserLenderValidation.checkLenderAddressInconsistency],
+      'Lender Address': [htmlDataValidation.checkLenderAddressInconsistency],
+      'LENDER ADDRESS': [htmlDataValidation.checkLenderAddressInconsistency],
 
       'one unit housing price(high,low,pred)': [neighborhoodValidation.checkHousingPriceAndAge, neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
       'one unit housing age(high,low,pred)': [neighborhoodValidation.checkHousingPriceAndAge, neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
@@ -1051,6 +1059,8 @@ function Subject({ defaultFormType }) {
       '# of Stories': [improvementsValidation.checkNumberOfStories],
       'Type': [improvementsValidation.checkPropertyType],
       'Existing/Proposed/Under Const.': [improvementsValidation.checkConstructionStatusAndReconciliation],
+      'Status': [improvementsValidation.checkConstructionStatusAndReconciliation],
+      'Construction Status': [improvementsValidation.checkConstructionStatusAndReconciliation],
       'Design (Style)': [improvementsValidation.checkDesignStyle, improvementsValidation.checkSubjectDesignStyleConsistency, salesComparisonValidation.checkDesignStyleAdjustment],
       'Year Built': [improvementsValidation.checkYearBuilt, version1Validation.checkYearBuiltConsistency, version1Validation.checkVersion1YearBuiltAdjustmentConsistency],
       'Year Built Adjustment': [version1Validation.checkVersion1YearBuiltAdjustmentConsistency],
@@ -1061,8 +1071,11 @@ function Subject({ defaultFormType }) {
       'Describe the condition of the property': [improvementsValidation.checkPropertyConditionDescription],
       'Are there any physical deficiencies or adverse conditions that affect the livability, soundness, or structural integrity of the property? If Yes, describe': [improvementsValidation.checkPhysicalDeficienciesImprovements],
       'Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? If No, describe': [improvementsValidation.checkNeighborhoodConformity],
+      'Foundation': [improvementsValidation.checkFoundationType],
       'Foundation Type': [improvementsValidation.checkFoundationType],
+      'Basement Area': [improvementsValidation.checkBasementDetails],
       'Basement Area sq.ft.': [improvementsValidation.checkBasementDetails],
+      'Basement Finish': [improvementsValidation.checkBasementDetails],
       'Basement Finish %': [improvementsValidation.checkBasementDetails],
       'Infestation': [improvementsValidation.checkEvidenceOf], 'Dampness': [improvementsValidation.checkEvidenceOf], 'Settlement': [improvementsValidation.checkEvidenceOf],
       'Foundation Walls (Material/Condition)': [improvementsValidation.checkMaterialCondition], 'Exterior Walls (Material/Condition)': [improvementsValidation.checkMaterialCondition],
@@ -1145,6 +1158,7 @@ function Subject({ defaultFormType }) {
       'APPRAISED VALUE OF SUBJECT PROPERTY $': [reconciliationValidation.checkFinalValueConsistency],
       'Cost Approach (if developed)': [reconciliationValidation.checkCostApproachDeveloped, form1004And1007Validation.checkCostApproachMatchConsistency],
       'This appraisal is made "as is", subject to completion per plans and specifications on the basis of a hypothetical condition that the improvements have been completed, subject to the following repairs or alterations on the basis of a hypothetical condition that the repairs or alterations have been completed, or subject to the following required inspection based on the extraordinary assumption that the condition or deficiency does not require alteration or repair:': [reconciliationValidation.checkAppraisalCondition],
+      'Reconciliation Status': [reconciliationValidation.checkAppraisalCondition],
       'as of': [reconciliationValidation.checkAsOfDate, form1004And1007Validation.checkRentScheduleAsOfDateConsistency],
       'I (WE) ESTIMATE THE MONTHLY MARKET RENT OF THE SUBJECT AS OF': [form1004And1007Validation.checkRentScheduleAsOfDateConsistency],
       'TO BE $': [form1004And1007Validation.checkRentScheduleToBeAmountConsistency],
@@ -1189,6 +1203,9 @@ function Subject({ defaultFormType }) {
       'E&O': [appraiserLenderValidation.checkAppraiserFieldsNotBlank],
       'E&O Present': [appraiserLenderValidation.checkAppraiserFieldsNotBlank],
       'E&O Insurance': [appraiserLenderValidation.checkAppraiserFieldsNotBlank],
+      'E/O': [appraiserLenderValidation.checkAppraiserFieldsNotBlank],
+      'E/O Present': [appraiserLenderValidation.checkAppraiserFieldsNotBlank],
+      'E/O Insurance': [appraiserLenderValidation.checkAppraiserFieldsNotBlank],
       'Policy Period From': [appraiserLenderValidation.checkAppraiserFieldsNotBlank],
       'Policy Period To': [appraiserLenderValidation.checkAppraiserFieldsNotBlank, appraiserLenderValidation.checkDateGreaterThanToday],
       'License Valid To': [appraiserLenderValidation.checkAppraiserFieldsNotBlank, appraiserLenderValidation.checkDateGreaterThanToday],
@@ -1198,7 +1215,10 @@ function Subject({ defaultFormType }) {
       'or State License #': [appraiserLenderValidation.checkAppraiserLicenseGroup],
       'or Other (describe)': [appraiserLenderValidation.checkAppraiserLicenseGroup],
       'State #': [appraiserLenderValidation.checkAppraiserLicenseGroup],
-      'Assignment Type': [subjectValidation.checkAssignmentTypeConsistency],
+      'Assignment Type': [subjectValidation.checkAssignmentTypeConsistency, htmlDataValidation.checkTransactionTypeHtmlConsistency],
+      'ASSIGNMENT TYPE': [subjectValidation.checkAssignmentTypeConsistency, htmlDataValidation.checkTransactionTypeHtmlConsistency],
+      'Transaction Type': [htmlDataValidation.checkTransactionTypeHtmlConsistency],
+      'TRANSACTION TYPE': [htmlDataValidation.checkTransactionTypeHtmlConsistency],
 
       "I did did not analyze the contract for sale for the subject purchase transaction. Explain the results of the analysis of the contract for sale or why the analysis was not performed.": [contractValidation.checkContractFieldsMandatory, contractValidation.checkContractAnalysisConsistency],
       "Contract Price $": [contractValidation.checkContractFieldsMandatory, contractValidation.checkContractAnalysisConsistency],
@@ -2301,7 +2321,7 @@ function Subject({ defaultFormType }) {
       }
     }
 
-        try {
+    try {
       const finalValSuccess = salesComparisonValidation.getOpinionOfMarketValue ? salesComparisonValidation.getOpinionOfMarketValue(allData) : null;
       if (finalValSuccess) {
         const bracketSuccessRes = salesComparisonValidation.checkFinalValueBracketing(
@@ -2480,12 +2500,16 @@ function Subject({ defaultFormType }) {
         if (!newData[altKey]) newData[altKey] = {};
         newData[altKey] = { ...newData[altKey], [fieldKey]: value };
       }
-      if (fieldKey === 'E&O' || fieldKey === 'E&O Present') {
+      if (fieldKey === 'E&O' || fieldKey === 'E&O Present' || fieldKey === 'E/O' || fieldKey === 'E/O Present' || fieldKey === 'E&O Insurance' || fieldKey === 'E/O Insurance') {
         if (!newData.CERTIFICATION) newData.CERTIFICATION = {};
         newData.CERTIFICATION['E&O'] = value;
         newData.CERTIFICATION['E&O Present'] = value;
+        newData.CERTIFICATION['E/O'] = value;
+        newData.CERTIFICATION['E/O Present'] = value;
         newData['E&O'] = value;
         newData['E&O Present'] = value;
+        newData['E/O'] = value;
+        newData['E/O Present'] = value;
       }
       if (fieldKey === 'Invoice Attached' || fieldKey === 'Invoice Present') {
         if (!newData.CERTIFICATION) newData.CERTIFICATION = {};
@@ -2774,9 +2798,12 @@ function Subject({ defaultFormType }) {
     }
   };
 
-  const handleEngagementLetterCompare = async () => {
+  const handleEngagementLetterCompare = async (targetLetterOverride = null) => {
     const reportFile = (extractionSource === 'xml' ? (xmlFile || selectedFile) : (selectedFile || xmlFile)) || selectedFile || xmlFile;
-    if (!reportFile || !engagementLetterFile) {
+    const targetLetter = (targetLetterOverride && typeof targetLetterOverride === 'object' && targetLetterOverride.name)
+      ? targetLetterOverride
+      : engagementLetterFile;
+    if (!reportFile || !targetLetter) {
       setNotification({ open: true, message: 'Please upload both the main report and the engagement letter.', severity: 'warning' });
       return;
     }
@@ -2786,7 +2813,7 @@ function Subject({ defaultFormType }) {
 
     const formData = new FormData();
     formData.append('main_report_file', reportFile);
-    formData.append('engagement_letter_file', engagementLetterFile);
+    formData.append('engagement_letter_file', targetLetter);
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/compare-engagement-letter/`, {
@@ -2815,8 +2842,11 @@ function Subject({ defaultFormType }) {
     const file = e.target.files && e.target.files[0];
     if (file) {
       setEngagementLetterFile(file);
-      setNotification({ open: true, message: 'Engagement letter uploaded. Click "Review Letter" to compare.', severity: 'success' });
-
+      setNotification({ open: true, message: 'Engagement letter uploaded.', severity: 'success' });
+      const reportFile = (extractionSource === 'xml' ? (xmlFile || selectedFile) : (selectedFile || xmlFile)) || selectedFile || xmlFile;
+      if (reportFile) {
+        handleEngagementLetterCompare(file);
+      }
     }
   };
 
@@ -3803,6 +3833,7 @@ function Subject({ defaultFormType }) {
   const formTypes = ['1004', '1004C', '1004D', '1025', '1073', '2090', '203k-FHA', '2055', '1075', '2095', '1007', '216', '1025 + 1007', '1073 + 1007', '1004 + 1007', '1004MC', 'Appraisal Version #1', 'ERC'];
 
   const sections = useMemo(() => [
+    ...(engagementLetterFile ? [{ id: 'engagement-letter-section', title: 'Engagement Letter', category: 'ENGAGEMENT_LETTER', icon: <AssignmentIcon /> }] : []),
     { id: 'subject-info', title: 'Subject', category: 'SUBJECT', icon: <HomeIcon /> },
     { id: 'contract-section', title: 'Contract', category: 'CONTRACT', icon: <GavelIcon /> },
     { id: 'neighborhood-section', title: 'Neighborhood', category: 'NEIGHBORHOOD', icon: <LocationCityIcon /> },
@@ -3831,7 +3862,7 @@ function Subject({ defaultFormType }) {
     { id: 'map-sketch-exhibits-section', title: 'Map & Sketch Analysis', category: 'MAP_SKETCH_ANALYSIS', icon: <MapIcon /> },
     { id: 'photos-exhibits-section', title: 'Photos & Exhibits', category: 'EXTRACTED_PHOTOS', icon: <PhotoLibraryIcon /> },
     { id: 'raw-output', title: 'Raw Output', icon: <CodeIcon /> },
-  ], []);
+  ], [engagementLetterFile]);
 
   const salesGridRows = [
     { label: "Address", valueKey: "Address", subjectValueKey: "Property Address" },
@@ -7844,8 +7875,8 @@ function Subject({ defaultFormType }) {
                           {Number(lastExtractionTime) < 0.1
                             ? '< 0.1s'
                             : (Number(lastExtractionTime) < 1
-                                ? `${Number(lastExtractionTime).toFixed(2)}s`
-                                : `${(Number(lastExtractionTime) % 60).toFixed(1)}s`)}
+                              ? `${Number(lastExtractionTime).toFixed(2)}s`
+                              : `${(Number(lastExtractionTime) % 60).toFixed(1)}s`)}
                         </Typography>
                       )}
                     </Box>
@@ -7935,7 +7966,7 @@ function Subject({ defaultFormType }) {
                               editingField={editingField}
                               setEditingField={setEditingField}
                               isEditable={isEditable}
-                              allData={data}
+                              allData={{ ...data, comparisonData }}
                             />
                           </Box>
                         </Stack>
@@ -8012,7 +8043,7 @@ function Subject({ defaultFormType }) {
                                 editingField={editingField}
                                 setEditingField={setEditingField}
                                 isEditable={isEditable}
-                                allData={data}
+                                allData={{ ...data, comparisonData }}
                               />
                             </Box>
                             <Tooltip title="View Market Conditions Section">
@@ -8057,7 +8088,7 @@ function Subject({ defaultFormType }) {
                                 editingField={editingField}
                                 setEditingField={setEditingField}
                                 isEditable={isEditable}
-                                allData={data}
+                                allData={{ ...data, comparisonData }}
                               />
                             </Box>
                             <Tooltip title="USPAP & Appraisal Report Identification Page Presence">
@@ -8123,7 +8154,7 @@ function Subject({ defaultFormType }) {
                                 editingField={editingField}
                                 setEditingField={setEditingField}
                                 isEditable={isEditable}
-                                allData={data}
+                                allData={{ ...data, comparisonData }}
                               />
 
                               {/* uad_details Full Metadata Breakdown: Limiting Conditions, Certification, UAD Pages */}
@@ -8208,7 +8239,7 @@ function Subject({ defaultFormType }) {
                                   editingField={editingField}
                                   setEditingField={setEditingField}
                                   isEditable={isEditable}
-                                  allData={data}
+                                  allData={{ ...data, comparisonData }}
                                 />
                                 {isRestricted && commentVal && (
                                   <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 0.5, fontSize: '0.72rem', fontStyle: 'italic', wordBreak: 'break-word' }}>
@@ -8361,11 +8392,15 @@ function Subject({ defaultFormType }) {
                                 handleDataChange(['CERTIFICATION', 'E&O'], val);
                                 handleDataChange(['E&O Present'], val);
                                 handleDataChange(['CERTIFICATION', 'E&O Present'], val);
+                                handleDataChange(['E/O'], val);
+                                handleDataChange(['CERTIFICATION', 'E/O'], val);
+                                handleDataChange(['E/O Present'], val);
+                                handleDataChange(['CERTIFICATION', 'E/O Present'], val);
                               }}
                               editingField={editingField}
                               setEditingField={setEditingField}
                               isEditable={isEditable}
-                              allData={data}
+                              allData={{ ...data, comparisonData }}
                               manualValidations={manualValidations}
                               handleManualValidation={handleManualValidation}
                             />
@@ -8438,7 +8473,7 @@ function Subject({ defaultFormType }) {
                               editingField={editingField}
                               setEditingField={setEditingField}
                               isEditable={isEditable}
-                              allData={data}
+                              allData={{ ...data, comparisonData }}
                               manualValidations={manualValidations}
                               handleManualValidation={handleManualValidation}
                             />
@@ -8526,7 +8561,7 @@ function Subject({ defaultFormType }) {
                               editingField={editingField}
                               setEditingField={setEditingField}
                               isEditable={true}
-                              allData={data}
+                              allData={{ ...data, comparisonData }}
                               manualValidations={manualValidations}
                               handleManualValidation={handleManualValidation}
                             />
@@ -8584,6 +8619,25 @@ function Subject({ defaultFormType }) {
               {notification.message}
             </Alert>
           </Snackbar>
+
+          {/* Engagement Letter Comparison Section - appears as a separate section above Subject section when letter is uploaded */}
+          {engagementLetterFile && (
+            <EngagementLetterSection
+              engagementLetterFile={engagementLetterFile}
+              loading={engagementLetterCompareLoading}
+              result={engagementLetterCompareResult}
+              error={engagementLetterCompareError}
+              onCompare={() => handleEngagementLetterCompare()}
+              onClose={() => {
+                setEngagementLetterFile(null);
+                setEngagementLetterCompareResult(null);
+                setEngagementLetterCompareError('');
+                if (engagementLetterFileInputRef.current) engagementLetterFileInputRef.current.value = '';
+              }}
+              onPreview={handlePreviewPdf}
+              canCompare={Boolean(selectedFile || xmlFile)}
+            />
+          )}
 
           {renderForm()}
 

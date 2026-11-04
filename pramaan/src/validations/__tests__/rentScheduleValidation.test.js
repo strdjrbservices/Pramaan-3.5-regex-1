@@ -222,7 +222,7 @@ describe('checkMinimumRentalComparables validation', () => {
         );
         expect(resComp3).toEqual(expect.objectContaining({
             isError: true,
-            message: 'minimum 3 rental comparables will be present'
+            message: expect.stringContaining('Minimum 3 rental comparables are required in the report.')
         }));
     });
 
@@ -237,7 +237,7 @@ describe('checkMinimumRentalComparables validation', () => {
         );
         expect(res).toEqual(expect.objectContaining({
             isError: true,
-            message: 'minimum 3 rental comparables will be present'
+            message: expect.stringContaining('Minimum 3 rental comparables are required in the report.')
         }));
     });
 

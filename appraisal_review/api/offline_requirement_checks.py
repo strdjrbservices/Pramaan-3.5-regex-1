@@ -4027,7 +4027,13 @@ def evaluate_client_requirements(pdf_path: str, extracted_data: Optional[Dict[st
 
     # 22. Champions Funding
     elif "CHAMPIONS FUNDING" in lender_upper:
-        eo_page, _ = _find_keyword_in_pages(pages_text, [r"Errors\s*(?:and|&)\s*Omissions", r"E&O", r"Certificate\s*of\s*Insurance"])
+        eo_page, _ = _find_keyword_in_pages(pages_text, [
+            r"Errors\s*(?:and|&)\s*Omissions(?:\s*Insurance)?",
+            r"\bE\s*[\/&]\s*O(?:\s*Insurance)?\b",
+            r"\bE\s+and\s+O\b",
+            r"Certificate\s*of\s*(?:Liability\s*)?Insurance",
+            r"Professional\s*Liability"
+        ])
         details.append({
             "requirement": "Appraiser E&O Insurance Attached",
             "status": "Fulfilled" if eo_page else "Not Fulfilled",

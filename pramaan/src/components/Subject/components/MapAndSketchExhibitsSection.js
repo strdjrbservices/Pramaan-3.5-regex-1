@@ -106,7 +106,7 @@ const parseSketchRooms = (sketchItem) => {
       { regex: /\bbed\s*\d+\b/i, name: 'Bedroom' }
     ],
     bathrooms: [
-      { regex: /\b(?:bath\s*\(\s*(?:half|1\/2)\s*\)|half\s*bath|1\/2\s*bath|powder(?:\s*room)?\b)/i, name: 'Half Bath' },
+      { regex: /(?:^|[\s\b])(?:half[\s-]*(?:bath(?:room)?|ba)|1\/2[\s-]*(?:bath(?:room)?|ba)|0?\.5[\s-]*(?:bath(?:room)?|ba)|(?:bath(?:room)?|ba)\s*(?:\(\s*)?(?:half|1\/2|0?\.5)(?:\s*\))?|powder(?:\s*room)?|lav(?:atory)?|wc)\b/i, name: 'Half Bath' },
       { regex: /\b(?:main|master|primary)\s+bath(?:room)?\b/i, name: 'Main Bath' },
       { regex: /\b(?:full\s+)?bath(?:room)?\s*\d*\b/i, name: 'Bath' },
       { regex: /\bba\b/i, name: 'Bath' },
@@ -182,7 +182,29 @@ const parseSketchRooms = (sketchItem) => {
   const allLabels = [];
   let currentLevel = 'Main Level';
 
-  rawCandidates.forEach(cand => {
+  const mergedCandidates = [];
+  let ci = 0;
+  const cn = rawCandidates.length;
+  while (ci < cn) {
+    const curr = (rawCandidates[ci] || '').trim();
+    const nxt = ci + 1 < cn ? (rawCandidates[ci + 1] || '').trim() : '';
+
+    const isCurrHalf = /^(?:1\/2|0?\.5|half)$/i.test(curr);
+    const isNxtBath = /^(?:bath(?:room)?|ba)$/i.test(nxt);
+    const isCurrBath = /^(?:bath(?:room)?|ba)$/i.test(curr);
+    const isNxtHalf = /^(?:1\/2|0?\.5|half)$/i.test(nxt);
+
+    if ((isCurrHalf && isNxtBath) || (isCurrBath && isNxtHalf)) {
+      mergedCandidates.push(`${curr} ${nxt}`);
+      ci += 2;
+      continue;
+    }
+
+    mergedCandidates.push(curr);
+    ci += 1;
+  }
+
+  mergedCandidates.forEach(cand => {
     const cleaned = cand.replace(/\[?\s*-?\d+(?:\.\d+)?\s*sq\s*ft\s*\]?/gi, '').trim();
     if (!cleaned || /^[\d.\s'"x=\-+/\\]+$/.test(cleaned)) return;
 
@@ -826,7 +848,7 @@ const getPhotoRoomCounts = (data, allData) => {
       if (!cap) return;
       const norm = cap.replace(/\s*\([a-zA-Z0-9]+\)$/, '').trim().toLowerCase();
       if (/\b(?:bedroom|bdrm|bed\b|mbr\b|master\s*bed|primary\s*bed|guest\s*bed)\b/.test(norm)) distinctBeds.add(norm);
-      else if (/\b(?:half\s*bath|1\/2\s*bath|0?\.5\s*bath|powder\s*room)\b/.test(norm)) distinctHalfBaths.add(norm);
+      else if (/(?:^|[\s\b])(?:half[\s-]*(?:bath(?:room)?|ba)|1\/2[\s-]*(?:bath(?:room)?|ba)|0?\.5[\s-]*(?:bath(?:room)?|ba)|(?:bath(?:room)?|ba)\s*(?:\(\s*)?(?:half|1\/2|0?\.5)(?:\s*\))?|powder(?:\s*room)?|lav(?:atory)?|wc)\b/i.test(norm)) distinctHalfBaths.add(norm);
       else if (/\b(?:full\s*bath|master\s*bath|primary\s*bath|bath\s*#?\s*\d|bathroom|bath\b)\b/.test(norm)) distinctFullBaths.add(norm);
       else if (/\b(?:living|family\s*room|great\s*room)\b/.test(norm)) distinctLiving.add(norm);
       else if (/\b(?:kitchen|kit\b)\b/.test(norm)) distinctKitchen.add(norm);
@@ -1125,7 +1147,7 @@ const getGridComparableData = (compIndex, compLabel, compStreet, data, allData, 
   const allRentalKeys = new Set([...Object.keys(root || {}), ...Object.keys(rGrid || {})]);
   const rentalCompNums = new Set();
   allRentalKeys.forEach(k => {
-    const m = k.match(/(?:RENTAL(?:_COMPARABLE)?|COMPARABLE\s+NO\.|COMPARABLE\s+RENTAL)[_\s]+#?([0-9]+)/i);
+    const m = k.match(/(?:RENTAL(?:_COMPARABLE)?|COMPARABLE\s+NO\.|COMPARABLE\s+RENTAL)[_\s]+(?:NO\s*)?#?([0-9]+)/i);
     if (m) rentalCompNums.add(parseInt(m[1], 10));
   });
   if (scanResult?.reference_records?.rental_comps) {
@@ -1134,7 +1156,9 @@ const getGridComparableData = (compIndex, compLabel, compStreet, data, allData, 
     });
   }
   const sortedRentalNums = Array.from(rentalCompNums).sort((a, b) => a - b);
-  const rentalNumsToCheck = sortedRentalNums.length > 0 ? sortedRentalNums : [1, 2, 3, 4, 5, 6, 7, 8, 9];
+  const rentalNumsToCheck = sortedRentalNums.length > 0
+    ? Array.from(new Set([...sortedRentalNums, 1, 2, 3]))
+    : [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
   for (const i of rentalNumsToCheck) {
     const candidateKeys = [
@@ -1146,6 +1170,9 @@ const getGridComparableData = (compIndex, compLabel, compStreet, data, allData, 
       `Comparable Rental #${i}`,
       `COMPARABLE RENTAL #${i}`,
       `Comparable Rental No #${i}`,
+      `COMPARABLE Rental No #${i}`,
+      `COMPARABLE Rental No ${i}`,
+      `Comparable Rental No ${i}`,
       `RENTAL_COMPARABLE_${i}`
     ];
     let found = false;
@@ -1437,7 +1464,8 @@ const buildProcessedExhibitsRows = (rawSourceList, mapItem, scanResult, data, al
       const rawSt = (it.displayStreet || '').trim();
       const letterCount = (rawSt.match(/[a-zA-Z]/g) || []).length;
       const isStandaloneHwy = !/\d/.test(rawSt) && /^(?:interstate|highway|hwy|fwy|freeway|expressway|turnpike|parkway|pkwy|beltway)\b/i.test(rawSt);
-      const isNoise = (letterCount < 3 || isStandaloneHwy) && (!it.gridComp?.address || it.gridComp.address === '—');
+      const hasValidStreetSuffix = /\b(?:st|street|ave|avenue|rd|road|dr|drive|ln|lane|ct|court|blvd|boulevard|way|pl|place|cir|circle|ter|terrace|pkwy|parkway|hwy|highway|loop|run|trail|tr|row|walk)\b/i.test(rawSt);
+      const isNoise = (!it.gridComp?.address || it.gridComp.address === '—') && (letterCount < 3 || isStandaloneHwy || !hasValidStreetSuffix || !/\d/.test(rawSt));
       if (isNoise) continue;
 
       // Check if this exact street has been processed
@@ -1526,6 +1554,36 @@ const buildProcessedExhibitsRows = (rawSourceList, mapItem, scanResult, data, al
       }
     });
 
+    // For sales comps, ensure all comps verified in the Sales Grid are included
+    if (prefix === 'Comp' && maxAllowedComps < Infinity) {
+      for (let cNum = 1; cNum <= maxAllowedComps; cNum++) {
+        if (!usedNums.has(cNum)) {
+          const gridComp = getGridComparableData(cNum - 1, `Comp #${cNum}`, '', data, allData, scanResult);
+          if (gridComp && gridComp.address && gridComp.address !== '—') {
+            const photoComp = getComparablePhotoData({ gridComp, isRental: false }, cNum - 1, scanResult, allData, data);
+            deduped.push({
+              pinInfo: {
+                street: gridComp.address,
+                address: gridComp.address,
+                proximity: gridComp.proximity,
+                label: `Comp #${cNum}`,
+                item_type: 'Comparable',
+                isSynthesized: true
+              },
+              photoComp,
+              gridComp,
+              isRental: false,
+              num: cNum,
+              milesVal: 999.0,
+              displayStreet: gridComp.address,
+              badgeLabel: `Comp #${cNum}`
+            });
+            usedNums.add(cNum);
+          }
+        }
+      }
+    }
+
     deduped.sort((a, b) => {
       const aN = a.num !== null ? a.num : 999;
       const bN = b.num !== null ? b.num : 999;
@@ -1578,6 +1636,7 @@ export const MapAndSketchExhibitsSection = ({
   const [copiedKey, setCopiedKey] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [selectedCompPhotoModal, setSelectedCompPhotoModal] = useState(null);
+  const [selectedLocMapIdx, setSelectedLocMapIdx] = useState(null);
   const scannedFileRef = useRef('');
 
   // Initial load or check from data / allData
@@ -1791,6 +1850,25 @@ export const MapAndSketchExhibitsSection = ({
       !/rental/i.test(m.map_type || '')
     );
   }, [scanResult]);
+
+  // Among location maps, identify the primary map (the one with the most comparables)
+  const primaryLocationMapIndex = useMemo(() => {
+    if (!locationMaps || locationMaps.length <= 1) return 0;
+    let bestIdx = 0;
+    let maxComps = -1;
+    locationMaps.forEach((m, idx) => {
+      const cCount = (m.comparables_only || m.comparables || []).filter(c => c.item_type !== 'Subject').length;
+      if (cCount > maxComps) {
+        maxComps = cCount;
+        bestIdx = idx;
+      }
+    });
+    return bestIdx;
+  }, [locationMaps]);
+
+  const activeLocMapIdx = (selectedLocMapIdx !== null && selectedLocMapIdx < locationMaps.length)
+    ? selectedLocMapIdx
+    : primaryLocationMapIndex;
 
   // Extracted Aerial Maps
   const aerialMaps = useMemo(() => {
@@ -2106,25 +2184,51 @@ export const MapAndSketchExhibitsSection = ({
       {/* TAB 0: LOCATION MAP & SALES COMPARABLES */}
       {activeTab === 0 && (
         <Stack spacing={2.5}>
-          {locationMaps.length > 0 ? (
-            locationMaps.map((mapItem, mIdx) => {
-              const rawSourceList = (mapItem.comparables_only && mapItem.comparables_only.length > 0)
-                ? mapItem.comparables_only
-                : (mapItem.comparables || []).filter(c => c.item_type !== 'Rental');
+          {locationMaps.length > 0 ? (() => {
+            const mapItem = locationMaps[activeLocMapIdx] || locationMaps[0];
+            const rawSourceList = (mapItem.comparables_only && mapItem.comparables_only.length > 0)
+              ? mapItem.comparables_only
+              : (mapItem.comparables || []).filter(c => c.item_type !== 'Rental');
 
-              const {
-                sortedRows,
-                compsCount,
-                listingsCount
-              } = buildProcessedExhibitsRows(rawSourceList, mapItem, scanResult, data, allData, false);
+            const {
+              sortedRows,
+              compsCount,
+              listingsCount
+            } = buildProcessedExhibitsRows(rawSourceList, mapItem, scanResult, data, allData, false);
 
-              const parts = [];
-              if (compsCount > 0) parts.push(`${compsCount} Sales Comparables`);
-              if (listingsCount > 0) parts.push(`${listingsCount} Listings`);
-              const chipText = parts.length > 0 ? `${parts.join(', ')} Detected` : 'No Sales Callouts Detected';
+            const parts = [];
+            if (compsCount > 0) parts.push(`${compsCount} Sales Comparables`);
+            if (listingsCount > 0) parts.push(`${listingsCount} Listings`);
+            const chipText = parts.length > 0 ? `${parts.join(', ')} Detected` : 'No Sales Callouts Detected';
 
-              return (
-                <Grid container spacing={2.5} key={mIdx}>
+            return (
+              <Box key={mapItem.page_number || activeLocMapIdx}>
+                {locationMaps.length > 1 && (
+                  <Paper variant="outlined" sx={{ p: 1.25, mb: 2, bgcolor: '#f8fafc', borderRadius: 2 }}>
+                    <Stack direction="row" alignItems="center" spacing={1.5} flexWrap="wrap">
+                      <Typography variant="body2" sx={{ fontWeight: 700, color: '#334155' }}>
+                        Location Map Exhibit:
+                      </Typography>
+                      {locationMaps.map((m, idx) => {
+                        const isPrimary = idx === primaryLocationMapIndex;
+                        const isSelected = idx === activeLocMapIdx;
+                        const cCount = (m.comparables_only || m.comparables || []).filter(c => c.item_type !== 'Subject').length;
+                        return (
+                          <Chip
+                            key={idx}
+                            label={`Page ${m.page_number} (${cCount} Comps)${isPrimary ? ' • Primary Map' : ''}`}
+                            onClick={() => setSelectedLocMapIdx(idx)}
+                            color={isSelected ? "primary" : "default"}
+                            variant={isSelected ? "filled" : "outlined"}
+                            sx={{ fontWeight: isSelected ? 700 : 500, cursor: 'pointer' }}
+                          />
+                        );
+                      })}
+                    </Stack>
+                  </Paper>
+                )}
+
+                <Grid container spacing={2.5}>
                   {/* Left: Comparables & Subject Data Table */}
                   <Grid size={{ xs: 12, lg: 8 }}>
                     <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
@@ -2522,17 +2626,40 @@ export const MapAndSketchExhibitsSection = ({
                       return (
                         <Box sx={{ mt: 3, pt: 2, borderTop: '2px dashed #cbd5e1' }}>
                           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
-                            <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#166534', display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <span>🟢</span> Rental Comparables on this Map ({rentalsCount})
+                            <Typography variant="subtitle2" sx={{ fontWeight: 700, color: rentalsCount < 3 ? '#b91c1c' : '#166534', display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <span>{rentalsCount < 3 ? '🔴' : '🟢'}</span> Rental Comparables on this Map ({rentalsCount})
                             </Typography>
                             <Chip
-                              label={`${rentalsCount} Rentals Cross-Referenced`}
+                              label={rentalsCount < 3 ? `${rentalsCount} Rentals Cross-Referenced (Minimum 3 Required)` : `${rentalsCount} Rentals Cross-Referenced`}
                               size="small"
-                              color="success"
+                              color={rentalsCount < 3 ? "error" : "success"}
                               variant="outlined"
-                              sx={{ fontWeight: 600, color: '#16a34a', borderColor: '#bbf7d0', bgcolor: '#f0fdf4' }}
+                              sx={{
+                                fontWeight: 600,
+                                color: rentalsCount < 3 ? '#dc2626' : '#16a34a',
+                                borderColor: rentalsCount < 3 ? '#fca5a5' : '#bbf7d0',
+                                bgcolor: rentalsCount < 3 ? '#fef2f2' : '#f0fdf4'
+                              }}
                             />
                           </Stack>
+
+                          {rentalsCount < 3 && (
+                            <Alert
+                              severity="error"
+                              sx={{
+                                mb: 1.5,
+                                py: 0.5,
+                                fontSize: '0.82rem',
+                                fontWeight: 600,
+                                border: '1px solid #fecaca',
+                                backgroundColor: '#fef2f2',
+                                color: '#991b1b',
+                                '& .MuiAlert-icon': { color: '#dc2626' }
+                              }}
+                            >
+                              Minimum 3 rental comparables are required in the report. Found only {rentalsCount}. Please verify in report.
+                            </Alert>
+                          )}
 
                           <TableContainer>
                             <Table size="small">
@@ -2727,6 +2854,54 @@ export const MapAndSketchExhibitsSection = ({
                                     </TableRow>
                                   );
                                 })}
+
+                                {rentalsCount < 3 && Array.from({ length: 3 - rentalsCount }).map((_, idx) => {
+                                  const missingNum = rentalsCount + idx + 1;
+                                  return (
+                                    <TableRow key={`missing-rental-${missingNum}`} sx={{ bgcolor: '#fef2f2' }}>
+                                      <TableCell sx={{ verticalAlign: 'middle' }}>
+                                        <Box sx={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: 0.5,
+                                          px: 1,
+                                          py: 0.25,
+                                          borderRadius: 1,
+                                          bgcolor: '#fee2e2',
+                                          color: '#b91c1c',
+                                          border: '1px solid #fecaca',
+                                          fontWeight: 700,
+                                          fontSize: '0.75rem'
+                                        }}>
+                                          🔴 Rental #{missingNum}
+                                        </Box>
+                                      </TableCell>
+                                      <TableCell>
+                                        <Typography variant="body2" sx={{ fontWeight: 600, color: '#dc2626', fontStyle: 'italic' }}>
+                                          — Missing in Rental Grid —
+                                        </Typography>
+                                      </TableCell>
+                                      <TableCell>
+                                        <Typography variant="body2" sx={{ fontWeight: 600, color: '#dc2626', fontStyle: 'italic' }}>
+                                          — Missing on Map (Min 3 Required) —
+                                        </Typography>
+                                      </TableCell>
+                                      <TableCell>
+                                        <span style={{ color: '#94a3b8' }}>—</span>
+                                      </TableCell>
+                                      <TableCell>
+                                        <span style={{ color: '#94a3b8' }}>—</span>
+                                      </TableCell>
+                                      <TableCell>
+                                        <Chip
+                                          label="Comp Missing"
+                                          size="small"
+                                          sx={{ bgcolor: '#fee2e2', color: '#b91c1c', fontWeight: 700, border: '1px solid #fecaca', fontSize: '0.72rem' }}
+                                        />
+                                      </TableCell>
+                                    </TableRow>
+                                  );
+                                })}
                               </TableBody>
                             </Table>
                           </TableContainer>
@@ -2766,9 +2941,9 @@ export const MapAndSketchExhibitsSection = ({
                   </Card>
                 </Grid>
               </Grid>
-            );
-          })
-          ) : (
+            </Box>
+          );
+        })() : (
             extractingStage === 'location_map' ? (
               <Paper variant="outlined" sx={{ p: 4, textAlign: 'center', bgcolor: '#f8fafc', borderRadius: 2 }}>
                 <CircularProgress size={32} sx={{ color: '#0284c7', mb: 1.5 }} />
@@ -3408,17 +3583,46 @@ export const MapAndSketchExhibitsSection = ({
                   <Grid size={{ xs: 12, lg: 8 }}>
                     <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
                       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }} flexWrap="wrap" gap={1}>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#1e293b' }}>
-                          {mapItem.map_type || 'Rentals Map'} (Page {mapItem.page_number})
+                        <Typography variant="subtitle1" sx={{ fontWeight: 700, color: (rentalsCount > 0 && rentalsCount < 3) ? '#b91c1c' : '#1e293b', display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <span>{rentalsCount > 0 && rentalsCount < 3 ? '🔴' : '🟢'}</span> {mapItem.map_type || 'Rentals Map'} (Page {mapItem.page_number})
                         </Typography>
                         <Chip
-                          label={rentalsCount > 0 ? `${rentalsCount} Rental Comparables Detected` : 'Exhibits Reference Map'}
+                          label={
+                            rentalsCount > 0 && rentalsCount < 3
+                              ? `${rentalsCount} Rental Comparables Detected (Minimum 3 Required)`
+                              : rentalsCount > 0
+                              ? `${rentalsCount} Rental Comparables Detected`
+                              : 'Exhibits Reference Map'
+                          }
                           size="small"
-                          color="success"
+                          color={rentalsCount > 0 && rentalsCount < 3 ? 'error' : 'success'}
                           variant="outlined"
-                          sx={{ fontWeight: 600, color: '#16a34a', borderColor: '#bbf7d0', bgcolor: '#f0fdf4' }}
+                          sx={{
+                            fontWeight: 600,
+                            color: rentalsCount > 0 && rentalsCount < 3 ? '#dc2626' : '#16a34a',
+                            borderColor: rentalsCount > 0 && rentalsCount < 3 ? '#fca5a5' : '#bbf7d0',
+                            bgcolor: rentalsCount > 0 && rentalsCount < 3 ? '#fef2f2' : '#f0fdf4'
+                          }}
                         />
                       </Stack>
+
+                      {rentalsCount > 0 && rentalsCount < 3 && (
+                        <Alert
+                          severity="error"
+                          sx={{
+                            mb: 1.5,
+                            py: 0.5,
+                            fontSize: '0.82rem',
+                            fontWeight: 600,
+                            border: '1px solid #fecaca',
+                            backgroundColor: '#fef2f2',
+                            color: '#991b1b',
+                            '& .MuiAlert-icon': { color: '#dc2626' }
+                          }}
+                        >
+                          Minimum 3 rental comparables are required in the report. Found only {rentalsCount}. Please verify in report.
+                        </Alert>
+                      )}
 
                       <TableContainer>
                         <Table size="small">
@@ -3777,6 +3981,54 @@ export const MapAndSketchExhibitsSection = ({
                                           sx={{ bgcolor: '#f1f5f9', color: '#64748b', fontWeight: 600, border: '1px solid #e2e8f0', fontSize: '0.72rem' }}
                                         />
                                       )}
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              })}
+
+                              {rentalsCount > 0 && rentalsCount < 3 && Array.from({ length: 3 - rentalsCount }).map((_, idx) => {
+                                const missingNum = rentalsCount + idx + 1;
+                                return (
+                                  <TableRow key={`missing-rental-${missingNum}`} sx={{ bgcolor: '#fef2f2' }}>
+                                    <TableCell sx={{ verticalAlign: 'middle' }}>
+                                      <Box sx={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: 0.5,
+                                        px: 1,
+                                        py: 0.25,
+                                        borderRadius: 1,
+                                        bgcolor: '#fee2e2',
+                                        color: '#b91c1c',
+                                        border: '1px solid #fecaca',
+                                        fontWeight: 700,
+                                        fontSize: '0.75rem'
+                                      }}>
+                                        🔴 Rental #{missingNum}
+                                      </Box>
+                                    </TableCell>
+                                    <TableCell>
+                                      <Typography variant="body2" sx={{ fontWeight: 600, color: '#dc2626', fontStyle: 'italic' }}>
+                                        — Missing in Rental Grid —
+                                      </Typography>
+                                    </TableCell>
+                                    <TableCell>
+                                      <Typography variant="body2" sx={{ fontWeight: 600, color: '#dc2626', fontStyle: 'italic' }}>
+                                        — Missing on Map (Min 3 Required) —
+                                      </Typography>
+                                    </TableCell>
+                                    <TableCell>
+                                      <span style={{ color: '#94a3b8' }}>—</span>
+                                    </TableCell>
+                                    <TableCell>
+                                      <span style={{ color: '#94a3b8' }}>—</span>
+                                    </TableCell>
+                                    <TableCell>
+                                      <Chip
+                                        label="Comp Missing"
+                                        size="small"
+                                        sx={{ bgcolor: '#fee2e2', color: '#b91c1c', fontWeight: 700, border: '1px solid #fecaca', fontSize: '0.72rem' }}
+                                      />
                                     </TableCell>
                                   </TableRow>
                                 );
