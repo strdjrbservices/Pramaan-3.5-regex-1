@@ -62,7 +62,7 @@ import {
   EngagementLetterDialog,
   PdfXmlDiffDialog,
 } from './components/dialogs.js';
-import { EngagementLetterSection } from './components/EngagementLetterSection.js';
+import { EngagementLetterSection } from './components/EngagementLetterSection';
 import { SalesComparisonSection, ComparisonResultTable, SubjectRentScheduleTable } from './components/tables.js';
 import { getComparisonStyle, playSound, API_BASE_URL } from './utils/utils.js';
 
