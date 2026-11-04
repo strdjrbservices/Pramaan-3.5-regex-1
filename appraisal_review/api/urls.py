@@ -66,5 +66,6 @@ urlpatterns = [
     path('files/new_revised/<str:filename>', views.delete_new_revised_file, name='delete_new_revised_file'),
     path('files/old_revised', views.list_old_revised_files, name='list_old_revised_files'),
     path('files/html_ref', views.list_html_files, name='list_html_files'),
+    path('verify-revision/', views.verify_revision_endpoint, name='verify_revision_endpoint'),
     
 ]
