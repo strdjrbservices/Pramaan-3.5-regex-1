@@ -2,6 +2,11 @@ import React from 'react';
 import { Tooltip, IconButton } from '@mui/material';
 import LibraryBooksIcon from '@mui/icons-material/LibraryBooks';
 import { EditableField } from './EditableField';
+import {
+  checkRentScheduleToBeBracketing,
+  getRentScheduleToBeValue,
+  parseRentalAmount
+} from '../../../validations/rentScheduleValidation';
 
 const ComparableRentScheduleSection = ({
   data = {},
@@ -1304,6 +1309,144 @@ const ComparableRentScheduleSection = ({
                 </React.Fragment>
               ))}
             </tr>
+
+            {/* Reconciliation TO BE $ (Bracketing) Row */}
+            {(() => {
+              const fullData = (allData && Object.keys(allData).length > 0) ? allData : (data || {});
+              const toBeVal =
+                fullData?.['Comparable Rent Schedule Reconciliation']?.['TO BE $'] ??
+                fullData?.clean_data?.['Comparable Rent Schedule Reconciliation']?.['TO BE $'] ??
+                fullData?.RENT_SCHEDULE_RECONCILIATION?.['TO BE $'] ??
+                fullData?.clean_data?.RENT_SCHEDULE_RECONCILIATION?.['TO BE $'] ??
+                fullData?.['Rent Schedule Reconciliation']?.['TO BE $'] ??
+                fullData?.clean_data?.['Rent Schedule Reconciliation']?.['TO BE $'] ??
+                fullData?.['Single Family Rent Schedule']?.['TO BE $'] ??
+                fullData?.clean_data?.['Single Family Rent Schedule']?.['TO BE $'] ??
+                fullData?.['Comparable Rent Schedule']?.['TO BE $'] ??
+                fullData?.clean_data?.['Comparable Rent Schedule']?.['TO BE $'] ??
+                fullData?.['TO BE $'] ??
+                fullData?.clean_data?.['TO BE $'] ??
+                data?.['TO BE $'] ??
+                '';
+
+              const toBeRent = getRentScheduleToBeValue(fullData, toBeVal);
+              const bracketingResult = checkRentScheduleToBeBracketing('TO BE $', toBeRent, fullData);
+              const isError = bracketingResult?.isError;
+
+              return (
+                <tr
+                  style={{
+                    backgroundColor: isError ? '#ffebee' : '#f1f8e9',
+                    borderTop: '2px solid #005A9C'
+                  }}
+                >
+                  <td className="border border-gray-400 p-2 font-bold bg-light" style={{ fontWeight: 'bold' }}>
+                    <div>TO BE $</div>
+                    <div style={{ fontSize: '0.7rem', color: '#6c757d', fontWeight: 'normal' }}>
+                      (Reconciliation Bracketing)
+                    </div>
+                  </td>
+                  <td
+                    className="border border-gray-400 p-1"
+                    style={{
+                      backgroundColor: isError ? '#ffcdd2' : '#c8e6c9',
+                      verticalAlign: 'middle'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <span>$</span>
+                      <EditableField
+                        fieldPath={['Comparable Rent Schedule Reconciliation', 'TO BE $']}
+                        value={toBeVal}
+                        onDataChange={handleDataChange}
+                        editingField={editingField}
+                        setEditingField={setEditingField}
+                        isMissing={extractionAttempted && !toBeVal}
+                        isEditable={isEditable}
+                        manualValidations={manualValidations}
+                        revisionHandlers={revisionHandlers}
+                        handleManualValidation={handleManualValidation}
+                        allData={fullData}
+                        saleName="Subject"
+                      />
+                    </div>
+                    {bracketingResult && (
+                      <div
+                        style={{
+                          fontSize: '0.7rem',
+                          fontWeight: 'bold',
+                          marginTop: '2px',
+                          color: isError ? '#b71c1c' : '#1b5e20'
+                        }}
+                      >
+                        {isError ? '⚠️ Unbracketed' : '✓ Bracketed'}
+                      </div>
+                    )}
+                  </td>
+                  {activeComparableRents.map((rent, idx) => {
+                    const compObj = getRentalCompObject(rent);
+                    const rawCompRent = compObj ? (
+                      compObj['Indicated Monthly Market Rent'] ||
+                      compObj['Indicated Monthly Market Rent $'] ||
+                      compObj['INDICATED MONTHLY MARKET RENT'] ||
+                      compObj['Indicated Market Rent'] ||
+                      compObj['Adjusted Monthly Rent'] ||
+                      ''
+                    ) : '';
+                    const compRent = parseRentalAmount(rawCompRent);
+                    let pctInfo = null;
+                    if (toBeRent && compRent && compRent > 0) {
+                      const pct = ((compRent - toBeRent) / toBeRent) * 100;
+                      const sign = pct > 0 ? '+' : '';
+                      pctInfo = `${sign}${pct.toFixed(1)}%`;
+                    }
+
+                    return (
+                      <td
+                        key={idx}
+                        colSpan={2}
+                        className="border border-gray-400 p-2 text-center align-middle"
+                        style={{
+                          backgroundColor: isError ? '#fff5f5' : '#f9fbf9',
+                          fontSize: '0.8rem',
+                          fontWeight: 600
+                        }}
+                      >
+                        <Tooltip
+                          title={
+                            compRent
+                              ? `${rent} Indicated Monthly Market Rent: $${compRent.toLocaleString()}${pctInfo ? ` (${pctInfo} vs TO BE $)` : ''}`
+                              : `${rent} Indicated Monthly Market Rent not available`
+                          }
+                          arrow
+                        >
+                          <div>
+                            {compRent ? (
+                              <>
+                                <div>${compRent.toLocaleString()}</div>
+                                {pctInfo && (
+                                  <div
+                                    style={{
+                                      fontSize: '0.72rem',
+                                      color: pctInfo.startsWith('+') ? '#0d6efd' : '#495057',
+                                      fontWeight: 'normal'
+                                    }}
+                                  >
+                                    ({pctInfo})
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-muted">-</span>
+                            )}
+                          </div>
+                        </Tooltip>
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })()}
           </tbody>
         </table>
       </div>
