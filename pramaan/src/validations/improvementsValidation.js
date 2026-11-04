@@ -666,3 +666,10 @@ export const checkImprovementsFieldsNotBlank = (field, text) => {
     }
     return null;
 };
+
+export {
+    checkPredominantPriceVsIndicatedValue,
+    getPredominantPriceValue,
+    getIndicatedSalesComparisonValue,
+    getImprovementsComments
+} from './neighborhoodValidation';

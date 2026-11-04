@@ -3,7 +3,7 @@ import { checkContractFieldsMandatory, checkFinancialAssistanceInconsistency, ch
 import { checkTaxYear, checkRETaxes, checkSpecialAssessments, checkPUD, checkHOA, checkHOAFrequency, checkOfferedForSale, checkAnsi, checkFullAddressConsistency, checkPresence, checkAssignmentTypeConsistency, checkSubjectFieldsNotBlank, checkFhaCaseNo, checkOccupancy } from '../../../validations/subjectValidation';
 import { checkZoning, checkNonconformingComment, checkZoningDescription, checkSpecificZoningClassification, checkHighestAndBestUse, checkFemaInconsistency, checkFemaFieldsConsistency, checkSiteSectionBlank, checkArea, checkYesNoWithComment, checkUtilities } from '../../../validations/siteValidation';
 import { checkVersion1UtilitySubfields, checkZoningClassificationDescription, checkSiteSizesConsistency, checkVersion1EffectiveDatesConsistency, checkAboveGradeFinishedAreaConsistency, checkYearBuiltConsistency, checkAppraiserNameConsistency, checkVersion1ComparableListingStatusConsistency, checkVersion1ComparableTransferTermsConsistency, checkVersion1YearBuiltAdjustmentConsistency, checkVersion1ConstructionMethodAdjustmentConsistency, checkVersion1SiteSizeAdjustmentConsistency, checkVersion1LocationAdjustmentConsistency, checkVersion1AttachedDetachedAdjustmentConsistency, checkVersion1HeatingAdjustmentConsistency, checkVersion1AmenitiesAdjustmentConsistency, checkVersion1QualityConditionConsistency, checkVersion1AreaAdjustmentConsistency, checkVersion1OverallQualityConditionAdjustmentConsistency, checkVersion1VehicleStorageAdjustmentConsistency } from '../Version1/version1Validation';
-import { checkHousingPriceAndAge, checkNeighborhoodUsageConsistency, checkSingleChoiceFields, checkNeighborhoodBoundaries, checkNeighborhoodFieldsNotBlank, checkOtherLandUseComment, checkOtherLandUse, checkSearchCriteriaDescription, checkNeighborhoodListPricesConsistency, checkNeighborhoodSalePricesConsistency, checkLocation, checkBuiltUp, checkGrowth, checkPropertyValues, checkDemandSupply } from '../../../validations/neighborhoodValidation';
+import { checkHousingPriceAndAge, checkPredominantPriceVsIndicatedValue, checkNeighborhoodUsageConsistency, checkSingleChoiceFields, checkNeighborhoodBoundaries, checkNeighborhoodFieldsNotBlank, checkOtherLandUseComment, checkOtherLandUse, checkSearchCriteriaDescription, checkNeighborhoodListPricesConsistency, checkNeighborhoodSalePricesConsistency, checkLocation, checkBuiltUp, checkGrowth, checkPropertyValues, checkDemandSupply } from '../../../validations/neighborhoodValidation';
 import { checkUnits, checkAccessoryUnit, checkNumberOfStories, checkPropertyType, checkConstructionStatusAndReconciliation, checkDesignStyle, checkSubjectDesignStyleConsistency, checkYearBuilt, checkEffectiveAge, checkAdditionalFeatures, checkPropertyConditionDescription, checkPhysicalDeficienciesImprovements, checkNeighborhoodConformity, checkFoundationType, checkBasementDetails, checkEvidenceOf, checkMaterialCondition, checkHeatingFuel, checkCarStorage, checkImprovementsFieldsNotBlank } from '../../../validations/improvementsValidation';
 import { checkConditionAdjustment, checkBedroomsAdjustment, checkBathsAdjustment, checkQualityOfConstructionAdjustment, checkProximityToSubject, checkSiteAdjustment, checkGrossLivingAreaAdjustment, checkSubjectAddressInconsistency, checkDesignStyleAdjustment, checkFunctionalUtilityAdjustment, checkEnergyEfficientItemsAdjustment, checkPorchPatioDeckAdjustment, checkHeatingCoolingAdjustment, checkDataSourceDOM, checkActualAgeAdjustment, checkLeaseholdFeeSimpleConsistency, checkDateOfSale, checkLocationConsistency, checkSalePrice, checkSubjectAgeConsistency, checkViewAdjustment, checkCompSalePriceBracketing, checkCompAdjustedSalePriceBracketing, checkSalesConcessions, checkSalesConcessionsAdjustment, checkBasementAdjustment, checkGrossLivingAreaBracketing, checkSiteBracketing } from '../../../validations/salesComparisonValidation';
 import { checkFinalValueConsistency, checkCostApproachDeveloped, checkAppraisalCondition, checkAsOfDate, checkFinalValueBracketing, checkReconciliationFieldsNotBlank, checkFiveValuesConsistency, checkEffectiveDatesConsistency, checkPropertyQualityConsistency, checkPropertyConditionConsistency, checkHbuConsistency, checkCostApproachConsistency, checkAttachmentTypeConsistency, checkPropertyRightsConsistency, checkAppraiserCredentialLevelConsistency } from '../../../validations/reconciliationValidation';
@@ -194,7 +194,8 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'ADDRESS (LENDER/CLIENT)': [checkLenderAddressHtmlInconsistency, checkLenderAddressInconsistency, checkSubjectFieldsNotBlank],
 
     // Neighborhood Validations
-    'one unit housing price(high,low,pred)': [checkHousingPriceAndAge, checkNeighborhoodFieldsNotBlank],
+    'one unit housing price(high,low,pred)': [checkHousingPriceAndAge, checkPredominantPriceVsIndicatedValue, checkNeighborhoodFieldsNotBlank],
+    'ONE UNIT HOUSING PRICE(HIGH,LOW,PRED)': [checkHousingPriceAndAge, checkPredominantPriceVsIndicatedValue, checkNeighborhoodFieldsNotBlank],
     'one unit housing age(high,low,pred)': [checkHousingPriceAndAge, checkNeighborhoodFieldsNotBlank],
     "One-Unit": [checkNeighborhoodUsageConsistency, checkNeighborhoodFieldsNotBlank],
     "2-4 Unit": [checkNeighborhoodUsageConsistency, checkNeighborhoodFieldsNotBlank],
@@ -389,7 +390,7 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'Indicated Value by: Sales Comparison Approach $': [checkFinalValueConsistency, checkCostApproachDeveloped],
     'opinion of the market value, as defined, of the real property that is the subject of this report is $': [checkFinalValueConsistency, checkFinalValueBracketing],
     'OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $': [checkFinalValueConsistency, checkFinalValueBracketing],
-    'Indicated Value by Sales Comparison Approach $': [checkFinalValueConsistency, checkFinalValueBracketing],
+    'Indicated Value by Sales Comparison Approach $': [checkFinalValueConsistency, checkFinalValueBracketing, checkPredominantPriceVsIndicatedValue],
     'Final Value $': [checkFinalValueConsistency, checkFinalValueBracketing],
     'APPRAISED VALUE OF SUBJECT PROPERTY $': [checkFinalValueConsistency],
     'Cost Approach (if developed)': [checkCostApproachDeveloped, checkCostApproachMatchConsistency],
@@ -484,9 +485,9 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
   validationRegistry['opinion of the market value, as defined, of the real property that is the subject of this report is $'] = [checkFinalValueConsistency, checkFinalValueBracketing];
   validationRegistry['OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $'] = [checkFinalValueConsistency, checkFinalValueBracketing];
   validationRegistry['Opinion of Market Value'] = [checkFinalValueConsistency, checkFinalValueBracketing];
-  validationRegistry['Indicated Value by Sales Comparison Approach $'] = [checkFinalValueConsistency, checkFinalValueBracketing];
-  validationRegistry['Indicated Value by Sales Comparison Approach'] = [checkFinalValueConsistency, checkFinalValueBracketing];
-  validationRegistry['Indicated Value by: Sales Comparison Approach $'] = [checkFinalValueConsistency, checkFinalValueBracketing];
+  validationRegistry['Indicated Value by Sales Comparison Approach $'] = [checkFinalValueConsistency, checkFinalValueBracketing, checkPredominantPriceVsIndicatedValue];
+  validationRegistry['Indicated Value by Sales Comparison Approach'] = [checkFinalValueConsistency, checkFinalValueBracketing, checkPredominantPriceVsIndicatedValue];
+  validationRegistry['Indicated Value by: Sales Comparison Approach $'] = [checkFinalValueConsistency, checkFinalValueBracketing, checkPredominantPriceVsIndicatedValue];
 
   const reconciliationFieldsToValidate = [
     'Indicated Value by: Sales Comparison Approach $',
@@ -967,7 +968,10 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
             } else if (!validationResult) {
               validationResult = res;
               // Don't break — a later check might find an error
-            } else if (validationResult && !validationResult.isError && !validationResult.message && res.message) {
+            } else if (validationResult && !validationResult.isError && (
+              !validationResult.message ||
+              validationResult.message.includes('contains all 3 values and is validated')
+            ) && res.message) {
               validationResult = res;
             }
           }

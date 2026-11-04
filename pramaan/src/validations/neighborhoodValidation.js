@@ -613,3 +613,318 @@ export const checkNeighborhoodSalePricesConsistency = (field, text, allData) => 
 
     return { isMatch: true };
 };
+
+export const extractMatchingSnippet = (fullText, regex, maxLength = 100) => {
+    if (!fullText) return '';
+    const match = fullText.match(regex);
+    if (!match) return fullText.slice(0, maxLength);
+    const matchIdx = match.index;
+    const matchLen = match[0].length;
+    if (fullText.length <= maxLength) return fullText.trim();
+
+    const start = Math.max(0, matchIdx - 30);
+    const end = Math.min(fullText.length, matchIdx + matchLen + 50);
+    let snippet = fullText.substring(start, end).replace(/\s+/g, ' ').trim();
+    if (start > 0) snippet = '...' + snippet;
+    if (end < fullText.length) snippet = snippet + '...';
+    return snippet;
+};
+
+export const getImprovementsComments = (allData) => {
+    if (!allData || typeof allData !== 'object') return [];
+
+    const impContainers = [
+        allData?.IMPROVEMENTS,
+        allData?.clean_data?.IMPROVEMENTS,
+        allData?.Improvements,
+        allData?.clean_data?.Improvements,
+        allData?.Subject,
+        allData?.clean_data?.Subject,
+        allData
+    ];
+
+    const commentKeys = [
+        'Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?If Yes, describe',
+        'Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? If Yes, describe',
+        'Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?If No, describe',
+        'Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? If No, describe',
+        'Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? comment',
+        'Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?',
+        'Additional features',
+        'Describe the condition of the property',
+        'Are there any physical deficiencies or adverse conditions that affect the livability, soundness, or structural integrity of the property? If Yes, describe',
+        'Are there any physical deficiencies or adverse conditions that affect the livability, soundness, or structural integrity of the property? If No, describe',
+        'Comments on Improvements',
+        'General Description',
+        'Condition of the Property',
+        'Overall Condition'
+    ];
+
+    const comments = [];
+    const seen = new Set();
+
+    for (const container of impContainers) {
+        if (!container || typeof container !== 'object') continue;
+        for (const k of commentKeys) {
+            const val = container[k];
+            if (val !== undefined && val !== null) {
+                const s = String(typeof val === 'object' ? (val.value || val.text || val.comment || '') : val).trim();
+                if (s && !seen.has(s) && s.length > 2) {
+                    seen.add(s);
+                    comments.push({ section: 'Improvements', field: k, text: s });
+                }
+            }
+        }
+    }
+
+    // Also check Supplemental Addendum & Neighborhood comments
+    const addendumContainers = [
+        allData?.SUPPLEMENTAL_ADDENDUM,
+        allData?.clean_data?.SUPPLEMENTAL_ADDENDUM,
+        allData?.['Supplemental Addendum'],
+        allData?.clean_data?.['Supplemental Addendum'],
+        allData?.TEXT_ADDENDUM,
+        allData?.clean_data?.TEXT_ADDENDUM,
+        allData?.NEIGHBORHOOD,
+        allData?.clean_data?.NEIGHBORHOOD
+    ];
+
+    const addendumKeys = [
+        'Clarification Text',
+        'Text',
+        'Addendum',
+        'Comments',
+        'Supplemental Addendum',
+        'Neighborhood Description',
+        'Market Conditions:',
+        'Market Conditions'
+    ];
+
+    for (const container of addendumContainers) {
+        if (!container || typeof container !== 'object') continue;
+        for (const k of addendumKeys) {
+            const val = container[k];
+            if (val !== undefined && val !== null) {
+                const s = String(typeof val === 'object' ? (val.value || val.text || val.comment || '') : val).trim();
+                if (s && !seen.has(s) && s.length > 2) {
+                    seen.add(s);
+                    comments.push({ section: 'Addendum/Neighborhood', field: k, text: s });
+                }
+            }
+        }
+    }
+
+    return comments;
+};
+
+export const getPredominantPriceValue = (allData, text) => {
+    let raw = (text !== undefined && text !== null && typeof text !== 'object') ? String(text).trim() : '';
+
+    if (!raw && allData && typeof allData === 'object') {
+        const containers = [
+            allData?.NEIGHBORHOOD,
+            allData?.clean_data?.NEIGHBORHOOD,
+            allData?.IMPROVEMENTS,
+            allData?.clean_data?.IMPROVEMENTS,
+            allData?.Subject,
+            allData?.clean_data?.Subject,
+            allData
+        ];
+        const fieldKeys = [
+            'one unit housing price(high,low,pred)',
+            'ONE UNIT HOUSING PRICE(HIGH,LOW,PRED)',
+            'Housing Price Predominant',
+            'Predominant Price: $',
+            'Predominant Price',
+            'Predominant'
+        ];
+        for (const c of containers) {
+            if (!c || typeof c !== 'object') continue;
+            for (const k of fieldKeys) {
+                if (c[k] !== undefined && c[k] !== null && String(c[k]).trim() !== '') {
+                    raw = c[k];
+                    break;
+                }
+            }
+            if (raw) break;
+        }
+    }
+
+    if (!raw) return null;
+
+    if (typeof raw === 'object' && raw !== null) {
+        const p = raw.pred ?? raw.Pred ?? raw.PRED ?? raw.predominant ?? raw.pred_price;
+        if (p !== undefined && p !== null) {
+            const num = parseFloat(String(p).replace(/[^0-9.-]+/g, ''));
+            if (!isNaN(num) && num > 0) return num;
+        }
+    }
+
+    const s = String(raw).trim();
+    if (s.startsWith('{') && s.endsWith('}')) {
+        try {
+            const parsed = JSON.parse(s);
+            const p = parsed.pred ?? parsed.Pred ?? parsed.PRED ?? parsed.predominant;
+            if (p !== undefined && p !== null) {
+                const num = parseFloat(String(p).replace(/[^0-9.-]+/g, ''));
+                if (!isNaN(num) && num > 0) return num;
+            }
+        } catch (e) { }
+    }
+
+    const parts = s.split(/[/,;]+/).map(p => p.trim()).filter(Boolean);
+    if (parts.length >= 3) {
+        const num = parseFloat(parts[2].replace(/[^0-9.-]+/g, ''));
+        if (!isNaN(num) && num > 0) return num;
+    } else if (parts.length === 1) {
+        const numParts = s.split(/\s+/).map(p => p.trim()).filter(Boolean);
+        if (numParts.length === 3) {
+            const num = parseFloat(numParts[2].replace(/[^0-9.-]+/g, ''));
+            if (!isNaN(num) && num > 0) return num;
+        } else {
+            const num = parseFloat(s.replace(/[^0-9.-]+/g, ''));
+            if (!isNaN(num) && num > 0) return num;
+        }
+    }
+
+    return null;
+};
+
+export const getIndicatedSalesComparisonValue = (allData, text) => {
+    let raw = (text !== undefined && text !== null && typeof text !== 'object') ? String(text).trim() : '';
+
+    if (!raw && allData && typeof allData === 'object') {
+        const containers = [
+            allData?.SALES_TRANSFER,
+            allData?.clean_data?.SALES_TRANSFER,
+            allData?.SALES_GRID,
+            allData?.clean_data?.SALES_GRID,
+            allData?.RECONCILIATION,
+            allData?.clean_data?.RECONCILIATION,
+            allData?.Subject,
+            allData?.clean_data?.Subject,
+            allData
+        ];
+        const fieldKeys = [
+            'Indicated Value by Sales Comparison Approach $',
+            'Indicated Value by: Sales Comparison Approach $',
+            'Indicated Value by Sales Comparison Approach',
+            'opinion of the market value, as defined, of the real property that is the subject of this report is $',
+            'OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $',
+            'Final Value $'
+        ];
+        for (const c of containers) {
+            if (!c || typeof c !== 'object') continue;
+            for (const k of fieldKeys) {
+                if (c[k] !== undefined && c[k] !== null && String(c[k]).trim() !== '') {
+                    raw = c[k];
+                    break;
+                }
+            }
+            if (raw) break;
+        }
+    }
+
+    if (!raw) return null;
+    const num = parseFloat(String(raw).replace(/[^0-9.-]+/g, ''));
+    return (!isNaN(num) && num > 0) ? num : null;
+};
+
+export const checkPredominantPriceVsIndicatedValue = (field, text, allData, fieldPath, saleName) => {
+    let actualText = text;
+    let actualData = allData;
+    if (actualData === undefined || actualData === null || typeof actualData !== 'object') {
+        if (typeof actualText === 'object' && actualText !== null) {
+            actualData = actualText;
+            actualText = null;
+        }
+    }
+
+    if (!actualData) return null;
+
+    const fLower = String(field || '').toLowerCase().trim();
+    const isPriceField = fLower.includes('one unit housing price') || fLower.includes('predominant price');
+    const isIndicatedValField = fLower.includes('indicated value') || fLower.includes('opinion of the market value') || fLower === 'final value $';
+
+    if (!isPriceField && !isIndicatedValField) return null;
+
+    const predRaw = getPredominantPriceValue(actualData, isPriceField ? actualText : null);
+    const indRaw = getIndicatedSalesComparisonValue(actualData, isIndicatedValField ? actualText : null);
+
+    if (!predRaw || !indRaw || predRaw <= 0 || indRaw <= 0) {
+        return null;
+    }
+
+    let predVal = predRaw;
+    let indVal = indRaw;
+
+    // Scale alignment: e.g. pred is 70 ($000s) and indicated is 70000
+    if (predVal < 1000 && indVal >= 10000) {
+        predVal = predVal * 1000;
+    } else if (indVal < 1000 && predVal >= 10000) {
+        indVal = indVal * 1000;
+    }
+
+    const diffPct = ((indVal - predVal) / predVal) * 100;
+
+    // Case 1: Within ±10%
+    if (diffPct >= -10 && diffPct <= 10) {
+        const sign = diffPct > 0 ? '+' : '';
+        return {
+            isMatch: true,
+            section: isPriceField ? 'Neighborhood' : 'Sales Comparison',
+            field: field,
+            message: `Valid: Indicated Value ($${indVal.toLocaleString()}) is within ±10% of Predominant Price ($${predVal.toLocaleString()}) (${sign}${diffPct.toFixed(1)}%).`
+        };
+    }
+
+    const comments = getImprovementsComments(actualData);
+
+    // Case 2: Greater than +10%
+    if (diffPct > 10) {
+        const higherRegex = /\b(?:higher|over[\s-]?improvement|over[\s-]?improved|exceeds?\s+(?:the\s+)?predominant|above\s+(?:the\s+)?predominant)\b/i;
+        const matchingComment = comments.find(c => higherRegex.test(c.text));
+
+        if (matchingComment) {
+            const snippet = extractMatchingSnippet(matchingComment.text, higherRegex, 100);
+            return {
+                isMatch: true,
+                section: isPriceField ? 'Neighborhood' : 'Sales Comparison',
+                field: field,
+                message: `Valid: Indicated Value ($${indVal.toLocaleString()}) is +${diffPct.toFixed(1)}% above Predominant Price ($${predVal.toLocaleString()}). Comment found in ${matchingComment.section}: "${snippet}"`
+            };
+        }
+
+        return {
+            isError: true,
+            section: isPriceField ? 'Neighborhood' : 'Sales Comparison',
+            field: field,
+            message: `Indicated Value ($${indVal.toLocaleString()}) is +${diffPct.toFixed(1)}% above Predominant Price ($${predVal.toLocaleString()}) (> +10%). Explanatory comment with keyword 'higher' or 'over-improvement' is required in the Improvements section.`
+        };
+    }
+
+    // Case 3: Less than -10%
+    if (diffPct < -10) {
+        const lowerRegex = /\b(?:lower|under[\s-]?improvement|under[\s-]?improved|below\s+(?:the\s+)?predominant)\b/i;
+        const matchingComment = comments.find(c => lowerRegex.test(c.text));
+
+        if (matchingComment) {
+            const snippet = extractMatchingSnippet(matchingComment.text, lowerRegex, 100);
+            return {
+                isMatch: true,
+                section: isPriceField ? 'Neighborhood' : 'Sales Comparison',
+                field: field,
+                message: `Valid: Indicated Value ($${indVal.toLocaleString()}) is ${diffPct.toFixed(1)}% below Predominant Price ($${predVal.toLocaleString()}). Comment found in ${matchingComment.section}: "${snippet}"`
+            };
+        }
+
+        return {
+            isError: true,
+            section: isPriceField ? 'Neighborhood' : 'Sales Comparison',
+            field: field,
+            message: `Indicated Value ($${indVal.toLocaleString()}) is ${diffPct.toFixed(1)}% below Predominant Price ($${predVal.toLocaleString()}) (< -10%). Explanatory comment with keyword 'lower' or 'under improvement' is required in the Improvements section.`
+        };
+    }
+
+    return null;
+};
