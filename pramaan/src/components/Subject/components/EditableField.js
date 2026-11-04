@@ -34,7 +34,9 @@ import {
   checkRentGrossLivingAreaAdjustment,
   checkRentSubjectOtherConsistency,
   checkRentOtherAdjustment,
-  checkMinimumRentalComparables
+  checkMinimumRentalComparables,
+  checkRentScheduleToBeBracketing,
+  checkCompIndicatedMonthlyMarketRentBracketing
 } from '../../../validations/rentScheduleValidation';
 import { checkIncomeApproachFieldsNotBlank, checkIncomeApproach1007Required, INCOME_APPROACH_1007_REQUIRED_FIELDS } from '../../../validations/incomeApproachValidation';
 import { checkPudInformationFieldsNotBlank, checkPudControlAndFees } from '../../../validations/pudInformationValidation';
@@ -376,7 +378,12 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     // 'Other': [checkRentSubjectOtherConsistency, checkRentOtherAdjustment],
     'Other Adjustment': [checkRentOtherAdjustment],
     'I (WE) ESTIMATE THE MONTHLY MARKET RENT OF THE SUBJECT AS OF': [checkRentScheduleAsOfDateConsistency],
-    'TO BE $': [checkRentScheduleToBeAmountConsistency],
+    'TO BE $': [checkRentScheduleToBeBracketing, checkRentScheduleToBeAmountConsistency],
+    'To be $': [checkRentScheduleToBeBracketing, checkRentScheduleToBeAmountConsistency],
+    'TO BE': [checkRentScheduleToBeBracketing, checkRentScheduleToBeAmountConsistency],
+    'Indicated Monthly Market Rent': [checkCompIndicatedMonthlyMarketRentBracketing],
+    'INDICATED MONTHLY MARKET RENT': [checkCompIndicatedMonthlyMarketRentBracketing],
+    'Indicated Monthly Market Rent $': [checkCompIndicatedMonthlyMarketRentBracketing],
 
     // Reconciliation Validations
     'Indicated Value by: Sales Comparison Approach $': [checkFinalValueConsistency, checkCostApproachDeveloped],

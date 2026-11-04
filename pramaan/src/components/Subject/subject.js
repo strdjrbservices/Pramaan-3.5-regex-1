@@ -1167,7 +1167,13 @@ function Subject({ defaultFormType }) {
       'Reconciliation Status': [reconciliationValidation.checkAppraisalCondition],
       'as of': [reconciliationValidation.checkAsOfDate, form1004And1007Validation.checkRentScheduleAsOfDateConsistency],
       'I (WE) ESTIMATE THE MONTHLY MARKET RENT OF THE SUBJECT AS OF': [form1004And1007Validation.checkRentScheduleAsOfDateConsistency],
-      'TO BE $': [form1004And1007Validation.checkRentScheduleToBeAmountConsistency],
+      'TO BE $': [
+        rentScheduleValidation.checkRentScheduleToBeBracketing,
+        form1004And1007Validation.checkRentScheduleToBeAmountConsistency
+      ],
+      'Indicated Monthly Market Rent': [
+        rentScheduleValidation.checkCompIndicatedMonthlyMarketRentBracketing
+      ],
       'final value': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkReconciliationFieldsNotBlank, reconciliationValidation.checkFinalValueConsistency],
       'Final Value $': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkFinalValueConsistency],
       'Supervisory Signature': [appraiserLenderValidation.checkSupervisoryAppraiserFields],
@@ -1351,7 +1357,15 @@ function Subject({ defaultFormType }) {
     registry['I (WE) ESTIMATE THE MONTHLY MARKET RENT OF THE SUBJECT AS OF'].push(form1004And1007Validation.checkRentScheduleAsOfDateConsistency);
 
     if (!registry['TO BE $']) registry['TO BE $'] = [];
-    registry['TO BE $'].push(form1004And1007Validation.checkRentScheduleToBeAmountConsistency);
+    registry['TO BE $'].push(
+      rentScheduleValidation.checkRentScheduleToBeBracketing,
+      form1004And1007Validation.checkRentScheduleToBeAmountConsistency
+    );
+
+    if (!registry['Indicated Monthly Market Rent']) registry['Indicated Monthly Market Rent'] = [];
+    registry['Indicated Monthly Market Rent'].push(
+      rentScheduleValidation.checkCompIndicatedMonthlyMarketRentBracketing
+    );
 
     if (!registry['as of']) registry['as of'] = [];
     registry['as of'].push(form1004And1007Validation.checkRentScheduleAsOfDateConsistency);
@@ -1490,7 +1504,13 @@ function Subject({ defaultFormType }) {
     'Adjusted Monthly Rent': [rentScheduleValidation.checkSubjectAdjustedMonthlyRent],
     'Other (e.g., basement, etc.)': [rentScheduleValidation.checkOtherBasement],
     'I (WE) ESTIMATE THE MONTHLY MARKET RENT OF THE SUBJECT AS OF': [form1004And1007Validation.checkRentScheduleAsOfDateConsistency],
-    'TO BE $': [form1004And1007Validation.checkRentScheduleToBeAmountConsistency],
+    'TO BE $': [
+      rentScheduleValidation.checkRentScheduleToBeBracketing,
+      form1004And1007Validation.checkRentScheduleToBeAmountConsistency
+    ],
+    'Indicated Monthly Market Rent': [
+      rentScheduleValidation.checkCompIndicatedMonthlyMarketRentBracketing
+    ],
     'Design and Appeal': [rentScheduleValidation.checkRentSubjectDesignStyleConsistency, rentScheduleValidation.checkRentDesignAppealAdjustment],
     'Design and Appeal Adjustment': [rentScheduleValidation.checkRentDesignAppealAdjustment],
     'Design & Appeal': [rentScheduleValidation.checkRentSubjectDesignStyleConsistency, rentScheduleValidation.checkRentDesignAppealAdjustment],
@@ -2007,6 +2027,10 @@ function Subject({ defaultFormType }) {
         if (toBeRes && toBeRes.isError) {
           errors.push(['Rent Schedule', 'TO BE $', toBeRes.message, ['Comparable Rent Schedule Reconciliation', 'TO BE $']]);
         }
+        const bracketRes = rentScheduleValidation.checkRentScheduleToBeBracketing('TO BE $', toBeVal, allData, ['Comparable Rent Schedule Reconciliation', 'TO BE $'], null, selectedFormType);
+        if (bracketRes && bracketRes.isError) {
+          errors.push(['Rent Schedule', 'TO BE $', bracketRes.message, ['Comparable Rent Schedule Reconciliation', 'TO BE $']]);
+        }
       } catch (e) { }
 
       try {
@@ -2297,6 +2321,10 @@ function Subject({ defaultFormType }) {
         const toBeRes = form1004And1007Validation.checkRentScheduleToBeAmountConsistency('TO BE $', toBeVal, allData, ['Comparable Rent Schedule Reconciliation', 'TO BE $'], null, selectedFormType);
         if (toBeRes && toBeRes.isMatch) {
           successes.push(['Rent Schedule', 'TO BE $', toBeRes.message || 'Passed', ['Comparable Rent Schedule Reconciliation', 'TO BE $']]);
+        }
+        const bracketRes = rentScheduleValidation.checkRentScheduleToBeBracketing('TO BE $', toBeVal, allData, ['Comparable Rent Schedule Reconciliation', 'TO BE $'], null, selectedFormType);
+        if (bracketRes && (bracketRes.isMatch || bracketRes.isBracketed)) {
+          successes.push(['Rent Schedule', 'TO BE $', bracketRes.message, ['Comparable Rent Schedule Reconciliation', 'TO BE $']]);
         }
       } catch (e) { }
 

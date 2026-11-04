@@ -1,4 +1,14 @@
-import { checkOtherBasement, checkRentOtherBasementAdjustment, checkMinimumRentalComparables, getPresentRentalCompsCount, isRentalCompPresent } from '../rentScheduleValidation';
+import {
+    checkOtherBasement,
+    checkRentOtherBasementAdjustment,
+    checkMinimumRentalComparables,
+    getPresentRentalCompsCount,
+    isRentalCompPresent,
+    getComparableIndicatedMonthlyMarketRents,
+    getRentScheduleToBeValue,
+    checkRentScheduleToBeBracketing,
+    checkCompIndicatedMonthlyMarketRentBracketing
+} from '../rentScheduleValidation';
 
 describe('checkOtherBasement validation', () => {
     const mockAllData = {
@@ -250,6 +260,105 @@ describe('checkMinimumRentalComparables validation', () => {
             'COMPARABLE NO. 1',
             '1004'
         );
+        expect(res).toBeNull();
+    });
+});
+
+describe('Comparable Rent Schedule TO BE $ Bracketing Validation', () => {
+    const bracketedData = {
+        'Comparable Rent Schedule Reconciliation': {
+            'TO BE $': '1,000'
+        },
+        'Comparable Rent Schedule': {
+            'Comparable Rent Schedule Comp #1': {
+                'Indicated Monthly Market Rent': '950'
+            },
+            'Comparable Rent Schedule Comp #2': {
+                'Indicated Monthly Market Rent': '1,050'
+            },
+            'Comparable Rent Schedule Comp #3': {
+                'Indicated Monthly Market Rent': '1,100'
+            }
+        }
+    };
+
+    test('should return isBracketed: true and isMatch: true when TO BE $ (1,000) is bracketed by 950 and 1,100', () => {
+        const res = checkRentScheduleToBeBracketing('TO BE $', '1,000', bracketedData);
+        expect(res).not.toBeNull();
+        expect(res.isBracketed).toBe(true);
+        expect(res.isMatch).toBe(true);
+        expect(res.message).toContain('bracketed');
+        expect(res.message).toContain('1,000');
+        expect(res.message).toContain('950');
+        expect(res.message).toContain('1,100');
+    });
+
+    test('should return isBracketed: false and isError: true when TO BE $ (900) is lower than all comparables', () => {
+        const unbracketedLowData = {
+            'Comparable Rent Schedule Reconciliation': {
+                'TO BE $': '900'
+            },
+            'Comparable Rent Schedule': {
+                'Comparable Rent Schedule Comp #1': {
+                    'Indicated Monthly Market Rent': '950'
+                },
+                'Comparable Rent Schedule Comp #2': {
+                    'Indicated Monthly Market Rent': '1,050'
+                }
+            }
+        };
+        const res = checkRentScheduleToBeBracketing('TO BE $', '900', unbracketedLowData);
+        expect(res).not.toBeNull();
+        expect(res.isBracketed).toBe(false);
+        expect(res.isError).toBe(true);
+        expect(res.message).toContain('unbracketed');
+        expect(res.message).toContain('all comparables are higher');
+        expect(res.message).toContain('Lowest is $950');
+    });
+
+    test('should return isBracketed: false and isError: true when TO BE $ (1,200) is higher than all comparables', () => {
+        const unbracketedHighData = {
+            'Comparable Rent Schedule Reconciliation': {
+                'TO BE $': '1,200'
+            },
+            'Comparable Rent Schedule': {
+                'Comparable Rent Schedule Comp #1': {
+                    'Indicated Monthly Market Rent': '950'
+                },
+                'Comparable Rent Schedule Comp #2': {
+                    'Indicated Monthly Market Rent': '1,050'
+                }
+            }
+        };
+        const res = checkRentScheduleToBeBracketing('TO BE $', '1,200', unbracketedHighData);
+        expect(res).not.toBeNull();
+        expect(res.isBracketed).toBe(false);
+        expect(res.isError).toBe(true);
+        expect(res.message).toContain('unbracketed');
+        expect(res.message).toContain('all comparables are lower');
+        expect(res.message).toContain('Highest is $1,050');
+    });
+
+    test('should validate comparable Indicated Monthly Market Rent against TO BE $', () => {
+        const resComp1 = checkCompIndicatedMonthlyMarketRentBracketing(
+            'Indicated Monthly Market Rent',
+            '1,050',
+            bracketedData,
+            ['Comparable Rent Schedule Comp #2', 'Indicated Monthly Market Rent'],
+            'Comparable #2'
+        );
+        expect(resComp1).not.toBeNull();
+        expect(resComp1.isMatch).toBe(true);
+        expect(resComp1.message).toContain('Comparable #2 Indicated Monthly Market Rent ($1,050, +5.0%) vs TO BE $ ($1,000)');
+    });
+
+    test('should return null when comparables are missing or empty', () => {
+        const emptyData = {
+            'Comparable Rent Schedule Reconciliation': {
+                'TO BE $': '1,000'
+            }
+        };
+        const res = checkRentScheduleToBeBracketing('TO BE $', '1,000', emptyData);
         expect(res).toBeNull();
     });
 });
