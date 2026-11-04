@@ -454,6 +454,119 @@ def _extract_nonconforming_rebuild_comment(
     return ""
 
 
+def _extract_over_under_improvement_comment(
+    full_narrative: str = "",
+    dom_narratives: Optional[List[str]] = None,
+    root: Optional[ET.Element] = None
+) -> str:
+    """
+    Extracts explanatory commentary regarding over-improvement / under-improvement
+    or why the subject property value/indicated value is higher or lower than the predominant price.
+    Keywords: 'over-improvement', 'over improvement', 'over-improved', 'under-improvement',
+              'under improvement', 'under-improved', 'predominant', 'predominate',
+              'higher', 'lower', 'conform to neighborhood', 'conforms to neighborhood'.
+    """
+    candidates = []
+
+    if root is not None:
+        for pa in root.findall(".//PROPERTY_ANALYSIS"):
+            if pa.attrib.get("_Type") == "ConformsToNeighborhood":
+                c = pa.attrib.get("_Comment", "").strip()
+                if c:
+                    candidates.append(("PropertyAnalysis", c))
+
+        recon = root.find(".//_RECONCILIATION")
+        if recon is not None:
+            for k in ["_SummaryComment", "_ConditionsComment"]:
+                c = recon.attrib.get(k, "").strip()
+                if c:
+                    candidates.append(("Reconciliation", c))
+
+        vm = root.find(".//VALUATION_METHODS")
+        if vm is not None:
+            c = vm.attrib.get("_AdditionalDescription", "").strip()
+            if c:
+                candidates.append(("ValuationMethods", c))
+
+        nb = root.find(".//NEIGHBORHOOD")
+        if nb is not None:
+            for k in ["_Description", "_MarketConditionsDescription", "_BoundaryAndCharacteristicsDescription"]:
+                c = nb.attrib.get(k, "").strip()
+                if c:
+                    candidates.append(("Neighborhood", c))
+
+        for elem in root.iter():
+            for k, v in elem.attrib.items():
+                if any(term in k.lower() for term in ["comment", "description", "narrative", "text"]) and v:
+                    candidates.append((elem.tag, v))
+            if elem.text and len(elem.text.strip()) > 10 and not elem.text.startswith("JVBERi"):
+                candidates.append((elem.tag, elem.text.strip()))
+
+    if dom_narratives:
+        for t in dom_narratives:
+            if t and len(t) > 10:
+                candidates.append(("DOM", t))
+
+    if full_narrative:
+        candidates.append(("FullNarrative", full_narrative))
+
+    kw_pattern = re.compile(
+        r'\b(?:over-?improvements?|over-?improved?|under-?improvements?|under-?improved?|predominan\w*|predominat\w*)\b',
+        re.IGNORECASE
+    )
+
+    matches = []
+    seen = set()
+
+    for src, text in candidates:
+        sentences = [s.strip(" \t\r\n-•*\"'") for s in re.split(r'(?<=[.?!])\s+|[\r\n]+', text) if s.strip()]
+        for s in sentences:
+            if len(s) < 15 or len(s) > 800:
+                continue
+            s_norm = re.sub(r'\s+', ' ', s).strip()
+            if s_norm in seen:
+                continue
+            if kw_pattern.search(s_norm):
+                seen.add(s_norm)
+                score = 0
+                s_lower = s_norm.lower()
+
+                if "over-improvement" in s_lower or "over improvement" in s_lower or "over-improved" in s_lower:
+                    score += 50
+                if "under-improvement" in s_lower or "under improvement" in s_lower or "under-improved" in s_lower:
+                    score += 50
+                if "higher" in s_lower or "above" in s_lower or "exceed" in s_lower:
+                    score += 25
+                if "lower" in s_lower or "below" in s_lower:
+                    score += 25
+                if "predominant" in s_lower or "predominate" in s_lower:
+                    score += 20
+                if "not considered" in s_lower or "not an" in s_lower or "no impact" in s_lower:
+                    score += 15
+                if "market range" in s_lower or "opinion of value" in s_lower or "supported by" in s_lower:
+                    score += 10
+                if "conform" in s_lower:
+                    score += 10
+
+                matches.append((score, s_norm))
+
+    matches.sort(key=lambda x: x[0], reverse=True)
+
+    if matches:
+        top_matches = []
+        for score, sent in matches:
+            if score >= 35:
+                if not any(sent.lower() in m.lower() or m.lower() in sent.lower() for m in top_matches):
+                    top_matches.append(sent)
+            if len(top_matches) >= 2:
+                break
+        if top_matches:
+            return " ".join(top_matches)
+        return matches[0][1]
+
+    return ""
+
+
 def _extract_other_land_use_comment(
     full_narrative: str = "",
     dom_narratives: Optional[List[str]] = None,
@@ -4806,6 +4919,12 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         if extracted_other_comment:
             other_land_use_desc = extracted_other_comment
 
+    over_under_comment = _extract_over_under_improvement_comment(
+        full_narrative=full_narrative,
+        dom_narratives=dom_narratives,
+        root=root
+    )
+
     neighborhood_section = {
         "Neighborhood Name": nb_name,
         "Location": nb_loc,
@@ -4821,7 +4940,10 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "Other": other_use,
         "Present Land Use for other": other_land_use_desc,
         "one unit housing price(high,low,pred)": housing_price,
+        "ONE UNIT HOUSING PRICE(HIGH,LOW,PRED)": housing_price,
         "one unit housing age(high,low,pred)": housing_age,
+        "Over/Under-Improvement Comment": over_under_comment,
+        "Predominant Price Commentary": over_under_comment,
         "Neighborhood Boundaries": nb_bound,
         "Neighborhood Description": nb_desc,
         "Market Conditions": nb_mkt,
@@ -5333,6 +5455,13 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
     elif phys_comment:
         phys_desc = phys_comment
 
+    if over_under_comment:
+        if conf_comment:
+            if over_under_comment.lower() not in conf_comment.lower():
+                conf_comment = f"{conf_comment}. {over_under_comment}"
+        else:
+            conf_comment = over_under_comment
+
     conf_desc = ""
     if conf_ex == "Y":
         conf_desc = f"Yes. {conf_comment}".strip(". ") if conf_comment else "Yes"
@@ -5484,7 +5613,15 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "Are there any physical deficiencies or adverse conditions that affect the livability, soundness, or structural integrity of the property? If Yes, describe": phys_desc,
         "Are there any physical deficiencies or adverse conditions that affect the livability, soundness, or structural integrity of the property?": phys_desc,
         "Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? If No, describe": conf_desc,
+        "Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? If Yes, describe": conf_desc,
+        "Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?If Yes, describe": conf_desc,
         "Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?": conf_desc,
+        "Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? comment": conf_comment or over_under_comment,
+        "Comments on Improvements": over_under_comment,
+        "one unit housing price(high,low,pred)": housing_price,
+        "ONE UNIT HOUSING PRICE(HIGH,LOW,PRED)": housing_price,
+        "Over/Under-Improvement Comment": over_under_comment,
+        "Predominant Price Commentary": over_under_comment,
     }
 
     reconciliation_section = {
@@ -6637,6 +6774,8 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "NEIGHBORHOOD": neighborhood_section,
         "Neighborhood": neighborhood_section,
         "Present Land Use for other": other_land_use_desc,
+        "Over/Under-Improvement Comment": over_under_comment,
+        "Predominant Price Commentary": over_under_comment,
         "Legal Nonconforming (Grandfathered Use) comment": nonconforming_comment,
         "Legal Nonconforming comment": nonconforming_comment,
         "Nonconforming comment": nonconforming_comment,
