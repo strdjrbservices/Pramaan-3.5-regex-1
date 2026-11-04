@@ -238,21 +238,51 @@ class GemmaVerifier:
         else:
             context_parts.append("Note: The specific identifiers/values requested were NOT found verbatim in the report text.")
 
-        # 2. Candidate evidence if detected by heuristic extractor
+        # 2. Candidate evidence if detected by heuristic extractor (excluding preprinted boilerplate)
         if candidate_evidence and candidate_evidence.get("excerpt"):
-            context_parts.append(
-                f"Candidate Addenda Evidence (Item #{candidate_evidence.get('item_no', '')}):\n"
-                f"\"{candidate_evidence['excerpt']}\"\n"
-                f"(Source: {candidate_evidence.get('source', 'Addenda')}, Page: {candidate_evidence.get('page_no', 'N/A')})"
-            )
+            c_exc = candidate_evidence["excerpt"]
+            c_low = c_exc.lower()
+            is_boilerplate = any(b in c_low for b in [
+                "withholding or threatening", "limiting conditions", "appraiser's certification",
+                "scope of work requirements stated in this", "timely payment or partial payment",
+                "supervisory appraiser's certification"
+            ])
+            if not is_boilerplate and (any(t in c_low for t in search_terms) or len(c_exc) > 15):
+                context_parts.append(
+                    f"Candidate Addenda Evidence:\n"
+                    f"\"{c_exc}\"\n"
+                    f"(Source: {candidate_evidence.get('source', 'Addenda')}, Page: {candidate_evidence.get('page_no', 'N/A')})"
+                )
 
-        # 3. Subject and basic report fields
+        # 3. Form fields matching revision item terms (e.g. Assignment Type, Contract Price, Flood Zone, etc.)
         fields = new_rep.get("fields", {})
+        old_fields = old_rep.get("fields", {}) if old_rep else {}
+        matched_fields = []
+
+        for sec_name, sec_dict in fields.items():
+            if not isinstance(sec_dict, dict):
+                continue
+            old_sec_dict = old_fields.get(sec_name, {}) if isinstance(old_fields.get(sec_name), dict) else {}
+            for field_name, field_val in sec_dict.items():
+                if not field_val:
+                    continue
+                fn_lower = field_name.lower()
+                fv_lower = str(field_val).lower()
+                if any(t in fn_lower or t in fv_lower for t in search_terms):
+                    old_v = old_sec_dict.get(field_name, "")
+                    diff_str = f" [UPDATED from Prior Report value: '{old_v}']" if (old_v and str(old_v).strip().lower() != str(field_val).strip().lower()) else ""
+                    matched_fields.append(f"- [{sec_name}] {field_name}: \"{field_val}\"{diff_str}")
+
+        if matched_fields:
+            context_parts.append("Report Form Fields Matching Revision Terms:\n" + "\n".join(matched_fields[:12]))
+
+        # 4. Subject summary & assignment type
         subject = fields.get("SUBJECT", {})
         if subject:
             addr = subject.get("Property Address", "")
             borrower = subject.get("Borrower", "")
-            context_parts.append(f"Subject Summary: Address='{addr}', Borrower='{borrower}'")
+            assign = subject.get("Assignment Type", "") or subject.get("Transaction Type", "")
+            context_parts.append(f"Subject Summary: Address='{addr}', Borrower='{borrower}'" + (f", Assignment Type='{assign}'" if assign else ""))
 
         return "\n\n".join(context_parts)
 
