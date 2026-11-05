@@ -1,7 +1,7 @@
 import React from 'react';
 import { EditableField } from './FormComponents';
 import { Tooltip, IconButton, Paper, Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow } from '@mui/material';
-import { checkFinalValueBracketing, getOpinionOfMarketValue, getComparableSalesPrices } from '../../../validations/salesComparisonValidation';
+import { getOpinionOfMarketValue, getComparableSalesPrices, evaluateBracketing } from '../../../validations/salesComparisonValidation';
 import LibraryBooksIcon from '@mui/icons-material/LibraryBooks';
 
 
@@ -61,11 +61,6 @@ const SalesComparisonSection = ({
 
   const subjectObj = getSubjectData();
   const fullData = allData || data;
-  const bracketingResult = checkFinalValueBracketing(
-    "OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $",
-    null,
-    fullData
-  );
 
   const getAdditionalFieldValue = (field) => {
     if (data && data[field] !== undefined && data[field] !== null && data[field] !== '') return data[field];
@@ -315,68 +310,125 @@ const SalesComparisonSection = ({
                 const finalVal = getOpinionOfMarketValue(fullData);
                 const { salePrices, adjPrices } = getComparableSalesPrices(fullData);
                 if (!finalVal && salePrices.length === 0 && adjPrices.length === 0) return null;
-                const isError = bracketingResult?.isError;
+
+                const evalSale = evaluateBracketing ? evaluateBracketing(finalVal, salePrices, 'Sale Price') : { isBracketed: true, summary: '' };
+                const evalAdj = evaluateBracketing ? evaluateBracketing(finalVal, adjPrices, 'Adjusted Sale Price') : { isBracketed: true, summary: '' };
+                const isSaleError = !evalSale.isBracketed;
+                const isAdjError = !evalAdj.isBracketed;
+
+                const getPctData = (val) => {
+                  if (!finalVal || !val) return null;
+                  const cleanNum = parseFloat(String(val).replace(/[^0-9.]/g, ''));
+                  if (isNaN(cleanNum) || cleanNum <= 0) return null;
+                  const pct = ((cleanNum - finalVal) / finalVal) * 100;
+                  const sign = pct > 0 ? '+' : '';
+                  return {
+                    cleanNum,
+                    pct,
+                    str: sign + pct.toFixed(1) + '%'
+                  };
+                };
 
                 return (
-                  <TableRow
-                    sx={{
-                      backgroundColor: isError ? '#ffebee' : '#f1f8e9',
-                      borderTop: '2px solid rgba(224, 224, 224, 1)'
-                    }}
-                  >
-                    <TableCell sx={{ fontWeight: 'bold', borderRight: '1px solid rgba(224, 224, 224, 1)' }}>
-                      Opinion of Market Value (Bracketing)
-                    </TableCell>
-                    <TableCell
+                  <React.Fragment>
+                    {/* Row 1: Sale Price (Bracketing) */}
+                    <TableRow
+                      key="bracketing-sale-row"
                       sx={{
-                        fontWeight: 'bold',
-                        borderRight: '1px solid rgba(224, 224, 224, 1)',
-                        backgroundColor: isError ? '#ffcdd2' : '#c8e6c9',
-                        color: isError ? '#b71c1c' : '#1b5e20'
+                        backgroundColor: isSaleError ? '#ffebee' : '#f1f8e9',
+                        borderTop: '2px solid rgba(224, 224, 224, 1)'
                       }}
                     >
-                      <Tooltip title={bracketingResult?.message || "Opinion of Market Value"} arrow>
-                        <span>
-                          {finalVal ? `$${finalVal.toLocaleString()}` : 'N/A'}
-                          {isError ? ' ⚠️ (Unbracketed)' : ' ✓ (Bracketed)'}
-                        </span>
-                      </Tooltip>
-                    </TableCell>
-                    {comparableSales.map((sale, cidx) => {
-                      const compObj = getCompData(sale);
-                      const sp = compObj['Sale Price'] || compObj['Sale Price $'] || '';
-                      const asp = compObj['Adjusted Sale Price of Comparable'] || compObj['Adjusted Sale Price of Comparable $'] || compObj['Adjusted Sale Price'] || '';
-                      const getPctData = (val) => {
-                        if (!finalVal || !val) return null;
-                        const cleanNum = parseFloat(String(val).replace(/[^0-9.]/g, ''));
-                        if (isNaN(cleanNum) || cleanNum <= 0) return null;
-                        const pct = ((cleanNum - finalVal) / finalVal) * 100;
-                        const sign = pct > 0 ? '+' : '';
-                        return {
-                          cleanNum,
-                          pct,
-                          str: sign + pct.toFixed(1) + '%'
-                        };
-                      };
-                      const spData = getPctData(sp);
-                      const aspData = getPctData(asp);
+                      <TableCell sx={{ fontWeight: 'bold', borderRight: '1px solid rgba(224, 224, 224, 1)' }}>
+                        <div>Opinion of Market Value</div>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: isSaleError ? '#c62828' : '#2e7d32' }}>
+                          Sale Price (Bracketing)
+                        </div>
+                      </TableCell>
+                      <TableCell
+                        sx={{
+                          fontWeight: 'bold',
+                          borderRight: '1px solid rgba(224, 224, 224, 1)',
+                          backgroundColor: isSaleError ? '#ffcdd2' : '#c8e6c9',
+                          color: isSaleError ? '#b71c1c' : '#1b5e20'
+                        }}
+                      >
+                        <Tooltip title={evalSale?.summary || (isSaleError ? 'Unbracketed by Sale Price' : 'Bracketed by Sale Price')} arrow>
+                          <span>
+                            {finalVal ? `$${finalVal.toLocaleString()}` : 'N/A'}
+                            {isSaleError ? ' ⚠️ (Unbracketed)' : ' ✓ (Bracketed)'}
+                          </span>
+                        </Tooltip>
+                      </TableCell>
+                      {comparableSales.map((sale, cidx) => {
+                        const compObj = getCompData(sale);
+                        const sp = compObj['Sale Price'] || compObj['Sale Price $'] || '';
+                        const spData = getPctData(sp);
 
-                      return (
-                        <TableCell
-                          key={cidx}
-                          sx={{
-                            borderRight: '1px solid rgba(224, 224, 224, 1)',
-                            fontSize: '0.8rem'
-                          }}
-                        >
-                          <div><strong>Sale:</strong> {sp || 'N/A'}{spData ? ` (${spData.str})` : ''}</div>
-                          <div>
-                            <strong>Adj:</strong> {asp || 'N/A'}{aspData ? ` (${aspData.str})` : ''}
-                          </div>
-                        </TableCell>
-                      );
-                    })}
-                  </TableRow>
+                        return (
+                          <TableCell
+                            key={cidx}
+                            sx={{
+                              borderRight: '1px solid rgba(224, 224, 224, 1)',
+                              fontSize: '0.8rem',
+                              backgroundColor: isSaleError ? 'rgba(255, 235, 238, 0.4)' : undefined
+                            }}
+                          >
+                            <div><strong>Sale:</strong> {sp || 'N/A'}{spData ? ` (${spData.str})` : ''}</div>
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+
+                    {/* Row 2: Adjusted Sale Price (Bracketing) */}
+                    <TableRow
+                      key="bracketing-adj-row"
+                      sx={{
+                        backgroundColor: isAdjError ? '#ffebee' : '#f1f8e9',
+                        borderTop: '1px solid rgba(224, 224, 224, 0.7)'
+                      }}
+                    >
+                      <TableCell sx={{ fontWeight: 'bold', borderRight: '1px solid rgba(224, 224, 224, 1)' }}>
+                        <div>Opinion of Market Value</div>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: isAdjError ? '#c62828' : '#2e7d32' }}>
+                          Adjusted Sale Price (Bracketing)
+                        </div>
+                      </TableCell>
+                      <TableCell
+                        sx={{
+                          fontWeight: 'bold',
+                          borderRight: '1px solid rgba(224, 224, 224, 1)',
+                          backgroundColor: isAdjError ? '#ffcdd2' : '#c8e6c9',
+                          color: isAdjError ? '#b71c1c' : '#1b5e20'
+                        }}
+                      >
+                        <Tooltip title={evalAdj?.summary || (isAdjError ? 'Unbracketed by Adjusted Sale Price' : 'Bracketed by Adjusted Sale Price')} arrow>
+                          <span>
+                            {finalVal ? `$${finalVal.toLocaleString()}` : 'N/A'}
+                            {isAdjError ? ' ⚠️ (Unbracketed)' : ' ✓ (Bracketed)'}
+                          </span>
+                        </Tooltip>
+                      </TableCell>
+                      {comparableSales.map((sale, cidx) => {
+                        const compObj = getCompData(sale);
+                        const asp = compObj['Adjusted Sale Price of Comparable'] || compObj['Adjusted Sale Price of Comparable $'] || compObj['Adjusted Sale Price'] || '';
+                        const aspData = getPctData(asp);
+
+                        return (
+                          <TableCell
+                            key={cidx}
+                            sx={{
+                              borderRight: '1px solid rgba(224, 224, 224, 1)',
+                              fontSize: '0.8rem',
+                              backgroundColor: isAdjError ? 'rgba(255, 235, 238, 0.4)' : undefined
+                            }}
+                          >
+                            <div><strong>Adj:</strong> {asp || 'N/A'}{aspData ? ` (${aspData.str})` : ''}</div>
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+                  </React.Fragment>
                 );
               })()}
             </TableBody>

@@ -9,7 +9,23 @@ import {
     normalizeLenderAddress,
     areLenderAddressesMatching,
     checkLenderAddressHtmlConsistency,
-    checkLenderAddressInconsistency
+    checkLenderAddressInconsistency,
+    parseAppraisalType,
+    areAppraisalTypesMatching,
+    checkAppraisalTypeHtmlConsistency,
+    checkFormTypeHtmlConsistency,
+    normalizeCounty,
+    areCountiesMatching,
+    checkCountyHtmlConsistency,
+    checkPropertyCountyHtmlConsistency,
+    cleanHtmlAddress,
+    normalizeAddress,
+    arePropertyAddressesMatching,
+    checkPropertyAddressHtmlConsistency,
+    normalizeAppraiserName,
+    areAppraiserVendorNamesMatching,
+    checkAppraiserVendorNameConsistency,
+    checkAssignedToVendorHtmlConsistency
 } from '../htmldatavaliadtion';
 
 describe('HTML Transaction Type vs Report Assignment Type Validation', () => {
@@ -421,5 +437,853 @@ describe('HTML Transaction Type vs Report Assignment Type Validation', () => {
             });
         });
     });
-});
 
+    describe('HTML Appraisal Type vs XML Form Type Validation', () => {
+        describe('parseAppraisalType', () => {
+            test('parses 1004 variations with and without 1007', () => {
+                expect(parseAppraisalType('1004 Single Family w/ 1007')).toEqual({
+                    primary: '1004',
+                    has1007: true,
+                    canonical: '1004 + 1007'
+                });
+                expect(parseAppraisalType('1004 + 1007')).toEqual({
+                    primary: '1004',
+                    has1007: true,
+                    canonical: '1004 + 1007'
+                });
+                expect(parseAppraisalType('1004 Single Family')).toEqual({
+                    primary: '1004',
+                    has1007: false,
+                    canonical: '1004'
+                });
+                expect(parseAppraisalType('1004')).toEqual({
+                    primary: '1004',
+                    has1007: false,
+                    canonical: '1004'
+                });
+            });
+
+            test('parses other form types correctly', () => {
+                expect(parseAppraisalType('1073 Condo')).toEqual({
+                    primary: '1073',
+                    has1007: false,
+                    canonical: '1073'
+                });
+                expect(parseAppraisalType('1025 Multi-Family')).toEqual({
+                    primary: '1025',
+                    has1007: false,
+                    canonical: '1025'
+                });
+                expect(parseAppraisalType('1025 + 1007')).toEqual({
+                    primary: '1025',
+                    has1007: true,
+                    canonical: '1025 + 1007'
+                });
+                expect(parseAppraisalType('2055 Exterior')).toEqual({
+                    primary: '2055',
+                    has1007: false,
+                    canonical: '2055'
+                });
+            });
+
+            test('returns null for empty or N/A', () => {
+                expect(parseAppraisalType('')).toBeNull();
+                expect(parseAppraisalType(null)).toBeNull();
+                expect(parseAppraisalType(undefined)).toBeNull();
+                expect(parseAppraisalType('N/A')).toBeNull();
+            });
+        });
+
+        describe('areAppraisalTypesMatching', () => {
+            test('matches 1004 Single Family w/ 1007 with 1004 + 1007', () => {
+                expect(areAppraisalTypesMatching('1004 Single Family w/ 1007', '1004 + 1007')).toBe(true);
+                expect(areAppraisalTypesMatching('1004 + 1007', '1004 Single Family w/ 1007')).toBe(true);
+            });
+
+            test('matches 1004 Single Family with 1004', () => {
+                expect(areAppraisalTypesMatching('1004 Single Family', '1004')).toBe(true);
+                expect(areAppraisalTypesMatching('1004', '1004')).toBe(true);
+            });
+
+            test('mismatches 1004 Single Family (no 1007) with 1004 + 1007 (has 1007)', () => {
+                expect(areAppraisalTypesMatching('1004 Single Family', '1004 + 1007')).toBe(false);
+                expect(areAppraisalTypesMatching('1004 Single Family w/ 1007', '1004')).toBe(false);
+            });
+
+            test('mismatches different primary forms', () => {
+                expect(areAppraisalTypesMatching('1004 Single Family', '1073')).toBe(false);
+                expect(areAppraisalTypesMatching('1004 Single Family', '1025')).toBe(false);
+            });
+        });
+
+        describe('checkAppraisalTypeHtmlConsistency (HTML Data Analysis APPRAISAL TYPE field)', () => {
+            test('matches when HTML APPRAISAL TYPE is "1004 Single Family w/ 1007" and XML form type is "1004 + 1007"', () => {
+                const allData = {
+                    'From Type': '1004 + 1007',
+                    comparisonData: {
+                        'APPRAISAL TYPE': '1004 Single Family w/ 1007'
+                    }
+                };
+                const result = checkAppraisalTypeHtmlConsistency('APPRAISAL TYPE', '1004 Single Family w/ 1007', allData);
+                expect(result).not.toBeNull();
+                expect(result.isMatch).toBe(true);
+                expect(result.message).toContain('Valid: Appraisal Type matches XML Form Type');
+            });
+
+            test('matches when field is "Appraisal Type" (mixed case)', () => {
+                const allData = {
+                    'Form Type': '1004',
+                    comparisonData: {
+                        'Appraisal Type': '1004 Single Family'
+                    }
+                };
+                const result = checkAppraisalTypeHtmlConsistency('Appraisal Type', '1004 Single Family', allData);
+                expect(result).not.toBeNull();
+                expect(result.isMatch).toBe(true);
+            });
+
+            test('fails with error when HTML APPRAISAL TYPE mismatches XML form type', () => {
+                const allData = {
+                    'From Type': '1073',
+                    comparisonData: {
+                        'APPRAISAL TYPE': '1004 Single Family'
+                    }
+                };
+                const result = checkAppraisalTypeHtmlConsistency('APPRAISAL TYPE', '1004 Single Family', allData);
+                expect(result).not.toBeNull();
+                expect(result.isError).toBe(true);
+                expect(result.message).toContain('Appraisal Type mismatch');
+            });
+
+            test('fails with error when XML has 1007 but HTML order did not specify 1007', () => {
+                const allData = {
+                    'From Type': '1004 + 1007',
+                    comparisonData: {
+                        'APPRAISAL TYPE': '1004 Single Family'
+                    }
+                };
+                const result = checkAppraisalTypeHtmlConsistency('APPRAISAL TYPE', '1004 Single Family', allData);
+                expect(result).not.toBeNull();
+                expect(result.isError).toBe(true);
+                expect(result.message).toContain('mismatch');
+            });
+        });
+
+        describe('checkAppraisalTypeHtmlConsistency (XML/Report Form Type field)', () => {
+            test('matches when checking "From Type" against HTML appraisal type', () => {
+                const allData = {
+                    'From Type': '1004 + 1007',
+                    comparisonData: {
+                        'APPRAISAL TYPE': '1004 Single Family w/ 1007'
+                    }
+                };
+                const result = checkAppraisalTypeHtmlConsistency('From Type', '1004 + 1007', allData);
+                expect(result).not.toBeNull();
+                expect(result.isMatch).toBe(true);
+                expect(result.message).toContain('Valid: Form Type matches HTML Appraisal Type');
+            });
+
+            test('fails when checking "From Type" against mismatched HTML appraisal type', () => {
+                const allData = {
+                    'From Type': '1025',
+                    comparisonData: {
+                        'Appraisal Type': '1004 Single Family'
+                    }
+                };
+                const result = checkAppraisalTypeHtmlConsistency('From Type', '1025', allData);
+                expect(result).not.toBeNull();
+                expect(result.isError).toBe(true);
+            });
+
+            test('returns null when comparisonData is missing or empty', () => {
+                const result = checkAppraisalTypeHtmlConsistency('From Type', '1004', {});
+                expect(result).toBeNull();
+            });
+
+            test('returns null when HTML Appraisal Type is N/A', () => {
+                const allData = {
+                    comparisonData: {
+                        'Appraisal Type': 'N/A'
+                    }
+                };
+                const result = checkAppraisalTypeHtmlConsistency('From Type', '1004', allData);
+                expect(result).toBeNull();
+            });
+        });
+
+        describe('checkFormTypeHtmlConsistency alias', () => {
+            test('is identical to checkAppraisalTypeHtmlConsistency', () => {
+                expect(checkFormTypeHtmlConsistency).toBe(checkAppraisalTypeHtmlConsistency);
+            });
+        });
+    });
+
+    describe('HTML Property County vs Subject County Validation', () => {
+        describe('normalizeCounty', () => {
+            test('normalizes county names by stripping county suffixes', () => {
+                expect(normalizeCounty('Westchester County')).toBe('westchester');
+                expect(normalizeCounty('Westchester Co.')).toBe('westchester');
+                expect(normalizeCounty('Westchester Co')).toBe('westchester');
+                expect(normalizeCounty('Westchester')).toBe('westchester');
+                expect(normalizeCounty('WESTCHESTER COUNTY')).toBe('westchester');
+            });
+
+            test('normalizes hyphenated and complex county names', () => {
+                expect(normalizeCounty('Miami-Dade County')).toBe('miami dade');
+                expect(normalizeCounty('Miami - Dade')).toBe('miami dade');
+                expect(normalizeCounty('St. Louis County')).toBe('st louis');
+                expect(normalizeCounty('Cook County')).toBe('cook');
+            });
+
+            test('handles empty and N/A values', () => {
+                expect(normalizeCounty('')).toBe('');
+                expect(normalizeCounty(null)).toBe('');
+                expect(normalizeCounty(undefined)).toBe('');
+                expect(normalizeCounty('N/A')).toBe('');
+            });
+        });
+
+        describe('areCountiesMatching', () => {
+            test('matches identical and suffix-varying county names', () => {
+                expect(areCountiesMatching('Westchester', 'Westchester County')).toBe(true);
+                expect(areCountiesMatching('Westchester County', 'Westchester')).toBe(true);
+                expect(areCountiesMatching('Cook', 'Cook County')).toBe(true);
+                expect(areCountiesMatching('Miami-Dade County', 'Miami Dade')).toBe(true);
+            });
+
+            test('mismatches different counties', () => {
+                expect(areCountiesMatching('Orange County', 'Los Angeles')).toBe(false);
+                expect(areCountiesMatching('Cook', 'Lake')).toBe(false);
+                expect(areCountiesMatching('Fulton', 'DeKalb')).toBe(false);
+            });
+
+            test('returns false when either value is missing or N/A', () => {
+                expect(areCountiesMatching('Westchester', '')).toBe(false);
+                expect(areCountiesMatching('', 'Westchester')).toBe(false);
+                expect(areCountiesMatching('N/A', 'Westchester')).toBe(false);
+            });
+        });
+
+        describe('checkCountyHtmlConsistency (HTML Data Analysis: Property County field)', () => {
+            test('matches when HTML Property County matches Subject County', () => {
+                const allData = {
+                    Subject: {
+                        County: 'Westchester'
+                    },
+                    comparisonData: {
+                        'Property County': 'Westchester County'
+                    }
+                };
+                const result = checkCountyHtmlConsistency('Property County', 'Westchester County', allData);
+                expect(result).not.toBeNull();
+                expect(result.isMatch).toBe(true);
+                expect(result.message).toContain('Valid: Property County matches Subject County');
+            });
+
+            test('matches when HTML has uppercase PROPERTY COUNTY', () => {
+                const allData = {
+                    County: 'Cook',
+                    comparisonData: {
+                        'PROPERTY COUNTY': 'Cook County'
+                    }
+                };
+                const result = checkCountyHtmlConsistency('PROPERTY COUNTY', 'Cook County', allData);
+                expect(result).not.toBeNull();
+                expect(result.isMatch).toBe(true);
+            });
+
+            test('fails with error when HTML Property County mismatches Subject County', () => {
+                const allData = {
+                    Subject: {
+                        County: 'Orange'
+                    },
+                    comparisonData: {
+                        'Property County': 'Los Angeles County'
+                    }
+                };
+                const result = checkCountyHtmlConsistency('Property County', 'Los Angeles County', allData);
+                expect(result).not.toBeNull();
+                expect(result.isError).toBe(true);
+                expect(result.message).toContain('County mismatch');
+            });
+
+            test('returns null when comparisonData is missing or empty', () => {
+                const result = checkCountyHtmlConsistency('Property County', 'Westchester', {});
+                expect(result).toBeNull();
+            });
+
+            test('returns null when HTML Property County is N/A', () => {
+                const allData = {
+                    Subject: { County: 'Westchester' },
+                    comparisonData: { 'Property County': 'N/A' }
+                };
+                const result = checkCountyHtmlConsistency('Property County', 'N/A', allData);
+                expect(result).toBeNull();
+            });
+        });
+
+        describe('checkCountyHtmlConsistency (Subject section: County field)', () => {
+            test('matches when Subject County matches HTML Property County', () => {
+                const allData = {
+                    Subject: {
+                        County: 'Westchester'
+                    },
+                    comparisonData: {
+                        'Property County': 'Westchester County'
+                    }
+                };
+                const result = checkCountyHtmlConsistency('County', 'Westchester', allData);
+                expect(result).not.toBeNull();
+                expect(result.isMatch).toBe(true);
+                expect(result.message).toContain('Valid: County matches HTML Property County');
+            });
+
+            test('matches when field is uppercase COUNTY', () => {
+                const allData = {
+                    comparisonData: {
+                        'Property County': 'Cook County'
+                    }
+                };
+                const result = checkCountyHtmlConsistency('COUNTY', 'Cook', allData);
+                expect(result).not.toBeNull();
+                expect(result.isMatch).toBe(true);
+            });
+
+            test('fails with error when Subject County mismatches HTML Property County', () => {
+                const allData = {
+                    Subject: {
+                        County: 'Orange'
+                    },
+                    comparisonData: {
+                        'Property County': 'Los Angeles'
+                    }
+                };
+                const result = checkCountyHtmlConsistency('County', 'Orange', allData);
+                expect(result).not.toBeNull();
+                expect(result.isError).toBe(true);
+                expect(result.message).toContain('County mismatch');
+            });
+
+            test('returns null when HTML Property County is missing', () => {
+                const result = checkCountyHtmlConsistency('County', 'Westchester', {});
+                expect(result).toBeNull();
+            });
+        });
+
+        describe('checkPropertyCountyHtmlConsistency alias', () => {
+            test('is identical to checkCountyHtmlConsistency', () => {
+                expect(checkPropertyCountyHtmlConsistency).toBe(checkCountyHtmlConsistency);
+            });
+        });
+    });
+
+    describe('HTML Property Address vs Subject Address Validation', () => {
+        describe('cleanHtmlAddress', () => {
+            test('strips trailing MapZillow from HTML address', () => {
+                expect(cleanHtmlAddress('863 Halesworth Dr Cincinnati OH 45240MapZillow')).toBe('863 Halesworth Dr Cincinnati OH 45240');
+            });
+
+            test('strips trailing Map, Zillow, View Map, Google Map', () => {
+                expect(cleanHtmlAddress('123 Main St, New York, NY 10001 Map')).toBe('123 Main St, New York, NY 10001');
+                expect(cleanHtmlAddress('123 Main St, New York, NY 10001 Zillow')).toBe('123 Main St, New York, NY 10001');
+                expect(cleanHtmlAddress('123 Main St, New York, NY 10001 View Map')).toBe('123 Main St, New York, NY 10001');
+                expect(cleanHtmlAddress('123 Main St, New York, NY 10001 Directions')).toBe('123 Main St, New York, NY 10001');
+            });
+
+            test('handles empty or N/A values', () => {
+                expect(cleanHtmlAddress('')).toBe('');
+                expect(cleanHtmlAddress(null)).toBe('');
+                expect(cleanHtmlAddress(undefined)).toBe('');
+                expect(cleanHtmlAddress('N/A')).toBe('');
+            });
+        });
+
+        describe('normalizeAddress', () => {
+            test('normalizes standard street abbreviations and strips punctuation', () => {
+                expect(normalizeAddress('863 Halesworth Dr Cincinnati OH 45240MapZillow'))
+                    .toBe('863halesworthdrcincinnatioh45240');
+                expect(normalizeAddress('863 Halesworth Drive, Cincinnati, OH 45240'))
+                    .toBe('863halesworthdrcincinnatioh45240');
+                expect(normalizeAddress('100 Main Street, Suite 200, Austin, Texas 78701'))
+                    .toBe('100mainstste200austintexas78701');
+            });
+        });
+
+        describe('arePropertyAddressesMatching', () => {
+            test('matches HTML "863 Halesworth Dr Cincinnati OH 45240MapZillow" with Full Address "863 Halesworth Dr, Cincinnati, OH 45240"', () => {
+                const subjectInfo = {
+                    street: '863 Halesworth Dr',
+                    city: 'Cincinnati',
+                    state: 'OH',
+                    zip: '45240',
+                    full: '863 Halesworth Dr, Cincinnati, OH 45240',
+                    constructed: '863 Halesworth Dr, Cincinnati, OH 45240'
+                };
+                expect(arePropertyAddressesMatching('863 Halesworth Dr Cincinnati OH 45240MapZillow', subjectInfo)).toBe(true);
+            });
+
+            test('matches HTML address with constructed address when Full Address is missing', () => {
+                const subjectInfo = {
+                    street: '863 Halesworth Dr',
+                    city: 'Cincinnati',
+                    state: 'OH',
+                    zip: '45240',
+                    full: '',
+                    constructed: '863 Halesworth Dr, Cincinnati, OH 45240'
+                };
+                expect(arePropertyAddressesMatching('863 Halesworth Dr Cincinnati OH 45240MapZillow', subjectInfo)).toBe(true);
+            });
+
+            test('matches HTML address when street-only matches and city/state/zip are consistent', () => {
+                const subjectInfo = {
+                    street: '863 Halesworth Dr',
+                    city: 'Cincinnati',
+                    state: 'OH',
+                    zip: '45240',
+                    full: '',
+                    constructed: '863 Halesworth Dr'
+                };
+                expect(arePropertyAddressesMatching('863 Halesworth Dr Cincinnati OH 45240MapZillow', subjectInfo)).toBe(true);
+            });
+
+            test('mismatches when house number is different', () => {
+                const subjectInfo = {
+                    street: '864 Halesworth Dr',
+                    city: 'Cincinnati',
+                    state: 'OH',
+                    zip: '45240',
+                    full: '864 Halesworth Dr, Cincinnati, OH 45240',
+                    constructed: '864 Halesworth Dr, Cincinnati, OH 45240'
+                };
+                expect(arePropertyAddressesMatching('863 Halesworth Dr Cincinnati OH 45240MapZillow', subjectInfo)).toBe(false);
+            });
+
+            test('mismatches when city/state/zip conflicts with HTML address', () => {
+                const subjectInfo = {
+                    street: '863 Halesworth Dr',
+                    city: 'Columbus',
+                    state: 'OH',
+                    zip: '45240',
+                    full: '863 Halesworth Dr, Columbus, OH 45240',
+                    constructed: '863 Halesworth Dr, Columbus, OH 45240'
+                };
+                expect(arePropertyAddressesMatching('863 Halesworth Dr Cincinnati OH 45240MapZillow', subjectInfo)).toBe(false);
+            });
+        });
+
+        describe('checkPropertyAddressHtmlConsistency (HTML Data Analysis: PROPERTY ADDRESS)', () => {
+            test('matches when HTML PROPERTY ADDRESS matches Subject Full Address', () => {
+                const allData = {
+                    comparisonData: {
+                        'PROPERTY ADDRESS': '863 Halesworth Dr Cincinnati OH 45240MapZillow'
+                    },
+                    Subject: {
+                        'Property Address': '863 Halesworth Dr',
+                        'City': 'Cincinnati',
+                        'State': 'OH',
+                        'Zip Code': '45240',
+                        'Full Address': '863 Halesworth Dr, Cincinnati, OH 45240'
+                    }
+                };
+                const result = checkPropertyAddressHtmlConsistency(
+                    'PROPERTY ADDRESS',
+                    '863 Halesworth Dr Cincinnati OH 45240MapZillow',
+                    allData,
+                    ['comparisonData', 'PROPERTY ADDRESS']
+                );
+                expect(result).not.toBeNull();
+                expect(result.isMatch).toBe(true);
+                expect(result.message).toContain('Valid: Property Address matches Subject Address');
+            });
+
+            test('matches when HTML PROPERTY ADDRESS matches individual subject fields (no Full Address)', () => {
+                const allData = {
+                    comparisonData: {
+                        'PROPERTY ADDRESS': '863 Halesworth Dr Cincinnati OH 45240MapZillow'
+                    },
+                    Subject: {
+                        'Property Address': '863 Halesworth Dr',
+                        'City': 'Cincinnati',
+                        'State': 'OH',
+                        'Zip Code': '45240'
+                    }
+                };
+                const result = checkPropertyAddressHtmlConsistency(
+                    'PROPERTY ADDRESS',
+                    '863 Halesworth Dr Cincinnati OH 45240MapZillow',
+                    allData,
+                    ['comparisonData', 'PROPERTY ADDRESS']
+                );
+                expect(result).not.toBeNull();
+                expect(result.isMatch).toBe(true);
+            });
+
+            test('fails with error when HTML PROPERTY ADDRESS mismatches Subject address', () => {
+                const allData = {
+                    comparisonData: {
+                        'PROPERTY ADDRESS': '863 Halesworth Dr Cincinnati OH 45240MapZillow'
+                    },
+                    Subject: {
+                        'Property Address': '124 Elm St',
+                        'City': 'Cincinnati',
+                        'State': 'OH',
+                        'Zip Code': '45240',
+                        'Full Address': '124 Elm St, Cincinnati, OH 45240'
+                    }
+                };
+                const result = checkPropertyAddressHtmlConsistency(
+                    'PROPERTY ADDRESS',
+                    '863 Halesworth Dr Cincinnati OH 45240MapZillow',
+                    allData,
+                    ['comparisonData', 'PROPERTY ADDRESS']
+                );
+                expect(result).not.toBeNull();
+                expect(result.isError).toBe(true);
+                expect(result.message).toContain('Property Address mismatch');
+            });
+
+            test('returns null when comparisonData is missing or empty', () => {
+                const allData = {
+                    Subject: {
+                        'Property Address': '863 Halesworth Dr'
+                    }
+                };
+                const result = checkPropertyAddressHtmlConsistency('PROPERTY ADDRESS', '863 Halesworth Dr', allData);
+                expect(result).toBeNull();
+            });
+
+            test('returns null when HTML PROPERTY ADDRESS is N/A', () => {
+                const allData = {
+                    comparisonData: {
+                        'PROPERTY ADDRESS': 'N/A'
+                    },
+                    Subject: {
+                        'Property Address': '863 Halesworth Dr'
+                    }
+                };
+                const result = checkPropertyAddressHtmlConsistency('PROPERTY ADDRESS', 'N/A', allData);
+                expect(result).toBeNull();
+            });
+        });
+
+        describe('checkPropertyAddressHtmlConsistency (Subject Section: Property Address / Full Address)', () => {
+            test('matches when Subject Property Address is checked against HTML comparisonData', () => {
+                const allData = {
+                    comparisonData: {
+                        'PROPERTY ADDRESS': '863 Halesworth Dr Cincinnati OH 45240MapZillow'
+                    },
+                    Subject: {
+                        'Property Address': '863 Halesworth Dr',
+                        'City': 'Cincinnati',
+                        'State': 'OH',
+                        'Zip Code': '45240'
+                    }
+                };
+                const result = checkPropertyAddressHtmlConsistency(
+                    'Property Address',
+                    '863 Halesworth Dr',
+                    allData,
+                    ['Subject', 'Property Address']
+                );
+                expect(result).not.toBeNull();
+                expect(result.isMatch).toBe(true);
+                expect(result.message).toContain('Valid: Address matches HTML Property Address');
+            });
+
+            test('matches when Subject Full Address is checked against HTML comparisonData', () => {
+                const allData = {
+                    comparisonData: {
+                        'PROPERTY ADDRESS': '863 Halesworth Dr Cincinnati OH 45240MapZillow'
+                    },
+                    Subject: {
+                        'Property Address': '863 Halesworth Dr',
+                        'City': 'Cincinnati',
+                        'State': 'OH',
+                        'Zip Code': '45240',
+                        'Full Address': '863 Halesworth Dr, Cincinnati, OH 45240'
+                    }
+                };
+                const result = checkPropertyAddressHtmlConsistency(
+                    'Full Address',
+                    '863 Halesworth Dr, Cincinnati, OH 45240',
+                    allData,
+                    ['Subject', 'Full Address']
+                );
+                expect(result).not.toBeNull();
+                expect(result.isMatch).toBe(true);
+            });
+
+            test('fails with error when Subject Property Address mismatches HTML comparisonData', () => {
+                const allData = {
+                    comparisonData: {
+                        'PROPERTY ADDRESS': '863 Halesworth Dr Cincinnati OH 45240MapZillow'
+                    },
+                    Subject: {
+                        'Property Address': '999 Different Rd',
+                        'City': 'Cincinnati',
+                        'State': 'OH',
+                        'Zip Code': '45240'
+                    }
+                };
+                const result = checkPropertyAddressHtmlConsistency(
+                    'Property Address',
+                    '999 Different Rd',
+                    allData,
+                    ['Subject', 'Property Address']
+                );
+                expect(result).not.toBeNull();
+                expect(result.isError).toBe(true);
+                expect(result.message).toContain('Property Address mismatch');
+            });
+
+            test('returns null when Subject has no HTML comparisonData loaded', () => {
+                const allData = {
+                    Subject: {
+                        'Property Address': '863 Halesworth Dr'
+                    }
+                };
+                const result = checkPropertyAddressHtmlConsistency(
+                    'Property Address',
+                    '863 Halesworth Dr',
+                    allData,
+                    ['Subject', 'Property Address']
+                );
+                expect(result).toBeNull();
+            });
+        });
+    });
+
+    describe('HTML Assigned to Vendor vs Certification Appraiser Name Validation', () => {
+        describe('normalizeAppraiserName', () => {
+            test('normalizes names and strips punctuation', () => {
+                expect(normalizeAppraiserName('Michael S. Airhart')).toBe('michael s airhart');
+                expect(normalizeAppraiserName('Michael S Airhart')).toBe('michael s airhart');
+                expect(normalizeAppraiserName('Airhart, Michael S.')).toBe('airhart michael s');
+                expect(normalizeAppraiserName('Michael & Sons')).toBe('michael and sons');
+            });
+
+            test('handles empty and N/A values', () => {
+                expect(normalizeAppraiserName('')).toBe('');
+                expect(normalizeAppraiserName(null)).toBe('');
+                expect(normalizeAppraiserName(undefined)).toBe('');
+                expect(normalizeAppraiserName('N/A')).toBe('');
+            });
+        });
+
+        describe('areAppraiserVendorNamesMatching', () => {
+            test('matches "Michael S Airhart" with "Michael S. Airhart"', () => {
+                expect(areAppraiserVendorNamesMatching('Michael S Airhart', 'Michael S. Airhart')).toBe(true);
+            });
+
+            test('matches case-insensitively', () => {
+                expect(areAppraiserVendorNamesMatching('MICHAEL S AIRHART', 'michael s. airhart')).toBe(true);
+            });
+
+            test('matches token inverted order "Airhart, Michael S" with "Michael S. Airhart"', () => {
+                expect(areAppraiserVendorNamesMatching('Airhart, Michael S', 'Michael S. Airhart')).toBe(true);
+            });
+
+            test('matches first and last name when middle initial is omitted', () => {
+                expect(areAppraiserVendorNamesMatching('Michael S Airhart', 'Michael Airhart')).toBe(true);
+            });
+
+            test('matches when HTML lists multiple vendors separated by slash', () => {
+                expect(areAppraiserVendorNamesMatching('Michael S Airhart / Appraisal Group', 'Michael S. Airhart')).toBe(true);
+            });
+
+            test('returns false when appraiser name does not match', () => {
+                expect(areAppraiserVendorNamesMatching('Michael S Airhart', 'David Smith')).toBe(false);
+            });
+
+            test('returns false when either value is missing or N/A', () => {
+                expect(areAppraiserVendorNamesMatching('Michael S Airhart', '')).toBe(false);
+                expect(areAppraiserVendorNamesMatching('', 'Michael S. Airhart')).toBe(false);
+                expect(areAppraiserVendorNamesMatching('N/A', 'Michael S. Airhart')).toBe(false);
+            });
+        });
+
+        describe('checkAppraiserVendorNameConsistency (HTML Data Analysis: ASSIGNED TO VENDOR(S))', () => {
+            test('matches when HTML ASSIGNED TO VENDOR(S) matches Certification Name', () => {
+                const allData = {
+                    comparisonData: {
+                        'ASSIGNED TO VENDOR(S)': 'Michael S Airhart'
+                    },
+                    CERTIFICATION: {
+                        'Name': 'Michael S. Airhart'
+                    }
+                };
+                const result = checkAppraiserVendorNameConsistency(
+                    'ASSIGNED TO VENDOR(S)',
+                    'Michael S Airhart',
+                    allData,
+                    ['comparisonData', 'ASSIGNED TO VENDOR(S)']
+                );
+                expect(result).not.toBeNull();
+                expect(result.isMatch).toBe(true);
+                expect(result.message).toContain('Valid: Assigned to Vendor matches Certification Appraiser Name');
+            });
+
+            test('matches when HTML has mixed-case "Assigned to Vendor(s)" and Certification has "Appraiser Name"', () => {
+                const allData = {
+                    comparisonData: {
+                        'Assigned to Vendor(s)': 'Michael S Airhart'
+                    },
+                    CERTIFICATION: {
+                        'Appraiser Name': 'Michael S. Airhart'
+                    }
+                };
+                const result = checkAppraiserVendorNameConsistency(
+                    'Assigned to Vendor(s)',
+                    'Michael S Airhart',
+                    allData,
+                    ['comparisonData', 'Assigned to Vendor(s)']
+                );
+                expect(result).not.toBeNull();
+                expect(result.isMatch).toBe(true);
+            });
+
+            test('fails with error when HTML ASSIGNED TO VENDOR(S) mismatches Certification Appraiser', () => {
+                const allData = {
+                    comparisonData: {
+                        'ASSIGNED TO VENDOR(S)': 'Michael S Airhart'
+                    },
+                    CERTIFICATION: {
+                        'Name': 'John Doe'
+                    }
+                };
+                const result = checkAppraiserVendorNameConsistency(
+                    'ASSIGNED TO VENDOR(S)',
+                    'Michael S Airhart',
+                    allData,
+                    ['comparisonData', 'ASSIGNED TO VENDOR(S)']
+                );
+                expect(result).not.toBeNull();
+                expect(result.isError).toBe(true);
+                expect(result.message).toContain('Appraiser Name mismatch');
+            });
+
+            test('returns null when comparisonData is missing or empty', () => {
+                const allData = {
+                    CERTIFICATION: {
+                        'Name': 'Michael S. Airhart'
+                    }
+                };
+                const result = checkAppraiserVendorNameConsistency('ASSIGNED TO VENDOR(S)', 'Michael S Airhart', allData);
+                expect(result).toBeNull();
+            });
+
+            test('returns null when HTML Assigned to Vendor is N/A', () => {
+                const allData = {
+                    comparisonData: {
+                        'ASSIGNED TO VENDOR(S)': 'N/A'
+                    },
+                    CERTIFICATION: {
+                        'Name': 'Michael S. Airhart'
+                    }
+                };
+                const result = checkAppraiserVendorNameConsistency('ASSIGNED TO VENDOR(S)', 'N/A', allData);
+                expect(result).toBeNull();
+            });
+        });
+
+        describe('checkAppraiserVendorNameConsistency (Certification Section: Name / Appraiser Name)', () => {
+            test('matches when Certification Name is checked against HTML comparisonData', () => {
+                const allData = {
+                    comparisonData: {
+                        'ASSIGNED TO VENDOR(S)': 'Michael S Airhart'
+                    },
+                    CERTIFICATION: {
+                        'Name': 'Michael S. Airhart'
+                    }
+                };
+                const result = checkAppraiserVendorNameConsistency(
+                    'Name',
+                    'Michael S. Airhart',
+                    allData,
+                    ['CERTIFICATION', 'Name']
+                );
+                expect(result).not.toBeNull();
+                expect(result.isMatch).toBe(true);
+                expect(result.message).toContain('Valid: Appraiser Name matches HTML Assigned to Vendor');
+            });
+
+            test('matches when Certification Appraiser Name is checked against HTML comparisonData', () => {
+                const allData = {
+                    comparisonData: {
+                        'Assigned to Vendor(s)': 'Michael S Airhart'
+                    },
+                    CERTIFICATION: {
+                        'Appraiser Name': 'Michael S. Airhart'
+                    }
+                };
+                const result = checkAppraiserVendorNameConsistency(
+                    'Appraiser Name',
+                    'Michael S. Airhart',
+                    allData,
+                    ['CERTIFICATION', 'Appraiser Name']
+                );
+                expect(result).not.toBeNull();
+                expect(result.isMatch).toBe(true);
+            });
+
+            test('fails with error when Certification Name mismatches HTML comparisonData', () => {
+                const allData = {
+                    comparisonData: {
+                        'ASSIGNED TO VENDOR(S)': 'Michael S Airhart'
+                    },
+                    CERTIFICATION: {
+                        'Name': 'David Smith'
+                    }
+                };
+                const result = checkAppraiserVendorNameConsistency(
+                    'Name',
+                    'David Smith',
+                    allData,
+                    ['CERTIFICATION', 'Name']
+                );
+                expect(result).not.toBeNull();
+                expect(result.isError).toBe(true);
+                expect(result.message).toContain('Appraiser Name mismatch');
+            });
+
+            test('returns null when field is Supervisory Name (does not interfere with supervisory checks)', () => {
+                const allData = {
+                    comparisonData: {
+                        'ASSIGNED TO VENDOR(S)': 'Michael S Airhart'
+                    },
+                    CERTIFICATION: {
+                        'Supervisory Name': 'Jane Supervisor'
+                    }
+                };
+                const result = checkAppraiserVendorNameConsistency(
+                    'Supervisory Name',
+                    'Jane Supervisor',
+                    allData,
+                    ['CERTIFICATION', 'Supervisory Name']
+                );
+                expect(result).toBeNull();
+            });
+
+            test('returns null when Certification has no HTML comparisonData loaded', () => {
+                const allData = {
+                    CERTIFICATION: {
+                        'Name': 'Michael S. Airhart'
+                    }
+                };
+                const result = checkAppraiserVendorNameConsistency(
+                    'Name',
+                    'Michael S. Airhart',
+                    allData,
+                    ['CERTIFICATION', 'Name']
+                );
+                expect(result).toBeNull();
+            });
+        });
+
+        describe('checkAssignedToVendorHtmlConsistency alias', () => {
+            test('is identical to checkAppraiserVendorNameConsistency', () => {
+                expect(checkAssignedToVendorHtmlConsistency).toBe(checkAppraiserVendorNameConsistency);
+            });
+        });
+    });
+});

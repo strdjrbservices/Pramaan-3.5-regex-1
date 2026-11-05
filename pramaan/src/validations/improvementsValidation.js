@@ -10,42 +10,38 @@ export const checkUnits = (field, text) => {
     return { isMatch: true };
 };
 
+export const calculateFinishedBasementArea = (area, finishPct) => {
+    const areaNum = typeof area === 'number' ? area : parseFloat(String(area || '').replace(/[^0-9.]/g, ''));
+    const pctNum = typeof finishPct === 'number' ? finishPct : parseFloat(String(finishPct || '').replace(/[^0-9.]/g, ''));
+    if (isNaN(areaNum) || areaNum <= 0 || isNaN(pctNum) || pctNum <= 0) return 0;
+    return Math.round(areaNum * (pctNum / 100));
+};
+
 export const getFoundationStatus = (data = {}) => {
     const checkIsYes = (val) => {
         if (!val) return false;
         const s = String(val).trim().toLowerCase();
-        return s === 'yes' || s === 'true' || s === '1' || s === 'checked';
+        return s === 'yes' || s === 'true' || s === '1' || s === 'checked' || s === 'x' || s === '[x]' || s === 'y';
     };
 
-    let hasFullBasement = checkIsYes(data['Full Basement']) ||
-        checkIsYes(data?.Subject?.['Full Basement']) ||
-        checkIsYes(data?.IMPROVEMENTS?.['Full Basement']) ||
-        checkIsYes(data?.Improvements?.['Full Basement']);
+    const getVal = (key) => (
+        data[key] ??
+        data?.Subject?.[key] ??
+        data?.IMPROVEMENTS?.[key] ??
+        data?.Improvements?.[key] ??
+        data?.FOUNDATION?.[key] ??
+        data?.Foundation?.[key] ??
+        null
+    );
 
-    let hasPartialBasement = checkIsYes(data['Partial Basement']) ||
-        checkIsYes(data?.Subject?.['Partial Basement']) ||
-        checkIsYes(data?.IMPROVEMENTS?.['Partial Basement']) ||
-        checkIsYes(data?.Improvements?.['Partial Basement']);
-
-    let hasConcreteSlab = checkIsYes(data['Concrete Slab']) ||
-        checkIsYes(data?.Subject?.['Concrete Slab']) ||
-        checkIsYes(data?.IMPROVEMENTS?.['Concrete Slab']) ||
-        checkIsYes(data?.Improvements?.['Concrete Slab']);
-
-    let hasCrawlSpace = checkIsYes(data['Crawl Space']) ||
-        checkIsYes(data?.Subject?.['Crawl Space']) ||
-        checkIsYes(data?.IMPROVEMENTS?.['Crawl Space']) ||
-        checkIsYes(data?.Improvements?.['Crawl Space']);
+    let hasFullBasement = checkIsYes(getVal('Full Basement'));
+    let hasPartialBasement = checkIsYes(getVal('Partial Basement'));
+    let hasConcreteSlab = checkIsYes(getVal('Concrete Slab'));
+    let hasCrawlSpace = checkIsYes(getVal('Crawl Space'));
 
     const foundStr = String(
-        data['Foundation Type'] ||
-        data['Foundation'] ||
-        data?.Subject?.['Foundation Type'] ||
-        data?.Subject?.['Foundation'] ||
-        data?.IMPROVEMENTS?.['Foundation Type'] ||
-        data?.IMPROVEMENTS?.['Foundation'] ||
-        data?.Improvements?.['Foundation Type'] ||
-        data?.Improvements?.['Foundation'] ||
+        getVal('Foundation Type') ||
+        getVal('Foundation') ||
         ''
     ).toLowerCase();
 
@@ -72,11 +68,14 @@ export const checkBasementDetails = (field, text, data = {}) => {
     const basementFinishFields = ['Basement Finish %', 'Basement Finish'];
     if (!basementAreaFields.includes(field) && !basementFinishFields.includes(field)) return null;
 
-    const { hasFullBasement, hasPartialBasement, hasConcreteSlab, hasCrawlSpace } = getFoundationStatus(data);
+    const currentData = { ...data, [field]: text };
+    const { hasFullBasement, hasPartialBasement } = getFoundationStatus(currentData);
 
     if (hasFullBasement && hasPartialBasement) {
-        return { isError: true, message: "Only one of 'Full Basement' or 'Partial Basement' can be selected." };
+        return { isError: true, field, message: "Only one of 'Full Basement' or 'Partial Basement' can be selected. Both checkmarks are not allowed." };
     }
+
+    const { hasConcreteSlab, hasCrawlSpace } = getFoundationStatus(currentData);
 
     if (basementAreaFields.includes(field)) {
         const rawStr = String(text ?? '').trim();
@@ -87,34 +86,88 @@ export const checkBasementDetails = (field, text, data = {}) => {
             if (isNaN(area) || area <= 1) {
                 return {
                     isError: true,
-                    message: "'Basement Area' must be greater than 1 when Full Basement or Partial Basement is selected."
+                    field,
+                    message: `'Basement Area' cannot be 0 and must be greater than 1 when ${hasFullBasement ? 'Full Basement' : 'Partial Basement'} is selected.`
                 };
             }
             return {
                 isMatch: true,
-                message: `Valid: Basement Area (${rawStr}) is greater than 1.`
+                field,
+                message: `Valid: Basement Area (${area.toLocaleString()} sq.ft.) is greater than 1.`
             };
-        } else if (hasConcreteSlab || hasCrawlSpace) {
+        } else {
             const isZero = area === 0 || rawStr === '0' || rawStr.toLowerCase() === '0 sq.ft.' || rawStr.toLowerCase() === '0 sq ft';
             if (!isZero) {
+                const specificFoundation = (hasConcreteSlab || hasCrawlSpace)
+                    ? "when Concrete Slab or Crawl Space is selected"
+                    : "when neither Full Basement nor Partial Basement is selected";
                 return {
                     isError: true,
-                    message: "'Basement Area' must be '0' when Concrete Slab or Crawl Space is selected."
+                    field,
+                    message: `'Basement Area' must be '0' ${specificFoundation}.`
                 };
             }
             return {
                 isMatch: true,
-                message: "Valid: Basement Area is '0' for Concrete Slab / Crawl Space."
+                field,
+                message: "Valid: Basement Area is '0' when no basement is selected."
             };
         }
     }
 
     if (basementFinishFields.includes(field)) {
+        const rawStr = String(text ?? '').trim();
+        const numStr = rawStr.replace(/[^0-9.]/g, '');
+        const finish = numStr === '' ? NaN : parseFloat(numStr);
+
         if (hasFullBasement || hasPartialBasement) {
-            if (!String(text ?? '').trim()) {
-                return { isError: true, message: "'Basement Finish %' cannot be blank if a basement type is checked." };
+            if (rawStr === '' || isNaN(finish)) {
+                return {
+                    isError: true,
+                    field,
+                    message: `'Basement Finish' cannot be blank when ${hasFullBasement ? 'Full Basement' : 'Partial Basement'} is selected (enter 0% if unfinished).`
+                };
             }
-            return { isMatch: true, message: "Valid: Basement Finish is provided." };
+            if (finish === 0) {
+                return {
+                    isMatch: true,
+                    field,
+                    message: "Valid: Basement Finish is 0% (unfinished basement)."
+                };
+            }
+            const areaRaw = String(
+                currentData['Basement Area sq.ft.'] ??
+                currentData['Basement Area'] ??
+                currentData?.Subject?.['Basement Area sq.ft.'] ??
+                currentData?.Subject?.['Basement Area'] ??
+                currentData?.IMPROVEMENTS?.['Basement Area sq.ft.'] ??
+                currentData?.IMPROVEMENTS?.['Basement Area'] ??
+                ''
+            ).replace(/[^0-9.]/g, '');
+            const areaNum = areaRaw ? parseFloat(areaRaw) : NaN;
+            const finishedArea = (!isNaN(areaNum) && areaNum > 0) ? Math.round(areaNum * (finish / 100)) : null;
+
+            return {
+                isMatch: true,
+                field,
+                message: finishedArea !== null
+                    ? `Valid: Basement Finish is ${finish}% (calculated finished area: ${finishedArea.toLocaleString()} sq.ft. based on ${areaNum.toLocaleString()} sq.ft. basement).`
+                    : `Valid: Basement Finish is ${finish}%.`
+            };
+        } else {
+            const isZero = finish === 0 || rawStr === '0' || rawStr === '0%' || rawStr.toLowerCase() === '0 %';
+            if (!isZero) {
+                return {
+                    isError: true,
+                    field,
+                    message: "'Basement Finish' must be 0% when neither Full Basement nor Partial Basement is selected."
+                };
+            }
+            return {
+                isMatch: true,
+                field,
+                message: "Valid: Basement Finish is 0% when no basement is selected."
+            };
         }
     }
 
@@ -171,85 +224,462 @@ export const checkHeatingFuel = (field, text) => {
     return { isMatch: true };
 };
 
-export const checkCarStorage = (field, text, data) => {
-    if (field !== 'Car Storage' || !data) return null;
-    const carStorageValue = String(text || data['Car Storage'] || data.IMPROVEMENTS?.['Car Storage'] || data.Improvements?.['Car Storage'] || '').trim().toLowerCase();
+export const getCarStorageStatus = (data = {}) => {
+    const checkIsYes = (val) => {
+        if (!val) return false;
+        const s = String(val).trim().toLowerCase();
+        return s === 'yes' || s === 'true' || s === '1' || s === 'checked' || s === 'x' || s === '[x]' || s === 'y';
+    };
 
-    if (!carStorageValue || carStorageValue === 'none' || carStorageValue === 'n/a') return null;
+    const getVal = (...keys) => {
+        for (const k of keys) {
+            if (data[k] !== undefined && data[k] !== null && String(data[k]).trim() !== '') return String(data[k]).trim();
+            if (data.IMPROVEMENTS?.[k] !== undefined && data.IMPROVEMENTS?.[k] !== null && String(data.IMPROVEMENTS[k]).trim() !== '') return String(data.IMPROVEMENTS[k]).trim();
+            if (data.Improvements?.[k] !== undefined && data.Improvements?.[k] !== null && String(data.Improvements[k]).trim() !== '') return String(data.Improvements[k]).trim();
+            if (data.Subject?.[k] !== undefined && data.Subject?.[k] !== null && String(data.Subject[k]).trim() !== '') return String(data.Subject[k]).trim();
+        }
+        return '';
+    };
 
-    const drivewayCarsStr = String(
-        data['Driveway # of Cars'] ||
-        data.IMPROVEMENTS?.['Driveway # of Cars'] ||
-        data.Improvements?.['Driveway # of Cars'] ||
-        data['Driveway'] ||
-        data.IMPROVEMENTS?.['Driveway'] ||
-        data.Improvements?.['Driveway'] ||
-        ''
-    ).trim();
+    const csRaw = getVal('Car Storage', 'CAR STORAGE', 'Car Storage None', 'Vehicle Storage');
+    const csNoneFlag = getVal('Car Storage None', 'Car Storage - None');
 
-    const garageCarsStr = String(
-        data['Garage # of Cars'] ||
-        data.IMPROVEMENTS?.['Garage # of Cars'] ||
-        data.Improvements?.['Garage # of Cars'] ||
-        data['Garage'] ||
-        data.IMPROVEMENTS?.['Garage'] ||
-        data.Improvements?.['Garage'] ||
-        ''
-    ).trim();
+    const checkOptionMatches = (valStr, opt) => {
+        if (!valStr || !opt) return false;
+        const v = String(valStr).trim().toLowerCase();
+        const o = String(opt).trim().toLowerCase();
+        if (v === o) return true;
+        const tokens = v.split(/[,;/]+/).map(t => t.trim().toLowerCase()).filter(Boolean);
+        return tokens.some(t => t === o || t.includes(o));
+    };
 
-    const carportCarsStr = String(
-        data['Carport # of Cars'] ||
-        data.IMPROVEMENTS?.['Carport # of Cars'] ||
-        data.Improvements?.['Carport # of Cars'] ||
-        data['Carport'] ||
-        data.IMPROVEMENTS?.['Carport'] ||
-        data.Improvements?.['Carport'] ||
-        ''
-    ).trim();
+    // Scenario 1: None is marked
+    const isNoneChecked = (
+        checkOptionMatches(csRaw, 'none') ||
+        checkIsYes(csNoneFlag) ||
+        checkIsYes(data['Car Storage None']) ||
+        checkIsYes(data.IMPROVEMENTS?.['Car Storage None']) ||
+        checkIsYes(data.Improvements?.['Car Storage None'])
+    );
 
-    const drivewayCars = parseInt(drivewayCarsStr.replace(/[^0-9]/g, '') || '0', 10);
-    const garageCars = parseInt(garageCarsStr.replace(/[^0-9]/g, '') || '0', 10);
-    const carportCars = parseInt(carportCarsStr.replace(/[^0-9]/g, '') || '0', 10);
+    const isDrivewayChecked = (
+        checkOptionMatches(csRaw, 'driveway') ||
+        checkIsYes(data['Driveway']) ||
+        checkIsYes(data.IMPROVEMENTS?.['Driveway']) ||
+        checkIsYes(data.Improvements?.['Driveway']) ||
+        checkIsYes(data['Driveway Checked'])
+    );
 
-    const garageType = String(
-        data['Att./Det./Built-in'] ||
-        data['Garage Att./Det./Built-in'] ||
-        data['ATT./DET./BUILT-IN'] ||
-        data['Garage Type'] ||
-        data.IMPROVEMENTS?.['Att./Det./Built-in'] ||
-        data.Improvements?.['Att./Det./Built-in'] ||
-        data.IMPROVEMENTS?.['Garage Att./Det./Built-in'] ||
-        data.Improvements?.['Garage Att./Det./Built-in'] ||
-        data.IMPROVEMENTS?.['ATT./DET./BUILT-IN'] ||
-        data.Improvements?.['ATT./DET./BUILT-IN'] ||
-        ''
-    ).trim();
+    const isGarageChecked = (
+        checkOptionMatches(csRaw, 'garage') ||
+        checkIsYes(data['Garage']) ||
+        checkIsYes(data.IMPROVEMENTS?.['Garage']) ||
+        checkIsYes(data.Improvements?.['Garage']) ||
+        checkIsYes(data['Garage Checked'])
+    );
 
-    if (carStorageValue.includes('driveway')) {
-        if (drivewayCars <= 0 && !drivewayCarsStr) {
-            return { isError: true, message: "If Car Storage is 'Driveway', then 'Driveway # of Cars' must be specified." };
+    const isCarportChecked = (
+        checkOptionMatches(csRaw, 'carport') ||
+        checkIsYes(data['Carport']) ||
+        checkIsYes(data.IMPROVEMENTS?.['Carport']) ||
+        checkIsYes(data.Improvements?.['Carport']) ||
+        checkIsYes(data['Carport Checked'])
+    );
+
+    const driveCarsStr = getVal('Driveway # of Cars', 'Driveway Cars', '# of Cars');
+    const garageCarsStr = getVal('Garage # of Cars', 'Garage Cars', 'Garage');
+    const carportCarsStr = getVal('Carport # of Cars', 'Carport Cars', 'Carport');
+    const drivewaySurface = getVal('Driveway Surface', 'Driveway Surface Material');
+
+    const parseNum = (v) => {
+        if (v === undefined || v === null || String(v).trim() === '') return NaN;
+        const m = String(v).match(/(\d+)/);
+        return m ? parseInt(m[1], 10) : NaN;
+    };
+
+    const drivewayCars = parseNum(driveCarsStr);
+    const garageCars = parseNum(garageCarsStr);
+    const carportCars = parseNum(carportCarsStr);
+
+    const attTypeRaw = getVal(
+        'Att./Det./Built-in',
+        'Garage Att./Det./Built-in',
+        'Car Storage Att/Det',
+        'Garage Type',
+        'ATT./DET./BUILT-IN',
+        'Garage Attachment'
+    );
+    const garAttFlag = getVal('Garage Att.', 'Garage Att');
+    const garDetFlag = getVal('Garage Detached', 'Garage Det');
+    const garBuiltFlag = getVal('Garage Built-in', 'Garage Built-In', 'Garage Builtin');
+
+    let attachmentType = '';
+    const combAtt = `${attTypeRaw} ${garAttFlag} ${garDetFlag} ${garBuiltFlag}`.toLowerCase();
+    if (checkIsYes(garDetFlag) || /\b(?:det|detached)\b/i.test(combAtt)) {
+        attachmentType = 'Detached';
+    } else if (checkIsYes(garBuiltFlag) || /\b(?:built[\s-]?in|builtin)\b/i.test(combAtt)) {
+        attachmentType = 'Built-in';
+    } else if (checkIsYes(garAttFlag) || /\b(?:att|attached)\b/i.test(combAtt)) {
+        attachmentType = 'Attached';
+    }
+
+    return {
+        isNoneChecked,
+        isDrivewayChecked,
+        drivewayCars: isNaN(drivewayCars) ? 0 : drivewayCars,
+        hasDrivewayCars: !isNaN(drivewayCars) && drivewayCars > 0,
+        drivewayCarsRaw: driveCarsStr,
+        drivewaySurface,
+        isGarageChecked,
+        garageCars: isNaN(garageCars) ? 0 : garageCars,
+        hasGarageCars: !isNaN(garageCars) && garageCars > 0,
+        garageCarsRaw: garageCarsStr,
+        isCarportChecked,
+        carportCars: isNaN(carportCars) ? 0 : carportCars,
+        hasCarportCars: !isNaN(carportCars) && carportCars > 0,
+        carportCarsRaw: carportCarsStr,
+        attachmentType
+    };
+};
+
+export const getSketchGarageCarport = (allData = {}) => {
+    if (!allData || typeof allData !== 'object') return null;
+
+    const candidates = [];
+    const sketches = allData.sketches || allData.clean_data?.sketches || allData.extracted_sketches || (allData.building_sketch ? [allData.building_sketch] : []);
+    if (Array.isArray(sketches)) {
+        sketches.forEach(sk => {
+            if (Array.isArray(sk?.areas)) {
+                sk.areas.forEach(a => { if (a?.name) candidates.push(String(a.name)); });
+            }
+            if (Array.isArray(sk?.room_labels)) {
+                sk.room_labels.forEach(lbl => candidates.push(String(lbl)));
+            }
+            if (sk?.rooms_by_category?.garage_parking) {
+                sk.rooms_by_category.garage_parking.forEach(g => { if (g?.label) candidates.push(String(g.label)); });
+            }
+            if (sk?.room_summary?.garage) {
+                candidates.push(String(sk.room_summary.garage));
+            }
+            if (sk?.raw_text_sample) {
+                candidates.push(...sk.raw_text_sample.split('|').map(s => s.trim()));
+            }
+        });
+    }
+
+    if (Array.isArray(allData.areas)) {
+        allData.areas.forEach(a => { if (a?.name) candidates.push(String(a.name)); });
+    }
+    if (Array.isArray(allData.room_labels)) {
+        allData.room_labels.forEach(lbl => candidates.push(String(lbl)));
+    }
+
+    if (candidates.length === 0) return null;
+
+    let hasGarage = false;
+    let garageType = null;
+    let garageCars = 0;
+    let hasCarport = false;
+    let carportType = null;
+    let carportCars = 0;
+    const detectedLabels = [];
+
+    for (const cand of candidates) {
+        const lower = cand.toLowerCase();
+        if (lower.includes('garage') || /\b\d+\s*car\s*(?:att|det|detached|attached)\b/i.test(lower)) {
+            hasGarage = true;
+            detectedLabels.push(cand);
+            if (/\b(?:det|detached)\b/i.test(lower)) garageType = 'Detached';
+            else if (/\b(?:built[\s-]?in|builtin)\b/i.test(lower)) garageType = 'Built-in';
+            else if (/\b(?:att|attached)\b/i.test(lower)) garageType = 'Attached';
+
+            const mCars = cand.match(/(\d+)\s*car/i);
+            if (mCars) garageCars = parseInt(mCars[1], 10);
+        }
+        if (lower.includes('carport')) {
+            hasCarport = true;
+            detectedLabels.push(cand);
+            if (/\b(?:det|detached)\b/i.test(lower)) carportType = 'Detached';
+            else if (/\b(?:att|attached)\b/i.test(lower)) carportType = 'Attached';
+
+            const mCars = cand.match(/(\d+)[\s-]*car/i);
+            if (mCars) carportCars = parseInt(mCars[1], 10);
         }
     }
 
-    if (carStorageValue.includes('garage')) {
-        if (garageCars <= 0 && !garageCarsStr) {
-            return { isError: true, message: "If Car Storage is 'Garage', then 'Garage # of Cars' must be greater than 0." };
-        }
-        if (!garageType) {
-            return { isError: true, message: "If Car Storage is 'Garage', one of 'Attached', 'Detached', or 'Built-in' must be specified." };
+    return {
+        hasGarage,
+        garageType,
+        garageCars,
+        hasCarport,
+        carportType,
+        carportCars,
+        detectedLabels
+    };
+};
+
+export const checkCarStorage = (field, text, data = {}) => {
+    const carStorageFields = [
+        'Car Storage', 'CAR STORAGE',
+        'Driveway # of Cars', 'Driveway Cars', '# of Cars',
+        'Driveway Surface',
+        'Garage # of Cars', 'Garage Cars', 'Garage',
+        'Carport # of Cars', 'Carport Cars', 'Carport',
+        'Att./Det./Built-in', 'Garage Att./Det./Built-in', 'Car Storage Att/Det', 'Garage Type', 'ATT./DET./BUILT-IN'
+    ];
+    if (!carStorageFields.includes(field) && !String(field || '').toLowerCase().includes('car storage')) return null;
+
+    const currentData = { ...(data || {}) };
+    if (text !== undefined && text !== null) {
+        currentData[field] = text;
+    }
+
+    const status = getCarStorageStatus(currentData);
+    const {
+        isNoneChecked,
+        isDrivewayChecked,
+        drivewayCars,
+        hasDrivewayCars,
+        drivewaySurface,
+        isGarageChecked,
+        garageCars,
+        hasGarageCars,
+        isCarportChecked,
+        carportCars,
+        hasCarportCars,
+        attachmentType
+    } = status;
+
+    // SCENARIO 1: if NONE is marked and so all details should be disregarded
+    if (isNoneChecked) {
+        return {
+            isMatch: true,
+            field,
+            message: "Valid: Car Storage is marked 'None'. All other parking details disregarded."
+        };
+    }
+
+    // SCENARIO 2: if none is not marked, then at least a driveway, garage or carport should be checked
+    if (!isDrivewayChecked && !isGarageChecked && !isCarportChecked) {
+        return {
+            isError: true,
+            field,
+            message: "If 'None' is not marked, at least one of 'Driveway', 'Garage', or 'Carport' must be checked."
+        };
+    }
+
+    // Individual field: Driveway # of Cars
+    if (field === 'Driveway # of Cars' || field === 'Driveway Cars') {
+        if (isDrivewayChecked) {
+            if (!hasDrivewayCars || drivewayCars <= 0) {
+                return {
+                    isError: true,
+                    field,
+                    message: "Driveway is checked; '# of Cars' must be greater than 0 (entered 0 or blank is not allowed)."
+                };
+            }
+            return { isMatch: true, field, message: `Valid: Driveway '# of Cars' is ${drivewayCars}.` };
+        } else {
+            if (hasDrivewayCars && drivewayCars > 0) {
+                return {
+                    isError: true,
+                    field,
+                    message: `Driveway '# of Cars' is ${drivewayCars}, but Driveway checkmark is not checked.`
+                };
+            }
+            return { isMatch: true, field, message: "Valid: Driveway is not checked." };
         }
     }
 
-    if (carStorageValue.includes('carport')) {
-        if (carportCars <= 0 && !carportCarsStr) {
-            return { isError: true, message: "If Car Storage is 'Carport', then 'Carport # of Cars' must be greater than 0." };
+    // Individual field: Driveway Surface
+    if (field === 'Driveway Surface') {
+        if (isDrivewayChecked) {
+            if (!drivewaySurface || drivewaySurface.trim() === '' || drivewaySurface.toLowerCase() === 'none') {
+                return {
+                    isError: true,
+                    field,
+                    message: "Driveway is checked; 'Driveway Surface' is mandatory."
+                };
+            }
+            return { isMatch: true, field, message: `Valid: Driveway Surface is '${drivewaySurface}'.` };
         }
-        if (!garageType) {
-            return { isError: true, message: "If Car Storage is 'Carport', one of 'Attached', 'Detached', or 'Built-in' must be specified." };
+        return { isMatch: true, field, message: "Valid: Driveway is not checked." };
+    }
+
+    // Individual field: Garage # of Cars
+    if (field === 'Garage # of Cars' || field === 'Garage Cars') {
+        if (isGarageChecked) {
+            if (!hasGarageCars || garageCars <= 0) {
+                return {
+                    isError: true,
+                    field,
+                    message: "Garage is checked; '# of Cars' must be greater than 0 (entered 0 or blank is not allowed)."
+                };
+            }
+            return { isMatch: true, field, message: `Valid: Garage '# of Cars' is ${garageCars}.` };
+        } else {
+            if (hasGarageCars && garageCars > 0) {
+                return {
+                    isError: true,
+                    field,
+                    message: `Garage '# of Cars' is ${garageCars}, but Garage checkmark is not checked.`
+                };
+            }
+            return { isMatch: true, field, message: "Valid: Garage is not checked." };
         }
     }
 
-    return { isMatch: true };
+    // Individual field: Carport # of Cars
+    if (field === 'Carport # of Cars' || field === 'Carport Cars') {
+        if (isCarportChecked) {
+            if (!hasCarportCars || carportCars <= 0) {
+                return {
+                    isError: true,
+                    field,
+                    message: "Carport is checked; '# of Cars' must be greater than 0 (entered 0 or blank is not allowed)."
+                };
+            }
+            return { isMatch: true, field, message: `Valid: Carport '# of Cars' is ${carportCars}.` };
+        } else {
+            if (hasCarportCars && carportCars > 0) {
+                return {
+                    isError: true,
+                    field,
+                    message: `Carport '# of Cars' is ${carportCars}, but Carport checkmark is not checked.`
+                };
+            }
+            return { isMatch: true, field, message: "Valid: Carport is not checked." };
+        }
+    }
+
+    // Individual field: Att./Det./Built-in
+    if (field.includes('Att') || field.includes('Type') || field === 'ATT./DET./BUILT-IN') {
+        if (isGarageChecked || isCarportChecked) {
+            if (!attachmentType) {
+                return {
+                    isError: true,
+                    field,
+                    message: `${isGarageChecked ? 'Garage' : 'Carport'} is checked; Attachment type ('Attached', 'Detached', or 'Built-in') is mandatory.`
+                };
+            }
+
+            // Sketch consistency check
+            const sketchInfo = getSketchGarageCarport(currentData);
+            if (sketchInfo && sketchInfo.detectedLabels.length > 0) {
+                if (isGarageChecked && sketchInfo.hasGarage && sketchInfo.garageType) {
+                    if (attachmentType.toLowerCase() !== sketchInfo.garageType.toLowerCase()) {
+                        return {
+                            isError: true,
+                            field,
+                            message: `Improvements indicates '${attachmentType}' Garage; however, building sketch depicts '${sketchInfo.garageType}' Garage (${sketchInfo.detectedLabels.join(', ')}). Please reconcile.`
+                        };
+                    }
+                }
+                if (isCarportChecked && sketchInfo.hasCarport && sketchInfo.carportType) {
+                    if (attachmentType.toLowerCase() !== sketchInfo.carportType.toLowerCase()) {
+                        return {
+                            isError: true,
+                            field,
+                            message: `Improvements indicates '${attachmentType}' Carport; however, building sketch depicts '${sketchInfo.carportType}' Carport (${sketchInfo.detectedLabels.join(', ')}). Please reconcile.`
+                        };
+                    }
+                }
+            }
+
+            return { isMatch: true, field, message: `Valid: Attachment type is '${attachmentType}'.` };
+        }
+        return { isMatch: true, field, message: "Valid: No garage or carport checked." };
+    }
+
+    // Section field: Car Storage (comprehensive check)
+    if (isDrivewayChecked) {
+        if (!hasDrivewayCars || drivewayCars <= 0) {
+            return {
+                isError: true,
+                field,
+                message: "Driveway is checked; '# of Cars' must be greater than 0 (entered 0 or blank is not allowed)."
+            };
+        }
+        if (!drivewaySurface || drivewaySurface.trim() === '' || drivewaySurface.toLowerCase() === 'none') {
+            return {
+                isError: true,
+                field,
+                message: "Driveway is checked; 'Driveway Surface' is mandatory."
+            };
+        }
+    }
+
+    if (isGarageChecked) {
+        if (!hasGarageCars || garageCars <= 0) {
+            return {
+                isError: true,
+                field,
+                message: "Garage is checked; '# of Cars' must be greater than 0 (entered 0 or blank is not allowed)."
+            };
+        }
+        if (!attachmentType) {
+            return {
+                isError: true,
+                field,
+                message: "Garage is checked; Attachment type ('Attached', 'Detached', or 'Built-in') is mandatory."
+            };
+        }
+    }
+
+    if (isCarportChecked) {
+        if (!hasCarportCars || carportCars <= 0) {
+            return {
+                isError: true,
+                field,
+                message: "Carport is checked; '# of Cars' must be greater than 0 (entered 0 or blank is not allowed)."
+            };
+        }
+        if (!attachmentType) {
+            return {
+                isError: true,
+                field,
+                message: "Carport is checked; Attachment type ('Attached', 'Detached', or 'Built-in') is mandatory."
+            };
+        }
+    }
+
+    // Sketch check
+    const sketchInfo = getSketchGarageCarport(currentData);
+    if (sketchInfo && sketchInfo.detectedLabels.length > 0) {
+        if (isGarageChecked && sketchInfo.hasGarage && sketchInfo.garageType) {
+            if (attachmentType && attachmentType.toLowerCase() !== sketchInfo.garageType.toLowerCase()) {
+                return {
+                    isError: true,
+                    field,
+                    message: `Improvements indicates '${attachmentType}' Garage; however, building sketch depicts '${sketchInfo.garageType}' Garage (${sketchInfo.detectedLabels.join(', ')}). Please reconcile.`
+                };
+            }
+        }
+        if (isCarportChecked && sketchInfo.hasCarport && sketchInfo.carportType) {
+            if (attachmentType && attachmentType.toLowerCase() !== sketchInfo.carportType.toLowerCase()) {
+                return {
+                    isError: true,
+                    field,
+                    message: `Improvements indicates '${attachmentType}' Carport; however, building sketch depicts '${sketchInfo.carportType}' Carport (${sketchInfo.detectedLabels.join(', ')}). Please reconcile.`
+                };
+            }
+        }
+    }
+
+    const summaryParts = [];
+    if (isGarageChecked) summaryParts.push(`${garageCars} Car ${attachmentType || ''} Garage`.replace(/\s+/g, ' ').trim());
+    if (isCarportChecked) summaryParts.push(`${carportCars} Car ${attachmentType || ''} Carport`.replace(/\s+/g, ' ').trim());
+    if (isDrivewayChecked) summaryParts.push(`${drivewayCars} Car Driveway (${drivewaySurface || 'Surface specified'})`);
+
+    const sketchVerifiedText = (sketchInfo && ((isGarageChecked && sketchInfo.hasGarage) || (isCarportChecked && sketchInfo.hasCarport)))
+        ? ' (verified on sketch)'
+        : '';
+
+    return {
+        isMatch: true,
+        field,
+        message: `Valid: Car Storage (${summaryParts.join(', ')})${sketchVerifiedText}.`
+    };
 };
 
 export const checkAccessoryUnit = (field, data) => {
@@ -574,53 +1004,96 @@ export const checkNeighborhoodConformity = (field, text) => {
 };
 
 export const checkFoundationType = (field, text, data = {}) => {
-    if (field !== 'Foundation Type' && field !== 'Foundation') return null;
+    const targetFields = ['Foundation Type', 'Foundation', 'Full Basement', 'Partial Basement', 'Concrete Slab', 'Crawl Space'];
+    if (!targetFields.includes(field)) return null;
+
     const value = String(text ?? '').trim();
-    if (!value) {
-        return { isError: true, message: "'Foundation Type' cannot be blank." };
+    if ((field === 'Foundation Type' || field === 'Foundation') && !value) {
+        return { isError: true, field, message: "'Foundation Type' cannot be blank." };
     }
 
-    const { hasFullBasement, hasPartialBasement, hasConcreteSlab, hasCrawlSpace } = getFoundationStatus({
-        ...data,
-        [field]: value
-    });
+    const currentData = { ...data, [field]: value };
+    const { hasFullBasement, hasPartialBasement, hasConcreteSlab, hasCrawlSpace } = getFoundationStatus(currentData);
 
     if (hasFullBasement && hasPartialBasement) {
-        return { isError: true, message: "Only one of 'Full Basement' or 'Partial Basement' can be selected." };
+        return { isError: true, field, message: "Only one of 'Full Basement' or 'Partial Basement' can be selected. Both checkmarks are not allowed." };
     }
 
     const areaRaw = String(
-        data['Basement Area sq.ft.'] ??
-        data['Basement Area'] ??
-        data?.Subject?.['Basement Area sq.ft.'] ??
-        data?.Subject?.['Basement Area'] ??
-        data?.IMPROVEMENTS?.['Basement Area sq.ft.'] ??
-        data?.IMPROVEMENTS?.['Basement Area'] ??
-        data?.Improvements?.['Basement Area sq.ft.'] ??
-        data?.Improvements?.['Basement Area'] ??
+        currentData['Basement Area sq.ft.'] ??
+        currentData['Basement Area'] ??
+        currentData?.Subject?.['Basement Area sq.ft.'] ??
+        currentData?.Subject?.['Basement Area'] ??
+        currentData?.IMPROVEMENTS?.['Basement Area sq.ft.'] ??
+        currentData?.IMPROVEMENTS?.['Basement Area'] ??
+        currentData?.Improvements?.['Basement Area sq.ft.'] ??
+        currentData?.Improvements?.['Basement Area'] ??
         ''
     ).trim();
     const numStr = areaRaw.replace(/[^0-9.]/g, '');
     const area = numStr === '' ? NaN : parseFloat(numStr);
 
+    const finishRaw = String(
+        currentData['Basement Finish %'] ??
+        currentData['Basement Finish'] ??
+        currentData?.Subject?.['Basement Finish %'] ??
+        currentData?.Subject?.['Basement Finish'] ??
+        currentData?.IMPROVEMENTS?.['Basement Finish %'] ??
+        currentData?.IMPROVEMENTS?.['Basement Finish'] ??
+        currentData?.Improvements?.['Basement Finish %'] ??
+        currentData?.Improvements?.['Basement Finish'] ??
+        ''
+    ).trim();
+    const finishNumStr = finishRaw.replace(/[^0-9.]/g, '');
+    const finish = finishNumStr === '' ? NaN : parseFloat(finishNumStr);
+
     if (hasFullBasement || hasPartialBasement) {
         if (isNaN(area) || area <= 1) {
             return {
                 isError: true,
-                message: "'Basement Area' must be greater than 1 when Full Basement or Partial Basement is selected."
+                field,
+                message: `'Basement Area' cannot be 0 and must be greater than 1 when ${hasFullBasement ? 'Full Basement' : 'Partial Basement'} is selected.`
             };
         }
-    } else if (hasConcreteSlab || hasCrawlSpace) {
-        const isZero = area === 0 || areaRaw === '0' || areaRaw.toLowerCase() === '0 sq.ft.' || areaRaw.toLowerCase() === '0 sq ft';
-        if (!isZero) {
+        if (finishRaw !== '' && isNaN(finish)) {
             return {
                 isError: true,
-                message: "'Basement Area' must be '0' when Concrete Slab or Crawl Space is selected."
+                field,
+                message: "'Basement Finish' must be a valid percentage."
             };
         }
+        return {
+            isMatch: true,
+            field,
+            message: `Valid: ${hasFullBasement ? 'Full Basement' : 'Partial Basement'} selected.`
+        };
+    } else {
+        if (!isNaN(area) && area !== 0) {
+            const specificFoundation = (hasConcreteSlab || hasCrawlSpace)
+                ? "when Concrete Slab or Crawl Space is selected"
+                : "when neither Full Basement nor Partial Basement is selected";
+            return {
+                isError: true,
+                field,
+                message: `'Basement Area' must be '0' ${specificFoundation}.`
+            };
+        }
+        if (!isNaN(finish) && finish !== 0) {
+            const specificFoundation = (hasConcreteSlab || hasCrawlSpace)
+                ? "when Concrete Slab or Crawl Space is selected"
+                : "when neither Full Basement nor Partial Basement is selected";
+            return {
+                isError: true,
+                field,
+                message: `'Basement Finish' must be 0% ${specificFoundation}.`
+            };
+        }
+        return {
+            isMatch: true,
+            field,
+            message: `Valid: Foundation (${hasConcreteSlab ? 'Concrete Slab' : hasCrawlSpace ? 'Crawl Space' : 'None'}) with 0 basement area and 0% finish.`
+        };
     }
-
-    return { isMatch: true, message: "Valid: Foundation Type and Basement Area are consistent." };
 };
 
 export const checkImprovementsFieldsNotBlank = (field, text) => {

@@ -5,13 +5,13 @@ import { checkZoning, checkNonconformingComment, checkZoningDescription, checkSp
 import { checkVersion1UtilitySubfields, checkZoningClassificationDescription, checkSiteSizesConsistency, checkVersion1EffectiveDatesConsistency, checkAboveGradeFinishedAreaConsistency, checkYearBuiltConsistency, checkAppraiserNameConsistency, checkVersion1ComparableListingStatusConsistency, checkVersion1ComparableTransferTermsConsistency, checkVersion1YearBuiltAdjustmentConsistency, checkVersion1ConstructionMethodAdjustmentConsistency, checkVersion1SiteSizeAdjustmentConsistency, checkVersion1LocationAdjustmentConsistency, checkVersion1AttachedDetachedAdjustmentConsistency, checkVersion1HeatingAdjustmentConsistency, checkVersion1AmenitiesAdjustmentConsistency, checkVersion1QualityConditionConsistency, checkVersion1AreaAdjustmentConsistency, checkVersion1OverallQualityConditionAdjustmentConsistency, checkVersion1VehicleStorageAdjustmentConsistency } from '../Version1/version1Validation';
 import { checkHousingPriceAndAge, checkPredominantPriceVsIndicatedValue, checkNeighborhoodUsageConsistency, checkSingleChoiceFields, checkNeighborhoodBoundaries, checkNeighborhoodFieldsNotBlank, checkOtherLandUseComment, checkOtherLandUse, checkSearchCriteriaDescription, checkNeighborhoodListPricesConsistency, checkNeighborhoodSalePricesConsistency, checkLocation, checkBuiltUp, checkGrowth, checkPropertyValues, checkDemandSupply } from '../../../validations/neighborhoodValidation';
 import { checkUnits, checkAccessoryUnit, checkNumberOfStories, checkPropertyType, checkConstructionStatusAndReconciliation, checkDesignStyle, checkSubjectDesignStyleConsistency, checkYearBuilt, checkEffectiveAge, checkAdditionalFeatures, checkPropertyConditionDescription, checkPhysicalDeficienciesImprovements, checkNeighborhoodConformity, checkFoundationType, checkBasementDetails, checkEvidenceOf, checkMaterialCondition, checkHeatingFuel, checkCarStorage, checkImprovementsFieldsNotBlank } from '../../../validations/improvementsValidation';
-import { checkConditionAdjustment, checkBedroomsAdjustment, checkBathsAdjustment, checkQualityOfConstructionAdjustment, checkProximityToSubject, checkSiteAdjustment, checkGrossLivingAreaAdjustment, checkSubjectAddressInconsistency, checkDesignStyleAdjustment, checkFunctionalUtilityAdjustment, checkEnergyEfficientItemsAdjustment, checkPorchPatioDeckAdjustment, checkHeatingCoolingAdjustment, checkDataSourceDOM, checkActualAgeAdjustment, checkLeaseholdFeeSimpleConsistency, checkDateOfSale, checkLocationConsistency, checkSalePrice, checkSubjectAgeConsistency, checkViewAdjustment, checkCompSalePriceBracketing, checkCompAdjustedSalePriceBracketing, checkSalesConcessions, checkSalesConcessionsAdjustment, checkBasementAdjustment, checkGrossLivingAreaBracketing, checkSiteBracketing } from '../../../validations/salesComparisonValidation';
+import { checkConditionAdjustment, checkBedroomsAdjustment, checkBathsAdjustment, checkQualityOfConstructionAdjustment, checkProximityToSubject, checkSiteAdjustment, checkGrossLivingAreaAdjustment, checkSubjectAddressInconsistency, checkDesignStyleAdjustment, checkFunctionalUtilityAdjustment, checkEnergyEfficientItemsAdjustment, checkPorchPatioDeckAdjustment, checkHeatingCoolingAdjustment, checkDataSourceDOM, checkActualAgeAdjustment, checkLeaseholdFeeSimpleConsistency, checkDateOfSale, checkLocationConsistency, checkSalePrice, checkSubjectAgeConsistency, checkViewAdjustment, checkCompSalePriceBracketing, checkCompAdjustedSalePriceBracketing, checkSalesConcessions, checkSalesConcessionsAdjustment, checkBasementAdjustment, checkGrossLivingAreaBracketing, checkSiteBracketing, checkBasementAreaBracketing, checkBasementFinishedAreaBracketing, checkGarageCarportAdjustment, checkGarageCarportBracketing } from '../../../validations/salesComparisonValidation';
 import { checkFinalValueConsistency, checkCostApproachDeveloped, checkAppraisalCondition, checkAsOfDate, checkFinalValueBracketing, checkReconciliationFieldsNotBlank, checkFiveValuesConsistency, checkEffectiveDatesConsistency, checkPropertyQualityConsistency, checkPropertyConditionConsistency, checkHbuConsistency, checkCostApproachConsistency, checkAttachmentTypeConsistency, checkPropertyRightsConsistency, checkAppraiserCredentialLevelConsistency } from '../../../validations/reconciliationValidation';
-import { checkLenderAddressInconsistency, checkLenderNameInconsistency, checkUnpaidLender, checkAppraiserFieldsNotBlank, checkLicenseNumberConsistency as checkAppraiserLicenseConsistency, checkDateGreaterThanToday, checkClientNameHtmlConsistency, checkClientAddressHtmlConsistency, checkBorrowerHtmlConsistency, checkPropertyAddressHtmlConsistency, checkAppraiserVendorNameConsistency, checkSupervisoryAppraiserFields, checkAppraiserLicenseGroup, checkUspapReportingOption } from '../../../validations/appraiserLenderValidation';
+import { checkLenderAddressInconsistency, checkLenderNameInconsistency, checkUnpaidLender, checkAppraiserFieldsNotBlank, checkLicenseNumberConsistency as checkAppraiserLicenseConsistency, checkDateGreaterThanToday, checkClientNameHtmlConsistency, checkClientAddressHtmlConsistency, checkBorrowerHtmlConsistency, checkAppraiserVendorNameConsistency, checkSupervisoryAppraiserFields, checkAppraiserLicenseGroup, checkUspapReportingOption } from '../../../validations/appraiserLenderValidation';
 import { checkCostNew, checkSourceOfCostData, checkIndicatedValueByCostApproach, checkCostApproachFieldsNotBlank, checkOpinionOfSiteValue, checkRemainingEconomicLife } from '../../../validations/costApproachValidation';
 import { checkResearchHistory, checkSubjectPriorSales, checkComparablePriorSales, checkDataSourceNotBlank, checkEffectiveDateIsCurrentYear, checkSubjectPriorSaleDate, checkCompPriorSaleDate } from '../../../validations/salesHistoryValidation';
 import { checkStateRequirements } from '../../../validations/stateValidation';
-import { checkLenderAddressInconsistency as checkLenderAddressHtmlInconsistency, checkSubjectLenderNameVsHtml, checkBorrowerNameVsHtml, checkTransactionTypeHtmlConsistency } from '../../../validations/htmldatavaliadtion';
+import { checkLenderAddressInconsistency as checkLenderAddressHtmlInconsistency, checkSubjectLenderNameVsHtml, checkBorrowerNameVsHtml, checkTransactionTypeHtmlConsistency, checkAppraisalTypeHtmlConsistency, checkCountyHtmlConsistency, checkPropertyAddressHtmlConsistency } from '../../../validations/htmldatavaliadtion';
 import {
   checkLeaseDates,
   checkOtherBasement,
@@ -154,7 +154,9 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'Unfinished Area Below Grade Adjustment': [checkVersion1AreaAdjustmentConsistency],
 
     // Subject Validations
-    'Full Address': [checkFullAddressConsistency],
+    'Full Address': [checkPropertyAddressHtmlConsistency, checkFullAddressConsistency],
+    'FULL ADDRESS': [checkPropertyAddressHtmlConsistency, checkFullAddressConsistency],
+    'full address': [checkPropertyAddressHtmlConsistency, checkFullAddressConsistency],
     'Exposure comment': [checkPresence],
     'Prior service comment': [checkPresence],
     'ADU File Check': [checkPresence],
@@ -173,8 +175,15 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'Offered for Sale in Last 12 Months': [checkOfferedForSale],
     'ANSI': [checkAnsi],
     'State': [checkStateRequirements],
-    'Property Address': [checkSubjectFieldsNotBlank, checkSubjectAddressInconsistency, checkPropertyAddressHtmlConsistency],
-    'County': [checkSubjectFieldsNotBlank],
+    'Property Address': [checkPropertyAddressHtmlConsistency, checkSubjectFieldsNotBlank, checkSubjectAddressInconsistency],
+    'PROPERTY ADDRESS': [checkPropertyAddressHtmlConsistency, checkSubjectFieldsNotBlank, checkSubjectAddressInconsistency],
+    'property address': [checkPropertyAddressHtmlConsistency],
+    'County': [checkCountyHtmlConsistency, checkSubjectFieldsNotBlank],
+    'COUNTY': [checkCountyHtmlConsistency, checkSubjectFieldsNotBlank],
+    'county': [checkCountyHtmlConsistency, checkSubjectFieldsNotBlank],
+    'Property County': [checkCountyHtmlConsistency],
+    'PROPERTY COUNTY': [checkCountyHtmlConsistency],
+    'property county': [checkCountyHtmlConsistency],
     'Borrower': [checkBorrowerNameVsHtml, checkSubjectFieldsNotBlank],
     'Owner of Public Record': [checkSubjectFieldsNotBlank],
     'Legal Description': [checkSubjectFieldsNotBlank],
@@ -190,6 +199,16 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'Lender/Client Company Name': [checkSubjectLenderNameVsHtml, checkLenderNameInconsistency, checkUnpaidLender, checkClientNameHtmlConsistency],
     'Client/Lender Company Name': [checkSubjectLenderNameVsHtml, checkUnpaidLender, checkClientNameHtmlConsistency, checkLenderNameInconsistency],
     'Name': [checkAppraiserVendorNameConsistency],
+    'NAME': [checkAppraiserVendorNameConsistency],
+    'Appraiser Name': [checkAppraiserVendorNameConsistency, checkAppraiserNameConsistency],
+    'APPRAISER NAME': [checkAppraiserVendorNameConsistency, checkAppraiserNameConsistency],
+    'appraiser name': [checkAppraiserVendorNameConsistency],
+    'Assigned to Vendor(s)': [checkAppraiserVendorNameConsistency],
+    'ASSIGNED TO VENDOR(S)': [checkAppraiserVendorNameConsistency],
+    'assigned to vendor(s)': [checkAppraiserVendorNameConsistency],
+    'Assigned to Vendor': [checkAppraiserVendorNameConsistency],
+    'ASSIGNED TO VENDOR': [checkAppraiserVendorNameConsistency],
+    'assigned to vendor': [checkAppraiserVendorNameConsistency],
     'Address (Lender/Client)': [checkLenderAddressHtmlInconsistency, checkLenderAddressInconsistency, checkSubjectFieldsNotBlank],
     'ADDRESS (LENDER/CLIENT)': [checkLenderAddressHtmlInconsistency, checkLenderAddressInconsistency, checkSubjectFieldsNotBlank],
 
@@ -256,7 +275,6 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'Year Built Adjustment': [checkVersion1YearBuiltAdjustmentConsistency],
     'Construction Method': [checkVersion1ConstructionMethodAdjustmentConsistency],
     'Construction Method Adjustment': [checkVersion1ConstructionMethodAdjustmentConsistency],
-    'Appraiser Name': [checkAppraiserNameConsistency],
     'Effective Age (Yrs)': [checkEffectiveAge],
     'Additional features': [checkAdditionalFeatures],
     'Describe the condition of the property': [checkPropertyConditionDescription],
@@ -264,6 +282,10 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? If No, describe': [checkNeighborhoodConformity],
     'Foundation': [checkFoundationType],
     'Foundation Type': [checkFoundationType],
+    'Full Basement': [checkFoundationType],
+    'Partial Basement': [checkFoundationType],
+    'Concrete Slab': [checkFoundationType],
+    'Crawl Space': [checkFoundationType],
     'Basement Area': [checkBasementDetails],
     'Basement Area sq.ft.': [checkBasementDetails],
     'Basement Finish': [checkBasementDetails],
@@ -277,6 +299,21 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'Bath Floor (Material/Condition)': [checkMaterialCondition], 'Bath Wainscot (Material/Condition)': [checkMaterialCondition],
     'Fuel': [checkHeatingFuel, checkImprovementsFieldsNotBlank],
     'Car Storage': [checkCarStorage, checkImprovementsFieldsNotBlank],
+    'Driveway # of Cars': [checkCarStorage],
+    'Driveway Cars': [checkCarStorage],
+    'Driveway Surface': [checkCarStorage, checkImprovementsFieldsNotBlank],
+    'Garage # of Cars': [checkCarStorage],
+    'Garage Cars': [checkCarStorage],
+    'Carport # of Cars': [checkCarStorage],
+    'Carport Cars': [checkCarStorage],
+    'Att./Det./Built-in': [checkCarStorage, checkImprovementsFieldsNotBlank],
+    'Garage Att./Det./Built-in': [checkCarStorage, checkImprovementsFieldsNotBlank],
+    'Car Storage Att/Det': [checkCarStorage],
+    'Garage Type': [checkCarStorage],
+    'Garage/Carport': [checkGarageCarportAdjustment, checkGarageCarportBracketing],
+    'Garage/Carport Adjustment': [checkGarageCarportAdjustment],
+    'Garage/Carport ': [checkGarageCarportAdjustment, checkGarageCarportBracketing],
+    'Garage/Carport  Adjustment': [checkGarageCarportAdjustment],
     'Attic': [checkImprovementsFieldsNotBlank],
     'Heating Type': [checkImprovementsFieldsNotBlank],
     'Cooling Type': [checkImprovementsFieldsNotBlank],
@@ -326,11 +363,11 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'GLA': [checkGrossLivingAreaBracketing, checkRentSubjectGrossLivingAreaConsistency, checkRentGrossLivingAreaAdjustment, checkGrossLivingAreaAdjustment],
     'Design (Style) Adjustment': [checkDesignStyleAdjustment],
     'Functional Utility': [checkFunctionalUtilityAdjustment], 'Functional Utility Adjustment': [checkFunctionalUtilityAdjustment],
-    'Basement & Finished Rooms Below Grade': [checkBasementAdjustment],
+    'Basement & Finished Rooms Below Grade': [checkBasementAdjustment, checkBasementAreaBracketing, checkBasementFinishedAreaBracketing],
     'Basement & Finished Rooms Below Grade Adjustment': [checkBasementAdjustment],
-    'Basement & Finished Rooms': [checkBasementAdjustment],
+    'Basement & Finished Rooms': [checkBasementAdjustment, checkBasementAreaBracketing, checkBasementFinishedAreaBracketing],
     'Basement & Finished Rooms Adjustment': [checkBasementAdjustment],
-    'Basement Description': [checkBasementAdjustment],
+    'Basement Description': [checkBasementAdjustment, checkBasementAreaBracketing, checkBasementFinishedAreaBracketing],
     'Basement Description Adjustment': [checkBasementAdjustment],
     'Energy Efficient Items': [checkEnergyEfficientItemsAdjustment], 'Energy Efficient Items Adjustment': [checkEnergyEfficientItemsAdjustment],
     'Porch/Patio/Deck': [checkPorchPatioDeckAdjustment], 'Porch/Patio/Deck Adjustment': [checkPorchPatioDeckAdjustment],
@@ -553,6 +590,24 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
   validationRegistry['Borrower (and Co-Borrower)'] = [checkBorrowerHtmlConsistency];
   validationRegistry['Transaction Type'] = [checkTransactionTypeHtmlConsistency];
   validationRegistry['TRANSACTION TYPE'] = [checkTransactionTypeHtmlConsistency];
+  validationRegistry['Appraisal Type'] = [checkAppraisalTypeHtmlConsistency];
+  validationRegistry['APPRAISAL TYPE'] = [checkAppraisalTypeHtmlConsistency];
+  validationRegistry['appraisal type'] = [checkAppraisalTypeHtmlConsistency];
+  validationRegistry['From Type'] = [checkAppraisalTypeHtmlConsistency];
+  validationRegistry['FROM TYPE'] = [checkAppraisalTypeHtmlConsistency];
+  validationRegistry['from type'] = [checkAppraisalTypeHtmlConsistency];
+  validationRegistry['Form Type'] = [checkAppraisalTypeHtmlConsistency];
+  validationRegistry['FORM TYPE'] = [checkAppraisalTypeHtmlConsistency];
+  validationRegistry['form type'] = [checkAppraisalTypeHtmlConsistency];
+  validationRegistry['Property County'] = [checkCountyHtmlConsistency];
+  validationRegistry['PROPERTY COUNTY'] = [checkCountyHtmlConsistency];
+  validationRegistry['property county'] = [checkCountyHtmlConsistency];
+  validationRegistry['Assigned to Vendor(s)'] = [checkAppraiserVendorNameConsistency];
+  validationRegistry['ASSIGNED TO VENDOR(S)'] = [checkAppraiserVendorNameConsistency];
+  validationRegistry['assigned to vendor(s)'] = [checkAppraiserVendorNameConsistency];
+  validationRegistry['Assigned to Vendor'] = [checkAppraiserVendorNameConsistency];
+  validationRegistry['ASSIGNED TO VENDOR'] = [checkAppraiserVendorNameConsistency];
+  validationRegistry['assigned to vendor'] = [checkAppraiserVendorNameConsistency];
 
   validationRegistry['Policy Period To'] = [checkDateGreaterThanToday];
   validationRegistry['License Vaild To'] = [checkDateGreaterThanToday];
@@ -946,6 +1001,20 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
           checksToRun = [checkAppraisalCondition];
         } else if (lowerLookup === 'existing/proposed/under const.' || lowerLookup === 'status' || lowerLookup === 'construction status' || lowerLookup.includes('existing/proposed')) {
           checksToRun = [checkConstructionStatusAndReconciliation];
+        } else if (lowerLookup === 'appraisal type' || lowerLookup === 'appraisal_type') {
+          checksToRun = [checkAppraisalTypeHtmlConsistency];
+        } else if (lowerLookup === 'property address' || lowerLookup === 'property_address') {
+          checksToRun = [checkPropertyAddressHtmlConsistency, checkSubjectFieldsNotBlank];
+        } else if (lowerLookup === 'full address' || lowerLookup === 'full_address') {
+          checksToRun = [checkPropertyAddressHtmlConsistency, checkFullAddressConsistency];
+        } else if (lowerLookup === 'property county' || lowerLookup === 'property_county') {
+          checksToRun = [checkCountyHtmlConsistency];
+        } else if (lowerLookup === 'from type' || lowerLookup === 'form type' || lowerLookup === 'form_type') {
+          checksToRun = [checkAppraisalTypeHtmlConsistency];
+        } else if (lowerLookup === 'assigned to vendor(s)' || lowerLookup === 'assigned to vendor' || lowerLookup === 'assigned_to_vendor' || lowerLookup.includes('assigned to vendor')) {
+          checksToRun = [checkAppraiserVendorNameConsistency];
+        } else if (lowerLookup === 'appraiser name' || lowerLookup === 'appraiser_name' || lowerLookup === 'name') {
+          checksToRun = [checkAppraiserVendorNameConsistency];
         }
       }
       if (isSupervisory && !checksToRun.includes(checkSupervisoryAppraiserFields)) {
