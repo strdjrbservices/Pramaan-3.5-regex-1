@@ -1395,21 +1395,46 @@ const buildProcessedExhibitsRows = (rawSourceList, mapItem, scanResult, data, al
   // 1. Resolve all pin metadata, photo match, and grid match
   const allItems = (rawSourceList || []).map((comp, idx) => {
     const pinInfo = cleanPinAddress(comp, mapItem?.subject, idx);
-    const isRental = forceRental || 
+    let isRental = forceRental || 
                      pinInfo.item_type === 'Rental' || 
                      /rental/i.test(pinInfo.label || '') || 
                      /rental/i.test(mapItem?.map_type || '');
 
-    const compLabel = isRental
+    let compLabel = isRental
       ? (pinInfo.label?.toLowerCase()?.includes('rental') ? pinInfo.label : `Rental ${pinInfo.label || `#${idx + 1}`}`)
       : pinInfo.label;
 
     let gridComp = getGridComparableData(idx, compLabel, pinInfo.street, data, allData, scanResult);
-    const photoComp = getComparablePhotoData({ ...pinInfo, gridComp, isRental }, idx, scanResult, allData, data);
+    let photoComp = getComparablePhotoData({ ...pinInfo, gridComp, isRental }, idx, scanResult, allData, data);
     if ((!gridComp || !gridComp.address || gridComp.address === '—') && photoComp?.address) {
       const photoGridComp = getGridComparableData(idx, compLabel, photoComp.address, data, allData, scanResult);
       if (photoGridComp && photoGridComp.address && photoGridComp.address !== '—') {
         gridComp = photoGridComp;
+      }
+    }
+
+    // Auto-detect Rental if not matched to Sales Grid, but matches a Rental Photo or Rental Grid
+    if (!isRental && (!gridComp || !gridComp.address || gridComp.address === '—')) {
+      const photoIsRental = Boolean(
+        photoComp?.category === 'Rental' || 
+        photoComp?.is_rental || 
+        photoComp?.rent_amount || 
+        photoComp?.monthly_rent ||
+        /rental/i.test(photoComp?.caption || '') ||
+        /rental/i.test(photoComp?.title || '')
+      );
+
+      const rentalGridComp = getGridComparableData(idx, 'Rental', pinInfo.street || photoComp?.address, data, allData, scanResult);
+      const isRentalGridMatch = Boolean(rentalGridComp && rentalGridComp.address && rentalGridComp.address !== '—');
+
+      if (photoIsRental || isRentalGridMatch) {
+        isRental = true;
+        pinInfo.item_type = 'Rental';
+        if (isRentalGridMatch) {
+          gridComp = rentalGridComp;
+        } else if (!photoComp) {
+          photoComp = getComparablePhotoData({ ...pinInfo, gridComp: rentalGridComp, isRental: true }, idx, scanResult, allData, data);
+        }
       }
     }
 
@@ -2140,7 +2165,7 @@ export const MapAndSketchExhibitsSection = ({
             iconPosition="start"
             label={
               <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}>
-                <span>Location Map & Comps ({locationMaps.reduce((acc, m) => acc + (m.comparables?.length || 0), 0)} Comps)</span>
+                <span>Location Map & Comps ({locationMaps.reduce((acc, m) => acc + ((m.comparables_only || m.comparables || []).filter(c => c.item_type !== 'Rental').length || 0), 0)} Comps)</span>
                 {extractingStage === 'location_map' && <CircularProgress size={12} sx={{ color: '#0284c7' }} />}
               </Box>
             }
@@ -2194,7 +2219,8 @@ export const MapAndSketchExhibitsSection = ({
             const {
               sortedRows,
               compsCount,
-              listingsCount
+              listingsCount,
+              finalRentals
             } = buildProcessedExhibitsRows(rawSourceList, mapItem, scanResult, data, allData, false);
 
             const parts = [];
@@ -2613,15 +2639,21 @@ export const MapAndSketchExhibitsSection = ({
                     </TableContainer>
 
                     {/* Rental Comparables detected on this Map */}
-                    {mapItem.rentals && mapItem.rentals.length > 0 && (() => {
-                      const { sortedRows: rentalRows, rentalsCount } = buildProcessedExhibitsRows(
-                        mapItem.rentals,
-                        mapItem,
-                        scanResult,
-                        data,
-                        allData,
-                        true
-                      );
+                    {((mapItem.rentals && mapItem.rentals.length > 0) || (finalRentals && finalRentals.length > 0)) && (() => {
+                      const rentalSourceList = (mapItem.rentals && mapItem.rentals.length > 0)
+                        ? mapItem.rentals
+                        : finalRentals.map(r => r.raw_pin || r.pinInfo || r);
+
+                      const { sortedRows: rentalRows, rentalsCount } = (finalRentals && finalRentals.length > 0)
+                        ? { sortedRows: finalRentals, rentalsCount: finalRentals.length }
+                        : buildProcessedExhibitsRows(
+                            rentalSourceList,
+                            mapItem,
+                            scanResult,
+                            data,
+                            allData,
+                            true
+                          );
                       if (rentalRows.length === 0) return null;
 
                       return (
