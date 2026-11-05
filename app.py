@@ -64,6 +64,19 @@ try:
 except Exception as e:
     print(f"Playwright installation note: {e}")
 
+# Ensure spaCy en_core_web_sm model is available
+print("==> Checking spaCy en_core_web_sm...")
+try:
+    import spacy
+    try:
+        spacy.load("en_core_web_sm")
+    except Exception:
+        print("==> Downloading spaCy en_core_web_sm model...")
+        from spacy.cli import download
+        download("en_core_web_sm")
+except Exception as e:
+    print(f"spaCy model setup note: {e}")
+
 # Initialize Django
 print("==> Initializing Django...")
 import django
