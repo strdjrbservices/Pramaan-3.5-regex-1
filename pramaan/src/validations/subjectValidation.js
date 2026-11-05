@@ -246,6 +246,51 @@ export const checkPresence = (field, text) => {
     return { isMatch: true };
 };
 
+export const checkPriorServicesDisclosure = (field, text) => {
+    const value = String(text || '').trim();
+    if (!value) {
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: "Prior Services (3-Year Period Disclosure) cannot be blank. Expected 'I HAVE performed'."
+        };
+    }
+
+    // 1. Negative phrasing: "not have performed", "have not performed", "did not perform", "never performed", "not performed", etc.
+    const isNegative = (
+        /\b(?:not\s+have\s+performed|have\s+not\s+performed|have\s+not\s+provided|not\s+performed|did\s+not\s+perform|never\s+performed|no\s+prior\s+services?|not\s+provided)\b/i.test(value) ||
+        /\b(?:i|appraiser)\s+(?:have\s+|has\s+)?not\b/i.test(value) ||
+        /\b(?:i|appraiser)\s+did\s+not\b/i.test(value) ||
+        /\bnot\s+present\b/i.test(value)
+    );
+
+    if (isNegative) {
+        return {
+            isError: true,
+            message: "Error: Prior services disclosure indicates services were not performed ('I have not performed'). Expected 'I HAVE performed'."
+        };
+    }
+
+    // 2. Positive phrasing: "I HAVE performed", "have performed", "performed services", "has performed"
+    const isPositive = (
+        /\b(?:i|appraiser)?\s*(?:have|has)\s+performed\b/i.test(value) ||
+        /\bperformed\s+(?:prior\s+)?services\b/i.test(value)
+    );
+
+    if (isPositive) {
+        return {
+            isMatch: true,
+            message: "Valid: Prior services disclosure confirms services were performed ('I HAVE performed')."
+        };
+    }
+
+    // 3. Otherwise show error / invalid
+    return {
+        isError: true,
+        message: "Invalid: Prior Services disclosure must state 'I HAVE performed services...'."
+    };
+};
+
 export const checkFhaCaseNo = (field, text) => {
     if (field !== 'FHA Case No.' && field !== 'FHA Case #' && field !== 'FHA Case Number') return null;
     const value = String(text || '').trim();
