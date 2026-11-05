@@ -443,6 +443,74 @@ def extract_fields_from_html_offline(
 # Mode 1: Report vs HTML Comparison (100% Offline)
 # -------------------------------------------------------------------------
 
+def _parse_appraisal_type(val: str):
+    if not val or val == "N/A":
+        return None, False, ""
+    s = str(val).strip()
+    upper = s.upper()
+
+    has_1007 = bool(re.search(r"\b1007\b|RENT\s*SCHEDULE|SINGLE\s*FAMILY\s*(?:COMPARABLE\s*)?RENT|W\s*/\s*1007|WITH\s+1007|\+\s*1007|/\s*1007", s, re.I))
+
+    primary = None
+    if re.search(r"\b1004C\b|MANUFACTURED", upper):
+        primary = "1004C"
+    elif re.search(r"\b1004D\b|COMPLETION", upper):
+        primary = "1004D"
+    elif re.search(r"\b1004MC\b|MARKET\s*CONDITIONS", upper):
+        primary = "1004MC"
+    elif re.search(r"\b1025\b|SMALL\s*RESIDENTIAL|2-4\s*UNIT|MULTI[-\s]*FAMILY", upper):
+        primary = "1025"
+    elif re.search(r"\b1073\b|CONDO|CONDOMINIUM|FRE\s*465", upper):
+        primary = "1073"
+    elif re.search(r"\b1075\b", upper):
+        primary = "1075"
+    elif re.search(r"\b2055\b|EXTERIOR", upper):
+        primary = "2055"
+    elif re.search(r"\b2090\b", upper):
+        primary = "2090"
+    elif re.search(r"\b2095\b", upper):
+        primary = "2095"
+    elif re.search(r"\b203K\b", upper):
+        primary = "203k-FHA"
+    elif re.search(r"\b(?:VERSION\s*#?1|APPRAISAL\s*VERSION\s*#?1)\b", upper):
+        primary = "Appraisal Version #1"
+    elif re.search(r"\b(?:ERC|ECR)\b", upper):
+        primary = "ERC"
+    elif re.search(r"\b216\b|OPERATING\s*INCOME", upper):
+        primary = "216"
+    elif re.search(r"\b1004\b|URAR|FRE\s*70", upper):
+        primary = "1004"
+    elif has_1007:
+        primary = "1007"
+
+    if not primary:
+        m = re.search(r"\b(\d{4}[A-Z]?)\b", upper)
+        primary = m.group(1) if m else re.sub(r"[^A-Z0-9]", "", upper)
+
+    canonical = f"{primary} + 1007" if (primary and primary != "1007" and has_1007) else primary
+    return primary, (primary == "1007" or has_1007), canonical
+
+
+def _appraisal_types_match(html_val: str, rep_val: str) -> bool:
+    if not html_val or not rep_val or html_val == "N/A" or rep_val == "N/A":
+        return False
+
+    pri_h, has1007_h, can_h = _parse_appraisal_type(html_val)
+    pri_r, has1007_r, can_r = _parse_appraisal_type(rep_val)
+
+    if can_h and can_r and can_h.upper() == can_r.upper():
+        return True
+
+    if pri_h and pri_r and pri_h.upper() == pri_r.upper():
+        if pri_h == "1007":
+            return True
+        return has1007_h == has1007_r
+
+    norm_h = _normalize_string(html_val)
+    norm_r = _normalize_string(rep_val)
+    return norm_h == norm_r or norm_h in norm_r or norm_r in norm_h
+
+
 def compare_report_to_html_offline(
     report_path: str,
     html_content_or_path: str,
@@ -526,6 +594,18 @@ def compare_report_to_html_offline(
                 if m:
                     val = m.group(1).strip()
             return str(val or "").strip()
+
+        if "appraisal type" in fn or fn == "type":
+            val = (
+                rep.get("form_type")
+                or _get_field_val(fields, "SUBJECT", "Form Type")
+                or _get_field_val(fields, "SUBJECT", "From Type")
+                or fields.get("Form Type")
+                or fields.get("From Type")
+                or fields.get("form_type")
+                or "1004"
+            )
+            return str(val).strip()
 
         if "type" in fn:
             return str(rep.get("form_type") or "1004").strip()
@@ -611,11 +691,10 @@ def compare_report_to_html_offline(
                     or (norm_h == norm_r)
                 )
             elif "appraisal type" in fn or "type" in fn:
-                norm_h = _normalize_string(html_val)
-                norm_r = _normalize_string(rep_val)
-                m_h = re.search(r"\b(1004|1073|1025|1004d)\b", norm_h)
-                m_r = re.search(r"\b(1004|1073|1025|1004d)\b", norm_r)
-                is_match = (norm_r in norm_h) or (norm_h in norm_r) or bool(m_h and m_r and m_h.group(1) == m_r.group(1))
+                is_match = _appraisal_types_match(html_val, rep_val)
+
+
+
             else:
                 norm_h = re.sub(r"[^\w]", "", html_val.lower())
                 norm_r = re.sub(r"[^\w]", "", rep_val.lower())
@@ -1313,7 +1392,7 @@ def evaluate_1004d_comparison_offline(old_path: str, new_path: str, revision_req
         "status": "Match"
     })
 
-    # 9. Original Repair Conditions – HOLD and Escalate
+    # 9. Original Repair Conditions ΓÇô HOLD and Escalate
     unaddressed = bool(re.search(r"(?:have\s+the\s+improvements\s+been\s+completed[^\n\r]*?\[x\]\s*no|repairs\s+(?:have\s+)?not\s+been\s+completed|repairs\s+incomplete|repairs\s+unaddressed|repairs\s+outstanding|conditions\s+not\s+met)", new_full_text, re.I))
     rep_status = "Mismatch" if unaddressed else "Match"
     rep_cmt = "The 1004D report does not appear to address the original repair conditions identified in the original appraisal report. STOP and ESCALATE." if unaddressed else "Original repair conditions verified as addressed in 1004D report (Improvements completed in accordance with original requirements and conditions)."
@@ -1394,7 +1473,7 @@ def _parse_revision_request_items(revision_request: str) -> List[str]:
         flags=re.IGNORECASE,
     ).strip()
 
-    # 3. Detect structured bullet / numbered list patterns (e.g., "1.", "1)", "(1)", "[1]", "Item 1:", "•", "-", "*")
+    # 3. Detect structured bullet / numbered list patterns (e.g., "1.", "1)", "(1)", "[1]", "Item 1:", "ΓÇó", "-", "*")
     list_marker_pattern = r"(?:\r?\n|\A)\s*(?:(?:\(\d+\)|\d+[\.\)\:]|\[\d+\]|[a-zA-Z][\.\)]|[\u2022\-\*[\u2013\u2014]|(?:item|comment|revision|req)\s*#?\s*\d+\s*[:\-])\s+)"
     markers_found = list(re.finditer(list_marker_pattern, text, flags=re.IGNORECASE))
 
@@ -3101,6 +3180,30 @@ def compare_contract_offline(main_report_path: str, contract_path: str) -> List[
     ]
 
 
+def _is_valid_lender_name(cand: str) -> bool:
+    """Validates that a candidate string is a plausible company/lender name and not instructions/directives."""
+    if not cand:
+        return False
+    cand = cand.strip()
+    if len(cand) < 2 or len(cand) > 120:
+        return False
+    bad_patterns = [
+        r'\b(?:directive|directives|failure\s+to|instruction|instructions)\b',
+        r'\b(?:requirement|requirements|guideline|guidelines|comply|compliance)\b',
+        r'\b(?:delay\s+payment|please\s+ensure|please\s+note|please\s+see)\b',
+        r'\b(?:scope\s+of\s+work|terms\s+(?:and|\&)\s+conditions|confidential)\b',
+        r'\b(?:engagement\s+letter|appraisal\s+report|order\s+details)\b',
+        r'\b(?:property\s+address|vendor\s+fee|appraiser\s+fee)\b',
+        r'\baddress\b',
+    ]
+    for bp in bad_patterns:
+        if re.search(bp, cand, re.IGNORECASE):
+            return False
+    if not re.search(r'[a-zA-Z]', cand):
+        return False
+    return True
+
+
 def compare_engagement_letter_offline(main_report_path: str, letter_path: str) -> Dict[str, Any]:
     """
     Compares Property Address, Vendor's Fee, Lender Name, and Lender Address
@@ -3200,21 +3303,101 @@ def compare_engagement_letter_offline(main_report_path: str, letter_path: str) -
     # 3. Letter Lender Name & Address
     letter_lender_name = ""
     letter_lender_addr = ""
-    m_both = re.search(
-        r'(?:Client|Lender)\s*:\s*(.+?)\s+(?:Client\s+Address|Lender\s+Address)\s*:\s*(.+?)(?=\n\s*\n|\n\s*(?:Branch|Vendor|Order|Loan|AMC|Product|Contact|Borrower|\Z))',
-        full_letter_text,
-        re.IGNORECASE | re.DOTALL
-    )
-    if m_both:
-        letter_lender_name = m_both.group(1).strip()
-        letter_lender_addr = re.sub(r'\s+', ' ', m_both.group(2)).strip()
-    else:
-        m_name = re.search(r'(?:Client|Lender)(?:\s+Name)?\s*:\s*([^\n\r]+)', full_letter_text, re.IGNORECASE)
-        if m_name:
+
+    # Strategy 0: Direct match with rep_lender if known
+    if rep_lender and rep_lender.strip():
+        clean_rep = re.sub(r'\b(?:LLC|INC|CORP|NA|L\.L\.C\.|CO|COMPANY|CORP\.)\b', '', rep_lender, flags=re.I).strip()
+        clean_rep = re.sub(r'[,\.]+$', '', clean_rep).strip()
+        if len(clean_rep) >= 3:
+            escaped = re.escape(clean_rep)
+            m_rep = re.search(r'\b(' + escaped + r'(?:[,\s]*(?:LLC|INC|CORP|NA|L\.L\.C\.|COMPANY|CO))?)\b', full_letter_text, re.I)
+            if m_rep and _is_valid_lender_name(m_rep.group(1)):
+                letter_lender_name = m_rep.group(1).strip()
+
+    label_pat = r'(?:Lender\s*(?:/|\&)?\s*Client|Client\s*(?:/|\&)?\s*Lender|Lender|Client(?!\s*(?:Specific|Directive|Instruction|Requirement|Guideline|Fee|Contact|Phone|Email|Address|Order|Borrower|Property|Inspection|Type|File|Notes?)\b))(?:\s+(?:on\s+Report|Name|Company|Entity|Org|Institution))?'
+
+    # Strategy A: Check for combined block (Lender/Client Name followed by Address)
+    if not letter_lender_name or not letter_lender_addr:
+        m_both = re.search(
+            label_pat + r'\s*[:\-]?\s*([^\n\r]+?)\s+(?:(?:Lender|Client)(?:\s*(?:/|\&)?\s*(?:Lender|Client))?\s+Address|Lender\s+Address|Client\s+Address|Address)\s*[:\-]?\s*(.+?)(?=\n\s*\n|\n\s*(?:Branch|Vendor|Order|Loan|AMC|Product|Contact|Borrower|\Z))',
+            full_letter_text,
+            re.IGNORECASE | re.DOTALL
+        )
+        if m_both:
+            c_name = m_both.group(1).strip()
+            c_addr = re.sub(r'\s+', ' ', m_both.group(2)).strip()
+            if not letter_lender_name and _is_valid_lender_name(c_name):
+                letter_lender_name = c_name
+            if not letter_lender_addr and c_addr and not re.search(r'\b(?:directive|failure\s+to)\b', c_addr, re.I):
+                letter_lender_addr = c_addr
+
+    # Strategy B: Explicit Lender / Client Name extraction
+    if not letter_lender_name:
+        # Match explicit Lender label on the same line with colon/dash
+        m_name = re.search(
+            label_pat + r'\s*[:\-]\s*([^\n\r]+)',
+            full_letter_text,
+            re.IGNORECASE
+        )
+        if m_name and _is_valid_lender_name(m_name.group(1)):
             letter_lender_name = m_name.group(1).strip()
-        m_addr_l = re.search(r'(?:Client|Lender)\s+Address\s*:\s*(.+?)(?=\n\s*\n|\n\s*(?:Branch|Vendor|Order|Loan|AMC|Product|Contact|\Z))', full_letter_text, re.IGNORECASE | re.DOTALL)
+
+    if not letter_lender_name:
+        # Match Lender label with newline before name (table or stacked layout)
+        m_next = re.search(
+            label_pat + r'\s*[:\-]?\s*\n\s*([A-Za-z0-9][^\n\r]+)',
+            full_letter_text,
+            re.IGNORECASE
+        )
+        if m_next and _is_valid_lender_name(m_next.group(1)):
+            letter_lender_name = m_next.group(1).strip()
+
+    if not letter_lender_name:
+        # Match Client: label on same line
+        m_client = re.search(r'Client(?:\s*(?:Name|Company))?\s*[:\-]\s*([^\n\r]+)', full_letter_text, re.IGNORECASE)
+        if m_client and _is_valid_lender_name(m_client.group(1)):
+            letter_lender_name = m_client.group(1).strip()
+
+    # Strategy C: Address extraction if not yet extracted
+    if not letter_lender_addr:
+        m_addr_l = re.search(
+            r'(?:(?:Lender|Client)(?:\s*(?:/|\&)?\s*(?:Lender|Client))?\s+Address|Lender\s+Address|Client\s+Address)\s*[:\-]?\s*(.+?)(?=\n\s*\n|\n\s*(?:Branch|Vendor|Order|Loan|AMC|Product|Contact|Borrower|\Z))',
+            full_letter_text,
+            re.IGNORECASE | re.DOTALL
+        )
         if m_addr_l:
-            letter_lender_addr = re.sub(r'\s+', ' ', m_addr_l.group(1)).strip()
+            c_addr = re.sub(r'\s+', ' ', m_addr_l.group(1)).strip()
+            if not re.search(r'\b(?:directive|failure\s+to)\b', c_addr, re.I):
+                letter_lender_addr = c_addr
+
+    # Strategy D: If rep_lender is known (e.g. BPL Mortgage LLC) and appears directly in the engagement letter
+    if not letter_lender_name and rep_lender:
+        clean_rep = re.sub(r'\b(?:LLC|INC|CORP|NA|L\.L\.C\.)\b', '', rep_lender, flags=re.I).strip()
+        if clean_rep and len(clean_rep) >= 3:
+            escaped = re.escape(clean_rep)
+            m_rep = re.search(r'\b(' + escaped + r'(?:\s*(?:LLC|INC|CORP|NA|L\.L\.C\.|,\s*LLC))?)\b', full_letter_text, re.I)
+            if m_rep and _is_valid_lender_name(m_rep.group(1)):
+                letter_lender_name = m_rep.group(1).strip()
+
+    # Strategy E: If letter_lender_addr is known, check lines immediately preceding it
+    if letter_lender_addr and not letter_lender_name:
+        first_addr_tok = letter_lender_addr.split()[0] if letter_lender_addr.split() else ""
+        if first_addr_tok:
+            m_prev = re.search(r'([A-Za-z0-9&.,\s]+?)\n\s*' + re.escape(first_addr_tok), full_letter_text, re.I)
+            if m_prev:
+                lines_before = [l.strip() for l in m_prev.group(1).split('\n') if l.strip()]
+                if lines_before:
+                    cand = lines_before[-1]
+                    cand_clean = re.sub(r'^(?:(?:Lender|Client)(?:\s*(?:/|\&)\s*(?:Lender|Client))?|Lender|Client)(?:\s*(?:on\s+Report|Name|Company))?\s*[:\-]?\s*', '', cand, flags=re.I).strip()
+                    if _is_valid_lender_name(cand_clean):
+                        letter_lender_name = cand_clean
+
+    # Cleanup any trailing legal verbiage (e.g., ", its successors and/or assigns")
+    if letter_lender_name:
+        letter_lender_name = re.sub(r',\s*its\s+successors.*$', '', letter_lender_name, flags=re.I).strip()
+        letter_lender_name = re.sub(r'\s*\(\s*Additional\s*Resources\s*\)', '', letter_lender_name, flags=re.I).strip()
+        if not _is_valid_lender_name(letter_lender_name):
+            letter_lender_name = ""
 
     # Comparisons
     clean_rep_addr = re.sub(r'(?:Property\s*Address|State|Zip\s*Code)', ' ', rep_addr, flags=re.IGNORECASE).strip()

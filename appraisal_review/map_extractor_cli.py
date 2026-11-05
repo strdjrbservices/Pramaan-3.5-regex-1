@@ -471,6 +471,7 @@ class MapExtractor:
                 (r'\bcourtyard|breezeway\b', 'Courtyard / Breezeway'),
             ],
             'garage_parking': [
+                (r'\b\d+[\s-]*car\s*(?:/|\s+)?(?:attached|detached)?\s*(?:carport|garage)?\b', 'Carport / Garage'),
                 (r'\b\d+\s*car\s*(?:attached|detached)?(?:\s*garage)?\b', 'Car Garage'),
                 (r'\b1\s*car\s*attached\b', '1 Car Attached'),
                 (r'\b2\s*car\s*attached\b', '2 Car Attached'),

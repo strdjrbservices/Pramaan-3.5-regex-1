@@ -2832,18 +2832,89 @@ def evaluate_client_requirements(pdf_path: str, extracted_data: Optional[Dict[st
             })
 
         # 15. Heating System – BPL
-        heat_page, heat_snip = _find_keyword_in_pages(pages_text, [
+        heat_patterns = [
             r"heating\s*(?:system|functioning|functional|works|working|tested|operational)",
+            r"heating[,\s]+(?:and\s+)?plumbing[,\s]+(?:and\s+|or\s+|and/or\s+)?electrical\s+systems?",
+            r"heating[,\s]+(?:cooling[,\s]+)?plumbing[,\s]+(?:and\s+|or\s+|and/or\s+)?electrical\s+systems?",
+            r"heating[,\s]+electrical[,\s]+(?:and\s+|or\s+|and/or\s+)?plumbing\s+systems?",
+            r"plumbing[,\s]+(?:and\s+|or\s+|and/or\s+)?electrical\s+systems?",
+            r"heating[,\s]+plumbing[,\s]+(?:and\s+)?electrical",
+            r"heating[,\s]+cooling[,\s]+plumbing[,\s]+(?:and\s+)?electrical",
+            r"mechanical\s+equipment\s+including\s+gas[,\s]+water[,\s]+and\s+electricity",
+            r"visual\s+exterior\s+inspection",
+            r"exterior\s+visual\s+inspection",
+            r"visual\s+exterior-?only\s+inspection",
+            r"exterior-?only\s+visual\s+inspection",
+            r"visual\s+exterior\s+observation",
+            r"time\s+of\s+(?:the\s+)?(?:physical\s+)?inspection",
             r"mechanicals?\s*are\s*functioning",
             r"(?:too\s*hot|hot\s*weather).*to\s*test",
             r"furnace\s*(?:operational|functioning|works)",
-            r"heat\s*source\s*is\s*operational"
-        ])
+            r"heat\s*source\s*is\s*operational",
+            r"utilities\s*(?:were|are)?\s*(?:functional|functioning|on\s+and\s+functioning|on\s+and\s+in\s+working\s+order|in\s+working\s+order)"
+        ]
+
+        heat_page, heat_snip = _find_keyword_in_pages(pages_text, heat_patterns)
+
+        # Fallback to search full_text, data dict (XML fields), or raw XML file anywhere in report
+        if not heat_page:
+            for pat in heat_patterns:
+                m_ft = re.search(pat, full_text, re.IGNORECASE)
+                if m_ft:
+                    start = max(0, m_ft.start() - 20)
+                    end = min(len(full_text), m_ft.end() + 40)
+                    heat_snip = full_text[start:end].replace("\n", " ").strip()
+                    heat_page = 1
+                    break
+
+        if not heat_page and isinstance(data, dict):
+            def _scan_obj_heating(obj):
+                if isinstance(obj, str):
+                    for pat in heat_patterns:
+                        m_obj = re.search(pat, obj, re.IGNORECASE)
+                        if m_obj:
+                            start = max(0, m_obj.start() - 20)
+                            end = min(len(obj), m_obj.end() + 40)
+                            return obj[start:end].replace("\n", " ").strip()
+                elif isinstance(obj, dict):
+                    for v in obj.values():
+                        res = _scan_obj_heating(v)
+                        if res:
+                            return res
+                elif isinstance(obj, list):
+                    for item in obj:
+                        res = _scan_obj_heating(item)
+                        if res:
+                            return res
+                return None
+
+            snip_found = _scan_obj_heating(data)
+            if snip_found:
+                heat_snip = snip_found
+                heat_page = "Report"
+
+        if not heat_page and pdf_path and os.path.exists(pdf_path):
+            try:
+                with open(pdf_path, "r", encoding="utf-8", errors="ignore") as f_raw:
+                    xml_raw_text = f_raw.read()
+                for pat in heat_patterns:
+                    m_rx = re.search(pat, xml_raw_text, re.IGNORECASE)
+                    if m_rx:
+                        start = max(0, m_rx.start() - 20)
+                        end = min(len(xml_raw_text), m_rx.end() + 40)
+                        heat_snip = re.sub(r'<[^>]+>', ' ', xml_raw_text[start:end]).replace("\n", " ").strip()
+                        heat_snip = re.sub(r'\s+', ' ', heat_snip).strip()
+                        heat_page = "Report"
+                        break
+            except Exception:
+                pass
+
         if heat_page:
+            loc_str = f"Page {heat_page}" if isinstance(heat_page, int) else "Report Commentary"
             details.append({
                 "requirement": "15. Heating System – BPL",
                 "status": "Fulfilled",
-                "value_or_comment": f"Heating system functionality addressed on Page {heat_page} ('{heat_snip}')."
+                "value_or_comment": f"Heating system functionality addressed on {loc_str} ('{heat_snip}')."
             })
         else:
             details.append({

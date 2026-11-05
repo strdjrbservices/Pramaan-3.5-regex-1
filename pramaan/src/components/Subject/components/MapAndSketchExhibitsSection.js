@@ -141,6 +141,7 @@ const parseSketchRooms = (sketchItem) => {
       { regex: /\bterrace|veranda|lanai\b/i, name: 'Terrace / Lanai' }
     ],
     garage_parking: [
+      { regex: /\b\d+[\s-]*car\s*(?:\/|\s+)?(?:attached|detached)?\s*(?:carport|garage)?\b/i, name: 'Carport / Garage' },
       { regex: /\b\d+\s*car\s*(?:attached|detached)?(?:\s*garage)?\b/i, name: 'Car Garage' },
       { regex: /\b1\s*car\s*attached\b/i, name: '1 Car Attached' },
       { regex: /\b2\s*car\s*attached\b/i, name: '2 Car Attached' },

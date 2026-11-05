@@ -783,11 +783,569 @@ export const checkHeatingCoolingAdjustment = (field, arg2, arg3, arg4, arg5) => 
 };
 
 
+export const parseBasementGridString = (str) => {
+    if (!str || typeof str !== 'string') {
+        return {
+            raw: str || '',
+            totalArea: 0,
+            finishedArea: 0,
+            exit: '',
+            rooms: { rr: 0, br: 0, ba: 0, o: 0, total: 0 },
+            hasBasement: false,
+            hasFinish: false,
+            hasRoomCount: false
+        };
+    }
+
+    const cleanStr = str.trim().toLowerCase();
+
+    if (cleanStr === 'none' || cleanStr === '0' || cleanStr === 'n/a' || cleanStr === 'slab' || cleanStr === 'crawl') {
+        return {
+            raw: str,
+            totalArea: 0,
+            finishedArea: 0,
+            exit: 'none',
+            rooms: { rr: 0, br: 0, ba: 0, o: 0, total: 0 },
+            hasBasement: false,
+            hasFinish: false,
+            hasRoomCount: false
+        };
+    }
+
+    let totalArea = 0;
+    let finishedArea = 0;
+    let exit = '';
+    let hasBasement = false;
+    let hasFinish = false;
+
+    // Pattern: {total}sf{finish}sf{exit} e.g. 1349sf1012sfwo or 1349 sqft 1012 sqft wo
+    const sfMatch = cleanStr.match(/(\d+)\s*s[fq]\.?\s*(\d+)\s*s[fq]\.?([a-z0-9]*)/i);
+    if (sfMatch) {
+        totalArea = parseInt(sfMatch[1], 10);
+        finishedArea = parseInt(sfMatch[2], 10);
+        exit = (sfMatch[3] || '').trim();
+        hasBasement = totalArea > 0;
+        hasFinish = finishedArea > 0;
+    } else {
+        const singleSf = cleanStr.match(/(\d+)\s*s[fq]\.?/i);
+        if (singleSf) {
+            totalArea = parseInt(singleSf[1], 10);
+            hasBasement = totalArea > 0;
+        }
+    }
+
+    let rr = 0;
+    let br = 0;
+    let ba = 0;
+    let o = 0;
+    let hasRoomCount = false;
+
+    const rrMatch = cleanStr.match(/(\d+)\s*rr/);
+    if (rrMatch) {
+        rr = parseInt(rrMatch[1], 10);
+        hasRoomCount = true;
+    }
+
+    const brMatch = cleanStr.match(/(\d+)\s*br/);
+    if (brMatch) {
+        br = parseInt(brMatch[1], 10);
+        hasRoomCount = true;
+    }
+
+    const baMatch = cleanStr.match(/(\d+(?:\.\d+)?)\s*ba/);
+    if (baMatch) {
+        ba = parseFloat(baMatch[1]);
+        hasRoomCount = true;
+    }
+
+    const oMatch = cleanStr.match(/(\d+)\s*o(?![a-z])/);
+    if (oMatch) {
+        o = parseInt(oMatch[1], 10);
+        hasRoomCount = true;
+    }
+
+    const totalRooms = rr + br + (ba > 0 ? 1 : 0) + o;
+
+    return {
+        raw: str,
+        totalArea,
+        finishedArea,
+        exit,
+        rooms: { rr, br, ba, o, total: totalRooms },
+        hasBasement,
+        hasFinish,
+        hasRoomCount
+    };
+};
+
+export const getSubjectBasementArea = (allData, textVal) => {
+    if (textVal !== null && textVal !== undefined && String(textVal).trim() !== '') {
+        const parsed = parseBasementGridString(String(textVal));
+        if (parsed.hasBasement) return parsed.totalArea;
+        const num = parseFloat(String(textVal).replace(/[^0-9.]/g, ''));
+        if (!isNaN(num) && num > 0) return num;
+    }
+    if (!allData || typeof allData !== 'object') return null;
+
+    const subjGrid = (typeof getSubjectGridData === 'function') ? getSubjectGridData(allData) : (allData.Subject || {});
+    const candidates = [
+        subjGrid['Basement & Finished Rooms Below Grade'],
+        subjGrid['Basement & Finished Rooms'],
+        subjGrid['Basement Description'],
+        allData.Subject?.['Basement & Finished Rooms Below Grade'],
+        allData.Subject?.['Basement Area sq.ft.'],
+        allData.Subject?.['Basement Area'],
+        allData.IMPROVEMENTS?.['Basement Area sq.ft.'],
+        allData.IMPROVEMENTS?.['Basement Area'],
+        allData.Improvements?.['Basement Area sq.ft.'],
+        allData.Improvements?.['Basement Area'],
+        allData['Basement Area sq.ft.'],
+        allData['Basement Area']
+    ];
+
+    for (const c of candidates) {
+        if (c !== undefined && c !== null && String(c).trim() !== '') {
+            const parsed = parseBasementGridString(String(c));
+            if (parsed.hasBasement) return parsed.totalArea;
+            const num = parseFloat(String(c).replace(/[^0-9.]/g, ''));
+            if (!isNaN(num) && num > 0) return num;
+        }
+    }
+    return 0;
+};
+
+export const getComparableBasementData = (allData) => {
+    const compBasements = [];
+    if (!allData || typeof allData !== 'object') return compBasements;
+
+    const seenComps = new Set();
+    const processCompObj = (compObj, compIdentifier) => {
+        if (!compObj || typeof compObj !== 'object' || Array.isArray(compObj)) return;
+        if (compIdentifier && seenComps.has(compIdentifier)) return;
+        if (compIdentifier) seenComps.add(compIdentifier);
+
+        const raw = compObj['Basement & Finished Rooms Below Grade']
+            ?? compObj['Basement & Finished Rooms']
+            ?? compObj['Basement Description']
+            ?? compObj['Basement Finished Rooms']
+            ?? compObj['Basement Area']
+            ?? '';
+
+        const rawAdj = compObj['Basement & Finished Rooms Below Grade Adjustment']
+            ?? compObj['Basement & Finished Rooms Adjustment']
+            ?? compObj['Basement Adjustment']
+            ?? compObj['Basement Description Adjustment']
+            ?? compObj['Basement Finished Rooms Adjustment']
+            ?? '';
+
+        if (raw !== undefined && raw !== null && String(raw).trim() !== '') {
+            const parsed = parseBasementGridString(String(raw));
+            compBasements.push({
+                identifier: compIdentifier || 'Comparable',
+                raw: String(raw),
+                parsed,
+                rawAdj: String(rawAdj || ''),
+                totalArea: parsed.totalArea,
+                finishedArea: parsed.finishedArea
+            });
+        }
+    };
+
+    Object.entries(allData).forEach(([key, val]) => {
+        if (key.toLowerCase().trim() === 'subject') return;
+        const match = key.match(/^(?:comparable(?:\s*sale)?|comp)[\s#]*(\d+)$/i);
+        if (match && typeof val === 'object' && val !== null && !Array.isArray(val)) {
+            processCompObj(val, `comp_${match[1]}`);
+        }
+    });
+
+    for (let i = 1; i <= 9; i++) {
+        const compId = `comp_${i}`;
+        if (!seenComps.has(compId)) {
+            const compObj = allData[`COMPARABLE SALE #${i}`]
+                || allData[`COMPARABLE SALE # ${i}`]
+                || allData[`Comparable Sale #${i}`]
+                || allData[`Comparable Sale ${i}`]
+                || allData[`Comp ${i}`]
+                || allData[`COMPARABLE #${i}`];
+            if (compObj && typeof compObj === 'object') {
+                processCompObj(compObj, compId);
+            }
+        }
+    }
+
+    const gridContainers = [
+        allData.SALES_GRID,
+        allData['Sales Grid'],
+        allData.SALES_COMPARISON,
+        allData.clean_data?.['Sales Grid'],
+        allData.clean_data?.SALES_GRID
+    ];
+    gridContainers.forEach(container => {
+        if (container && typeof container === 'object') {
+            Object.entries(container).forEach(([key, val]) => {
+                if (key.toLowerCase().trim() === 'subject') return;
+                const match = key.match(/^(?:comparable(?:\s*sale)?|comp)[\s#]*(\d+)$/i);
+                if (match && typeof val === 'object' && val !== null && !Array.isArray(val)) {
+                    processCompObj(val, `comp_${match[1]}`);
+                }
+            });
+        }
+    });
+
+    return compBasements;
+};
+
+export const getComparableBasementAreas = (allData) => {
+    return getComparableBasementData(allData)
+        .filter(c => c.parsed.hasBasement || c.totalArea > 0)
+        .map(c => c.totalArea);
+};
+
+export const checkSubjectBasementAreaBracketing = (allData, textVal) => {
+    const subjectArea = getSubjectBasementArea(allData, textVal);
+    if (subjectArea === null || subjectArea === undefined || subjectArea <= 0) return null;
+
+    const compAreas = getComparableBasementAreas(allData);
+    if (!Array.isArray(compAreas) || compAreas.length === 0) return null;
+
+    const min = Math.min(...compAreas);
+    const max = Math.max(...compAreas);
+    const isBracketed = (min <= subjectArea && max >= subjectArea);
+    const rangeSummary = `Range: ${min.toLocaleString()} to ${max.toLocaleString()} sq ft`;
+
+    if (isBracketed) {
+        return {
+            isBracketed: true,
+            isMatch: true,
+            section: 'Sales Comparison',
+            field: 'Basement & Finished Rooms Below Grade',
+            message: `Subject Basement Area (${subjectArea.toLocaleString()} sq ft) is bracketed by comparables (${rangeSummary}).`
+        };
+    }
+
+    if (min > subjectArea) {
+        return {
+            isBracketed: false,
+            isError: true,
+            section: 'Sales Comparison',
+            field: 'Basement & Finished Rooms Below Grade',
+            message: `Subject Basement Area (${subjectArea.toLocaleString()} sq ft) is unbracketed (all comparables have larger basements). Lowest is ${min.toLocaleString()} sq ft. ${rangeSummary}.`
+        };
+    }
+
+    return {
+        isBracketed: false,
+        isError: true,
+        section: 'Sales Comparison',
+        field: 'Basement & Finished Rooms Below Grade',
+        message: `Subject Basement Area (${subjectArea.toLocaleString()} sq ft) is unbracketed (all comparables have smaller basements). Highest is ${max.toLocaleString()} sq ft. ${rangeSummary}.`
+    };
+};
+
+export const checkCompBasementAreaBracketing = (field, arg2, arg3, arg4, arg5) => {
+    const { allData, saleName, textVal } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
+    if (!allData || typeof allData !== 'object') return null;
+    if (saleName && String(saleName).toLowerCase() === 'subject') return null;
+
+    const subjectArea = getSubjectBasementArea(allData);
+    if (subjectArea === null || subjectArea === undefined || subjectArea <= 0) return null;
+
+    const compObj = (typeof getComparableGridData === 'function')
+        ? getComparableGridData(allData, saleName)
+        : (allData[saleName] || allData.SALES_GRID?.[saleName] || {});
+
+    const raw = (textVal !== null && textVal !== undefined && String(textVal).trim() !== '')
+        ? textVal
+        : (compObj['Basement & Finished Rooms Below Grade']
+            ?? compObj['Basement & Finished Rooms']
+            ?? compObj['Basement Description']
+            ?? compObj['Basement Area']
+            ?? '');
+
+    if (!raw) return null;
+
+    const parsed = parseBasementGridString(String(raw));
+    const areaDiff = parsed.totalArea - subjectArea;
+    const pct = ((areaDiff) / subjectArea) * 100;
+    const sign = pct > 0 ? '+' : '';
+    const numMatch = String(saleName || '').match(/\d+/);
+    const compLabel = numMatch ? `Comp #${numMatch[0]}` : (saleName || 'Comparable');
+
+    return {
+        isMatch: true,
+        section: 'Sales Comparison',
+        field: 'Basement & Finished Rooms Below Grade',
+        message: `${compLabel} Basement Area (${parsed.totalArea.toLocaleString()} sq ft, ${sign}${pct.toFixed(1)}%) vs Subject (${subjectArea.toLocaleString()} sq ft).`
+    };
+};
+
+export const checkBasementAreaBracketing = (field, arg2, arg3, arg4, arg5) => {
+    const { saleName } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
+    const isSubject = !saleName || String(saleName).toLowerCase() === 'subject' || (Array.isArray(arg4) && arg4.some(p => String(p).toLowerCase() === 'subject'));
+    if (isSubject) {
+        const { allData, textVal } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
+        return checkSubjectBasementAreaBracketing(allData, textVal);
+    }
+    return checkCompBasementAreaBracketing(field, arg2, arg3, arg4, arg5);
+};
+
+export const getSubjectBasementFinishedArea = (allData, textVal) => {
+    if (textVal !== null && textVal !== undefined && String(textVal).trim() !== '') {
+        const parsed = parseBasementGridString(String(textVal));
+        if (parsed.hasFinish) return parsed.finishedArea;
+    }
+    if (!allData || typeof allData !== 'object') return null;
+
+    const subjGrid = (typeof getSubjectGridData === 'function') ? getSubjectGridData(allData) : (allData.Subject || {});
+    const candidates = [
+        subjGrid['Basement & Finished Rooms Below Grade'],
+        subjGrid['Basement & Finished Rooms'],
+        subjGrid['Basement Description'],
+        allData.Subject?.['Basement & Finished Rooms Below Grade']
+    ];
+
+    for (const c of candidates) {
+        if (c !== undefined && c !== null && String(c).trim() !== '') {
+            const parsed = parseBasementGridString(String(c));
+            if (parsed.hasFinish) return parsed.finishedArea;
+        }
+    }
+
+    const area = getSubjectBasementArea(allData);
+    const finishRaw = String(
+        allData['Basement Finish %'] ??
+        allData['Basement Finish'] ??
+        allData?.Subject?.['Basement Finish %'] ??
+        allData?.Subject?.['Basement Finish'] ??
+        allData?.IMPROVEMENTS?.['Basement Finish %'] ??
+        allData?.IMPROVEMENTS?.['Basement Finish'] ??
+        ''
+    ).replace(/[^0-9.]/g, '');
+    const finishPct = finishRaw ? parseFloat(finishRaw) : 0;
+    if (area && finishPct > 0) {
+        return Math.round(area * (finishPct / 100));
+    }
+    return 0;
+};
+
+export const getComparableBasementFinishedAreas = (allData) => {
+    return getComparableBasementData(allData)
+        .filter(c => c.parsed.hasFinish || c.finishedArea > 0 || c.totalArea > 0)
+        .map(c => c.finishedArea);
+};
+
+export const checkSubjectBasementFinishedAreaBracketing = (allData, textVal) => {
+    const subjectFinish = getSubjectBasementFinishedArea(allData, textVal);
+    if (subjectFinish === null || subjectFinish === undefined || subjectFinish <= 0) return null;
+
+    const compFinishes = getComparableBasementFinishedAreas(allData);
+    if (!Array.isArray(compFinishes) || compFinishes.length === 0) return null;
+
+    const min = Math.min(...compFinishes);
+    const max = Math.max(...compFinishes);
+    const isBracketed = (min <= subjectFinish && max >= subjectFinish);
+    const rangeSummary = `Range: ${min.toLocaleString()} to ${max.toLocaleString()} sq ft`;
+
+    if (isBracketed) {
+        return {
+            isBracketed: true,
+            isMatch: true,
+            section: 'Sales Comparison',
+            field: 'Basement & Finished Rooms Below Grade',
+            message: `Subject Finished Basement Area (${subjectFinish.toLocaleString()} sq ft) is bracketed by comparables (${rangeSummary}).`
+        };
+    }
+
+    if (min > subjectFinish) {
+        return {
+            isBracketed: false,
+            isError: true,
+            section: 'Sales Comparison',
+            field: 'Basement & Finished Rooms Below Grade',
+            message: `Subject Finished Basement Area (${subjectFinish.toLocaleString()} sq ft) is unbracketed (all comparables have more finished area). Lowest is ${min.toLocaleString()} sq ft. ${rangeSummary}.`
+        };
+    }
+
+    return {
+        isBracketed: false,
+        isError: true,
+        section: 'Sales Comparison',
+        field: 'Basement & Finished Rooms Below Grade',
+        message: `Subject Finished Basement Area (${subjectFinish.toLocaleString()} sq ft) is unbracketed (all comparables have less finished area). Highest is ${max.toLocaleString()} sq ft. ${rangeSummary}.`
+    };
+};
+
+export const checkCompBasementFinishedAreaBracketing = (field, arg2, arg3, arg4, arg5) => {
+    const { allData, saleName, textVal } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
+    if (!allData || typeof allData !== 'object') return null;
+    if (saleName && String(saleName).toLowerCase() === 'subject') return null;
+
+    const subjectFinish = getSubjectBasementFinishedArea(allData);
+    if (subjectFinish === null || subjectFinish === undefined || subjectFinish <= 0) return null;
+
+    const compObj = (typeof getComparableGridData === 'function')
+        ? getComparableGridData(allData, saleName)
+        : (allData[saleName] || allData.SALES_GRID?.[saleName] || {});
+
+    const raw = (textVal !== null && textVal !== undefined && String(textVal).trim() !== '')
+        ? textVal
+        : (compObj['Basement & Finished Rooms Below Grade']
+            ?? compObj['Basement & Finished Rooms']
+            ?? compObj['Basement Description']
+            ?? '');
+
+    if (!raw) return null;
+
+    const parsed = parseBasementGridString(String(raw));
+    const finishDiff = parsed.finishedArea - subjectFinish;
+    const pct = ((finishDiff) / subjectFinish) * 100;
+    const sign = pct > 0 ? '+' : '';
+    const numMatch = String(saleName || '').match(/\d+/);
+    const compLabel = numMatch ? `Comp #${numMatch[0]}` : (saleName || 'Comparable');
+
+    return {
+        isMatch: true,
+        section: 'Sales Comparison',
+        field: 'Basement & Finished Rooms Below Grade',
+        message: `${compLabel} Finished Basement Area (${parsed.finishedArea.toLocaleString()} sq ft, ${sign}${pct.toFixed(1)}%) vs Subject (${subjectFinish.toLocaleString()} sq ft).`
+    };
+};
+
+export const checkBasementFinishedAreaBracketing = (field, arg2, arg3, arg4, arg5) => {
+    const { saleName } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
+    const isSubject = !saleName || String(saleName).toLowerCase() === 'subject' || (Array.isArray(arg4) && arg4.some(p => String(p).toLowerCase() === 'subject'));
+    if (isSubject) {
+        const { allData, textVal } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
+        return checkSubjectBasementFinishedAreaBracketing(allData, textVal);
+    }
+    return checkCompBasementFinishedAreaBracketing(field, arg2, arg3, arg4, arg5);
+};
+
+export const checkSubjectBasementGrid = (field, textVal, allData) => {
+    if (!allData || typeof allData !== 'object') return null;
+
+    const gridStr = String(textVal ?? '').trim();
+    if (!gridStr) {
+        return {
+            isError: true,
+            section: 'Sales Comparison',
+            field: 'Basement & Finished Rooms Below Grade',
+            message: "Subject 'Basement & Finished Rooms Below Grade' cannot be blank."
+        };
+    }
+
+    const parsed = parseBasementGridString(gridStr);
+
+    const impAreaRaw = String(
+        allData['Basement Area sq.ft.'] ??
+        allData['Basement Area'] ??
+        allData?.Subject?.['Basement Area sq.ft.'] ??
+        allData?.Subject?.['Basement Area'] ??
+        allData?.IMPROVEMENTS?.['Basement Area sq.ft.'] ??
+        allData?.IMPROVEMENTS?.['Basement Area'] ??
+        allData?.Improvements?.['Basement Area sq.ft.'] ??
+        allData?.Improvements?.['Basement Area'] ??
+        ''
+    ).replace(/[^0-9.]/g, '');
+    const impArea = impAreaRaw ? parseFloat(impAreaRaw) : NaN;
+
+    const impFinishRaw = String(
+        allData['Basement Finish %'] ??
+        allData['Basement Finish'] ??
+        allData?.Subject?.['Basement Finish %'] ??
+        allData?.Subject?.['Basement Finish'] ??
+        allData?.IMPROVEMENTS?.['Basement Finish %'] ??
+        allData?.IMPROVEMENTS?.['Basement Finish'] ??
+        allData?.Improvements?.['Basement Finish %'] ??
+        allData?.Improvements?.['Basement Finish'] ??
+        ''
+    ).replace(/[^0-9.]/g, '');
+    const impFinishPct = impFinishRaw ? parseFloat(impFinishRaw) : NaN;
+
+    const checkIsYes = (val) => {
+        if (!val) return false;
+        const s = String(val).trim().toLowerCase();
+        return s === 'yes' || s === 'true' || s === '1' || s === 'checked' || s === 'x' || s === '[x]' || s === 'y';
+    };
+
+    const hasFull = checkIsYes(allData['Full Basement']) || checkIsYes(allData.Subject?.['Full Basement']) || checkIsYes(allData.IMPROVEMENTS?.['Full Basement']) || checkIsYes(allData.Improvements?.['Full Basement']);
+    const hasPartial = checkIsYes(allData['Partial Basement']) || checkIsYes(allData.Subject?.['Partial Basement']) || checkIsYes(allData.IMPROVEMENTS?.['Partial Basement']) || checkIsYes(allData.Improvements?.['Partial Basement']);
+
+    // Flow from Improvements
+    if (!hasFull && !hasPartial && (isNaN(impArea) || impArea === 0)) {
+        if (parsed.totalArea > 0 || parsed.finishedArea > 0) {
+            return {
+                isError: true,
+                section: 'Sales Comparison',
+                field: 'Basement & Finished Rooms Below Grade',
+                message: `Foundation has no basement in Improvements, but Sales Grid shows '${gridStr}'. Grid should reflect 0 basement area.`
+            };
+        }
+    } else {
+        if (!isNaN(impArea) && impArea > 0 && parsed.totalArea !== impArea) {
+            return {
+                isError: true,
+                section: 'Sales Comparison',
+                field: 'Basement & Finished Rooms Below Grade',
+                message: `Basement total area in Sales Grid (${parsed.totalArea.toLocaleString()} sf) does not match Improvements Basement Area (${impArea.toLocaleString()} sf).`
+            };
+        }
+
+        if (!isNaN(impArea) && impArea > 0 && !isNaN(impFinishPct)) {
+            const expectedFinish = Math.round(impArea * (impFinishPct / 100));
+            if (parsed.finishedArea !== expectedFinish) {
+                return {
+                    isError: true,
+                    section: 'Sales Comparison',
+                    field: 'Basement & Finished Rooms Below Grade',
+                    message: `Basement finished area in Sales Grid (${parsed.finishedArea.toLocaleString()} sf) does not match calculated finished area from Improvements (${expectedFinish.toLocaleString()} sf based on ${impArea.toLocaleString()} sf @ ${impFinishPct}%).`
+                };
+            }
+        }
+
+        if ((!isNaN(impFinishPct) && impFinishPct > 0) || parsed.finishedArea > 0) {
+            if (!parsed.hasRoomCount || (parsed.rooms.rr === 0 && parsed.rooms.br === 0 && parsed.rooms.ba === 0 && parsed.rooms.o === 0)) {
+                return {
+                    isError: true,
+                    section: 'Sales Comparison',
+                    field: 'Basement & Finished Rooms Below Grade',
+                    message: `Basement finish is ${impFinishPct || Math.round((parsed.finishedArea / (parsed.totalArea || 1)) * 100)}% (${parsed.finishedArea.toLocaleString()} sf living space), but below grade room count is missing or 0.`
+                };
+            }
+        }
+    }
+
+    const areaBracket = checkSubjectBasementAreaBracketing(allData, gridStr);
+    const finishBracket = checkSubjectBasementFinishedAreaBracketing(allData, gridStr);
+
+    let bracketingSummary = '';
+    if (areaBracket && finishBracket) {
+        bracketingSummary = ` | Actual area: ${areaBracket.isBracketed ? 'Bracketed' : 'Unbracketed'}, Finished area: ${finishBracket.isBracketed ? 'Bracketed' : 'Unbracketed'}.`;
+    }
+
+    const roomSummary = parsed.hasRoomCount ? ` (${parsed.rooms.rr}rr${parsed.rooms.br}br${parsed.rooms.ba.toFixed(1)}ba${parsed.rooms.o}o)` : '';
+
+    return {
+        isMatch: true,
+        section: 'Sales Comparison',
+        field: 'Basement & Finished Rooms Below Grade',
+        message: `Valid: Subject basement (${parsed.totalArea.toLocaleString()} sf total, ${parsed.finishedArea.toLocaleString()} sf finished${roomSummary}) matches Improvements section.${bracketingSummary}`
+    };
+};
+
 export const checkBasementAdjustment = (field, arg2, arg3, arg4, arg5) => {
     const { allData, saleName, textVal } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
-    if (!allData || !saleName || String(saleName).toLowerCase() === 'subject') return null;
+    if (!allData) return null;
 
-    const subjGrid = getSubjectGridData(allData);
+    const isSubject = !saleName || String(saleName).toLowerCase() === 'subject' ||
+        (Array.isArray(arg4) && arg4.some(p => String(p).toLowerCase() === 'subject'));
+
+    if (isSubject) {
+        return checkSubjectBasementGrid(field, textVal, allData);
+    }
+
+    const subjGrid = (typeof getSubjectGridData === 'function') ? getSubjectGridData(allData) : (allData.Subject || {});
     const subjectBasement = String(
         subjGrid['Basement & Finished Rooms Below Grade'] ||
         subjGrid['Basement Description'] ||
@@ -843,24 +1401,46 @@ export const checkBasementAdjustment = (field, arg2, arg3, arg4, arg5) => {
         ).trim();
     }
 
-    if (!subjectBasement || !compBasement) return null;
-
-    const normalizeBasement = (str) => String(str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    const isSame = normalizeBasement(subjectBasement) === normalizeBasement(compBasement);
+    if (!subjectBasement && !compBasement) return null;
 
     const parseAdjNum = (adjStr) => {
         if (adjStr === undefined || adjStr === null) return null;
         const str = String(adjStr).trim();
         if (!str || str === '$' || str === '-') return null;
-        const num = parseFloat(str.replace(/[^0-9.-]/g, ''));
-        return isNaN(num) ? null : num;
+        const lines = str.split(/[\r\n,]+/).map(s => s.trim()).filter(Boolean);
+        let total = 0;
+        let found = false;
+        for (const line of lines) {
+            const num = parseFloat(line.replace(/[^0-9.-]/g, ''));
+            if (!isNaN(num)) {
+                total += num;
+                found = true;
+            }
+        }
+        return found ? total : null;
     };
 
     const targetField = isAdjustmentField ? 'Basement & Finished Rooms Below Grade Adjustment' : 'Basement & Finished Rooms Below Grade';
 
+    const subj = parseBasementGridString(subjectBasement);
+    const comp = parseBasementGridString(compBasement);
+
+    const areaDiff = comp.totalArea - subj.totalArea;
+    const finishDiff = comp.finishedArea - subj.finishedArea;
+    const rrDiff = comp.rooms.rr - subj.rooms.rr;
+    const brDiff = comp.rooms.br - subj.rooms.br;
+    const baDiff = comp.rooms.ba - subj.rooms.ba;
+    const oDiff = comp.rooms.o - subj.rooms.o;
+
+    const normalizeBasement = (str) => String(str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const isSameText = normalizeBasement(subjectBasement) === normalizeBasement(compBasement);
+    const isSameFeatures = (comp.totalArea === subj.totalArea &&
+        comp.finishedArea === subj.finishedArea &&
+        rrDiff === 0 && brDiff === 0 && baDiff === 0 && oDiff === 0);
+
+    const isSame = isSameText || isSameFeatures;
+
     if (isSame) {
-        // If subject and comparable basement match:
-        // $0 or blank is valid. A non-zero adjustment is invalid.
         const num = parseAdjNum(adjustmentText);
         if (num !== null && num !== 0) {
             return {
@@ -877,27 +1457,71 @@ export const checkBasementAdjustment = (field, arg2, arg3, arg4, arg5) => {
             message: `Basement & Finished Rooms Below Grade is the same as Subject (${compBasement}). Validated with $0 / no adjustment.`
         };
     } else {
-        // If subject and comparable basement differ:
-        // An adjustment is required: 0, $0, positive, or negative are all valid adjustments.
-        // If blank/empty, show error that an adjustment is required.
         const isBlank = adjustmentText === undefined || adjustmentText === null || String(adjustmentText).trim() === '' || String(adjustmentText).trim() === '$';
         if (isBlank) {
             return {
                 isError: true,
                 section: 'Sales Comparison',
                 field: targetField,
-                message: `Basement & Finished Rooms Below Grade differs from Subject (Subject: '${subjectBasement}', Comp: '${compBasement}'). An adjustment is required, even if 0.`
+                message: `Basement & Finished Rooms Below Grade differs from Subject (Subject: '${subjectBasement.replace(/[\r\n]+/g, ' ')}', Comp: '${compBasement.replace(/[\r\n]+/g, ' ')}'). An adjustment is required, even if 0.`
             };
         }
 
         const num = parseAdjNum(adjustmentText);
+
+        const diffDetails = [];
+        if (areaDiff !== 0) {
+            diffDetails.push(`Actual Area: ${comp.totalArea} vs ${subj.totalArea} sf (${areaDiff > 0 ? '+' : ''}${areaDiff} sf)`);
+        }
+        if (finishDiff !== 0) {
+            diffDetails.push(`Finished Area: ${comp.finishedArea} vs ${subj.finishedArea} sf (${finishDiff > 0 ? '+' : ''}${finishDiff} sf)`);
+        }
+        if (rrDiff !== 0) {
+            diffDetails.push(`Rec Room: ${comp.rooms.rr} vs ${subj.rooms.rr} (${rrDiff > 0 ? '+' : ''}${rrDiff})`);
+        }
+        if (brDiff !== 0) {
+            diffDetails.push(`Bedrooms: ${comp.rooms.br} vs ${subj.rooms.br} (${brDiff > 0 ? '+' : ''}${brDiff})`);
+        }
+        if (baDiff !== 0) {
+            diffDetails.push(`Baths: ${comp.rooms.ba.toFixed(1)} vs ${subj.rooms.ba.toFixed(1)} (${baDiff > 0 ? '+' : ''}${baDiff.toFixed(1)})`);
+        }
+        if (oDiff !== 0) {
+            diffDetails.push(`Other Rooms: ${comp.rooms.o} vs ${subj.rooms.o} (${oDiff > 0 ? '+' : ''}${oDiff})`);
+        }
+
+        const isInferior = (finishDiff < 0 || (finishDiff === 0 && areaDiff < 0)) &&
+            baDiff <= 0 && brDiff <= 0 && rrDiff <= 0 && oDiff <= 0;
+        const isSuperior = (finishDiff > 0 || (finishDiff === 0 && areaDiff > 0)) &&
+            baDiff >= 0 && brDiff >= 0 && rrDiff >= 0 && oDiff >= 0;
+
+        if (num !== null && isInferior && num < 0) {
+            return {
+                isError: true,
+                section: 'Sales Comparison',
+                field: targetField,
+                message: `Comparable is inferior to Subject in basement (${diffDetails.join(', ')}), but adjustment is negative (${adjustmentText}). Inferior features require a positive (+) adjustment.`
+            };
+        }
+
+        if (num !== null && isSuperior && num > 0) {
+            return {
+                isError: true,
+                section: 'Sales Comparison',
+                field: targetField,
+                message: `Comparable is superior to Subject in basement (${diffDetails.join(', ')}), but adjustment is positive (${adjustmentText}). Superior features require a negative (-) adjustment.`
+            };
+        }
+
+        const formattedAdj = adjustmentText.replace(/[\r\n]+/g, ' / ');
+        const diffStr = diffDetails.length > 0 ? ` (${diffDetails.join(', ')})` : '';
+
         return {
             isMatch: true,
             section: 'Sales Comparison',
             field: targetField,
             message: (num === 0 || adjustmentText.trim() === '0' || adjustmentText.trim() === '$0')
-                ? `Basement & Finished Rooms Below Grade differs from Subject (Subject: '${subjectBasement}', Comp: '${compBasement}'), validated with $0 adjustment.`
-                : `Adjustment of ${adjustmentText} is provided for difference in Basement & Finished Rooms Below Grade (Subject: '${subjectBasement}', Comp: '${compBasement}').`
+                ? `Basement & Finished Rooms Below Grade differs from Subject${diffStr}, validated with $0 adjustment.`
+                : `Adjustment of ${formattedAdj} is provided for difference in Basement & Finished Rooms Below Grade${diffStr}.`
         };
     }
 };
@@ -2448,5 +3072,516 @@ export const checkSiteBracketing = (field, arg2, arg3, arg4, arg5) => {
         return checkSubjectSiteBracketing(field, arg2, arg3, arg4, arg5);
     }
     return checkCompSiteBracketing(field, arg2, arg3, arg4, arg5);
+};
+
+// ==========================================
+// GARAGE / CARPORT VALIDATION & BRACKETING
+// ==========================================
+
+export const parseGarageGridString = (str) => {
+    const raw = String(str ?? '').trim();
+    if (!raw) {
+        return {
+            raw: '',
+            isNone: true,
+            isValidFormat: true,
+            garage: { count: 0, type: null, exists: false },
+            carport: { count: 0, type: null, exists: false },
+            driveway: { count: 0, exists: false },
+            totalCars: 0,
+            totalCoveredCars: 0
+        };
+    }
+
+    const s = raw.toLowerCase().replace(/,/g, ' ');
+
+    if (/^(none|0|no\s*garage|n\/a|nog|-)\b/i.test(s) && !/\d+\s*(?:g|cp|dw)/i.test(s)) {
+        return {
+            raw,
+            isNone: true,
+            isValidFormat: true,
+            garage: { count: 0, type: null, exists: false },
+            carport: { count: 0, type: null, exists: false },
+            driveway: { count: 0, exists: false },
+            totalCars: 0,
+            totalCoveredCars: 0
+        };
+    }
+
+    let garageCount = 0;
+    let garageType = null;
+    let carportCount = 0;
+    let carportType = null;
+    let drivewayCount = 0;
+
+    // 1. Garage: e.g. 2gd, 2ga, 2gbi, 1gb, 2g, 2 car detached, 2 car attached
+    const gShortMatch = s.match(/(\d+)\s*g\s*(a|att|attached|d|det|detached|bi|b|builtin|built-in)?(?!\w*carport|\w*driveway)/i);
+    if (gShortMatch) {
+        garageCount = parseInt(gShortMatch[1], 10);
+        const t = (gShortMatch[2] || '').toLowerCase();
+        if (t.startsWith('d')) garageType = 'det';
+        else if (t.startsWith('b')) garageType = 'builtin';
+        else if (t.startsWith('a')) garageType = 'att';
+    } else {
+        const gLongMatch = s.match(/(\d+)\s*car\s*(attached|detached|built[\s-]?in)?\s*garage/i) ||
+                           s.match(/(attached|detached|built[\s-]?in)?\s*garage\s*(\d+)?/i);
+        if (gLongMatch && (gLongMatch[1] || gLongMatch[2])) {
+            const numPart = gLongMatch[1] && /\d+/.test(gLongMatch[1]) ? gLongMatch[1] : (gLongMatch[2] && /\d+/.test(gLongMatch[2]) ? gLongMatch[2] : '1');
+            garageCount = parseInt(numPart.replace(/[^0-9]/g, '') || '1', 10);
+            const strPart = (gLongMatch[1] && !/\d+/.test(gLongMatch[1]) ? gLongMatch[1] : (gLongMatch[2] && !/\d+/.test(gLongMatch[2]) ? gLongMatch[2] : '')).toLowerCase();
+            if (strPart.includes('det')) garageType = 'det';
+            else if (strPart.includes('built')) garageType = 'builtin';
+            else if (strPart.includes('att')) garageType = 'att';
+        }
+    }
+
+    // 2. Carport: e.g. 1cp, 1cpa, 1cpd, 1 car carport
+    const cpMatch = s.match(/(\d+)\s*cp\s*(a|att|attached|d|det|detached|bi|b|builtin|built-in)?/i) ||
+                    s.match(/(\d+)\s*car\s*(attached|detached)?\s*carport/i) ||
+                    s.match(/carport\s*(\d+)?/i);
+    if (cpMatch) {
+        const numPart = cpMatch[1] ? cpMatch[1].replace(/[^0-9]/g, '') : '1';
+        carportCount = parseInt(numPart || '1', 10);
+        const t = (cpMatch[2] || '').toLowerCase();
+        if (t.startsWith('d')) carportType = 'det';
+        else if (t.startsWith('b')) carportType = 'builtin';
+        else if (t.startsWith('a')) carportType = 'att';
+    }
+
+    // 3. Driveway: e.g. 1dw, 2dw, 2 car driveway
+    const dwMatch = s.match(/(\d+)\s*dw\b/i) || s.match(/(\d+)\s*(?:car\s*)?driveway\b/i);
+    if (dwMatch) {
+        drivewayCount = parseInt(dwMatch[1].replace(/[^0-9]/g, '') || '0', 10);
+    }
+
+    const hasGarage = garageCount > 0;
+    const hasCarport = carportCount > 0;
+    const hasDriveway = drivewayCount > 0;
+    const isValidFormat = hasGarage || hasCarport || hasDriveway;
+    const isNone = false;
+
+    return {
+        raw,
+        isNone,
+        isValidFormat,
+        garage: { count: garageCount, type: garageType, exists: hasGarage },
+        carport: { count: carportCount, type: carportType, exists: hasCarport },
+        driveway: { count: drivewayCount, exists: hasDriveway },
+        totalCars: garageCount + carportCount + drivewayCount,
+        totalCoveredCars: garageCount + carportCount
+    };
+};
+
+export const getSubjectGarageGridData = (allData, textVal) => {
+    if (textVal !== null && textVal !== undefined && String(textVal).trim() !== '') {
+        const parsed = parseGarageGridString(String(textVal));
+        if (parsed && (parsed.totalCars > 0 || parsed.isNone)) return parsed;
+    }
+    if (!allData || typeof allData !== 'object') return null;
+    const root = allData;
+    const sGrid = root.SALES_GRID || root['Sales Grid'] || root.sales_grid || {};
+    const subjObj = sGrid.Subject || sGrid.SUBJECT || root.Subject || root.SUBJECT || {};
+    const gridStr = subjObj['Garage/Carport'] || subjObj['Garage/Carport '] || subjObj['Garage'] || root['Garage/Carport'] || '';
+    if (gridStr) {
+        return parseGarageGridString(gridStr);
+    }
+    return null;
+};
+
+export const getComparableGarageGridData = (allData) => {
+    if (!allData || typeof allData !== 'object') return [];
+    const root = allData;
+    const sGrid = root.SALES_GRID || root['Sales Grid'] || root.sales_grid || {};
+    const comps = [];
+
+    const compKeys = new Set();
+    Object.keys(root).forEach(k => {
+        if (/^(?:COMPARABLE(?:\s+SALE)?|COMP)[_\s#]*([0-9]+)/i.test(k)) compKeys.add(k);
+    });
+    Object.keys(sGrid).forEach(k => {
+        if (/^(?:COMPARABLE(?:\s+SALE)?|COMP)[_\s#]*([0-9]+)/i.test(k)) compKeys.add(k);
+    });
+
+    const sortedKeys = Array.from(compKeys).sort((a, b) => {
+        const numA = parseInt((a.match(/\d+/) || [0])[0], 10);
+        const numB = parseInt((b.match(/\d+/) || [0])[0], 10);
+        return numA - numB;
+    });
+
+    for (const key of sortedKeys) {
+        const compObj = sGrid[key] || root[key];
+        if (!compObj || typeof compObj !== 'object') continue;
+        const gridStr = compObj['Garage/Carport'] || compObj['Garage/Carport '] || compObj['Garage'] || '';
+        const adjStr = compObj['Garage/Carport Adjustment'] || compObj['Garage/Carport  Adjustment'] || compObj['Garage Adjustment'] || '';
+        const parsed = parseGarageGridString(gridStr);
+        comps.push({
+            key,
+            raw: gridStr,
+            adjustmentRaw: adjStr,
+            parsed
+        });
+    }
+
+    return comps;
+};
+
+export const checkSubjectGarageGrid = (field, textVal, allData) => {
+    if (!allData || typeof allData !== 'object') return null;
+
+    const gridStr = String(textVal ?? '').trim();
+    if (!gridStr) {
+        return {
+            isError: true,
+            section: 'Sales Comparison',
+            field: 'Garage/Carport',
+            message: "Subject 'Garage/Carport' cannot be blank."
+        };
+    }
+
+    const parsedGrid = parseGarageGridString(gridStr);
+
+    if (!parsedGrid.isValidFormat && !parsedGrid.isNone) {
+        return {
+            isError: true,
+            section: 'Sales Comparison',
+            field: 'Garage/Carport',
+            message: `Subject 'Garage/Carport' value '${gridStr}' is not a recognized UAD format (expected e.g. 2ga, 2gd, 1cp, 1dw, or None / 0).`
+        };
+    }
+
+    const checkIsYes = (val) => {
+        if (!val) return false;
+        const s = String(val).trim().toLowerCase();
+        return s === 'yes' || s === 'true' || s === '1' || s === 'checked' || s === 'x' || s === '[x]' || s === 'y';
+    };
+
+    const getImp = (...keys) => {
+        for (const k of keys) {
+            if (allData[k] !== undefined && allData[k] !== null && String(allData[k]).trim() !== '') return String(allData[k]).trim();
+            if (allData.IMPROVEMENTS?.[k] !== undefined && allData.IMPROVEMENTS?.[k] !== null && String(allData.IMPROVEMENTS[k]).trim() !== '') return String(allData.IMPROVEMENTS[k]).trim();
+            if (allData.Improvements?.[k] !== undefined && allData.Improvements?.[k] !== null && String(allData.Improvements[k]).trim() !== '') return String(allData.Improvements[k]).trim();
+            if (allData.Subject?.[k] !== undefined && allData.Subject?.[k] !== null && String(allData.Subject[k]).trim() !== '') return String(allData.Subject[k]).trim();
+        }
+        return '';
+    };
+
+    const csVal = getImp('Car Storage', 'CAR STORAGE', 'Car Storage None', 'Vehicle Storage');
+    const csNoneFlag = getImp('Car Storage None', 'Car Storage - None');
+    const isNone = (
+        csVal.toLowerCase().includes('none') ||
+        checkIsYes(csNoneFlag) ||
+        checkIsYes(allData['Car Storage None']) ||
+        checkIsYes(allData.IMPROVEMENTS?.['Car Storage None'])
+    );
+
+    const isDriveChecked = csVal.toLowerCase().includes('driveway') || checkIsYes(allData['Driveway']) || checkIsYes(allData.IMPROVEMENTS?.['Driveway']);
+    const isGarageChecked = csVal.toLowerCase().includes('garage') || checkIsYes(allData['Garage']) || checkIsYes(allData.IMPROVEMENTS?.['Garage']);
+    const isCarportChecked = csVal.toLowerCase().includes('carport') || checkIsYes(allData['Carport']) || checkIsYes(allData.IMPROVEMENTS?.['Carport']);
+
+    const driveCarsNum = parseInt(getImp('Driveway # of Cars', 'Driveway Cars', '# of Cars').replace(/[^0-9]/g, '') || '0', 10);
+    const garageCarsNum = parseInt(getImp('Garage # of Cars', 'Garage Cars', 'Garage').replace(/[^0-9]/g, '') || '0', 10);
+    const carportCarsNum = parseInt(getImp('Carport # of Cars', 'Carport Cars', 'Carport').replace(/[^0-9]/g, '') || '0', 10);
+
+    const attTypeRaw = getImp('Att./Det./Built-in', 'Garage Att./Det./Built-in', 'Car Storage Att/Det', 'Garage Type', 'ATT./DET./BUILT-IN');
+    const garDetFlag = getImp('Garage Detached', 'Garage Det');
+    const garBuiltFlag = getImp('Garage Built-in', 'Garage Built-In', 'Garage Builtin');
+    const garAttFlag = getImp('Garage Att.', 'Garage Att');
+
+    let impAttachment = '';
+    const combAtt = `${attTypeRaw} ${garAttFlag} ${garDetFlag} ${garBuiltFlag}`.toLowerCase();
+    if (checkIsYes(garDetFlag) || /\b(?:det|detached)\b/i.test(combAtt)) impAttachment = 'det';
+    else if (checkIsYes(garBuiltFlag) || /\b(?:built[\s-]?in|builtin)\b/i.test(combAtt)) impAttachment = 'builtin';
+    else if (checkIsYes(garAttFlag) || /\b(?:att|attached)\b/i.test(combAtt)) impAttachment = 'att';
+
+    // SCENARIO 1: Improvements is None
+    if (isNone) {
+        if (!parsedGrid.isNone && parsedGrid.totalCars > 0) {
+            return {
+                isError: true,
+                section: 'Sales Comparison',
+                field: 'Garage/Carport',
+                message: `Subject 'Garage/Carport' indicates '${gridStr}', but Improvements section marks Car Storage as 'None'. Please reconcile.`
+            };
+        }
+        return {
+            isMatch: true,
+            section: 'Sales Comparison',
+            field: 'Garage/Carport',
+            message: "Valid: Subject 'Garage/Carport' is 'None', consistent with Improvements section."
+        };
+    }
+
+    // SCENARIO 2: Improvements has parking
+    if (isGarageChecked && garageCarsNum > 0) {
+        if (parsedGrid.garage.count !== garageCarsNum) {
+            return {
+                isError: true,
+                section: 'Sales Comparison',
+                field: 'Garage/Carport',
+                message: `Subject 'Garage/Carport' (${gridStr}) specifies ${parsedGrid.garage.count} garage car(s), but Improvements section specifies ${garageCarsNum}. Please reconcile.`
+            };
+        }
+        if (impAttachment && parsedGrid.garage.type) {
+            if (impAttachment === 'det' && parsedGrid.garage.type !== 'det') {
+                return {
+                    isError: true,
+                    section: 'Sales Comparison',
+                    field: 'Garage/Carport',
+                    message: `Subject 'Garage/Carport' specifies attached ('a'), but Improvements indicates detached ('d'). Please reconcile.`
+                };
+            }
+            if (impAttachment === 'att' && parsedGrid.garage.type !== 'att') {
+                return {
+                    isError: true,
+                    section: 'Sales Comparison',
+                    field: 'Garage/Carport',
+                    message: `Subject 'Garage/Carport' specifies detached ('d'), but Improvements indicates attached ('a'). Please reconcile.`
+                };
+            }
+        }
+    }
+
+    if (isCarportChecked && carportCarsNum > 0) {
+        if (parsedGrid.carport.count !== carportCarsNum) {
+            return {
+                isError: true,
+                section: 'Sales Comparison',
+                field: 'Garage/Carport',
+                message: `Subject 'Garage/Carport' (${gridStr}) specifies ${parsedGrid.carport.count} carport car(s), but Improvements section specifies ${carportCarsNum}. Please reconcile.`
+            };
+        }
+    }
+
+    if (isDriveChecked && driveCarsNum > 0 && parsedGrid.driveway.exists) {
+        if (parsedGrid.driveway.count !== driveCarsNum) {
+            return {
+                isError: true,
+                section: 'Sales Comparison',
+                field: 'Garage/Carport',
+                message: `Subject 'Garage/Carport' (${gridStr}) specifies ${parsedGrid.driveway.count} driveway car(s), but Improvements section specifies ${driveCarsNum}. Please reconcile.`
+            };
+        }
+    }
+
+    const matchedParts = [];
+    if (isGarageChecked) matchedParts.push(`${garageCarsNum} Car ${impAttachment === 'det' ? 'Detached' : (impAttachment === 'att' ? 'Attached' : '')} Garage`.trim());
+    if (isCarportChecked) matchedParts.push(`${carportCarsNum} Car Carport`);
+    if (isDriveChecked) matchedParts.push(`${driveCarsNum} Car Driveway`);
+
+    return {
+        isMatch: true,
+        section: 'Sales Comparison',
+        field: 'Garage/Carport',
+        message: `Valid: Subject 'Garage/Carport' (${gridStr}) matches Improvements section (${matchedParts.join(', ')}).`
+    };
+};
+
+export const checkGarageCarportBracketing = (field, arg2, arg3, arg4, arg5) => {
+    const { allData, saleName, textVal } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
+    if (!allData || typeof allData !== 'object') return null;
+
+    const isSubject = !saleName || String(saleName).toLowerCase() === 'subject' ||
+        (Array.isArray(arg4) && arg4.some(p => String(p).toLowerCase() === 'subject'));
+    if (!isSubject) return null;
+
+    const subjectParsed = getSubjectGarageGridData(allData, textVal);
+    if (!subjectParsed) return null;
+
+    const comps = getComparableGarageGridData(allData);
+    if (comps.length === 0) return null;
+
+    const subjCovered = subjectParsed.totalCoveredCars;
+    const compCovered = comps.map(c => c.parsed.totalCoveredCars).filter(n => !isNaN(n));
+    if (compCovered.length === 0) return null;
+
+    const minComp = Math.min(...compCovered);
+    const maxComp = Math.max(...compCovered);
+
+    if (subjCovered >= minComp && subjCovered <= maxComp) {
+        return {
+            isMatch: true,
+            section: 'Sales Comparison',
+            field: 'Garage/Carport',
+            message: `Valid: Subject garage/carport (${subjectParsed.raw}) is bracketed by comps (${minComp} to ${maxComp} covered cars).`
+        };
+    }
+
+    if (subjCovered > maxComp) {
+        return {
+            isWarning: true,
+            section: 'Sales Comparison',
+            field: 'Garage/Carport',
+            message: `Subject garage/carport (${subjectParsed.raw}, ${subjCovered} cars) is unbracketed high (all comps have ${maxComp} or fewer covered cars).`
+        };
+    }
+
+    return {
+        isWarning: true,
+        section: 'Sales Comparison',
+        field: 'Garage/Carport',
+        message: `Subject garage/carport (${subjectParsed.raw}, ${subjCovered} cars) is unbracketed low (all comps have ${minComp} or more covered cars).`
+    };
+};
+
+export const checkGarageCarportAdjustment = (field, arg2, arg3, arg4, arg5) => {
+    let allData = null;
+    let saleName = null;
+    let textVal = null;
+    let compData = null;
+    let compIndex = null;
+    let isSubject = false;
+
+    // Check if called directly like (field, textVal, allData, compData, compIndex)
+    if (arg4 && typeof arg4 === 'object' && !Array.isArray(arg4)) {
+        allData = arg3;
+        textVal = arg2;
+        compData = arg4;
+        compIndex = arg5 !== undefined ? String(arg5) : '1';
+        saleName = `Comparable Sale # ${compIndex}`;
+        isSubject = false;
+    } else {
+        const norm = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
+        allData = norm.allData;
+        saleName = norm.saleName;
+        textVal = norm.textVal;
+
+        isSubject = !saleName || String(saleName).toLowerCase() === 'subject' ||
+            (Array.isArray(arg4) && arg4.some(p => String(p).toLowerCase() === 'subject'));
+
+        if (!isSubject) {
+            const numMatch = String(saleName).match(/\d+/);
+            compIndex = numMatch ? numMatch[0] : '1';
+            compData = (typeof getComparableGridData === 'function')
+                ? getComparableGridData(allData, saleName)
+                : (allData?.[saleName] || allData?.SALES_GRID?.[saleName] || {});
+        }
+    }
+
+    if (isSubject || !compData) {
+        return checkSubjectGarageGrid(field, textVal, allData);
+    }
+
+    const subjectParsed = getSubjectGarageGridData(allData);
+    if (!subjectParsed) return null;
+
+    const isAdjustmentField = field && field.toLowerCase().includes('adjustment');
+
+    const compGridStr = (!isAdjustmentField && textVal !== null && textVal !== undefined && String(textVal).trim() !== '')
+        ? String(textVal).trim()
+        : String(compData['Garage/Carport'] || compData['Garage/Carport '] || compData['Garage'] || '').trim();
+
+    const compParsed = parseGarageGridString(compGridStr);
+
+    if (!compParsed.isValidFormat && !compParsed.isNone) {
+        return {
+            isError: true,
+            section: 'Sales Comparison',
+            field: isAdjustmentField ? 'Garage/Carport Adjustment' : 'Garage/Carport',
+            message: `Comp #${compIndex} 'Garage/Carport' value '${compGridStr}' is not a recognized format (expected e.g. 2ga, 2gd, 1cp, 1dw, or None / 0).`
+        };
+    }
+
+    const subjCars = subjectParsed.totalCoveredCars;
+    const compCars = compParsed.totalCoveredCars;
+
+    const adjRaw = String(
+        isAdjustmentField
+            ? (textVal !== null && textVal !== undefined && String(textVal).trim() !== '' ? textVal : (compData['Garage/Carport Adjustment'] ?? compData['Garage/Carport  Adjustment'] ?? compData['Garage Adjustment'] ?? ''))
+            : (compData['Garage/Carport Adjustment'] ?? compData['Garage/Carport  Adjustment'] ?? compData['Garage Adjustment'] ?? '')
+    ).trim();
+
+    const parseAdjNum = (v) => {
+        if (!v || v === '0' || v === '$0') return 0;
+        const cleaned = String(v).replace(/[$,\s]/g, '');
+        const n = parseFloat(cleaned);
+        return isNaN(n) ? 0 : n;
+    };
+
+    const adjNum = parseAdjNum(adjRaw);
+    const isAdjPresent = (
+        adjRaw !== '' &&
+        adjRaw !== '$' &&
+        adjRaw !== '-' &&
+        !isNaN(adjNum)
+    );
+
+    const isSameCapacity = (compCars === subjCars && compParsed.driveway.count === subjectParsed.driveway.count);
+    const isMatchWithSubject = (subjectParsed.isNone && compParsed.isNone) ||
+        (isSameCapacity && (subjectParsed.raw.toLowerCase() === compParsed.raw.toLowerCase() || compCars === subjCars));
+
+    const compCap = compParsed.raw || (compParsed.isNone ? 'None' : '');
+    const subjCap = subjectParsed.raw || (subjectParsed.isNone ? 'None' : '');
+
+    if (!isMatchWithSubject && !isAdjPresent) {
+        const reqSign = (compCars > subjCars || compParsed.driveway.count > subjectParsed.driveway.count)
+            ? 'negative (-)'
+            : 'positive (+)';
+        return {
+            isError: true,
+            section: 'Sales Comparison',
+            field: isAdjustmentField ? 'Garage/Carport Adjustment' : 'Garage/Carport',
+            message: `Comp #${compIndex} Garage/Carport ('${compCap}') differs from Subject ('${subjCap}'), but no adjustment is present. A ${reqSign} adjustment is required.`
+        };
+    }
+
+    if (!isMatchWithSubject && isAdjPresent) {
+        const isSuperior = (compCars > subjCars || (compCars === subjCars && compParsed.driveway.count > subjectParsed.driveway.count));
+        const isInferior = (compCars < subjCars || (compCars === subjCars && compParsed.driveway.count < subjectParsed.driveway.count));
+
+        if (isSuperior && adjNum > 0) {
+            return {
+                isError: true,
+                section: 'Sales Comparison',
+                field: isAdjustmentField ? 'Garage/Carport Adjustment' : 'Garage/Carport',
+                message: `Comp #${compIndex} has more garage/parking capacity (${compParsed.raw}) than Subject (${subjectParsed.raw}), but has a positive adjustment (${adjRaw}). Expected negative (-) adjustment.`
+            };
+        }
+
+        if (isInferior && adjNum < 0) {
+            return {
+                isError: true,
+                section: 'Sales Comparison',
+                field: isAdjustmentField ? 'Garage/Carport Adjustment' : 'Garage/Carport',
+                message: `Comp #${compIndex} has less garage/parking capacity (${compParsed.raw}) than Subject (${subjectParsed.raw}), but has a negative adjustment (${adjRaw}). Expected positive (+) adjustment.`
+            };
+        }
+
+        if (adjNum === 0) {
+            return {
+                isMatch: true,
+                section: 'Sales Comparison',
+                field: isAdjustmentField ? 'Garage/Carport Adjustment' : 'Garage/Carport',
+                message: `Valid: Comp #${compIndex} Garage/Carport differs from Subject (${compParsed.raw} vs Subject ${subjectParsed.raw}), validated with $0 adjustment.`
+            };
+        }
+
+        const sign = adjNum > 0 ? `+$${adjNum.toLocaleString()}` : `-$${Math.abs(adjNum).toLocaleString()}`;
+        return {
+            isMatch: true,
+            section: 'Sales Comparison',
+            field: isAdjustmentField ? 'Garage/Carport Adjustment' : 'Garage/Carport',
+            message: `Valid: Comp #${compIndex} Garage/Carport adjustment (${sign}) is consistent with capacity difference (${compParsed.raw} vs Subject ${subjectParsed.raw}).`
+        };
+    }
+
+    if (isMatchWithSubject) {
+        if (isAdjPresent && adjNum !== 0) {
+            return {
+                isError: true,
+                section: 'Sales Comparison',
+                field: isAdjustmentField ? 'Garage/Carport Adjustment' : 'Garage/Carport',
+                message: `Comp #${compIndex} has the same garage capacity as Subject (${subjectParsed.raw}), but has an adjustment of ${adjRaw}. Expected $0 or blank.`
+            };
+        }
+        const adjNote = isAdjustmentField ? '. Validated with $0 adjustment.' : '.';
+        return {
+            isMatch: true,
+            section: 'Sales Comparison',
+            field: isAdjustmentField ? 'Garage/Carport Adjustment' : 'Garage/Carport',
+            message: `Valid: Comp #${compIndex} Garage/Carport has equal capacity to Subject (${subjCap})${adjNote}`
+        };
+    }
+
+    return null;
 };
 

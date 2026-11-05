@@ -1888,6 +1888,7 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
                   onDataChange(getFieldPath('Crawl Space'), isCrawl ? 'Yes' : 'No');
 
+
                 }
 
               };
@@ -2190,33 +2191,8 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
                       const { value: csNoneFlag } = getImpValue(["Car Storage None", "Car Storage - None"]);
 
-                      const { value: driveCars } = getImpValue(["Driveway # of Cars", "Driveway Cars"]);
 
-                      const { value: garageCars } = getImpValue(["Garage # of Cars", "Garage Cars"]);
-
-                      const { value: carportCars } = getImpValue(["Carport # of Cars", "Carport Cars"]);
-
-
-
-                      const hasAnyParking = (
-
-                        checkOptionMatches(csVal, "Driveway") ||
-
-                        checkOptionMatches(csVal, "Garage") ||
-
-                        checkOptionMatches(csVal, "Carport") ||
-
-                        (parseInt(driveCars, 10) > 0) ||
-
-                        (parseInt(garageCars, 10) > 0) ||
-
-                        (parseInt(carportCars, 10) > 0)
-
-                      );
-
-
-
-                      const isNoneChecked = !hasAnyParking && (
+const isNoneChecked = (
 
                         checkOptionMatches(csVal, "None") ||
 

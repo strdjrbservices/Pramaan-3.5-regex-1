@@ -205,7 +205,7 @@ export const checkAsOfDate = (field, text, allData) => {
     return { isMatch: true };
 };
 
-export { checkFinalValueBracketing, getComparableSalesPrices, getOpinionOfMarketValue, checkCompSalePriceBracketing, checkCompAdjustedSalePriceBracketing, checkSalesConcessions, checkSalesConcessionsAdjustment, checkBasementAdjustment, checkSubjectGLABracketing, checkCompGLABracketing, checkGrossLivingAreaBracketing, getSubjectGLA, getComparableGLAs, checkSubjectSiteBracketing, checkCompSiteBracketing, checkSiteBracketing, getSubjectSite, getComparableSites } from './salesComparisonValidation';
+export { checkFinalValueBracketing, getComparableSalesPrices, getOpinionOfMarketValue, checkCompSalePriceBracketing, checkCompAdjustedSalePriceBracketing, checkSalesConcessions, checkSalesConcessionsAdjustment, checkBasementAdjustment, checkBasementAreaBracketing, checkBasementFinishedAreaBracketing, checkSubjectGLABracketing, checkCompGLABracketing, checkGrossLivingAreaBracketing, getSubjectGLA, getComparableGLAs, checkSubjectSiteBracketing, checkCompSiteBracketing, checkSiteBracketing, getSubjectSite, getComparableSites } from './salesComparisonValidation';
 
 export const checkReconciliationFieldsNotBlank = (field, text) => {
     const fieldsToCheck = [

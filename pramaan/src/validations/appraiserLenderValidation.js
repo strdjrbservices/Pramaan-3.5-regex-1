@@ -1,5 +1,5 @@
 import { findUnpaidLenderMatch } from '../utils/unpaidLenders';
-import { areLenderNamesMatching, checkSubjectLenderNameVsHtml, checkLenderAddressHtmlConsistency } from './htmldatavaliadtion';
+import { areLenderNamesMatching, checkSubjectLenderNameVsHtml, checkLenderAddressHtmlConsistency, checkPropertyAddressHtmlConsistency as checkPropertyAddressHtmlConsistencyImpl, checkAppraiserVendorNameConsistency as checkAppraiserVendorNameConsistencyImpl } from './htmldatavaliadtion';
 
 const checkNotBlank = (field, text, fieldName) => {
     if (field === fieldName) {
@@ -104,37 +104,7 @@ export const checkBorrowerHtmlConsistency = (field, text, allData) => {
 };
 
 export const checkPropertyAddressHtmlConsistency = (field, text, allData, fieldPath) => {
-    if (field === 'Property Address' && fieldPath?.length === 1) {
-        const reportAddress = String(text || '').trim();
-        const htmlAddress = String(allData?.comparisonData?.['Property Address'] || '').trim();
-
-        if (!htmlAddress || !reportAddress || htmlAddress === 'N/A') {
-            return null;
-        }
-
-        const normalize = (str) => {
-            let s = String(str || '').toLowerCase();
-            s = s.replace(/\bstreet\b/g, 'st')
-                .replace(/\bavenue\b/g, 'ave')
-                .replace(/\broad\b/g, 'rd')
-                .replace(/\bdrive\b/g, 'dr')
-                .replace(/\bboulevard\b/g, 'blvd')
-                .replace(/\blane\b/g, 'ln')
-                .replace(/\bplace\b/g, 'pl')
-                .replace(/\bcircle\b/g, 'cir')
-                .replace(/\bcourt\b/g, 'ct');
-            return s.replace(/[\s.,#\-']/g, '');
-        };
-
-        const normReport = normalize(reportAddress);
-        const normHtml = normalize(htmlAddress);
-
-        if (normReport !== normHtml && !normHtml.includes(normReport) && !normReport.includes(htmlAddress)) {
-            return { isError: true, message: `Property Address mismatch. HTML: '${htmlAddress}', Report: '${reportAddress}'.` };
-        }
-        return { isMatch: true };
-    }
-    return null;
+    return checkPropertyAddressHtmlConsistencyImpl(field, text, allData, fieldPath);
 };
 
 export const checkAppraiserLicenseGroup = (field, text, allData, fieldPath) => {
@@ -266,35 +236,8 @@ export const checkLicenseNumberConsistency = (field, text, data) => {
     return { isMatch: true };
 };
 
-export const checkAppraiserVendorNameConsistency = (field, text, allData) => {
-    if (field === 'Name') {
-        const vendorName = allData?.comparisonData?.['Assigned to Vendor(s)'];
-        const appraiserName = String(text || '').trim();
-
-        if (!vendorName || vendorName === 'N/A' || !appraiserName) {
-            return null;
-        }
-
-        const normalize = (str) =>
-            String(str || '')
-                .toLowerCase()
-                .replace(/&/g, 'and')
-                .replace(/[.,]/g, '')
-                .replace(/\s+/g, ' ')
-                .trim();
-
-        const normVendor = normalize(vendorName);
-        const normAppraiser = normalize(appraiserName);
-
-        if (!normVendor.includes(normAppraiser) && !normAppraiser.includes(normVendor)) {
-            return {
-                isError: true,
-                message: `Appraiser Name mismatch. HTML (Assigned to Vendor): '${vendorName}', Report: '${appraiserName}'.`
-            };
-        }
-        return { isMatch: true };
-    }
-    return null;
+export const checkAppraiserVendorNameConsistency = (field, text, allData, fieldPath) => {
+    return checkAppraiserVendorNameConsistencyImpl(field, text, allData, fieldPath);
 };
 
 export const checkDateGreaterThanToday = (field, text) => {
