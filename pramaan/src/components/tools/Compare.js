@@ -563,6 +563,9 @@ const Compare = () => {
       if (f.includes('text commentary removed')) {
         return <Chip label="Text Removed" color="warning" size="small" sx={{ fontWeight: 'bold', mr: 1, height: 22, fontSize: '0.7rem' }} />;
       }
+      if (f.includes('property replaced')) {
+        return <Chip label="Comp Replaced" color="warning" size="small" sx={{ fontWeight: 'bold', mr: 1, height: 22, fontSize: '0.7rem' }} />;
+      }
       return null;
     };
 

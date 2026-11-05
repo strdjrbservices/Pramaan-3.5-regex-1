@@ -3558,6 +3558,231 @@ def detect_page_and_text_changes(
     return changes
 
 
+# -------------------------------------------------------------------------
+# Deep Comparison Noise Minimization & Field Consolidation
+# -------------------------------------------------------------------------
+
+ALIAS_TO_CANONICAL = {
+    "street address": "Address",
+    "city state zip": "Address",
+    "city, state, zip": "Address",
+    "above grade room count adjustment": "Room Count Adjustment",
+    "bathrooms adjustment": "Baths Adjustment",
+    "gross building area": "Gross Living Area",
+    "gross building area adjustment": "Gross Living Area Adjustment",
+    "basement description": "Basement & Finished Rooms Below Grade",
+    "basement description adjustment": "Basement & Finished Rooms Below Grade Adjustment",
+    "basement finished rooms": "Basement & Finished Rooms Below Grade",
+    "basement finished rooms adjustment": "Basement & Finished Rooms Below Grade Adjustment",
+    "adjusted sale price of comparable": "Adjusted Sale Price",
+    "proximity to subject comment": "Proximity to Subject",
+    "effective age (yrs)": "Effective Age",
+    "date of signature and report": "Date of Signature",
+    "report signed date": "Date of Signature",
+    "signature date": "Date of Signature",
+    "reasonable exposure time comment": "Reasonable Exposure Time",
+    "exposure comment": "Reasonable Exposure Time",
+    "restricted appraisal report comment": "Comments on Appraisal and Report Identification",
+    "prior service comment": "Prior Service Disclosure",
+    "prior service disclosure comment": "Prior Service Disclosure",
+    "over/under-improvement comment": "Predominant Price Commentary",
+}
+
+SUPPRESSED_FIELD_EXACT = {
+    "signature image",
+    "appraiser signature image",
+    "supervisory appraiser signature image",
+    "appraised value",
+    "appraised value $",
+    "appraised value of subject property $",
+    "opinion of the market value, as defined, of the real property that is the subject of this report is $",
+    "market value",
+    "indicated value by sales comparison approach",
+    "indicated value by sales comparison approach $",
+    "indicated value by: sales comparison approach",
+    "indicated value by: sales comparison approach $",
+    "final value",
+    "final value $",
+    "uad_pages",
+    "uad_presence",
+    "uad_details",
+    "uad dataset pages",
+    "uad definitions addendum",
+    "uad pages present in the report",
+    "uad details",
+    "uad pages",
+    "extracted_photos",
+    "all_extracted_photos",
+    "details_summary",
+    "table_deltas",
+    "grid_summary",
+    "has_uspap_identification",
+    "limiting_conditions_pages",
+    "limiting_conditions_presence",
+    "certification_pages",
+    "certification_presence",
+}
+
+def clean_and_consolidate_comparison(summary: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Minimizes noise, duplicate aliases, boilerplate headers, and internal metadata
+    from deep PDF/PDF and XML/XML comparisons, consolidating swapped comparables.
+    """
+    filtered = []
+    seen = set()
+    seen_dates = set()
+    seen_text_comments = set()
+
+    for item in summary:
+        cat = item.get("category", "")
+        field = item.get("field", "")
+        old_val = str(item.get("original_value", "")).strip()
+        new_val = str(item.get("revised_value", "")).strip()
+
+        # 1. Page structure: keep all
+        if cat == "page_structure":
+            filtered.append(item)
+            continue
+
+        # 2. Text commentary: filter out boilerplate and high-similarity non-substantive text
+        if cat == "text_change":
+            if new_val in ["Removed / Deleted"] and len(old_val) < 40:
+                continue
+            if len(new_val) < 40 and old_val != "Not Present":
+                continue
+            # Boilerplate headers/footers
+            if re.search(r"^(?:Form\s+[A-Z0-9]+|Page\s+\d+|File\s+No\.|Borrower:|Property Address:|City\s+County|Serial#\s+[0-9A-Z]+)", new_val, re.I):
+                continue
+            if old_val != "Not Present" and new_val != "Removed / Deleted":
+                clean_old = re.sub(r"\b(?:Page\s+\d+(?:\s+of\s+\d+)?|File\s+No\.?\s*[0-9A-Za-z]+|Form\s+[A-Z0-9\.\-]+|Serial#\s+[0-9A-Z]+)\b", "", old_val, flags=re.I).strip()
+                clean_new = re.sub(r"\b(?:Page\s+\d+(?:\s+of\s+\d+)?|File\s+No\.?\s*[0-9A-Za-z]+|Form\s+[A-Z0-9\.\-]+|Serial#\s+[0-9A-Z]+)\b", "", new_val, flags=re.I).strip()
+                if clean_old == clean_new:
+                    continue
+                sim = difflib.SequenceMatcher(None, clean_old, clean_new).ratio()
+                if sim >= 0.85:
+                    continue
+            filtered.append(item)
+            continue
+
+        # 3. Field differences
+        if cat == "field_change" or not cat:
+            f_clean = field.strip()
+            f_clean = re.sub(r"^(?:SALES_GRID|SALES_COMPARISON):\s*", "", f_clean)
+            f_clean = re.sub(r"^COMPARABLE\s+SALE\s+#?(\d+)[:\s]*", r"Comparable #\1: ", f_clean, flags=re.I)
+            f_clean = re.sub(r"^Comparable\s+#?(\d+)\s+([A-Za-z])", r"Comparable #\1: \2", f_clean, flags=re.I)
+
+            parts = f_clean.split(":", 1)
+            prefix = parts[0].strip()
+            suffix = parts[1].strip() if len(parts) > 1 else prefix
+            suffix_lower = suffix.lower()
+
+            if (
+                suffix_lower in SUPPRESSED_FIELD_EXACT
+                or f_clean.lower() in SUPPRESSED_FIELD_EXACT
+                or any(re.search(pat, f_clean.lower()) for pat in [r"^uad", r"_pages$", r"_presence$", r"extracted_photos", r"details_summary", r"limiting_conditions"])
+                or any(re.search(pat, suffix_lower) for pat in [r"^uad", r"extracted_photos", r"details_summary", r"limiting_conditions"])
+            ):
+                continue
+
+            # Suppress redundant long reconciliation checkbox statement
+            if "hypothetical condition" in suffix_lower or "extraordinary assumption" in suffix_lower:
+                canonical_suffix = "Reconciliation Status"
+            else:
+                canonical_suffix = ALIAS_TO_CANONICAL.get(suffix_lower, suffix)
+
+            if "conform to the neighborhood" in suffix_lower:
+                canonical_suffix = "Conforms to Neighborhood"
+            if "describe the condition of the property" in suffix_lower:
+                canonical_suffix = "Describe Condition of Property"
+
+            # Suppress duplicate Date of Signature across multiple sections
+            if "date of signature" in canonical_suffix.lower():
+                if "date of signature" in seen_dates:
+                    continue
+                seen_dates.add("date of signature")
+                canonical_field = "Date of Signature"
+            else:
+                canonical_field = f"{prefix}: {canonical_suffix}" if len(parts) > 1 else canonical_suffix
+
+            norm_o = re.sub(r"[^\w]", "", old_val.lower())
+            norm_n = re.sub(r"[^\w]", "", new_val.lower())
+            if norm_o == norm_n:
+                continue
+
+            # Suppress identical comments duplicated across multiple section fields
+            if len(norm_n) > 30:
+                if (norm_o, norm_n) in seen_text_comments:
+                    continue
+                seen_text_comments.add((norm_o, norm_n))
+
+            dedup_key = (canonical_field.lower(), norm_o, norm_n)
+            if dedup_key in seen:
+                continue
+            seen.add(dedup_key)
+
+            item["field"] = canonical_field
+            filtered.append(item)
+
+    # Consolidate replaced comparable sales
+    comp_groups: Dict[str, List[Tuple[str, Dict[str, Any]]]] = {}
+    other_fields: List[Dict[str, Any]] = []
+    page_text: List[Dict[str, Any]] = []
+
+    for item in filtered:
+        cat = item.get("category", "")
+        if cat in ["page_structure", "text_change"]:
+            page_text.append(item)
+            continue
+
+        f = item.get("field", "")
+        m = re.match(r"^Comparable\s+#?(\d+)[:\s]+(.+)$", f, re.I)
+        if m:
+            c_num = m.group(1)
+            sub_f = m.group(2).strip()
+            comp_groups.setdefault(c_num, []).append((sub_f, item))
+        else:
+            other_fields.append(item)
+
+    final_list = list(page_text)
+
+    for c_num, items in sorted(comp_groups.items(), key=lambda x: int(x[0])):
+        addr_item = next((it for sub_f, it in items if sub_f.lower() in ["address"]), None)
+        if addr_item:
+            old_addr = addr_item.get("original_value", "")
+            new_addr = addr_item.get("revised_value", "")
+            price_item = next((it for sub_f, it in items if sub_f.lower() in ["sale price"]), None)
+            old_price = f" (${price_item.get('original_value')})" if price_item else ""
+            new_price = f" (${price_item.get('revised_value')})" if price_item else ""
+
+            final_list.append({
+                "field": f"Comparable #{c_num}: Property Replaced",
+                "original_value": f"{old_addr}{old_price}",
+                "revised_value": f"{new_addr}{new_price}",
+                "page_no": "2",
+                "comment": f"Comparable #{c_num} was replaced with a new comparable property.",
+                "category": "field_change"
+            })
+
+            # Retain only key valuation metrics for the replaced comp
+            KEY_METRICS = [
+                "adjusted sale price",
+                "proximity to subject",
+                "gross living area",
+                "condition",
+                "net adjustment (total)",
+                "gross adjustment (total)",
+            ]
+            for sub_f, it in items:
+                if sub_f.lower() in KEY_METRICS:
+                    final_list.append(it)
+        else:
+            for sub_f, it in items:
+                final_list.append(it)
+
+    final_list.extend(other_fields)
+    return final_list
+
+
 def compare_documents_offline(
     old_path: str,
     new_path: str,
@@ -3690,12 +3915,15 @@ def compare_documents_offline(
                     })
 
     # Combine in priority order: 1) Page Structure Changes, 2) Text Commentary Changes, 3) Field Differences
-    comparison_summary = page_structure_changes + text_changes + field_changes
+    raw_summary = page_structure_changes + text_changes + field_changes
 
-    pages_added_count = sum(1 for c in page_structure_changes if c.get("field") == "Page Added")
-    pages_deleted_count = sum(1 for c in page_structure_changes if c.get("field") == "Page Deleted")
-    text_changes_count = len(text_changes)
-    field_changes_count = len(field_changes)
+    # Minimize noise, remove redundant aliases/metadata, and consolidate replaced comparables
+    comparison_summary = clean_and_consolidate_comparison(raw_summary)
+
+    pages_added_count = sum(1 for c in comparison_summary if c.get("field") == "Page Added")
+    pages_deleted_count = sum(1 for c in comparison_summary if c.get("field") == "Page Deleted")
+    text_changes_count = sum(1 for c in comparison_summary if c.get("category") == "text_change")
+    field_changes_count = sum(1 for c in comparison_summary if c.get("category") == "field_change" or (c.get("category") != "page_structure" and c.get("category") != "text_change"))
     diff_count = len(comparison_summary)
 
     summary_parts = []
