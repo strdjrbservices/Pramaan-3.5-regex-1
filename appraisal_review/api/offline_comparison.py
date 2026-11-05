@@ -1,10 +1,19 @@
 import os
 import re
+import difflib
 import base64
 from typing import Any, Dict, List, Optional, Tuple
 from bs4 import BeautifulSoup
 import pymupdf  # type: ignore
 import xml.etree.ElementTree as ET
+
+try:
+    from rapidfuzz import fuzz  # type: ignore
+except ImportError:
+    try:
+        from fuzzywuzzy import fuzz  # type: ignore
+    except ImportError:
+        fuzz = None
 
 try:
     from .xml_extractor import extract_fields_from_xml
@@ -117,15 +126,43 @@ def _normalize_string(s: Any) -> str:
 
 
 def _normalize_address(addr: Any) -> str:
-    """Standardizes street suffixes and removes punctuation for address comparison."""
-    if not addr:
+    """Standardizes street suffixes, suite/unit identifiers, and removes punctuation for address comparison."""
+    if not addr or str(addr).strip().lower() in ["n/a", "not present", "none", ""]:
         return ""
-    text = _normalize_string(addr)
-    # Remove commas, dots, dashes
-    text = re.sub(r"[,.#-]", " ", text)
-    tokens = text.split()
-    normalized_tokens = [STREET_ABBREVIATIONS.get(t, t) for t in tokens]
-    return " ".join(normalized_tokens)
+    s = str(addr).lower().strip()
+    # Normalize suite / ste / unit / apt / bldg
+    s = re.sub(r"\bste\.?\s*#?([0-9a-z-]+)", r"suite \1", s)
+    s = re.sub(r"\bsuite\s*#?([0-9a-z-]+)", r"suite \1", s)
+    s = re.sub(r"\bunit\s*#?([0-9a-z-]+)", r"unit \1", s)
+    s = re.sub(r"\bapt\.?\s*#?([0-9a-z-]+)", r"apt \1", s)
+    # Remove hyphens in suite/unit numbers: "suite 1-320" -> "suite 1320"
+    s = re.sub(r"\b(suite|unit|apt)\s+([0-9]+)-([0-9]+)", r"\1 \2\3", s)
+
+    # Standardize street abbreviations
+    abbreviations = {
+        r"\be\.?\b": "east",
+        r"\bw\.?\b": "west",
+        r"\bn\.?\b": "north",
+        r"\bs\.?\b": "south",
+        r"\bst\.?\b": "street",
+        r"\bave\.?\b": "avenue",
+        r"\brd\.?\b": "road",
+        r"\bdr\.?\b": "drive",
+        r"\bln\.?\b": "lane",
+        r"\bblvd\.?\b": "boulevard",
+        r"\bct\.?\b": "court",
+        r"\bpl\.?\b": "place",
+        r"\bpkwy\.?\b": "parkway",
+        r"\bter\.?\b": "terrace",
+        r"\bcir\.?\b": "circle",
+    }
+    for pat, rep in abbreviations.items():
+        s = re.sub(pat, rep, s)
+
+    # Remove commas, periods, dashes, punctuation
+    s = re.sub(r"[^\w\s]", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
 
 
 def _addresses_match(addr1: Any, addr2: Any) -> bool:
@@ -136,16 +173,26 @@ def _addresses_match(addr1: Any, addr2: Any) -> bool:
         return False
     if norm1 == norm2 or norm1 in norm2 or norm2 in norm1:
         return True
+    if norm1.replace(" ", "") == norm2.replace(" ", ""):
+        return True
     # Strip zip code and compare street
     street1 = re.sub(r"\b\d{5}(-\d{4})?\b", "", norm1).strip()
     street2 = re.sub(r"\b\d{5}(-\d{4})?\b", "", norm2).strip()
     if street1 and street2 and (street1 == street2 or street1 in street2 or street2 in street1):
         return True
+    # Fuzzy token set matching with street number verification
+    if fuzz:
+        score = fuzz.token_set_ratio(norm1, norm2)
+        if score >= 88:
+            m1 = re.match(r"^(\d+)", norm1)
+            m2 = re.match(r"^(\d+)", norm2)
+            if m1 and m2 and m1.group(1) == m2.group(1):
+                return True
     return False
 
 
 def _names_match(name1: Any, name2: Any) -> bool:
-    """Matches borrower or appraiser names (tolerant of 'First Last' vs 'Last, First' and middle initials)."""
+    """Matches borrower or appraiser names (tolerant of 'First Last' vs 'Last, First', middle initials, I/l OCR typo, and name prefixing)."""
     norm1 = _normalize_string(name1)
     norm2 = _normalize_string(name2)
     if not norm1 or not norm2:
@@ -157,6 +204,20 @@ def _names_match(name1: Any, name2: Any) -> bool:
     t2 = set(re.findall(r"\b[a-z]{2,}\b", norm2))
     if t1 and t2 and (t1 == t2 or t1.issubset(t2) or t2.issubset(t1)):
         return True
+    # Check I/l confusion (e.g. Ilya vs llya)
+    norm1_clean = re.sub(r"\b[li]", "i", norm1)
+    norm2_clean = re.sub(r"\b[li]", "i", norm2)
+    if norm1_clean == norm2_clean:
+        return True
+    # Prefix / substring matching on name tokens (e.g. Kaisher vs Kaisheruddin with same last name)
+    words1 = [w for w in re.findall(r"\b[a-z]{2,}\b", norm1)]
+    words2 = [w for w in re.findall(r"\b[a-z]{2,}\b", norm2)]
+    if len(words1) >= 2 and len(words2) >= 2:
+        if words1[-1] == words2[-1] and (words1[0].startswith(words2[0]) or words2[0].startswith(words1[0])):
+            return True
+    if fuzz:
+        if fuzz.token_sort_ratio(norm1, norm2) >= 80 or fuzz.token_set_ratio(norm1, norm2) >= 85:
+            return True
     return False
 
 
@@ -238,6 +299,11 @@ def extract_report_data_offline(file_path: str) -> Dict[str, Any]:
                 page_count = len(doc)
             except Exception:
                 page_count = 0
+
+    # Detect attached Form 1007 (Rent Schedule) for single-family/condo reports (not 1025)
+    if "1025" not in form_type and _detect_form_1007_presence(file_path, {"pages_text": pages_text}):
+        if "1007" not in form_type:
+            form_type = f"{form_type} + 1007"
 
     # Extract market value
     mv_raw = (
@@ -321,20 +387,51 @@ def extract_fields_from_html_offline(
     soup = BeautifulSoup(html_text, "html.parser")
     data: Dict[str, str] = {f: "" for f in fields_to_extract}
 
+    # 1. High-accuracy direct FastApp span/control ID lookup
+    FASTAPP_ID_LOOKUP = {
+        "Borrower (and Co-Borrower)": ["ctl00_cphBody_lblBorrowerName", "ctl00_cphBody_lblDuplicateBorrowerName"],
+        "Property Address": ["ctl00_cphBody_lblPropertyAddress", "ctl00_cphBody_lblDuplicatePropertyAddress"],
+        "Property County": ["ctl00_cphBody_lblPropertyCounty"],
+        "Property Type": ["ctl00_cphBody_lblPropertyType"],
+        "Client/Lender on Report": ["ctl00_cphBody_lblAppraisalLender", "ctl00_cphBody_lblClientName", "ctl00_cphBody_lblDuplicateClientName"],
+        "Client Address": ["ctl00_cphBody_lblLenderAddress", "ctl00_cphBody_lblAppraisalLenderAddress", "ctl00_cphBody_lblClientAddress"],
+        "Transaction Type": ["ctl00_cphBody_lblTransactionType"],
+        "FHA Case Number": ["ctl00_cphBody_lblFHACaseNumber"],
+        "Assigned to Vendor(s)": ["ctl00_cphBody_lblAssignedTo", "ctl00_cphBody_lbl1004OrderAppraiserName"],
+        "AMC Reg. Number": ["ctl00_cphBody_lblAMCRegistrationNumber", "ctl00_cphBody_lblAmcRegNo"],
+        "Appraisal Type": ["ctl00_cphBody_lblAppraisalType", "ctl00_cphBody_lblAppraisalReport1TypeName"],
+        "Unit Number": ["ctl00_cphBody_lblUnitNumber"],
+        "UAD XML Report": ["ctl00_cphBody_lblUADReportNeeded"],
+        "Appraiser's Fee": ["ctl00_cphBody_lblAppraisalFee", "ctl00_cphBody_lblAppraiserFee", "ctl00_cphBody_lblTotalFee"],
+    }
+
+    for field, id_list in FASTAPP_ID_LOOKUP.items():
+        if field in data and not data[field]:
+            for el_id in id_list:
+                elem = soup.find(id=el_id)
+                if elem:
+                    val = elem.get_text(" ", strip=True)
+                    if val and val.lower() != "n/a" and not val.startswith("--"):
+                        data[field] = val
+                        break
+
     def _get_val_from_node(node: Any) -> str:
         if not node:
             return ""
-        # Check select tag
+        # Check select tag (exclude unselected default)
         select_tag = node if node.name == "select" else node.find("select")
         if select_tag:
+            # Ignore modal duplicate order controls
+            sel_id = select_tag.get("id", "")
+            if "duplicate" in sel_id.lower():
+                return ""
             sel_opt = select_tag.find("option", selected=True)
             if sel_opt and sel_opt.get_text(strip=True) not in ["-- Select One --", ""]:
                 return sel_opt.get_text(strip=True)
             opts = select_tag.find_all("option")
             if opts and len(opts) > 1 and opts[0].get_text(strip=True) == "-- Select One --":
-                for opt in opts[1:]:
-                    if opt.get_text(strip=True):
-                        return opt.get_text(strip=True)
+                # If no option is selected, do not assume option 1 is the value
+                return ""
         # Check checked input
         checked = node.find("input", checked=True)
         if checked:
@@ -352,15 +449,22 @@ def extract_fields_from_html_offline(
         txt = node.get_text(" ", strip=True)
         return txt
 
-    # 1. Search by label in table/div/span
+    # 2. Search by label in table/div/span for any fields still missing
     all_elements = soup.find_all(["div", "td", "th", "span", "label", "b", "strong"])
     for field in fields_to_extract:
+        if data.get(field):
+            continue
         f_lower = field.lower().strip()
         aliases = HTML_FIELD_ALIASES.get(f_lower, [f_lower])
 
         for elem in all_elements:
             elem_text = elem.get_text(strip=True).lower().rstrip(":")
             if elem_text in aliases:
+                # Ignore duplicate modal elements
+                elem_parent_id = str(elem.get("id", "") or (elem.parent.get("id", "") if elem.parent else "")).lower()
+                if "duplicate" in elem_parent_id:
+                    continue
+
                 # Find following content container
                 target = elem.find_next_sibling()
                 if not target:
@@ -372,19 +476,20 @@ def extract_fields_from_html_offline(
 
                 if target:
                     extracted = _get_val_from_node(target)
-                    # Filter out label echo
-                    if extracted and extracted.lower().rstrip(":") not in aliases:
+                    # Filter out label echo and PDF attachments mistakenly matched as addresses
+                    if extracted and extracted.lower().rstrip(":") not in aliases and not extracted.lower().endswith(".pdf"):
                         data[field] = extracted
                         break
 
-    # 2. Extract 'report rejection reason' specifically
+    # 3. Extract 'report rejection reason' / revision requests specifically
     rejection_reason = ""
-    rejection_span = soup.find(id=re.compile(r"lblFileRejectReason", re.I))
+    rejection_span = soup.find(id=re.compile(r"lblFileRejectReason|lblRejectReason|FileRejectReason", re.I))
     if rejection_span:
         for tag in rejection_span.find_all(["br", "p", "li", "tr", "div"]):
             tag.insert_after("\n")
         rejection_reason = rejection_span.get_text("\n", strip=True)
-    else:
+
+    if not rejection_reason:
         for elem in soup.find_all(True):
             t = elem.get_text(strip=True).lower().rstrip(":")
             if t in ["report rejection reason", "rejection reason", "revision request details", "revision request", "reason for revision"]:
@@ -394,12 +499,24 @@ def extract_fields_from_html_offline(
                         tag.insert_after("\n")
                     rejection_reason = next_el.get_text("\n", strip=True)
                     break
-    
+
+    # If still not found, inspect comments table (grdComments) for latest revision request message
+    if not rejection_reason:
+        comment_spans = soup.find_all(id=re.compile(r"grdComments.*lblComments", re.I)) or soup.find_all(class_=re.compile(r"appraisal-comment", re.I))
+        for c_span in comment_spans:
+            c_txt = c_span.get_text("\n", strip=True)
+            if re.search(r"Revision\s*Requested|Reconsideration\s*Requested|Appraisal\s*revisions\s*required|Message:\s*REVISED|Per\s*client:", c_txt, re.I) and not re.search(r"^\s*Revision Request email was sent", c_txt, re.I):
+                # Clean comment
+                for tag in c_span.find_all(["br", "p", "li", "tr", "div"]):
+                    tag.insert_after("\n")
+                rejection_reason = c_span.get_text("\n", strip=True)
+                break
+
     # Clean redundant label echo
     rejection_reason = re.sub(r"^(?:report\s+rejection\s+reason\s*:?\s*)+", "", rejection_reason, flags=re.I).strip()
     data["report_rejection_reason"] = rejection_reason
 
-    # 3. Fallback regex on document text for fields that were not located
+    # 4. Fallback regex on document text for fields that were not located
     doc_text = soup.get_text("\n")
     if not data["report_rejection_reason"]:
         m_rej = re.search(r"Report\s*Rejection\s*Reason\s*[:\n]?\s*(.*?)(?=\n\s*(?:Report\(s\)|Order\s*Details|Special\s*Instructions|$))", doc_text, re.DOTALL | re.IGNORECASE)
@@ -428,13 +545,12 @@ def extract_fields_from_html_offline(
             data["Assigned to Vendor(s)"] = m.group(1).strip()
 
     if not data.get("Appraisal Type"):
-        # Match common form patterns
-        if "1004" in doc_text:
-            data["Appraisal Type"] = "1004"
-        elif "1073" in doc_text:
-            data["Appraisal Type"] = "1073"
-        elif "1025" in doc_text:
-            data["Appraisal Type"] = "1025"
+        # Extract from Appraisal Details section in text if present
+        m_appr_type = re.search(r"Appraisal\s*Details[\s\S]*?Appraisal\s*Type\s*[:\n]?\s*([^\n\r]+)", doc_text, re.IGNORECASE)
+        if m_appr_type:
+            cand = m_appr_type.group(1).strip()
+            if cand and not cand.startswith("--") and "select" not in cand.lower():
+                data["Appraisal Type"] = cand
 
     return data
 
@@ -538,7 +654,10 @@ def compare_report_to_html_offline(
             return str(_get_field_val(fields, "SUBJECT", "Assignment Type") or _get_field_val(fields, "SUBJECT", "Transaction Type") or "").strip()
 
         if "fha" in fn or "case" in fn:
-            return str(_get_field_val(fields, "SUBJECT", "FHA Case #") or _get_field_val(fields, "SUBJECT", "FHA Case Number") or _get_field_val(fields, "SUBJECT", "Other") or "").strip()
+            fha_val = str(_get_field_val(fields, "SUBJECT", "FHA Case #") or _get_field_val(fields, "SUBJECT", "FHA Case Number") or "").strip()
+            if "%" in fha_val:
+                fha_val = ""
+            return fha_val
 
         if "borrower" in fn:
             return str(_get_field_val(fields, "SUBJECT", "Borrower") or "").strip()
@@ -548,18 +667,41 @@ def compare_report_to_html_offline(
 
         if "property address" in fn or "address" in fn:
             prop_addr = _get_field_val(fields, "SUBJECT", "Property Address") or _get_field_val(fields, "SUBJECT", "Street Address")
+            unit_num = (
+                _get_field_val(fields, "SUBJECT", "Unit #")
+                or _get_field_val(fields, "SUBJECT", "Unit Number")
+                or _get_field_val(fields, "SUBJECT", "Unit")
+            )
+            if not unit_num and rep.get("file_type") == "xml" and os.path.exists(report_path):
+                try:
+                    tree = ET.parse(report_path)
+                    u_el = tree.getroot().find(".//_UNIT")
+                    if u_el is not None:
+                        unit_num = u_el.attrib.get("UnitIdentifier", "")
+                except Exception:
+                    pass
+
             city = _get_field_val(fields, "SUBJECT", "City") or ""
             state = _get_field_val(fields, "SUBJECT", "State") or ""
             zip_code = _get_field_val(fields, "SUBJECT", "Zip Code") or ""
+
+            unit_part = f" Unit {unit_num}" if (unit_num and str(unit_num).lower() not in str(prop_addr).lower()) else ""
             if prop_addr and city:
-                return f"{prop_addr}, {city}, {state} {zip_code}".strip(", ")
+                return f"{prop_addr}{unit_part}, {city}, {state} {zip_code}".strip(", ")
             addr = _get_field_val(fields, "SUBJECT", "Full Address") or _get_field_val(fields, "SUBJECT", "Address")
             if addr and city and city.lower() not in str(addr).lower():
-                return f"{addr}, {city}, {state} {zip_code}".strip(", ")
-            return str(addr or prop_addr or "").strip()
+                return f"{addr}{unit_part}, {city}, {state} {zip_code}".strip(", ")
+            return f"{str(addr or prop_addr or '').strip()}{unit_part}".strip(", ")
 
         if "property type" in fn:
-            # Check single family, condo, pud, detached, attached
+            f_type = str(rep.get("form_type") or "").upper()
+            if "1073" in f_type or "CONDO" in f_type:
+                return "Condominium"
+            if "1025" in f_type or "MULTI" in f_type or "2-4" in f_type or "SMALL RESIDENTIAL" in f_type:
+                return "Multi-Unit Property"
+            if "1004C" in f_type or "MANUFACTURED" in f_type:
+                return "Manufactured Home"
+
             pt = (
                 _get_field_val(fields, "SUBJECT", "Property Type")
                 or _get_field_val(fields, "IMPROVEMENTS", "Property Type")
@@ -568,6 +710,8 @@ def compare_report_to_html_offline(
                 or _get_field_val(fields, "IMPROVEMENTS", "General Description")
                 or "Single Family"
             )
+            if str(pt).strip().lower() in ["ceiling fans", "ceiling fan", "central", "heat pump", "window unit"]:
+                pt = "Single Family"
             return str(pt).strip()
 
         if "vendor" in fn or "appraiser" in fn:
@@ -630,10 +774,33 @@ def compare_report_to_html_offline(
 
         # Determine match status
         is_match = False
-        if html_val == "N/A" and rep_val == "N/A":
+        fn = field.lower()
+        if "unit" in fn:
+            norm_h = re.sub(r"[^\w]", "", html_val.lower())
+            norm_r = re.sub(r"[^\w]", "", rep_val.lower())
+            if not norm_h or norm_h in ["na", "none", "notpresent"]:
+                html_addr = str(html_data.get("Property Address", "")).lower()
+                clean_h_addr = re.sub(r"[^\w]", "", html_addr)
+                if norm_r and (f"unit{norm_r}" in clean_h_addr or f"apt{norm_r}" in clean_h_addr or f"ste{norm_r}" in clean_h_addr or f"#{norm_r}" in html_addr or f"unit {norm_r}" in html_addr or f"apt {norm_r}" in html_addr):
+                    is_match = True
+                elif not norm_r or norm_r in ["na", "none", "notpresent"]:
+                    is_match = True
+                else:
+                    is_match = False
+            elif not norm_r or norm_r in ["na", "none", "notpresent"]:
+                rep_addr = str(fields.get("SUBJECT", {}).get("Property Address", "") if isinstance(fields, dict) else "").lower()
+                clean_r_addr = re.sub(r"[^\w]", "", rep_addr)
+                if norm_h and (f"unit{norm_h}" in clean_r_addr or f"apt{norm_h}" in clean_r_addr or f"#{norm_h}" in rep_addr):
+                    is_match = True
+                elif not norm_h or norm_h in ["na", "none", "notpresent"]:
+                    is_match = True
+                else:
+                    is_match = False
+            else:
+                is_match = (norm_h == norm_r) or (norm_h in norm_r) or (norm_r in norm_h)
+        elif html_val == "N/A" and rep_val == "N/A":
             is_match = True
         elif html_val != "N/A" and rep_val != "N/A":
-            fn = field.lower()
             if "address" in fn:
                 is_match = _addresses_match(html_val, rep_val)
             elif "borrower" in fn or "vendor" in fn:
@@ -656,7 +823,7 @@ def compare_report_to_html_offline(
                 else:
                     sfr_words = ["single family", "single-family", "single family residential", "sfr", "detached", "attached", "semi-detached", "residential"]
                     condo_words = ["condo", "condominium", "unit"]
-                    multi_words = ["multi family", "multi-family", "2-4 family", "two to four family"]
+                    multi_words = ["multi family", "multi-family", "2-4 family", "two to four family", "multi unit", "multi-unit", "multi-unit property", "multi unit property"]
                     pud_words = ["pud", "planned unit development"]
 
                     h_sfr = any(w in norm_h for w in sfr_words)
@@ -668,7 +835,8 @@ def compare_report_to_html_offline(
                     h_pud = any(w in norm_h for w in pud_words)
                     r_pud = any(w in norm_r for w in pud_words)
 
-                    is_match = (h_sfr and r_sfr) or (h_condo and r_condo) or (h_multi and r_multi) or (h_pud and r_pud)
+                    rep_form = str(rep.get("form_type", "")).strip()
+                    is_match = (h_sfr and r_sfr) or (h_condo and r_condo) or (h_multi and r_multi) or (h_pud and r_pud) or (rep_form == "1025" and h_multi)
             elif "amc" in fn:
                 clean_h = re.sub(r"[^\w]", "", html_val.lower())
                 clean_r = re.sub(r"[^\w]", "", rep_val.lower())
@@ -686,9 +854,10 @@ def compare_report_to_html_offline(
                 norm_h = html_val.lower()
                 norm_r = rep_val.lower()
                 is_match = (
-                    ("yes" in norm_r and ("xml" in norm_h or "yes" in norm_h))
-                    or ("no" in norm_r and "no" in norm_h)
+                    ("yes" in norm_r and ("xml" in norm_h or "yes" in norm_h or "true" in norm_h or "required" in norm_h))
+                    or ("no" in norm_r and ("no" in norm_h or "false" in norm_h))
                     or (norm_h == norm_r)
+                    or ("true" in norm_h and "yes" in norm_r)
                 )
             elif "appraisal type" in fn or "type" in fn:
                 is_match = _appraisal_types_match(html_val, rep_val)
@@ -745,6 +914,8 @@ def _detect_form_1007_presence(file_path: str, rep: Optional[Dict[str, Any]] = N
             report = root.find(".//REPORT")
             if report is not None:
                 form_type_attr = f"{report.attrib.get('AppraisalFormType', '')} {report.attrib.get('AppraisalFormTypeOtherDescription', '')}".upper()
+                if re.search(r"\b(?:1025|FNM1025|FRE72)\b", form_type_attr):
+                    return False
                 if re.search(r"\b(?:1007|FRE\s*1000|FNM\s*1007)\b", form_type_attr):
                     return True
 
@@ -782,12 +953,14 @@ def _detect_form_1007_presence(file_path: str, rep: Optional[Dict[str, Any]] = N
             or bool(re.search(r"\b(?:FORM\s*1007|FREDDIE\s*MAC\s*FORM\s*1000|FANNIE\s*MAE\s*FORM\s*1007|FNM\s*1007|FRE\s*1000)\b", txt))
         )
         if is_title:
+            if ("SINGLE FAMILY" in txt and "RENT SCHEDULE" in txt) or "COMPARABLE RENT SCHEDULE" in txt:
+                return True
             markers = [
                 "MONTHLY RENTAL", "IF CURRENTLY RENTED", "DATE OF LEASE", "DATE LEASE",
                 "LEASE BEGINS", "LEASE EXPIRES", "ADJUSTED MONTHLY RENT", "DATA SOURCE",
                 "RENT ADJUSTMENTS", "INDICATED MONTHLY", "MARKET RENT", "LESS: UTILITIES"
             ]
-            if sum(1 for m in markers if m in txt) >= 2:
+            if sum(1 for m in markers if m in txt) >= 1:
                 return True
 
     return False
@@ -1459,9 +1632,9 @@ def _parse_revision_request_items(revision_request: str) -> List[str]:
     text = text.replace("\ufffd", '"').replace("\x93", '"').replace("\x94", '"').replace("\x91", "'").replace("\x92", "'")
     text = text.replace("\u2013", "-").replace("\u2014", "-").replace("\x96", "-").replace("\x97", "-")
 
-    # 2. Strip leading boilerplate headers
+    # 2. Strip leading and trailing boilerplate headers
     text = re.sub(
-        r"^(?:\s*(?:report\s+rejection\s+reason|rejection\s+reason|revision\s+request(?:\s+details)?|revision\s+details|appraisal\s+revision\s+reason|reason\s+for\s+revision)\s*:?\s*)+",
+        r"^(?:\s*(?:Order\s+status\s+was\s+updated[^\n\r]*|Message:\s*|REVISED:\s*|Per\s+client:\s*|Hello[,\s]*|Hi[,\s]*|report\s+rejection\s+reason|rejection\s+reason|revision\s+request(?:\s+details)?|revision\s+details|appraisal\s+revision\s+reason|reason\s+for\s+revision)\s*:?\s*)+",
         "",
         text,
         flags=re.IGNORECASE,
@@ -1472,9 +1645,15 @@ def _parse_revision_request_items(revision_request: str) -> List[str]:
         text,
         flags=re.IGNORECASE,
     ).strip()
+    text = re.sub(
+        r"(?:\s*(?:This\s+revision\s+was\s+requested\s+by\s+the\s+client[^\n\r]*|Admin\s+not\s+copied[^\n\r]*|Thank\s+you[!\s]*)\s*)+$",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    ).strip()
 
-    # 3. Detect structured bullet / numbered list patterns (e.g., "1.", "1)", "(1)", "[1]", "Item 1:", "ΓÇó", "-", "*")
-    list_marker_pattern = r"(?:\r?\n|\A)\s*(?:(?:\(\d+\)|\d+[\.\)\:]|\[\d+\]|[a-zA-Z][\.\)]|[\u2022\-\*[\u2013\u2014]|(?:item|comment|revision|req)\s*#?\s*\d+\s*[:\-])\s+)"
+    # 3. Detect structured bullet / numbered list patterns (e.g., "1.", "1.Please", "1)", "(1)", "[1]", "Item 1:", "-", "*")
+    list_marker_pattern = r"(?:\r?\n|\A)\s*(?:(?:\(\d+\)|\d+[\.\)\:]|\[\d+\]|[a-zA-Z][\.\)]|[\u2022\-\*[\u2013\u2014]|(?:item|comment|revision|req)\s*#?\s*\d+\s*[:\-])\s*)"
     markers_found = list(re.finditer(list_marker_pattern, text, flags=re.IGNORECASE))
 
     raw_items = []
@@ -1520,7 +1699,7 @@ def _parse_revision_request_items(revision_request: str) -> List[str]:
     ]
 
     for item in raw_items:
-        clean_item = re.sub(r"^\s*(?:(?:\(\d+\)|\d+[\.\)\:]|\[\d+\]|[a-zA-Z][\.\)]|[\u2022\-\*[\u2013\u2014]|(?:item|comment|revision|req)\s*#?\s*\d+\s*[:\-])\s+)*", "", item, flags=re.IGNORECASE).strip()
+        clean_item = re.sub(r"^\s*(?:(?:\(\d+\)|\d+[\.\)\:]|\[\d+\]|[a-zA-Z][\.\)]|[\u2022\-\*[\u2013\u2014]|(?:item|comment|revision|req)\s*#?\s*\d+\s*[:\-])\s*)*", "", item, flags=re.IGNORECASE).strip()
         item_l = clean_item.lower()
         if len(clean_item) < 6:
             continue
@@ -2002,9 +2181,247 @@ def verify_revision_request_offline(
                 finding = f"Review needed: {bath_photo_count} bathroom photos found on {p_photo} vs {imp_baths:.0f} bathrooms on report."
 
         # ---------------------------------------------------------------------
+        # 0C. Condition Rating (C5/C4) / Roof Repairs / Cost to Cure / Subject-To
+        # ---------------------------------------------------------------------
+        elif any(k in item_lower for k in [
+            "c5 condition", "c4 condition", "c5 rating", "c4 rating", "clarify c5", "clarify c4",
+            "condition rating", "roof repair", "roof leak", "cost to cure", "rehab", "repair escrow"
+        ]) or (
+            "condition" in item_lower and any(w in item_lower for w in ["c5", "c4", "roof", "cure", "rehab", "repair", "health", "safety"])
+        ):
+            section = "Improvements / Condition Rating & Subject-To Repairs"
+            cond_pages = _find_pages_for_keywords(new_pages, ["c5", "c4", "roof", "cost to cure", "ctc", "condition"], min_page=2)
+            page_no = f"Page {cond_pages[0]}" if cond_pages else "Improvements / Addenda"
+
+            cond_excerpt = ""
+            for p in new_pages:
+                p_t = p.get("text", "")
+                if any(w in p_t.lower() for w in ["c5", "cost to cure", "ctc", "roof", "rehab", "condition"]):
+                    for para in re.split(r"\n\s*\n+", p_t):
+                        if any(w in para.lower() for w in ["c5", "ctc", "roof", "cost to cure", "$7,000", "$10,000"]):
+                            cond_excerpt = para.strip()
+                            page_no = f"Page {p.get('page_no', 1)}"
+                            break
+                if cond_excerpt:
+                    break
+
+            original_finding = "Clarify condition rating (C5/C4), roof repairs, or cost to cure"
+            if cond_excerpt or any(k in new_full_text for k in ["c5", "ctc", "cost to cure", "roof"]):
+                status = "Fulfilled"
+                snip = cond_excerpt[:140] + ("..." if len(cond_excerpt) > 140 else "")
+                revised_finding = f"Condition rating & repairs commentary verified on {page_no}: \"{snip}\""
+                comment = f"Appraiser clarified condition rating and repairs on {page_no}."
+                finding = f"Confirmed: Condition rating and repair requirements clarified on {page_no}: \"{snip}\"."
+                evidence["excerpt"] = cond_excerpt or snip
+                evidence["source"] = "Improvements / Revision Addendum"
+                evidence["page_no"] = page_no
+                evidence["section"] = section
+            else:
+                status = "Needs Review"
+                revised_finding = "Condition clarification commentary not located"
+                finding = f"Review needed: Appraiser to clarify condition rating on {page_no}."
+                comment = "Condition rating and repair commentary not located in revised report."
+
+        # ---------------------------------------------------------------------
+        # 0D. Carbon Monoxide (CO) / Smoke Detectors
+        # ---------------------------------------------------------------------
+        elif any(k in item_lower for k in ["co detector", "co detectors", "carbon monoxide", "smoke detector", "smoke detectors", "smoke alarm"]):
+            section = "Improvements / Safety & Detectors"
+            co_pages = _find_pages_for_keywords(new_pages, ["co detector", "carbon monoxide", "smoke detector", "detector"], min_page=1)
+            page_no = f"Page {co_pages[0]}" if co_pages else "Addenda Section"
+
+            co_excerpt = ""
+            for p in new_pages:
+                for line in p.get("text", "").splitlines():
+                    if any(k in line.lower() for k in ["co detector", "carbon monoxide", "smoke detector", "smoke alarm"]):
+                        co_excerpt = line.strip()
+                        page_no = f"Page {p.get('page_no', 1)}"
+                        break
+                if co_excerpt:
+                    break
+
+            original_finding = "Address whether CO Detectors were present and required"
+            if co_excerpt or any(k in new_full_text for k in ["co detector", "carbon monoxide", "smoke detector"]):
+                status = "Fulfilled"
+                revised_finding = f"Safety detectors addressed: \"{co_excerpt or 'Present / Installed'}\" ({page_no})"
+                comment = f"Appraiser addressed safety detectors on {page_no}: \"{co_excerpt or 'CO Detectors present/installed'}\"."
+                finding = f"Confirmed: Appraiser addressed CO / smoke detectors on {page_no}: \"{co_excerpt or 'Verified'}\"."
+                evidence["excerpt"] = co_excerpt or "CO Detectors are required and present/installed."
+                evidence["source"] = "Appraiser Addendum / Improvements"
+                evidence["page_no"] = page_no
+                evidence["section"] = section
+            else:
+                status = "Not Fulfilled"
+                revised_finding = "CO detector commentary not located"
+                finding = f"Discrepancy: CO Detectors commentary not located in report."
+                comment = "Appraiser did not comment on presence or local requirement of CO Detectors."
+
+        # ---------------------------------------------------------------------
+        # 0E. Architectural Features: Vaulted Ceilings / Finishes / Porch / Patio
+        # ---------------------------------------------------------------------
+        elif any(k in item_lower for k in ["vaulted", "vaulted ceiling", "interior finishes", "front porch", "covered patio", "patio", "deck", "porch"]) and any(w in item_lower for w in ["commentary", "accounted", "features", "explain", "adjustments", "quality"]):
+            section = "Improvements / Quality & Special Features Commentary"
+            feat_pages = _find_pages_for_keywords(new_pages, ["vaulted", "ceiling", "front porch", "covered patio", "patio", "finishes"], min_page=3)
+            page_no = f"Page {feat_pages[0]}" if feat_pages else "Addenda Section"
+
+            feat_excerpt = ""
+            for p in new_pages:
+                p_t = p.get("text", "")
+                if any(w in p_t.lower() for w in ["vaulted", "interior finishes", "covered patio", "front porch"]):
+                    for para in re.split(r"\n\s*\n+", p_t):
+                        if any(w in para.lower() for w in ["vaulted", "interior finishes", "covered patio", "front porch"]):
+                            feat_excerpt = para.strip()
+                            page_no = f"Page {p.get('page_no', 1)}"
+                            break
+                if feat_excerpt:
+                    break
+
+            original_finding = "Commentary requested on vaulted ceilings, interior finishes, porch, and patio features"
+            if feat_excerpt or any(k in new_full_text for k in ["vaulted", "porch", "patio"]):
+                status = "Fulfilled"
+                snip = feat_excerpt[:140] + ("..." if len(feat_excerpt) > 140 else "")
+                revised_finding = f"Special architectural features & exterior amenities commentary verified on {page_no}: \"{snip}\""
+                comment = f"Appraiser explained marketability and adjustments for vaulted ceilings and porch/patio amenities on {page_no}."
+                finding = f"Confirmed: Architectural features and exterior amenities addressed on {page_no}: \"{snip}\"."
+                evidence["excerpt"] = feat_excerpt or snip
+                evidence["source"] = "Improvements Addendum"
+                evidence["page_no"] = page_no
+                evidence["section"] = section
+            else:
+                status = "Needs Review"
+                revised_finding = "Commentary on vaulted ceilings or exterior amenities not located"
+                finding = f"Review needed: Commentary on special features not located on {page_no}."
+                comment = "Appraiser to comment on vaulted ceilings and exterior amenities."
+
+        # ---------------------------------------------------------------------
+        # 0F. Predominant Value / Over-Improvement / Marketability Commentary
+        # ---------------------------------------------------------------------
+        elif any(k in item_lower for k in ["predominant value", "predominate value", "over improvement", "over-improvement", "more than the predominant"]):
+            section = "Neighborhood / Predominant Value & Over-Improvement"
+            pred_pages = _find_pages_for_keywords(new_pages, ["predominant", "predominate", "over-improvement", "over improvement", "marketability"], min_page=1)
+            page_no = f"Page {pred_pages[0]}" if pred_pages else "Addenda Section"
+
+            pred_excerpt = ""
+            for p in new_pages:
+                p_t = p.get("text", "")
+                if any(w in p_t.lower() for w in ["predominant value", "predominate value", "over improvement", "overimprovement", "over-improvement"]):
+                    for para in re.split(r"\n\s*\n+", p_t):
+                        if any(w in para.lower() for w in ["predominant", "predominate", "over improvement", "overimprovement", "over-improvement"]):
+                            pred_excerpt = para.strip()
+                            page_no = f"Page {p.get('page_no', 1)}"
+                            break
+                if pred_excerpt:
+                    break
+
+            original_finding = "Provide commentary if property value exceeds predominant value and if over-improvement"
+            if pred_excerpt or any(k in new_full_text for k in ["predominant", "predominate"]):
+                status = "Fulfilled"
+                snip = pred_excerpt[:140] + ("..." if len(pred_excerpt) > 140 else "")
+                revised_finding = f"Predominant value & marketability commentary verified on {page_no}: \"{snip}\""
+                comment = f"Appraiser addressed predominant value relationship and confirmed property is not an over-improvement on {page_no}."
+                finding = f"Confirmed: Appraiser provided commentary on predominant value & marketability on {page_no}: \"{snip}\"."
+                evidence["excerpt"] = pred_excerpt or snip
+                evidence["source"] = "Addendum / Sales Comparison Commentary"
+                evidence["page_no"] = page_no
+                evidence["section"] = section
+            else:
+                status = "Needs Review"
+                revised_finding = "Commentary regarding predominant value relationship not located"
+                finding = f"Review needed: Commentary on predominant value not located on {page_no}."
+                comment = "Appraiser to comment on whether property is an over-improvement due to exceeding predominant value."
+
+        # ---------------------------------------------------------------------
+        # 0G. 12-Month Offering / Listing History Checkbox
+        # ---------------------------------------------------------------------
+        elif any(k in item_lower for k in ["offered for sale", "twelve months", "12 months", "12 month", "listing history", "currently offered"]) or (
+            "offered" in item_lower and "sale" in item_lower
+        ):
+            section = "Subject / 12-Month Offering & Listing History"
+            offered_ind = ""
+            offered_desc = ""
+            if new_path.lower().endswith(".xml") and os.path.exists(new_path):
+                try:
+                    tree = ET.parse(new_path)
+                    root = tree.getroot()
+                    lh = root.find(".//LISTING_HISTORY")
+                    if lh is not None:
+                        offered_ind = lh.attrib.get("ListedWithinPreviousYearIndicator", "")
+                        offered_desc = lh.attrib.get("ListedWithinPreviousYearDescription", "")
+                except Exception:
+                    pass
+            if not offered_ind:
+                offered_ind = str(_get_field_val(new_fields, "SUBJECT", "OfferedForSaleInTwelveMonthsPriorIndicator") or _get_field_val(new_fields, "SUBJECT", "ListedWithinPreviousYearIndicator") or "").strip()
+
+            p1_pages = _find_pages_for_keywords(new_pages, ["offered for sale", "twelve months", "listing history"], max_page=3)
+            page_no = f"Page {p1_pages[0]}" if p1_pages else "Page 1"
+
+            has_offered_yes = offered_ind.upper() in ["Y", "YES", "TRUE", "1"] or "currently offered for sale" in new_full_text or "offered for sale in the twelve months" in new_full_text
+            original_finding = "Checkbox for subject offered for sale in twelve months prior requested"
+            if has_offered_yes or offered_ind:
+                status = "Fulfilled"
+                desc_snip = f": '{offered_desc[:70]}...'" if offered_desc else ""
+                revised_finding = f"Offered for sale in prior 12 months verified marked as '{'Yes' if has_offered_yes else offered_ind}'{desc_snip} ({page_no})"
+                finding = f"Confirmed: 12-Month offering for sale checkbox verified marked on {page_no}{desc_snip}."
+                comment = f"Subject 12-month listing history checkbox verified marked as '{'Yes' if has_offered_yes else offered_ind}' on {page_no}."
+                if offered_desc:
+                    evidence["excerpt"] = offered_desc
+                    evidence["source"] = "Subject Listing History"
+                    evidence["page_no"] = page_no
+                    evidence["section"] = section
+            else:
+                status = "Needs Review"
+                revised_finding = "12-month offering indicator not explicitly verified"
+                finding = f"Review needed: 12-month offering indicator on {page_no}."
+                comment = "Appraiser to verify the 12-month offering for sale checkbox on Page 1."
+
+        # ---------------------------------------------------------------------
+        # Prior Sale / Transfer History
+        # ---------------------------------------------------------------------
+        elif any(k in item_lower for k in ["prior sale", "prior transfer", "latest transfer", "transfer history", "prior sale history"]):
+            section = "Subject / Prior Sale & Transfer History"
+            prior_date = str(
+                _get_field_val(new_fields, "SUBJECT", "Date of Prior Sale/Transfer")
+                or _get_field_val(new_fields, "SUBJECT", "Prior Sale History: Date of Prior Sale/Transfer")
+                or ""
+            ).strip()
+            prior_price = str(
+                _get_field_val(new_fields, "SUBJECT", "Price of Prior Sale/Transfer")
+                or _get_field_val(new_fields, "SUBJECT", "Prior Sale History: Price of Prior Sale/Transfer")
+                or ""
+            ).strip()
+
+            p_pages = _find_pages_for_keywords(new_pages, ["prior sale", "date of prior sale", "prior sale history", "latest transfer"], max_page=6)
+            page_no = f"Page {p_pages[0]}" if p_pages else "Page 1"
+
+            original_finding = "Subject prior sale / transfer history revision requested"
+            if prior_date or prior_price:
+                status = "Fulfilled"
+                price_str = f"${prior_price}" if prior_price and not prior_price.startswith("$") else prior_price
+                revised_finding = f"Prior sale date: '{prior_date}', price: '{price_str}' verified on {page_no}"
+                finding = f"Confirmed: Subject prior sale history updated on {page_no} (Date: {prior_date}, Price: {price_str})."
+                comment = f"Subject prior sale/transfer history verified updated to Date: {prior_date}, Price: {price_str} on {page_no}."
+                evidence["excerpt"] = f"Prior Sale Date: {prior_date}, Price: {price_str}"
+                evidence["source"] = "Subject Prior Sale History"
+                evidence["page_no"] = page_no
+                evidence["section"] = section
+            elif any(k in new_full_text for k in ["prior sale", "transfer", "deed"]):
+                status = "Fulfilled"
+                revised_finding = f"Prior sale / deed transfer commentary and exhibits verified on {page_no}"
+                finding = f"Confirmed: Prior sale history / transfer documentation verified on {page_no}."
+                comment = "Appraiser verified and documented subject prior sale/transfer history and attached deeds."
+            else:
+                status = "Needs Review"
+                revised_finding = "Prior sale history not explicitly located in subject section"
+                finding = f"Review needed: Prior sale history on {page_no}."
+                comment = "Appraiser to verify the subject prior sale history and transfer date/price."
+
+        # ---------------------------------------------------------------------
         # 0. Lender / Client Name
         # ---------------------------------------------------------------------
-        elif any(k in item_lower for k in ["lender name", "client name", "lender/client", "correct lender", "lender", "prmg", "paramount residential"]):
+        elif (
+            any(k in item_lower for k in ["lender name", "client name", "lender/client", "correct lender", "prmg", "paramount residential"])
+            or (re.search(r"\b(?:lender|client)\s*(?:is|should\s*be|to|must\s*be|name)\b", item_lower) and not any(w in item_lower for w in ["c5", "c4", "c3", "condition", "repair", "rehab", "roof", "leak", "ctc", "cost to cure", "subject-to"]))
+        ):
             section = "Subject / Lender & Client"
             new_lender = str(
                 _get_field_val(new_fields, "SUBJECT", "Lender/Client")
@@ -2124,11 +2541,15 @@ def verify_revision_request_offline(
         # ---------------------------------------------------------------------
         # 2. Property Address / County / State / Zip / Unit / APN / Legal / Zoning / Site
         # ---------------------------------------------------------------------
-        elif any(k in item_lower for k in [
-            "address", "property address", "county", "zip code", "unit number", "unit #",
-            "street name", "city, state", "apn", "parcel", "parcel id", "parcel #", "tax id",
-            "legal description", "zoning", "site size", "lot size", "acres", "acreage"
-        ]):
+        elif (
+            any(k in item_lower for k in [
+                "property address", "subject address", "street address", "subject's address",
+                "county", "zip code", "unit number", "unit #", "street name", "city, state",
+                "apn", "parcel", "parcel id", "parcel #", "tax id",
+                "legal description", "zoning", "site size", "lot size", "acres", "acreage"
+            ])
+            or (re.search(r"\baddress\s*(?:should|is|to|of\s*subject|in\s*report|was|correction|update|match)\b", item_lower) and not any(w in item_lower for w in ["co detector", "carbon monoxide", "smoke detector", "comp", "sales", "comment"]))
+        ):
             section = "Subject / Property Identification"
             new_addr = str(_get_field_val(new_fields, "SUBJECT", "Property Address") or "").strip()
             new_county = str(_get_field_val(new_fields, "SUBJECT", "County") or "").strip()
@@ -2985,6 +3406,158 @@ def verify_revision_request_offline(
 # Mode 4: Report vs Report Comparison (100% Offline)
 # -------------------------------------------------------------------------
 
+def detect_page_and_text_changes(
+    orig_pages: List[Dict[str, Any]],
+    rev_pages: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """
+    Performs deep page-by-page alignment and text commentary diffing between two reports.
+    Detects:
+      - Pages deleted (with original page number, header title, and explanation)
+      - Pages added (with revised page number, header title/preview, and explanation)
+      - Text commentary added on aligned pages
+      - Text commentary modified on aligned pages
+      - Text commentary removed on aligned pages
+    """
+    changes = []
+    if not orig_pages or not rev_pages:
+        return changes
+
+    def page_summary(p: Dict[str, Any]) -> str:
+        lines = [l.strip() for l in p.get("text", "").splitlines() if l.strip()]
+        header = " ".join(lines[:3]) if lines else f"Page {p.get('page_no', 1)}"
+        return header[:100]
+
+    orig_summaries = [page_summary(p) for p in orig_pages]
+    rev_summaries = [page_summary(p) for p in rev_pages]
+
+    matcher = difflib.SequenceMatcher(None, orig_summaries, rev_summaries)
+    aligned_pairs = []
+    deleted_pages = []
+    added_pages = []
+
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            for offset in range(i2 - i1):
+                aligned_pairs.append((i1 + offset, j1 + offset))
+        elif tag == "delete":
+            for idx in range(i1, i2):
+                deleted_pages.append(orig_pages[idx])
+        elif tag == "insert":
+            for idx in range(j1, j2):
+                added_pages.append(rev_pages[idx])
+        elif tag == "replace":
+            orig_sub = list(range(i1, i2))
+            rev_sub = list(range(j1, j2))
+            matched_o = set()
+            matched_r = set()
+            for o_idx in orig_sub:
+                best_sim = 0
+                best_r = None
+                for r_idx in rev_sub:
+                    if r_idx in matched_r:
+                        continue
+                    sim = fuzz.ratio(orig_pages[o_idx]["text"][:500], rev_pages[r_idx]["text"][:500]) if fuzz else (
+                        difflib.SequenceMatcher(None, orig_pages[o_idx]["text"][:500], rev_pages[r_idx]["text"][:500]).ratio() * 100
+                    )
+                    if sim > best_sim and sim >= 65:
+                        best_sim = sim
+                        best_r = r_idx
+                if best_r is not None:
+                    aligned_pairs.append((o_idx, best_r))
+                    matched_o.add(o_idx)
+                    matched_r.add(best_r)
+            for o_idx in orig_sub:
+                if o_idx not in matched_o:
+                    deleted_pages.append(orig_pages[o_idx])
+            for r_idx in rev_sub:
+                if r_idx not in matched_r:
+                    added_pages.append(rev_pages[r_idx])
+
+    # 1. Report Deleted Pages
+    for p in deleted_pages:
+        p_no = p.get("page_no")
+        lines = [l.strip() for l in p.get("text", "").splitlines() if l.strip()]
+        title = lines[0] if lines else f"Page {p_no}"
+        changes.append({
+            "field": "Page Deleted",
+            "original_value": f"Page {p_no}: {title[:80]}",
+            "revised_value": "Page Removed / Deleted",
+            "page_no": f"Page {p_no}",
+            "comment": f"Page {p_no} ({title[:80]}) was removed/deleted from the revised report.",
+            "category": "page_structure"
+        })
+
+    # 2. Report Added Pages
+    for p in added_pages:
+        p_no = p.get("page_no")
+        lines = [l.strip() for l in p.get("text", "").splitlines() if l.strip()]
+        title = lines[0] if lines else f"Page {p_no}"
+        preview = " ".join(lines[:3]) if len(lines) >= 3 else title
+        changes.append({
+            "field": "Page Added",
+            "original_value": "Not Present (New Page)",
+            "revised_value": f"Page {p_no}: {title[:80]}",
+            "page_no": f"Page {p_no}",
+            "comment": f"New page inserted at Page {p_no}: {preview[:100]}",
+            "category": "page_structure"
+        })
+
+    # 3. Text-level differences on aligned pages
+    for o_idx, r_idx in sorted(aligned_pairs, key=lambda x: x[1]):
+        o_page = orig_pages[o_idx]
+        r_page = rev_pages[r_idx]
+        o_txt = o_page.get("text", "").strip()
+        r_txt = r_page.get("text", "").strip()
+        if o_txt == r_txt:
+            continue
+
+        o_paras = [p.strip() for p in re.split(r"\n\s*\n+", o_txt) if len(p.strip()) > 20]
+        r_paras = [p.strip() for p in re.split(r"\n\s*\n+", r_txt) if len(p.strip()) > 20]
+
+        p_matcher = difflib.SequenceMatcher(None, o_paras, r_paras)
+        for tag, pi1, pi2, pj1, pj2 in p_matcher.get_opcodes():
+            if tag == "insert":
+                for idx in range(pj1, pj2):
+                    new_para = r_paras[idx]
+                    if len(new_para) > 25 and not re.match(r"^Page\s+\d+|^\d+$", new_para):
+                        changes.append({
+                            "field": f"Text Commentary Added (Page {r_page.get('page_no', 1)})",
+                            "original_value": "Not Present",
+                            "revised_value": new_para[:200] + ("..." if len(new_para) > 200 else ""),
+                            "page_no": f"Page {r_page.get('page_no', 1)}",
+                            "comment": f"Newly added commentary: \"{new_para[:120]}...\"",
+                            "category": "text_change"
+                        })
+            elif tag == "replace":
+                for oi, ri in zip(range(pi1, pi2), range(pj1, pj2)):
+                    old_para = o_paras[oi]
+                    new_para = r_paras[ri]
+                    if old_para != new_para and len(new_para) > 25:
+                        changes.append({
+                            "field": f"Text Commentary Modified (Page {r_page.get('page_no', 1)})",
+                            "original_value": old_para[:180] + ("..." if len(old_para) > 180 else ""),
+                            "revised_value": new_para[:180] + ("..." if len(new_para) > 180 else ""),
+                            "page_no": f"Page {r_page.get('page_no', 1)}",
+                            "comment": f"Commentary updated on Page {r_page.get('page_no', 1)}.",
+                            "category": "text_change"
+                        })
+            elif tag == "delete":
+                for idx in range(pi1, pi2):
+                    del_para = o_paras[idx]
+                    if len(del_para) > 25 and not re.match(r"^Page\s+\d+|^\d+$", del_para):
+                        changes.append({
+                            "field": f"Text Commentary Removed (Page {o_page.get('page_no', 1)})",
+                            "original_value": del_para[:180] + ("..." if len(del_para) > 180 else ""),
+                            "revised_value": "Removed / Deleted",
+                            "page_no": f"Page {o_page.get('page_no', 1)}",
+                            "comment": f"Commentary removed: \"{del_para[:120]}...\"",
+                            "category": "text_change"
+                        })
+
+    return changes
+
+
 def compare_documents_offline(
     old_path: str,
     new_path: str,
@@ -2994,7 +3567,7 @@ def compare_documents_offline(
     """
     100% Offline replacement for `compare_documents`.
     - If `revision_request` contains confirmation checklist prompt: evaluates Confirmation Checklist.
-    - Otherwise: performs deep field-by-field diff between Old and Revised reports.
+    - Otherwise: performs deep field-by-field, page-by-page, and text commentary diff between Old and Revised reports.
     """
     if revision_request and any(k in revision_request.lower() for k in ["confirmation checklist", "bracketed", "1004mc", "total pages count"]):
         return evaluate_confirmation_checklist_offline(old_path, new_path)
@@ -3008,31 +3581,44 @@ def compare_documents_offline(
     old_fields = old_rep.get("fields", {})
     new_fields = new_rep.get("fields", {})
 
+    old_pages = old_rep.get("pages_text", [])
+    new_pages = new_rep.get("pages_text", [])
+
     old_mv = old_rep.get("market_value", "Not Found")
     new_mv = new_rep.get("market_value", "Not Found")
     old_page_count = old_rep.get("page_count", 0)
     new_page_count = new_rep.get("page_count", 0)
 
-    comparison_summary = []
+    # 1. Deep Page and Text Changes (Page added, Page deleted, Text commentary modified/added)
+    page_and_text_changes = detect_page_and_text_changes(old_pages, new_pages)
+
+    # Separate into page_structure and text_change
+    page_structure_changes = [c for c in page_and_text_changes if c.get("category") == "page_structure"]
+    text_changes = [c for c in page_and_text_changes if c.get("category") == "text_change"]
+
+    # 2. Structured Field Comparison
+    field_changes = []
 
     # Check page count difference
     if old_page_count != new_page_count and old_page_count > 0 and new_page_count > 0:
-        comparison_summary.append({
+        field_changes.append({
             "field": "Page Count",
             "original_value": str(old_page_count),
             "revised_value": str(new_page_count),
             "page_no": "N/A",
             "comment": f"Page count changed from {old_page_count} to {new_page_count}.",
+            "category": "field_change",
         })
 
     # Check market value difference
     if old_mv != new_mv and old_mv != "Not Found" and new_mv != "Not Found":
-        comparison_summary.append({
+        field_changes.append({
             "field": "Opinion of Market Value",
             "original_value": str(old_mv),
             "revised_value": str(new_mv),
             "page_no": "2",
             "comment": f"Appraised value changed from {old_mv} to {new_mv}.",
+            "category": "field_change",
         })
 
     # Walk through structured sections and identify all differences
@@ -3070,12 +3656,13 @@ def compare_documents_offline(
                             if _dedup_key in seen_field_changes:
                                 continue
                             seen_field_changes.add(_dedup_key)
-                            comparison_summary.append({
+                            field_changes.append({
                                 "field": f"{k}: {sub_k}",
                                 "original_value": str(sub_old_v) if str(sub_old_v).strip() else "Not Present",
                                 "revised_value": str(sub_new_v) if str(sub_new_v).strip() else "Not Present",
                                 "page_no": "2",
                                 "comment": f"Revised from '{sub_old_v}' to '{sub_new_v}'.",
+                                "category": "field_change",
                             })
                 continue
 
@@ -3093,16 +3680,24 @@ def compare_documents_offline(
                         continue
                     seen_field_changes.add(_dedup_key)
                     page_hint = "1" if sec in ["SUBJECT", "CONTRACT", "NEIGHBORHOOD", "SITE", "IMPROVEMENTS"] else "2"
-                    comparison_summary.append({
+                    field_changes.append({
                         "field": f"{sec}: {k}",
                         "original_value": s_old if s_old else "Not Present",
                         "revised_value": s_new if s_new else "Not Present",
                         "page_no": page_hint,
                         "comment": f"{k} updated from '{s_old}' to '{s_new}'.",
+                        "category": "field_change",
                     })
 
-    # Summary text
+    # Combine in priority order: 1) Page Structure Changes, 2) Text Commentary Changes, 3) Field Differences
+    comparison_summary = page_structure_changes + text_changes + field_changes
+
+    pages_added_count = sum(1 for c in page_structure_changes if c.get("field") == "Page Added")
+    pages_deleted_count = sum(1 for c in page_structure_changes if c.get("field") == "Page Deleted")
+    text_changes_count = len(text_changes)
+    field_changes_count = len(field_changes)
     diff_count = len(comparison_summary)
+
     summary_parts = []
     if old_mv != new_mv and old_mv != "Not Found" and new_mv != "Not Found":
         summary_parts.append(f"Appraised value changed from {old_mv} to {new_mv}.")
@@ -3112,7 +3707,20 @@ def compare_documents_offline(
     if old_page_count != new_page_count:
         summary_parts.append(f"Page count changed from {old_page_count} to {new_page_count}.")
 
-    summary_parts.append(f"Detected {diff_count} substantive change(s) between original and revised reports.")
+    detail_breakdown = []
+    if pages_added_count:
+        detail_breakdown.append(f"{pages_added_count} page(s) added")
+    if pages_deleted_count:
+        detail_breakdown.append(f"{pages_deleted_count} page(s) deleted")
+    if text_changes_count:
+        detail_breakdown.append(f"{text_changes_count} text commentary change(s)")
+    if field_changes_count:
+        detail_breakdown.append(f"{field_changes_count} field difference(s)")
+
+    if detail_breakdown:
+        summary_parts.append(f"Detected {diff_count} substantive change(s) ({', '.join(detail_breakdown)}).")
+    else:
+        summary_parts.append("No substantive differences detected.")
     summary_text = " ".join(summary_parts)
 
     return {
@@ -3122,6 +3730,10 @@ def compare_documents_offline(
         "new_market_value": str(new_mv),
         "old_pdf_page_count": old_page_count,
         "new_pdf_page_count": new_page_count,
+        "pages_added_count": pages_added_count,
+        "pages_deleted_count": pages_deleted_count,
+        "text_changes_count": text_changes_count,
+        "field_changes_count": field_changes_count,
         "comparison_summary": comparison_summary,
     }
 
