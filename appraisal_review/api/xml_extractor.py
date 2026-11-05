@@ -2815,6 +2815,9 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
     prop_rights = ""
     prop_occupancy = ""
 
+    unit_elem = root.find(".//_UNIT")
+    unit_id = unit_elem.attrib.get("UnitIdentifier", "") if unit_elem is not None else ""
+
     if property_elem is not None:
         prop_addr = property_elem.attrib.get("_StreetAddress", "")
         prop_city = property_elem.attrib.get("_City", "")
@@ -2840,7 +2843,10 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         else: 
             prop_occupancy = occ_raw
 
-    full_addr = f"{prop_addr}, {prop_city}, {prop_state} {prop_zip}".strip(", ")
+    if unit_id and str(unit_id).lower() not in prop_addr.lower():
+        full_addr = f"{prop_addr} Unit {unit_id}, {prop_city}, {prop_state} {prop_zip}".strip(", ")
+    else:
+        full_addr = f"{prop_addr}, {prop_city}, {prop_state} {prop_zip}".strip(", ")
 
     # Identifiers
     apn = ""
@@ -2908,10 +2914,21 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
                     total_b = sum(unit_baths)
                     baths = str(int(total_b) if total_b.is_integer() else total_b)
 
+            unit_elem = struct_elem.find("_UNIT") or root.find(".//_UNIT")
+            unit_id = unit_elem.attrib.get("UnitIdentifier", "") if unit_elem is not None else ""
+
+            conf_other = struct_elem.attrib.get("StructureConfigurationTypeOtherDescription", "")
+            if any(w in conf_other.lower() for w in ["fan", "cool", "heat", "ac", "air"]):
+                conf_other = ""
+            conf_type = struct_elem.attrib.get("StructureConfigurationType", "")
+            if conf_type.lower() == "other":
+                conf_type = ""
+
             struct_type = (
                 struct_elem.attrib.get("AttachmentType", "") or 
-                struct_elem.attrib.get("StructureConfigurationTypeOtherDescription", "") or 
-                struct_elem.attrib.get("StructureConfigurationType", "")
+                conf_other or 
+                conf_type or
+                ("Attached" if ("1073" in form_type or "CONDO" in form_type.upper()) else "Detached")
             )
             sa_elem = struct_elem.find("STRUCTURE_ANALYSIS")
             if sa_elem is None:
@@ -4840,6 +4857,9 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "FHA Case Number": fha_case_no,
         "Full Address": full_addr,
         "Property Address": prop_addr,
+        "Unit #": unit_id,
+        "Unit Number": unit_id,
+        "Unit": unit_id,
         "City": prop_city,
         "County": prop_county,
         "State": prop_state,
@@ -5979,7 +5999,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
                     emb_pdf = None
 
             if emb_pdf is not None:
-                eo_info = extract_eo_insurance_from_doc(emb_pdf)
+                eo_info = extract_eo_insurance_from_doc(emb_pdf, use_ocr=extract_images)
                 if eo_info.get("E&O"):
                     certification_section["E&O"] = eo_info["E&O"]
                     certification_section["E&O Present"] = eo_info.get("E&O Present", eo_info["E&O"])
@@ -6702,6 +6722,9 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "form_type": form_type,
         "Full Address": full_addr,
         "Property Address": prop_addr,
+        "Unit #": unit_id,
+        "Unit Number": unit_id,
+        "Unit": unit_id,
         "City": prop_city,
         "County": prop_county,
         "State": prop_state,

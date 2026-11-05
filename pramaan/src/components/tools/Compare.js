@@ -204,12 +204,14 @@ const Compare = () => {
   const [oldPdfFile, setOldPdfFile] = useState(null);
   const [newPdfFile, setNewPdfFile] = useState(null);
   const [revisionText, setRevisionText] = useState('');
+  const [htmlCapturedInfo, setHtmlCapturedInfo] = useState('');
   const [editingField, setEditingField] = useState(null);
   const [comparisonData, setComparisonData] = useState([]);
   const [oldPdfPageCount, setOldPdfPageCount] = useState(null);
   const [newPdfPageCount, setNewPdfPageCount] = useState(null);
   const [timer, setTimer] = useState(0);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [pdfPdfFilter, setPdfPdfFilter] = useState('all');
   const [copiedFindings, setCopiedFindings] = useState(false);
   const timerRef = useRef(null);
 
@@ -289,7 +291,20 @@ const Compare = () => {
         }
       }
 
-      // 3. Fallback regex on HTML raw text
+      // 3. Fallback: FastApp comments grid (grdComments) or comment entries
+      if (!extractedText) {
+        const commentSpans = doc.querySelectorAll('[id*="grdComments"][id*="lblComments"], .appraisal-comment, [class*="comment"]');
+        for (let i = 0; i < commentSpans.length; i++) {
+          const cTxt = commentSpans[i].textContent || '';
+          if (/Revision\s*Requested|Reconsideration\s*Requested|Appraisal\s*revisions\s*required|Message:\s*REVISED|Per\s*client:/i.test(cTxt) &&
+              !/^\s*Revision Request email was sent/i.test(cTxt)) {
+            extractedText = extractCleanTextFromElement(commentSpans[i]);
+            break;
+          }
+        }
+      }
+
+      // 4. Fallback regex on HTML raw text
       if (!extractedText) {
         const match = content.match(/report\s*rejection\s*reason[\s\S]*?<span[^>]*id=["'][^"']*lblFileRejectReason[^"']*["'][^>]*>([\s\S]*?)<\/span>/i) ||
                       content.match(/report\s+rejection\s+reason\s*:?\s*<\/?[^>]+>\s*([^<]+)/i) ||
@@ -301,10 +316,17 @@ const Compare = () => {
         }
       }
 
-      // Clean redundant title echo
+      // Clean redundant title echo and boilerplate headers
       extractedText = extractedText.replace(/^(?:report\s+rejection\s+reason\s*:?\s*)+/i, '').trim();
 
       setRevisionText(extractedText);
+      if (extractedText) {
+        const items = extractedText.split(/\n+/).filter(l => l.trim().length > 10);
+        const count = Math.max(1, items.length);
+        setHtmlCapturedInfo(`Captured ${count} revision item${count > 1 ? 's' : ''} from ${htmlFile.name}`);
+      } else {
+        setHtmlCapturedInfo('');
+      }
     };
     reader.readAsText(htmlFile);
   }, [htmlFile]);
@@ -382,14 +404,16 @@ const Compare = () => {
     let endpoint = '';
 
     if (mode === 'revision') {
-      if (!newPdfFile || !revisionText) {
-        setError('Please provide a report file (PDF or XML) and ensure revision text is extracted or entered.');
+      if (!newPdfFile || (!revisionText && !htmlFile)) {
+        setError('Please provide a report file (PDF or XML) and an HTML file or revision text.');
         setLoading(false);
         return;
       }
       formData.append('file', newPdfFile);
       formData.append('form_type', '1004');
-      formData.append('revision_request', revisionText);
+      if (revisionText) {
+        formData.append('revision_request', revisionText);
+      }
       if (oldPdfFile) {
         formData.append('old_file', oldPdfFile);
       }
@@ -506,37 +530,97 @@ const Compare = () => {
     if (comparisonSummary.length === 0) {
       return (
         <Alert severity="success" sx={{ mt: 3 }}>
-          No differences were found between the two PDF documents.
+          No differences were found between the two documents.
         </Alert>
       );
     }
 
+    const pageStructureChanges = comparisonSummary.filter(c => c.category === 'page_structure' || c.field === 'Page Added' || c.field === 'Page Deleted');
+    const textChanges = comparisonSummary.filter(c => c.category === 'text_change' || (c.field && c.field.toLowerCase().includes('text commentary')));
+    const fieldChanges = comparisonSummary.filter(c => c.category === 'field_change' || (!c.category && c.field !== 'Page Added' && c.field !== 'Page Deleted' && !c.field.toLowerCase().includes('text commentary')));
+
+    const filteredSummary = comparisonSummary.filter(item => {
+      if (pdfPdfFilter === 'pages') return item.category === 'page_structure' || item.field === 'Page Added' || item.field === 'Page Deleted';
+      if (pdfPdfFilter === 'text') return item.category === 'text_change' || (item.field && item.field.toLowerCase().includes('text commentary'));
+      if (pdfPdfFilter === 'fields') return item.category === 'field_change' || (!item.category && item.field !== 'Page Added' && item.field !== 'Page Deleted' && !item.field.toLowerCase().includes('text commentary'));
+      return true;
+    });
+
+    const getFieldBadge = (field) => {
+      const f = (field || '').toLowerCase();
+      if (f === 'page deleted') {
+        return <Chip label="Page Deleted" color="error" size="small" sx={{ fontWeight: 'bold', mr: 1, height: 22, fontSize: '0.7rem' }} />;
+      }
+      if (f === 'page added') {
+        return <Chip label="Page Added" color="success" size="small" sx={{ fontWeight: 'bold', mr: 1, height: 22, fontSize: '0.7rem' }} />;
+      }
+      if (f.includes('text commentary added')) {
+        return <Chip label="Text Added" color="info" size="small" sx={{ fontWeight: 'bold', mr: 1, height: 22, fontSize: '0.7rem' }} />;
+      }
+      if (f.includes('text commentary modified')) {
+        return <Chip label="Text Modified" color="secondary" size="small" sx={{ fontWeight: 'bold', mr: 1, height: 22, fontSize: '0.7rem' }} />;
+      }
+      if (f.includes('text commentary removed')) {
+        return <Chip label="Text Removed" color="warning" size="small" sx={{ fontWeight: 'bold', mr: 1, height: 22, fontSize: '0.7rem' }} />;
+      }
+      return null;
+    };
+
     return (
-      <Paper elevation={1} sx={{ p: 2, mt: 3 }}>
-        <Typography variant="h6" gutterBottom>Verification Results</Typography>
+      <Paper elevation={1} sx={{ p: 3, mt: 3, borderRadius: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1.5 }}>
+          <Typography variant="h6" fontWeight="bold">Comparison Results</Typography>
+          <ToggleButtonGroup
+            size="small"
+            value={pdfPdfFilter}
+            exclusive
+            onChange={(e, next) => next && setPdfPdfFilter(next)}
+            aria-label="Filter changes"
+          >
+            <ToggleButton value="all" sx={{ px: 1.5, py: 0.5, fontSize: '0.78rem' }}>
+              All ({comparisonSummary.length})
+            </ToggleButton>
+            {pageStructureChanges.length > 0 && (
+              <ToggleButton value="pages" sx={{ px: 1.5, py: 0.5, fontSize: '0.78rem', color: 'error.main' }}>
+                Pages Added/Deleted ({pageStructureChanges.length})
+              </ToggleButton>
+            )}
+            {textChanges.length > 0 && (
+              <ToggleButton value="text" sx={{ px: 1.5, py: 0.5, fontSize: '0.78rem', color: 'secondary.main' }}>
+                Text Commentary ({textChanges.length})
+              </ToggleButton>
+            )}
+            {fieldChanges.length > 0 && (
+              <ToggleButton value="fields" sx={{ px: 1.5, py: 0.5, fontSize: '0.78rem', color: 'primary.main' }}>
+                Field Differences ({fieldChanges.length})
+              </ToggleButton>
+            )}
+          </ToggleButtonGroup>
+        </Box>
+
         {summaryText && (
-          <Paper elevation={2} sx={{ p: 3, mb: 3, borderLeft: 5, borderColor: 'primary.main', bgcolor: 'action.hover' }}>
-            <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>
+          <Paper elevation={0} sx={{ p: 2.5, mb: 3, borderLeft: 4, borderColor: 'primary.main', bgcolor: '#f8fafc', borderRadius: 2 }}>
+            <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.7, fontWeight: 500 }}>
               <HighlightKeywords text={summaryText} keywordGroups={keywordGroups} />
             </Typography>
           </Paper>
         )}
         <Grid container spacing={2} sx={{ mb: 3 }}>
           <Grid item xs={6}>
-            <Paper variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
+            <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', borderRadius: 2 }}>
               <Typography variant="caption" color="text.secondary">Old Report Page Count</Typography>
-              <Typography variant="h6">{oldPdfPageCount || 'N/A'}</Typography>
+              <Typography variant="h6" fontWeight="bold">{data.old_pdf_page_count || oldPdfPageCount || 'N/A'}</Typography>
             </Paper>
           </Grid>
           <Grid item xs={6}>
-            <Paper variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
+            <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', borderRadius: 2 }}>
               <Typography variant="caption" color="text.secondary">New Report Page Count</Typography>
-              <Typography variant="h6">{newPdfPageCount || 'N/A'}</Typography>
+              <Typography variant="h6" fontWeight="bold">{data.new_pdf_page_count || newPdfPageCount || 'N/A'}</Typography>
             </Paper>
           </Grid>
         </Grid>
-        <Paper variant="outlined" sx={{ p: 2, mb: 3, bgcolor: areMarketValuesMatching ? 'success.light' : 'error.light' }}>
-          <Typography variant="h6" gutterBottom>Opinion of Market Value Comparison</Typography>
+        <Paper variant="outlined" sx={{ p: 2, mb: 3, borderRadius: 2, bgcolor: areMarketValuesMatching ? 'success.lighter' : 'error.lighter' }}>
+          <Typography variant="subtitle2" fontWeight="bold" gutterBottom>Opinion of Market Value Comparison</Typography>
           <Stack direction="row" spacing={2} alignItems="center">
             <Typography>Old Value: <strong>{oldMarketValueRaw}</strong></Typography>
             <Divider orientation="vertical" flexItem />
@@ -545,8 +629,8 @@ const Compare = () => {
           </Stack>
         </Paper>
 
-        <TableContainer>
-          <Table sx={{ minWidth: 650 }} aria-label="comparison table">
+        <TableContainer sx={{ maxHeight: 600 }}>
+          <Table stickyHeader sx={{ minWidth: 650 }} aria-label="comparison table">
             <TableHead>
               <TableRow>
                 <TableCell sx={{ fontWeight: 'bold' }}>Field Changed</TableCell>
@@ -557,23 +641,37 @@ const Compare = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {comparisonSummary.map((change, index) => (
-                <TableRow key={index} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
-                  <TableCell component="th" scope="row">
-                    <HighlightKeywords text={change.field} keywordGroups={keywordGroups} />
-                  </TableCell>
-                  <TableCell>
-                    <HighlightKeywords text={change.original_value} keywordGroups={keywordGroups} />
-                  </TableCell>
-                  <TableCell>
-                    <HighlightKeywords text={change.revised_value} keywordGroups={keywordGroups} />
-                  </TableCell>
-                  <TableCell>
-                    <HighlightKeywords text={change.comment} keywordGroups={keywordGroups} />
-                  </TableCell>
-                  <TableCell align="right">{change.page_no}</TableCell>
-                </TableRow>
-              ))}
+              {filteredSummary.map((change, index) => {
+                const isDel = change.field === 'Page Deleted';
+                const isAdd = change.field === 'Page Added';
+                return (
+                  <TableRow
+                    key={index}
+                    sx={{
+                      bgcolor: isDel ? '#fff5f5' : (isAdd ? '#f0fff4' : 'inherit'),
+                      '&:hover': { bgcolor: isDel ? '#ffebee' : (isAdd ? '#e8f5e9' : 'action.hover') },
+                      '&:last-child td, &:last-child th': { border: 0 }
+                    }}
+                  >
+                    <TableCell component="th" scope="row">
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        {getFieldBadge(change.field)}
+                        <HighlightKeywords text={change.field} keywordGroups={keywordGroups} />
+                      </Box>
+                    </TableCell>
+                    <TableCell sx={{ maxWidth: 220, wordBreak: 'break-word' }}>
+                      <HighlightKeywords text={change.original_value} keywordGroups={keywordGroups} />
+                    </TableCell>
+                    <TableCell sx={{ maxWidth: 220, wordBreak: 'break-word' }}>
+                      <HighlightKeywords text={change.revised_value} keywordGroups={keywordGroups} />
+                    </TableCell>
+                    <TableCell sx={{ maxWidth: 300, wordBreak: 'break-word' }}>
+                      <HighlightKeywords text={change.comment} keywordGroups={keywordGroups} />
+                    </TableCell>
+                    <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{change.page_no}</TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </TableContainer>
@@ -988,9 +1086,21 @@ const Compare = () => {
       <form onSubmit={handleSubmit}>
         {comparisonMode === 'revision' && (
           <Paper elevation={0} sx={{ p: 3, mb: 3, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
-            <Typography variant="subtitle2" gutterBottom fontWeight="bold">Revision Request Details</Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5, flexWrap: 'wrap', gap: 1 }}>
+              <Typography variant="subtitle2" fontWeight="bold">Revision Request Details</Typography>
+              {htmlCapturedInfo && (
+                <Chip
+                  icon={<CheckCircleIcon sx={{ fontSize: '1rem !important' }} />}
+                  label={htmlCapturedInfo}
+                  color="success"
+                  size="small"
+                  variant="outlined"
+                  sx={{ fontWeight: 'medium' }}
+                />
+              )}
+            </Box>
             <TextField
-              placeholder="Enter or extract revision request details..."
+              placeholder="Enter or extract revision request details from HTML..."
               multiline
               rows={4}
               value={revisionText}
@@ -1011,7 +1121,7 @@ const Compare = () => {
             size="large"
             loading={loading}
             disabled={
-              (comparisonMode === 'revision' && (!newPdfFile || !revisionText)) ||
+              (comparisonMode === 'revision' && (!newPdfFile || (!revisionText && !htmlFile))) ||
               (comparisonMode === 'pdf-html' && (!newPdfFile || !htmlFile)) ||
               (comparisonMode === 'pdf-pdf' && (!oldPdfFile || !newPdfFile)) ||
               (comparisonMode === 'checklist' && (!oldPdfFile || !newPdfFile))
