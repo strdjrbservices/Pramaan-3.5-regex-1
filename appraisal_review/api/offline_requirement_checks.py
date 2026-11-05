@@ -2,7 +2,10 @@ import os
 import re
 import base64
 from typing import Optional, Dict, Any
-import fitz  # PyMuPDF
+try:
+    import pymupdf as fitz
+except ImportError:
+    import fitz
 
 try:
     from api.pdf_extractor_offline import extract_fields_from_pdf_offline

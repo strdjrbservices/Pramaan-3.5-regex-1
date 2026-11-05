@@ -35,10 +35,10 @@ from typing import List, Dict, Any, Optional, Tuple, Union
 
 fitz: Any = None
 try:
-    import fitz  # PyMuPDF
+    import pymupdf as fitz
 except ImportError:
     try:
-        import pymupdf as fitz
+        import fitz  # PyMuPDF
     except ImportError:
         fitz = None
 

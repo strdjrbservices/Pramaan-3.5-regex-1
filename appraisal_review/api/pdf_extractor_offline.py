@@ -8,11 +8,10 @@ import json
 import base64
 from typing import Dict, Any, List, Optional
 import pdfplumber
-import pymupdf
 try:
-    import fitz
-except ImportError:
     import pymupdf as fitz
+except ImportError:
+    import fitz
 
 try:
     from .xml_extractor import find_comparable_rent_schedule_pages, extract_rent_schedule_from_pdf_page
