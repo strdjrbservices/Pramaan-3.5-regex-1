@@ -2190,6 +2190,18 @@ class MapExtractor:
                 matched_photo = self.match_pin_to_comp_photo(c, comp_photos)
                 if matched_photo:
                     c["photo_data"] = matched_photo
+                    photo_is_rental = bool(
+                        matched_photo.get("is_rental") or
+                        matched_photo.get("category") == "Rental" or
+                        matched_photo.get("rent_amount") or
+                        matched_photo.get("monthly_rent") or
+                        re.search(r'\brental\b', matched_photo.get("title", ""), re.I) or
+                        re.search(r'\brental\b', matched_photo.get("caption", ""), re.I)
+                    )
+                    if photo_is_rental:
+                        is_rental_pin = True
+                        c["item_type"] = "Rental"
+
                     cp_num = matched_photo.get("comp_num")
                     if cp_num:
                         prefix = "Rental" if is_rental_pin else ("Listing" if c.get("item_type") == "Listing" else "Comparable")
@@ -2208,8 +2220,7 @@ class MapExtractor:
                             c["address"] = c["street"]
 
                 # Match with Reference Grid records
-                # On Location Maps, check sales comps first so dual sale/rental comps stay in sales comps
-                grid_candidates = refs["sales_comps"] if is_loc else (refs["rental_comps"] if is_rental_pin else refs["sales_comps"])
+                grid_candidates = refs["rental_comps"] if is_rental_pin else refs["sales_comps"]
                 matched_grid = None
                 c_st = (c.get("street") or c.get("address") or "").lower()
                 m_c_nums = re.findall(r'\b\d{1,6}\b', c_st)
@@ -2227,12 +2238,27 @@ class MapExtractor:
                         lbl_num = int(m_lbl_n.group(1))
                         matched_grid = next((gc for gc in grid_candidates if gc.get("comp_num") == lbl_num), None)
 
+                # Fallback: On location maps, if not matched to sales comps, check rental comps
+                if not matched_grid and is_loc and not is_rental_pin and refs.get("rental_comps"):
+                    for rc in refs["rental_comps"]:
+                        rc_st = (rc.get("street") or rc.get("address") or "").lower()
+                        m_rc_nums = re.findall(r'\b\d{1,6}\b', rc_st)
+                        common_nums = set(m_c_nums) & set(m_rc_nums)
+                        if common_nums:
+                            matched_grid = rc
+                            is_rental_pin = True
+                            c["item_type"] = "Rental"
+                            c["label"] = f"Rental #{rc.get('comp_num')}"
+                            break
+
                 if matched_grid:
                     c["grid_data"] = matched_grid
-                    if is_loc and matched_grid in refs.get("sales_comps", []):
+                    if is_rental_pin:
+                        c["item_type"] = "Rental"
+                        c["label"] = f"Rental #{matched_grid.get('comp_num')}"
+                    elif is_loc and matched_grid in refs.get("sales_comps", []):
                         c["item_type"] = "Comparable"
                         c["label"] = f"Comparable #{matched_grid.get('comp_num')}"
-                        is_rental_pin = False
                     if not c.get("street") or c.get("street") == "—":
                         c["street"] = matched_grid.get("street", "")
                         c["address"] = matched_grid.get("address", "")
