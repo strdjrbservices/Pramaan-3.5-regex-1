@@ -1,6 +1,6 @@
 import React from 'react';
 import { checkContractFieldsMandatory, checkFinancialAssistanceInconsistency, checkContractAnalysisConsistency, checkYesNoOnly } from '../../../validations/contractValidation';
-import { checkTaxYear, checkRETaxes, checkSpecialAssessments, checkPUD, checkHOA, checkHOAFrequency, checkOfferedForSale, checkAnsi, checkFullAddressConsistency, checkPresence, checkAssignmentTypeConsistency, checkSubjectFieldsNotBlank, checkFhaCaseNo, checkOccupancy } from '../../../validations/subjectValidation';
+import { checkTaxYear, checkRETaxes, checkSpecialAssessments, checkPUD, checkHOA, checkHOAFrequency, checkOfferedForSale, checkAnsi, checkFullAddressConsistency, checkPresence, checkAssignmentTypeConsistency, checkSubjectFieldsNotBlank, checkFhaCaseNo, checkOccupancy, checkPriorServicesDisclosure } from '../../../validations/subjectValidation';
 import { checkZoning, checkNonconformingComment, checkZoningDescription, checkSpecificZoningClassification, checkHighestAndBestUse, checkFemaInconsistency, checkFemaFieldsConsistency, checkSiteSectionBlank, checkArea, checkYesNoWithComment, checkUtilities } from '../../../validations/siteValidation';
 import { checkVersion1UtilitySubfields, checkZoningClassificationDescription, checkSiteSizesConsistency, checkVersion1EffectiveDatesConsistency, checkAboveGradeFinishedAreaConsistency, checkYearBuiltConsistency, checkAppraiserNameConsistency, checkVersion1ComparableListingStatusConsistency, checkVersion1ComparableTransferTermsConsistency, checkVersion1YearBuiltAdjustmentConsistency, checkVersion1ConstructionMethodAdjustmentConsistency, checkVersion1SiteSizeAdjustmentConsistency, checkVersion1LocationAdjustmentConsistency, checkVersion1AttachedDetachedAdjustmentConsistency, checkVersion1HeatingAdjustmentConsistency, checkVersion1AmenitiesAdjustmentConsistency, checkVersion1QualityConditionConsistency, checkVersion1AreaAdjustmentConsistency, checkVersion1OverallQualityConditionAdjustmentConsistency, checkVersion1VehicleStorageAdjustmentConsistency } from '../Version1/version1Validation';
 import { checkHousingPriceAndAge, checkPredominantPriceVsIndicatedValue, checkNeighborhoodUsageConsistency, checkSingleChoiceFields, checkNeighborhoodBoundaries, checkNeighborhoodFieldsNotBlank, checkOtherLandUseComment, checkOtherLandUse, checkSearchCriteriaDescription, checkNeighborhoodListPricesConsistency, checkNeighborhoodSalePricesConsistency, checkLocation, checkBuiltUp, checkGrowth, checkPropertyValues, checkDemandSupply } from '../../../validations/neighborhoodValidation';
@@ -158,7 +158,14 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'FULL ADDRESS': [checkPropertyAddressHtmlConsistency, checkFullAddressConsistency],
     'full address': [checkPropertyAddressHtmlConsistency, checkFullAddressConsistency],
     'Exposure comment': [checkPresence],
-    'Prior service comment': [checkPresence],
+    'Prior service comment': [checkPriorServicesDisclosure],
+    'Prior Service Comment': [checkPriorServicesDisclosure],
+    'Prior Service Statement': [checkPriorServicesDisclosure],
+    'PRIOR SERVICE STATEMENT': [checkPriorServicesDisclosure],
+    'Prior Services Statement': [checkPriorServicesDisclosure],
+    'Prior Services (3-Year Period Disclosure)': [checkPriorServicesDisclosure],
+    'Prior Services (3-Year Period Disclosure):': [checkPriorServicesDisclosure],
+    'Prior Service': [checkPriorServicesDisclosure],
     'ADU File Check': [checkPresence],
     'FHA Case No.': [checkFhaCaseNo],
     'FHA Case #': [checkFhaCaseNo],
@@ -1015,6 +1022,8 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
           checksToRun = [checkAppraiserVendorNameConsistency];
         } else if (lowerLookup === 'appraiser name' || lowerLookup === 'appraiser_name' || lowerLookup === 'name') {
           checksToRun = [checkAppraiserVendorNameConsistency];
+        } else if (lowerLookup.includes('prior service') || lowerLookup.includes('3-year period disclosure')) {
+          checksToRun = [checkPriorServicesDisclosure];
         }
       }
       if (isSupervisory && !checksToRun.includes(checkSupervisoryAppraiserFields)) {
