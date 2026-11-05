@@ -40,9 +40,12 @@ except ImportError:
     Image: Any = None
 
 try:
-    import fitz  # PyMuPDF
+    import pymupdf as fitz
 except ImportError:
-    fitz: Any = None
+    try:
+        import fitz  # PyMuPDF
+    except ImportError:
+        fitz: Any = None
 
 import warnings
 
