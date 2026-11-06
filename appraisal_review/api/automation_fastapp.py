@@ -35,17 +35,53 @@ def update_status(status, message, progress=0, mode='full_file'):
     except Exception as e:
         logger.error(f"Failed to update status file: {e}")
 
+def classify_reports_table_links(table_locator):
+    """
+    Finds XML and PDF report links in the reportsTable, excluding utility/action links
+    like 'GET PDF FROM XML', 'Run RealView', 'Run CrossCheck', etc.
+    """
+    links = table_locator.locator("a").all()
+    xml_links = []
+    pdf_links = []
+
+    for link in links:
+        href = (link.get_attribute("href") or "").strip()
+        text = link.inner_text().strip()
+        href_lower = href.lower()
+        text_lower = text.lower()
+
+        # Skip utility / action links
+        if any(kw in href_lower or kw in text_lower for kw in [
+            "optype=extractpdf", "extractpdf", "realview", "crosscheck", "generateapo", "javascript:"
+        ]):
+            continue
+
+        # Check XML link
+        if "reporttype=xml" in href_lower or text_lower.endswith(".xml"):
+            xml_links.append((link, text, href))
+        # Check PDF link
+        elif text_lower.endswith(".pdf") or ("openreport.aspx" in href_lower and "reporttype=xml" not in href_lower):
+            pdf_links.append((link, text, href))
+
+    return xml_links, pdf_links
+
 def download_pdfs_for_order(page, appr_id, mode='full_file', download_pref='appr_id', appraisal_no=None):
-    """Navigates to the order detail page and downloads PDF reports."""
+    """Navigates to the order detail page and downloads XML and PDF reports."""
     name_id = appraisal_no if appraisal_no else appr_id
 
     if mode == 'update_review':
-        revised_dest = os.path.join(REVISED_DIR, f"{name_id}_revised.pdf")
-        old_dest = os.path.join(OLD_DIR, f"{name_id}.pdf")
-        html_dest = os.path.join(str(HTML_FILES_PATH), f"{name_id}.html")
+        has_revised = (
+            os.path.exists(os.path.join(REVISED_DIR, f"{name_id}_revised.xml")) or
+            os.path.exists(os.path.join(REVISED_DIR, f"{name_id}_revised.pdf"))
+        )
+        has_old = (
+            os.path.exists(os.path.join(OLD_DIR, f"{name_id}.xml")) or
+            os.path.exists(os.path.join(OLD_DIR, f"{name_id}.pdf"))
+        )
+        has_html = os.path.exists(os.path.join(str(HTML_FILES_PATH), f"{name_id}.html"))
 
-        if os.path.exists(revised_dest) and os.path.exists(old_dest) and os.path.exists(html_dest):
-            logger.info(f"Order {name_id} already fully processed locally. Skipping.")
+        if has_revised and has_old and has_html:
+            logger.info(f"Order {name_id} already fully processed locally (revised, old, and html exist). Skipping.")
             return -1
 
     try:
@@ -56,35 +92,70 @@ def download_pdfs_for_order(page, appr_id, mode='full_file', download_pref='appr
         count = 0
         if mode == 'update_review':
             revised_base_name = ""
-            table_selector = "div#lnkDivReports + div table.reportsTable"
+            table_selector = "div#lnkDivReports + div table.reportsTable, table.reportsTable"
             try:
                 page.wait_for_selector(table_selector, timeout=5000)
-                pdf_links = page.locator(f"{table_selector} a").filter(has_text=".pdf")
-                if pdf_links.count() > 0:
-                    latest_link = pdf_links.last
-                    revised_file_text = latest_link.inner_text()
-                    revised_base_name = revised_file_text.lower().replace('.pdf', '').replace('.xml', '').strip()
-                    logger.info(f"Targeting revised file: {revised_base_name}")
+                reports_table = page.locator(table_selector).first
+                xml_links, pdf_links = classify_reports_table_links(reports_table)
+                logger.info(f"Found {len(xml_links)} revised XML link(s) and {len(pdf_links)} revised PDF link(s) for {name_id}")
 
-                    dest = os.path.join(REVISED_DIR, f"{name_id}_revised.pdf")
-                    if os.path.exists(dest):
-                        logger.info(f"Revised report already exists: {dest}")
+                # 1. Download revised XML reports
+                for i, (link, text, href) in enumerate(xml_links):
+                    if not revised_base_name:
+                        revised_base_name = text.lower().replace('.pdf', '').replace('.xml', '').strip()
+                    logger.info(f"Targeting revised XML report: {text}")
+
+                    if download_pref == 'appr_id':
+                        filename = f"{name_id}_revised.xml" if i == 0 else f"{name_id}_revised_{i}.xml"
                     else:
-                        with page.expect_download() as download_info:
-                            latest_link.click()
+                        filename = text if text.lower().endswith(".xml") else f"{text}.xml"
+
+                    dest = os.path.join(REVISED_DIR, filename)
+                    if os.path.exists(dest):
+                        logger.info(f"Revised XML report already exists: {dest}")
+                    else:
+                        with page.expect_download(timeout=20000) as download_info:
+                            link.click()
                         download = download_info.value
                         download.save_as(dest)
-                        logger.info(f"Saved revised report: {dest}")
+                        logger.info(f"Saved revised XML report: {dest}")
                         count += 1
+
+                # 2. Download revised PDF reports
+                for i, (link, text, href) in enumerate(pdf_links):
+                    if not revised_base_name:
+                        revised_base_name = text.lower().replace('.pdf', '').replace('.xml', '').strip()
+                    logger.info(f"Targeting revised PDF report: {text}")
+
+                    if download_pref == 'appr_id':
+                        filename = f"{name_id}_revised.pdf" if i == 0 else f"{name_id}_revised_{i}.pdf"
+                    else:
+                        filename = text if text.lower().endswith(".pdf") else f"{text}.pdf"
+
+                    dest = os.path.join(REVISED_DIR, filename)
+                    if os.path.exists(dest):
+                        logger.info(f"Revised PDF report already exists: {dest}")
+                    else:
+                        with page.expect_download(timeout=20000) as download_info:
+                            link.click()
+                        download = download_info.value
+                        download.save_as(dest)
+                        logger.info(f"Saved revised PDF report: {dest}")
+                        count += 1
+
             except Exception as e:
                 logger.warning(f"Failed to get revised report for {appr_id}: {e}")
 
+            # 3. Download old report from Other Supporting Documents (grdDocs)
             try:
                 other_docs_table = page.locator("#ctl00_cphBody_grdDocs, table:has(th:has-text('Document Type')):visible").first
-                links = other_docs_table.locator("a").filter(has_text=re.compile(r'\.pdf', re.IGNORECASE))
+                links = other_docs_table.locator("a").filter(has_text=re.compile(r'\.(xml|pdf)$', re.IGNORECASE))
                 link_count = links.count()
 
-                logger.info(f"Found {link_count} potential PDF links in 'Other Supporting Documents' for {name_id}")
+                logger.info(f"Found {link_count} potential XML/PDF links in 'Other Supporting Documents' for {name_id}")
+
+                old_xml_downloaded = False
+                old_pdf_downloaded = False
 
                 for i in range(link_count - 1, -1, -1):
                     link = links.nth(i)
@@ -96,23 +167,41 @@ def download_pdfs_for_order(page, appr_id, mode='full_file', download_pref='appr
                         logger.info(f"Checking link: '{raw_text}' (Similarity: {similarity:.2f})")
                         if similarity < 0.6 and revised_base_name not in link_text and link_text not in revised_base_name:
                             continue
-                        logger.info(f"✅ Matched old file: {raw_text}")
+                        logger.info(f"✅ Matched old file candidate: '{raw_text}'")
 
-                    dest = os.path.join(OLD_DIR, f"{name_id}.pdf")
-                    if os.path.exists(dest):
-                        logger.info(f"Old report already exists at: {dest}")
-                    else:
-                        with page.expect_download(timeout=20000) as download_info:
-                            link.click()
-                        download = download_info.value
-                        download.save_as(dest)
-                        logger.info(f"Successfully saved old report: {dest}")
-                        count += 1
-                    break 
+                    is_xml = raw_text.lower().endswith(".xml")
+                    is_pdf = raw_text.lower().endswith(".pdf")
+
+                    if is_xml and not old_xml_downloaded:
+                        dest = os.path.join(OLD_DIR, f"{name_id}.xml") if download_pref == 'appr_id' else os.path.join(OLD_DIR, raw_text)
+                        if os.path.exists(dest):
+                            logger.info(f"Old XML report already exists at: {dest}")
+                        else:
+                            with page.expect_download(timeout=20000) as download_info:
+                                link.click()
+                            download = download_info.value
+                            download.save_as(dest)
+                            logger.info(f"Successfully saved old XML report: {dest}")
+                            count += 1
+                        old_xml_downloaded = True
+
+                    elif is_pdf and not old_pdf_downloaded:
+                        dest = os.path.join(OLD_DIR, f"{name_id}.pdf") if download_pref == 'appr_id' else os.path.join(OLD_DIR, raw_text)
+                        if os.path.exists(dest):
+                            logger.info(f"Old PDF report already exists at: {dest}")
+                        else:
+                            with page.expect_download(timeout=20000) as download_info:
+                                link.click()
+                            download = download_info.value
+                            download.save_as(dest)
+                            logger.info(f"Successfully saved old PDF report: {dest}")
+                            count += 1
+                        old_pdf_downloaded = True
+
             except Exception as e:
                 logger.warning(f"Failed to get old report for {appr_id}: {e}")
 
-
+            # 4. Save Order Form HTML
             try:
                 html_dest = os.path.join(str(HTML_FILES_PATH), f"{name_id}.html")
                 if os.path.exists(html_dest):
@@ -126,33 +215,55 @@ def download_pdfs_for_order(page, appr_id, mode='full_file', download_pref='appr
             except Exception as e:
                 logger.warning(f"Failed to save order form HTML for {appr_id}: {e}")
             return count
+
         else:
-            table_selector = "div#lnkDivReports + div table.reportsTable"
+            # mode == 'full_file'
+            table_selector = "div#lnkDivReports + div table.reportsTable, table.reportsTable"
             try:
                 page.wait_for_selector(table_selector, timeout=5000)
-                pdf_links = page.locator(f"{table_selector} a").filter(has_text=".pdf")
-                link_count = pdf_links.count()
-                for i in range(link_count):
-                    link = pdf_links.nth(i)
+                reports_table = page.locator(table_selector).first
+                xml_links, pdf_links = classify_reports_table_links(reports_table)
+                logger.info(f"Found {len(xml_links)} XML report link(s) and {len(pdf_links)} PDF report link(s) for {name_id}")
 
+                # Download XML reports
+                for i, (link, text, href) in enumerate(xml_links):
                     if download_pref == 'appr_id':
-                        filename = f"{name_id}.pdf" if i == 0 else f"{name_id}_{i}.pdf"
+                        filename = f"{name_id}.xml" if i == 0 else f"{name_id}_{i}.xml"
                     else:
-                        filename = link.inner_text().strip()
+                        filename = text if text.lower().endswith(".xml") else f"{name_id}.xml"
 
                     dest = os.path.join(PDF_DIR, filename)
-
                     if os.path.exists(dest):
-                        logger.info(f"File '{filename}' already exists. Skipping.")
+                        logger.info(f"XML report '{filename}' already exists. Skipping.")
                     else:
-                        with page.expect_download() as download_info:
+                        with page.expect_download(timeout=20000) as download_info:
                             link.click()
                         download = download_info.value
                         download.save_as(dest)
-                        logger.info(f"Saved report as {name_id}: {dest}")
+                        logger.info(f"Saved XML report as {filename}: {dest}")
                         count += 1
+
+                # Download PDF reports
+                for i, (link, text, href) in enumerate(pdf_links):
+                    if download_pref == 'appr_id':
+                        filename = f"{name_id}.pdf" if i == 0 else f"{name_id}_{i}.pdf"
+                    else:
+                        filename = text if text.lower().endswith(".pdf") else f"{name_id}.pdf"
+
+                    dest = os.path.join(PDF_DIR, filename)
+                    if os.path.exists(dest):
+                        logger.info(f"PDF report '{filename}' already exists. Skipping.")
+                    else:
+                        with page.expect_download(timeout=20000) as download_info:
+                            link.click()
+                        download = download_info.value
+                        download.save_as(dest)
+                        logger.info(f"Saved PDF report as {filename}: {dest}")
+                        count += 1
+
                 return count
-            except:
+            except Exception as e:
+                logger.warning(f"Failed to download reports for {appr_id}: {e}")
                 return 0
     except Exception as e:
         logger.error(f"Error downloading for ApprID {appr_id}: {e}")
@@ -224,10 +335,14 @@ def find_date_column_index(headers=None, rows=None):
     return -1
 
 def extract_orders_from_tab(page, tab_name, submitted_after=None):
-    """Extracts ApprIDs from the specified tab."""
+    """Extracts ApprIDs from the specified tab for orders with status 'File In Review'."""
     submitted_after_dt = parse_datetime(submitted_after) if submitted_after else None
     try:
-        tab = page.locator(f"strong:has-text('{tab_name}')").first
+        tab = page.locator(f"strong:has-text('{tab_name}'), a:has-text('{tab_name}')").first
+        if not tab.is_visible():
+            logger.info(f"Tab '{tab_name}' not visible or not found. Skipping.")
+            return []
+
         tab.click()
         page.wait_for_load_state("networkidle")
         page.wait_for_timeout(3000)
@@ -243,6 +358,15 @@ def extract_orders_from_tab(page, tab_name, submitted_after=None):
         except Exception:
             headers = []
 
+        status_col_idx = -1
+        if headers:
+            for idx, h in enumerate(headers):
+                if 'status' in h.lower():
+                    status_col_idx = idx
+                    break
+        if status_col_idx == -1:
+            status_col_idx = 4
+
         rows = table.locator("tr")
         date_col_idx = find_date_column_index(headers, rows) if submitted_after_dt else -1
 
@@ -250,11 +374,15 @@ def extract_orders_from_tab(page, tab_name, submitted_after=None):
         appr_ids = []
         for i in range(1, count):
             cols = rows.nth(i).locator("td")
-            if cols.count() >= 5:
-                status_text = cols.nth(4).inner_text().strip()
-                if "file in review" not in status_text.lower():
-                    logger.info(f"Skipping row {i} - status is '{status_text}' (not containing 'File In Review')")
-                    continue
+            if cols.count() <= status_col_idx:
+                logger.info(f"Skipping row {i} - status column not present (got {cols.count()} cols, needed index {status_col_idx})")
+                continue
+
+            status_text = cols.nth(status_col_idx).inner_text().strip()
+            if "file in review" not in status_text.lower():
+                logger.info(f"Skipping row {i} - status is '{status_text}' (not containing 'File In Review')")
+                continue
+
             if cols.count() >= 1:
                 link = cols.first.locator("a")
                 href = link.get_attribute("href")
@@ -356,7 +484,7 @@ def run_fastapp_automation(username=None, password=None, mode='full_file', headl
 
              logger.success(f"Final Count Report - New: {results['New Review Orders']}, In Progress: {results['Review Orders In Progress']}, Revised: {results['Revised Review Orders']}")
 
-             tabs = ["Revised Review Orders"] if mode == 'update_review' else ["New Review Orders"]
+             tabs = ["Revised Review Orders"] if mode == 'update_review' else ["New Review Orders", "Review Orders In Progress"]
              all_appr_ids = []
 
              for i, tab in enumerate(tabs):

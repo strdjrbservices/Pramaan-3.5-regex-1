@@ -190,7 +190,13 @@ def execute_automation_batch(filenames, username, password, mode='revised'):
                     new_pdf = source_path
                     base_name = os.path.splitext(filename)[0]
                     if base_name.lower().endswith("_revised"): base_name = base_name[:-8]
-                    old_pdf_candidates = [f"{base_name}.pdf", filename]
+                    old_pdf_candidates = [
+                        f"{base_name}.xml",
+                        f"{base_name}.XML",
+                        f"{base_name}.pdf",
+                        f"{base_name}.PDF",
+                        filename,
+                    ]
                     old_pdf = next((os.path.join(OLD_FILES_REVISED_PATH, c) for c in old_pdf_candidates if os.path.exists(os.path.join(OLD_FILES_REVISED_PATH, c))), None)
                     html_candidates = [f"{base_name}.html", os.path.splitext(filename)[0] + ".html"]
                     html_path = next((os.path.join(HTML_FILES_PATH, c) for c in html_candidates if os.path.exists(os.path.join(HTML_FILES_PATH, c))), None)
@@ -214,10 +220,32 @@ def execute_automation_batch(filenames, username, password, mode='revised'):
             if success:
                 shutil.move(source_path, processed_path)
                 logger.info(f"Moved processed file to: {processed_path}")
+                base_no_ext, ext = os.path.splitext(source_path)
+                sibling_ext = '.pdf' if ext.lower() == '.xml' else ('.xml' if ext.lower() == '.pdf' else None)
+                if sibling_ext:
+                    sibling_src = base_no_ext + sibling_ext
+                    if os.path.exists(sibling_src):
+                        try:
+                            sibling_dst = os.path.splitext(processed_path)[0] + sibling_ext
+                            shutil.move(sibling_src, sibling_dst)
+                            logger.info(f"Moved accompanying sibling {sibling_ext} to: {sibling_dst}")
+                        except Exception as e:
+                            logger.warning(f"Could not move sibling file: {e}")
             else:
                 error_path = os.path.join(ERROR_FILES_PATH, filename)
                 shutil.move(source_path, error_path)
                 logger.warning(f"Moved failed file to: {error_path}")
+                base_no_ext, ext = os.path.splitext(source_path)
+                sibling_ext = '.pdf' if ext.lower() == '.xml' else ('.xml' if ext.lower() == '.pdf' else None)
+                if sibling_ext:
+                    sibling_src = base_no_ext + sibling_ext
+                    if os.path.exists(sibling_src):
+                        try:
+                            sibling_err = os.path.splitext(error_path)[0] + sibling_ext
+                            shutil.move(sibling_src, sibling_err)
+                            logger.info(f"Moved accompanying sibling {sibling_ext} to error: {sibling_err}")
+                        except Exception:
+                            pass
         except InterruptedError:
             logger.error("🛑 Termination signal received during move operation.")
             automation_status["is_running"] = False
@@ -1211,14 +1239,13 @@ def extract_from_html_view(request):
         return Response(
             {"detail": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-@login_required(login_url='/api/login/')
 def automation_dashboard(request):
     """View to serve the automation dashboard."""
     return render(request, 'api/index.html')
 
 @api_view(['POST'])
 @parser_classes([MultiPartParser, FormParser])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def generic_upload_to_folder(request, folder_key):
     path = FOLDER_MAP.get(folder_key)
     if not path: return Response({"error": "Invalid folder destination"}, status=status.HTTP_400_BAD_REQUEST)
@@ -1234,7 +1261,7 @@ def generic_upload_to_folder(request, folder_key):
     return Response({"message": f"Successfully stored {file_obj.name} in {folder_key.upper()} repository"})
 
 @api_view(['GET', 'DELETE'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def list_generic_files(request, folder_key):
     path = FOLDER_MAP.get(folder_key)
     if not path or not os.path.exists(path):
@@ -1250,7 +1277,7 @@ def list_generic_files(request, folder_key):
     return Response(files)
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def download_generic_file(request, folder_key, filename):
     path = FOLDER_MAP.get(folder_key)
     if not path: return Response({"error": "Invalid folder"}, status=status.HTTP_400_BAD_REQUEST)
@@ -1260,7 +1287,7 @@ def download_generic_file(request, folder_key, filename):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def toggle_pause(request):
     if PAUSE_LOCK_FILE.exists():
         os.remove(PAUSE_LOCK_FILE)
@@ -1270,7 +1297,7 @@ def toggle_pause(request):
         return Response({"paused": True, "message": "Paused"})
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def kill_automation(request):
     global automation_status
     automation_status["is_running"] = False
@@ -1279,7 +1306,7 @@ def kill_automation(request):
     return Response({"message": "Engine sequence killed and termination signal sent."})
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def list_log_files(request):
     files = []
     if os.path.exists(LOG_FILES_PATH):
@@ -1291,7 +1318,7 @@ def list_log_files(request):
     return Response(files)
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def get_active_log_content(request):
     global automation_status
     log_path = automation_status.get("log_file")
@@ -1306,7 +1333,7 @@ def get_active_log_content(request):
         return Response({"content": f"Error reading log: {str(e)}", "filename": os.path.basename(log_path)})
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def get_log_file_content(request, filename):
     log_path = os.path.join(LOG_FILES_PATH, filename)
     if not os.path.exists(log_path): return Response({"error": "File not found"}, status=status.HTTP_404_NOT_FOUND)
@@ -1317,7 +1344,7 @@ def get_log_file_content(request, filename):
 
 @api_view(['POST'])
 @parser_classes([MultiPartParser, FormParser])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def upload_file_automation(request):
     global automation_status
     if automation_status["is_running"]: return Response({"error": "An automation process is already running."}, status=status.HTTP_400_BAD_REQUEST)
@@ -1332,7 +1359,7 @@ def upload_file_automation(request):
     return Response({"error": "Invalid file format. Please upload a PDF."}, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def start_stored_revised_automation(request):
     global automation_status
     if automation_status["is_running"]: return Response({"error": "An automation process is already running."}, status=status.HTTP_400_BAD_REQUEST)
@@ -1345,7 +1372,7 @@ def start_stored_revised_automation(request):
     return Response({"message": f"Automation started for stored file: {filename}."})
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def start_batch_stored_revised_automation(request):
     global automation_status
     if automation_status["is_running"]: return Response({"error": "An automation process is already running."}, status=status.HTTP_400_BAD_REQUEST)
@@ -1358,7 +1385,7 @@ def start_batch_stored_revised_automation(request):
     return Response({"message": f"Batch automation started for {len(filenames)} files."})
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def start_fastapp_automation_view(request):
     global automation_status
     if automation_status["is_running"]: return Response({"error": "An automation process is already running."}, status=status.HTTP_400_BAD_REQUEST)
@@ -1375,13 +1402,13 @@ def start_fastapp_automation_view(request):
     return Response({"message": "FastApp Independent automation sequence started."})
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def get_automation_status(request):
     global automation_status
     return Response(automation_status)
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def list_new_revised_files(request):
     path = NEW_FILES_REVISED_PATH
     if not os.path.exists(path): return Response([])
@@ -1389,7 +1416,7 @@ def list_new_revised_files(request):
     return Response(files)
 
 @api_view(['DELETE'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def delete_new_revised_file(request, filename):
     file_path = os.path.join(NEW_FILES_REVISED_PATH, filename)
     if os.path.exists(file_path):
@@ -1398,7 +1425,7 @@ def delete_new_revised_file(request, filename):
     return Response({"error": "File not found."}, status=status.HTTP_404_NOT_FOUND)
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def list_old_revised_files(request):
     path = OLD_FILES_REVISED_PATH
     if not os.path.exists(path): return Response([])
@@ -1406,7 +1433,7 @@ def list_old_revised_files(request):
     return Response(files)
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def list_html_files(request):
     path = HTML_FILES_PATH
     if not os.path.exists(path): return Response([])

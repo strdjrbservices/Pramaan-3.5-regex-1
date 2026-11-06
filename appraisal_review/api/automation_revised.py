@@ -22,12 +22,15 @@ from .utils import (  # type: ignore
     WEBSITE_B_PASSWORD_SELECTOR,
     WEBSITE_B_LOGIN_BUTTON_SELECTOR,
     REVISED_FILE_REVIEW_BUTTON_SELECTOR,
+    REVISED_FILE_REVIEW_CSS_SELECTOR,
     MAIN_LOADING_INDICATOR_SELECTOR,
     NEW_FILE_UPLOAD_SELECTOR_REVISED,
     OLD_PDF_UPLOAD_SELECTOR,
     HTML_UPLOAD_SELECTOR_REVISED,
     REVISED_PROCESS_BUTTON_SELECTOR,
     CONFIRMATION_CHECKLIST_BUTTON_SELECTOR,
+    PDF_HTML_TOGGLE_BUTTON_SELECTOR,
+    PDF_PDF_TOGGLE_BUTTON_SELECTOR,
     DOWNLOAD_PATH,
     OLD_FILES_REVISED_PATH,
     NEW_FILES_REVISED_PATH,
@@ -78,8 +81,64 @@ async def process_revised_file_review(
         await check_pause_state()
         await page.wait_for_load_state("networkidle")
 
-        if not await page.query_selector("xpath=//h1[contains(text(), 'REVISED FILE REVIEW')]"):
-            await wait_and_click(page, REVISED_FILE_REVIEW_BUTTON_SELECTOR, "Revised File Review")
+        # Check if already on Revised File Review page
+        is_on_revised = False
+        try:
+            if await page.query_selector("xpath=//h1[contains(text(), 'REVISED FILE REVIEW')]") or "/compare" in page.url:
+                is_on_revised = True
+        except Exception:
+            pass
+
+        if not is_on_revised:
+            logger.info('Waiting for and clicking "Revised File Review"...')
+            clicked = False
+
+            # 1. First attempt: JS document.querySelector
+            try:
+                js_clicked = await page.evaluate(f'''() => {{
+                    const el = document.querySelector("{REVISED_FILE_REVIEW_CSS_SELECTOR}");
+                    if (el) {{
+                        el.click();
+                        return true;
+                    }}
+                    return false;
+                }}''')
+                if js_clicked:
+                    logger.info("Clicked Revised File Review via document.querySelector.")
+                    clicked = True
+            except Exception as e:
+                logger.debug(f"document.querySelector click failed: {e}")
+
+            # 2. Second attempt: XPath //p[normalize-space()='Revised File Review']
+            if not clicked:
+                try:
+                    p_el = await page.wait_for_selector("xpath=//p[normalize-space()='Revised File Review']", timeout=4000)
+                    if p_el:
+                        await p_el.evaluate('el => el.scrollIntoView()')
+                        await p_el.click()
+                        logger.info("Clicked Revised File Review via //p[normalize-space()='Revised File Review'].")
+                        clicked = True
+                except Exception as e:
+                    logger.debug(f"//p selector click failed: {e}")
+
+            # 3. Third attempt: REVISED_FILE_REVIEW_BUTTON_SELECTOR
+            if not clicked:
+                try:
+                    await wait_and_click(page, REVISED_FILE_REVIEW_BUTTON_SELECTOR, "Revised File Review", retries=1)
+                    clicked = True
+                except Exception as e:
+                    logger.warning(f"REVISED_FILE_REVIEW_BUTTON_SELECTOR failed: {e}")
+
+            # Verify navigation to Revised File Review page
+            try:
+                await page.wait_for_selector("xpath=//h1[contains(text(), 'REVISED FILE REVIEW')]", timeout=8000)
+                logger.info("Revised File Review page heading verified.")
+            except Exception:
+                if "/compare" not in page.url:
+                    compare_url = f"{WEBSITE_B_URL.rstrip('/')}/compare"
+                    logger.info(f"Page transition not detected. Navigating directly to {compare_url}...")
+                    await page.goto(compare_url, wait_until="networkidle")
+                    await page.wait_for_selector("xpath=//h1[contains(text(), 'REVISED FILE REVIEW')]", timeout=15000)
         else:
             logger.info("Already on Revised File Review page, skipping navigation click.")
 
@@ -99,24 +158,43 @@ async def process_revised_file_review(
 
         file_name = Path(new_pdf_path).name
 
+        # Resolve old file candidate
+        target_old_pdf = Path(old_pdf_path) if old_pdf_path else None
+        if not target_old_pdf or not target_old_pdf.exists():
+            stem = Path(file_name).stem
+            import re
+            clean_stem = re.sub(r'(_?[Rr]evised|\(\d+\))', '', stem).strip()
+            old_candidates = [
+                OLD_FILES_REVISED_PATH / file_name,
+                OLD_FILES_REVISED_PATH / f"{stem}.xml",
+                OLD_FILES_REVISED_PATH / f"{stem}.XML",
+                OLD_FILES_REVISED_PATH / f"{stem}.pdf",
+                OLD_FILES_REVISED_PATH / f"{stem}.PDF",
+                OLD_FILES_REVISED_PATH / f"{clean_stem}.xml",
+                OLD_FILES_REVISED_PATH / f"{clean_stem}.XML",
+                OLD_FILES_REVISED_PATH / f"{clean_stem}.pdf",
+                OLD_FILES_REVISED_PATH / f"{clean_stem}.PDF",
+            ]
+            for cand in old_candidates:
+                if cand.exists():
+                    target_old_pdf = cand
+                    break
+            if not target_old_pdf or not target_old_pdf.exists():
+                all_old_files = [f for f in OLD_FILES_REVISED_PATH.iterdir() if f.is_file() and not f.name.startswith('.')]
+                if len(all_old_files) == 1:
+                    target_old_pdf = all_old_files[0]
+                    logger.info(f"Using single existing old file in directory: {target_old_pdf}")
+
         logger.info("Uploading old file (PDF / XML)...")
         try:
-            old_file_input = await page.wait_for_selector(OLD_PDF_UPLOAD_SELECTOR, state="attached", timeout=5000)
-            target_old_pdf = Path(old_pdf_path) if old_pdf_path else OLD_FILES_REVISED_PATH / file_name
-            if not target_old_pdf.exists():
-                stem = Path(file_name).stem
-                for old_cand in [f"{stem}.xml", f"{stem}.XML", f"{stem}.pdf", f"{stem}.PDF"]:
-                    cand_p = OLD_FILES_REVISED_PATH / old_cand
-                    if cand_p.exists():
-                        target_old_pdf = cand_p
-                        break
-            if target_old_pdf.exists():
+            old_file_input = await page.wait_for_selector(OLD_PDF_UPLOAD_SELECTOR, state="attached", timeout=3000)
+            if target_old_pdf and target_old_pdf.exists():
                 await old_file_input.set_input_files(str(target_old_pdf))
                 logger.info(f"Old file (PDF/XML) selected from: {target_old_pdf}")
             else:
                 logger.warning(f"Old report file not found. Skipping Old file upload.")
         except Exception:
-            logger.warning("Old report upload input not found or timed out. Skipping.")
+            logger.warning("Old report upload input not found or not required in revision mode. Continuing.")
 
         logger.info("Uploading new file (PDF / XML)...")
         new_file_input = await page.wait_for_selector(NEW_FILE_UPLOAD_SELECTOR_REVISED, state="attached")
@@ -171,9 +249,41 @@ async def process_revised_file_review(
             "NORMAL": 180000,   # 3 minutes
         }
 
+        # Wait for revision text to populate from HTML or populate default
+        try:
+            textarea = page.locator("textarea").first
+            if await textarea.count() > 0:
+                if target_html_path and target_html_path.exists():
+                    logger.info("Waiting for revision request details to be extracted from HTML...")
+                    for _ in range(20):
+                        val = await textarea.input_value()
+                        if val.strip():
+                            logger.info(f"Extracted revision text: {val[:80]}...")
+                            break
+                        await asyncio.sleep(0.5)
+
+                val = await textarea.input_value()
+                if not val.strip():
+                    logger.info("Revision Request Details text is empty. Populating default instruction...")
+                    await textarea.press_sequentially("Verify all revised appraisal fields, values, and client conditions against previous report.")
+                    await asyncio.sleep(1)
+        except Exception as ex:
+            logger.warning(f"Revision text handling error: {ex}")
+
+        # Ensure Verify Revisions button is enabled before clicking
+        logger.info("Waiting for 'Verify Revisions' button to be enabled...")
+        try:
+            await page.wait_for_selector(
+                "xpath=//button[(contains(., 'VERIFY REVISIONS') or contains(., 'Verify Revisions') or contains(., 'Verify')) and not(@disabled)]",
+                timeout=20000
+            )
+            logger.info("'Verify Revisions' button is enabled.")
+        except Exception:
+            logger.warning("'Verify Revisions' button wait timed out. Attempting click...")
+
         extraction_steps = [
-            {"selector": REVISED_PROCESS_BUTTON_SELECTOR, "name": "Verify Revisions"
-            },]
+            {"selector": REVISED_PROCESS_BUTTON_SELECTOR, "name": "Verify Revisions"},
+        ]
         for step in extraction_steps:
             await check_pause_state()
             await click_and_wait_for_extraction(page, step["selector"], step["name"], TIMEOUTS["LONG"])
@@ -213,18 +323,34 @@ async def process_revised_file_review(
         logger.info("Uploading old PDF again after checklist...")
         try:
             old_file_input = await page.wait_for_selector(OLD_PDF_UPLOAD_SELECTOR, state="attached", timeout=5000)
-            target_old_pdf = Path(old_pdf_path) if old_pdf_path else OLD_FILES_REVISED_PATH / file_name
-            if target_old_pdf.exists():
+            if not target_old_pdf or not target_old_pdf.exists():
+                target_old_pdf = Path(old_pdf_path) if old_pdf_path else OLD_FILES_REVISED_PATH / file_name
+            if target_old_pdf and target_old_pdf.exists():
                 await old_file_input.set_input_files(str(target_old_pdf))
-                logger.info(f"Old file (PDF) re‑uploaded from: {target_old_pdf}")
+                logger.info(f"Old file (PDF/XML) re‑uploaded for checklist from: {target_old_pdf}")
             else:
                 logger.warning("Old PDF file not found for re‑upload. Skipping.")
         except Exception:
             logger.warning("Old PDF upload input not found or timed out for re‑upload. Skipping.")
 
-        logger.info("Waiting for 15 seconds...")
-        await asyncio.sleep(15)
-        confirmation_check_selector = "xpath=//button[normalize-space()='Run Confirmation Check']"
+        try:
+            new_file_chk = await page.wait_for_selector(NEW_FILE_UPLOAD_SELECTOR_REVISED, state="attached", timeout=3000)
+            if new_file_chk and revised_pdf_path.exists():
+                await new_file_chk.set_input_files(str(revised_pdf_path))
+                logger.info("New file reaffirmed for Confirmation Checklist.")
+        except Exception:
+            pass
+
+        logger.info("Waiting for 'Run Confirmation Check' button to be enabled...")
+        confirmation_check_selector = "xpath=//button[contains(., 'RUN CONFIRMATION CHECK') or contains(., 'Run Confirmation Check')]"
+        try:
+            await page.wait_for_selector(
+                "xpath=//button[(contains(., 'RUN CONFIRMATION CHECK') or contains(., 'Run Confirmation Check')) and not(@disabled)]",
+                timeout=20000
+            )
+            logger.info("'Run Confirmation Check' button is enabled.")
+        except Exception:
+            pass
         await wait_and_click(page, confirmation_check_selector, "Run Confirmation Check")
 
         try:
@@ -252,12 +378,21 @@ async def process_revised_file_review(
 
         await wait_and_click(
             page,
-            "xpath=//button[normalize-space()='PDF/HTML' or contains(., 'HTML')] | //*[contains(@class, 'MuiToggleButton-root') and contains(., 'HTML')]",
-            "PDF/HTML Button"
+            PDF_HTML_TOGGLE_BUTTON_SELECTOR,
+            "New XML / PDF to HTML Button"
         )
-        await asyncio.sleep(1)
+        await asyncio.sleep(2)
         try:
-            btn = await page.wait_for_selector("xpath=//button[@type='submit' and not(@disabled)]", timeout=3000)
+            new_input_html = await page.wait_for_selector(NEW_FILE_UPLOAD_SELECTOR_REVISED, state="attached", timeout=3000)
+            if new_input_html and revised_pdf_path.exists():
+                await new_input_html.set_input_files(str(revised_pdf_path))
+            html_input_html = await page.wait_for_selector(HTML_UPLOAD_SELECTOR_REVISED, state="attached", timeout=3000)
+            if html_input_html and target_html_path and target_html_path.exists():
+                await html_input_html.set_input_files(str(target_html_path))
+        except Exception:
+            pass
+        try:
+            btn = await page.wait_for_selector("xpath=//button[@type='submit' and not(@disabled)] | //button[contains(., 'COMPARE') and not(@disabled)]", timeout=3000)
             if btn:
                 await btn.click()
         except Exception:
@@ -280,12 +415,21 @@ async def process_revised_file_review(
 
         await wait_and_click(
             page,
-            "xpath=//button[normalize-space()='PDF/PDF' or contains(., 'PDF/PDF')] | //*[contains(@class, 'MuiToggleButton-root') and contains(., 'PDF/PDF')]",
+            PDF_PDF_TOGGLE_BUTTON_SELECTOR,
             "PDF/PDF Button"
         )
-        await asyncio.sleep(1)
+        await asyncio.sleep(2)
         try:
-            btn = await page.wait_for_selector("xpath=//button[@type='submit' and not(@disabled)]", timeout=3000)
+            old_input = await page.wait_for_selector(OLD_PDF_UPLOAD_SELECTOR, state="attached", timeout=3000)
+            if old_input and target_old_pdf and target_old_pdf.exists():
+                await old_input.set_input_files(str(target_old_pdf))
+            new_input = await page.wait_for_selector(NEW_FILE_UPLOAD_SELECTOR_REVISED, state="attached", timeout=3000)
+            if new_input and revised_pdf_path.exists():
+                await new_input.set_input_files(str(revised_pdf_path))
+        except Exception:
+            pass
+        try:
+            btn = await page.wait_for_selector("xpath=//button[@type='submit' and not(@disabled)] | //button[contains(., 'COMPARE') and not(@disabled)]", timeout=3000)
             if btn:
                 await btn.click()
         except Exception:
@@ -348,12 +492,15 @@ async def process_revised_file_review(
                 attachments.append(str(terminal_log))
 
             logger.info(f"Sending completion email for {Path(new_pdf_path).name}...")
-            await send_email(
+            email_ok = await send_email(
                 f"PRAMAAN Output: {status} - {Path(new_pdf_path).name} - {datetime.datetime.now().strftime('%c')}",
-                f"The Revised File Review for {Path(new_pdf_path).name} has completed successfully.\n\nStatus: {status}\n\nAttached:\n1. Analysis Result (_Output.xlsx)\n2. Original PDF\n3. Terminal execution log",
+                f"The Revised File Review for {Path(new_pdf_path).name} has completed successfully.\n\nStatus: {status}\n\nAttached:\n1. Analysis Result (_Output.xlsx)\n2. Original File (PDF/XML)\n3. Terminal execution log",
                 attachments,
             )
-            logger.success("Completion email sent successfully.")
+            if email_ok:
+                logger.success("Completion email sent successfully.")
+            else:
+                logger.warning("Completion email could not be delivered (see error above).")
 
         end_time = asyncio.get_event_loop().time()
         duration_minutes = (end_time - start_time) / 60
@@ -384,11 +531,27 @@ async def process_revised_file_review(
             await page.close()
 
 def run_revised_automation(new_pdf_path, old_pdf_path=None, html_path=None, username=None, password=None):
-    """Synchronous wrapper for Flask thread."""
+    """Synchronous wrapper for background execution thread."""
     from playwright.async_api import async_playwright  # type: ignore
     async def _internal():
         async with async_playwright() as p:
-            browser = await p.chromium.launch(**get_browser_config())
+            launch_config = get_browser_config()
+            try:
+                browser = await p.chromium.launch(**launch_config)
+            except Exception as launch_err:
+                logger.warning(f"Initial browser launch failed ({launch_err}). Attempting fallback launch...")
+                if "channel" in launch_config:
+                    fallback_config = {k: v for k, v in launch_config.items() if k != "channel"}
+                    try:
+                        browser = await p.chromium.launch(**fallback_config)
+                    except Exception:
+                        browser = await p.chromium.launch(channel="msedge", **fallback_config)
+                else:
+                    try:
+                        browser = await p.chromium.launch(channel="chrome", **launch_config)
+                    except Exception:
+                        browser = await p.chromium.launch(channel="msedge", **launch_config)
+
             try:
                 result = await process_revised_file_review(browser, new_pdf_path, old_pdf_path, html_path, is_first_run=True, username=username, password=password)
                 return result
@@ -405,7 +568,14 @@ if __name__ == "__main__":
     pdf_path = sys.argv[1]
     async def run():
         async with async_playwright() as p:
-            browser = await p.chromium.launch(**get_browser_config())
+            launch_config = get_browser_config()
+            try:
+                browser = await p.chromium.launch(**launch_config)
+            except Exception:
+                try:
+                    browser = await p.chromium.launch(channel="chrome", **launch_config)
+                except Exception:
+                    browser = await p.chromium.launch(channel="msedge", **launch_config)
             await process_revised_file_review(browser, pdf_path)
             await browser.close()
     asyncio.run(run())
