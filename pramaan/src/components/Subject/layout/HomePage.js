@@ -406,7 +406,7 @@ const HomePage = () => {
           </Grid>
           <Grid size={{ xs: 12, md: 4 }}>
             <AnimatedCard
-              to="/api/automation/"
+              to="https://appraisalreviewoffline-strdjrbservices.pythonanywhere.com/api/automation/"
               title="Automation Dashboard"
               desc="Automation Dashboard."
               icon={<AutoModeIcon />}
