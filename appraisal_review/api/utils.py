@@ -14,12 +14,30 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 def get_browser_config():
     """Returns suitable Playwright launch arguments based on environment."""
+    config = {
+        "headless": bool(IS_PRODUCTION)
+    }
     if IS_PRODUCTION:
-        return {
-            "headless": True,
-            "args": ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
-        }
-    return {"headless": False}
+        config["args"] = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+    else:
+        # Check if local Google Chrome or Edge is installed on the host machine
+        chrome_paths = [
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            "/usr/bin/google-chrome",
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        ]
+        edge_paths = [
+            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+            "/usr/bin/microsoft-edge"
+        ]
+        if any(os.path.exists(p) for p in chrome_paths):
+            config["channel"] = "chrome"
+        elif any(os.path.exists(p) for p in edge_paths):
+            config["channel"] = "msedge"
+
+    return config
 
 _standard_logger = logging.getLogger("AutoFlow")
 _standard_logger.setLevel(logging.INFO)
@@ -93,27 +111,54 @@ try:
 except ImportError:  # pragma: no cover
     aiosmtplib = None
 
-WEBSITE_B_URL = os.getenv("WEBSITE_B_URL", "https://qa-pramaan.vercel.app/")
-WEBSITE_B_USERNAME = os.getenv("WEBSITE_B_USERNAME", "Abhi")
-WEBSITE_B_PASSWORD = os.getenv("WEBSITE_B_PASSWORD", "Admin@2026")
+WEBSITE_B_URL = os.getenv("WEBSITE_B_URL", "https://strdjrb-pramaan-appraisal.hf.space/")
+WEBSITE_B_USERNAME = os.getenv("WEBSITE_B_USERNAME", "strdjrbservices")
+WEBSITE_B_PASSWORD = os.getenv("WEBSITE_B_PASSWORD", "Admin")
 
 WEBSITE_B_USERNAME_SELECTOR = "xpath=//label[contains(., 'Username')]/following-sibling::div/input | //input[@label='Username'] | //input[@name='username']"
 WEBSITE_B_PASSWORD_SELECTOR = "xpath=//label[contains(., 'Password')]/following-sibling::div/input | //input[@type='password']"
-WEBSITE_B_LOGIN_BUTTON_SELECTOR = 'button[type="submit"]'
+WEBSITE_B_LOGIN_BUTTON_SELECTOR = "button[type='submit'], button:has-text('LOG IN'), button:has-text('Log In')"
 PDF_UPLOAD_SELECTOR = "xpath=//div[contains(@class, 'MuiPaper-root') and .//*[contains(., 'PDF')]]//input[@type='file'] | //input[@type='file'][contains(@accept, '.pdf')]"
-NEW_FILE_UPLOAD_SELECTOR_REVISED = "xpath=//label[contains(., 'Upload New PDF')]//input[@type='file'] | //button[contains(., 'Upload New PDF')]//input[@type='file'] | //label[contains(., 'Upload New')]//input[@type='file'] | //button[contains(., 'Upload New')]//input[@type='file']"
-HTML_UPLOAD_SELECTOR_REVISED = "xpath=//label[contains(., 'Upload HTML')]//input[@type='file'] | //button[contains(., 'Upload HTML')]//input[@type='file'] | //label[normalize-space()='Upload HTML']/..//input[@type='file']"
+XML_UPLOAD_SELECTOR = "xpath=//div[contains(@class, 'MuiPaper-root') and .//*[contains(., 'XML')]]//input[@type='file'] | //input[@type='file'][contains(@accept, '.xml')]"
+NEW_FILE_UPLOAD_SELECTOR_REVISED = "xpath=//label[contains(., 'New') or contains(., 'NEW')]//input[@type='file']"
+HTML_UPLOAD_SELECTOR_REVISED = "xpath=//label[contains(., 'HTML') or contains(., 'Html') or contains(., 'html')]//input[@type='file']"
+HTML_UPLOAD_SELECTOR = "xpath=//div[contains(@class, 'MuiPaper-root') and .//*[contains(., 'HTML')]]//input[@type='file'] | //input[@type='file'][contains(@accept, '.html')] | //label[contains(., 'Upload HTML')]//input[@type='file'] | //button[contains(., 'Upload HTML')]//input[@type='file']"
 SUBMIT_BUTTON_SELECTOR = '#submit-form-button'
-MAIN_LOADING_INDICATOR_SELECTOR = "xpath=//*[contains(@class, 'MuiCircularProgress-root')]"
+MAIN_LOADING_INDICATOR_SELECTOR = "xpath=//*[contains(@class, 'MuiCircularProgress-root') or contains(@class, 'MuiLoadingButton-loadingIndicator')]"
 FULL_FILE_REVIEW_BUTTON_SELECTOR = "xpath=//a[contains(., 'Full File Review')] | //button[contains(., 'Full File Review')] | //div[contains(., 'Full File Review')]"
-REVISED_FILE_REVIEW_BUTTON_SELECTOR = "xpath=//a[contains(., 'Revised File Review')] | //button[contains(., 'Revised File Review')] | //div[contains(., 'Revised File Review')]"
+REVISED_FILE_REVIEW_BUTTON_SELECTOR = (
+    "xpath=//p[normalize-space()='Revised File Review'] "
+    "| //p[contains(text(), 'Revised File Review')] "
+    "| //a[contains(@href, 'compare')] "
+    "| //a[contains(@href, '/compare')] "
+    "| /html/body/div[2]/div[3]/div[1]/div[5]/div[4]/a[1]/div[1] "
+    "| //body/div[2]/div[3]/div[1]/div[5]/div[4]/a[1]/div[1]"
+)
+REVISED_FILE_REVIEW_CSS_SELECTOR = "body > div:nth-child(2) > div:nth-child(3) > div:nth-child(1) > div:nth-child(5) > div:nth-child(4) > a:nth-child(1) > div:nth-child(1)"
 VERIFY_SUBJECT_ADDRESS_BUTTON_SELECTOR = "xpath=//button[contains(., 'Run Full Analysis')]"
 VERIFY_state_requriment_seector = "xpath=//button[contains(., 'Check State Requirements')]"
 verify_Check_Client_Requirements = "xpath=//button[contains(., 'Check Client Requirements')]"
 verify_Run_Escalation_Check = "xpath=//button[contains(., 'Run Escalation Check')]"
-REVISED_PROCESS_BUTTON_SELECTOR = "xpath=//button[contains(., 'Verify Revisions')]"
-CONFIRMATION_CHECKLIST_BUTTON_SELECTOR = "xpath=//button[contains(., 'Confirmation Checklist')] | //*[contains(@class, 'MuiToggleButton-root') and contains(., 'Confirmation Checklist')]"
-OLD_PDF_UPLOAD_SELECTOR = "xpath=//label[contains(., 'Upload Old PDF')]//input[@type='file'] | //button[contains(., 'Upload Old PDF')]//input[@type='file'] | //label[contains(., 'Upload Old')]//input[@type='file'] | //button[contains(., 'Upload Old')]//input[@type='file']"
+REVISED_PROCESS_BUTTON_SELECTOR = (
+    "xpath=//button[contains(., 'VERIFY REVISIONS') or contains(., 'Verify Revisions') or contains(., 'Verify')] "
+    "| //button[@type='submit' and contains(., 'Verify')]"
+)
+CONFIRMATION_CHECKLIST_BUTTON_SELECTOR = (
+    "xpath=//button[@value='checklist'] "
+    "| //button[contains(., 'CONFIRMATION CHECKLIST') or contains(., 'Confirmation Checklist')] "
+    "| //*[contains(@class, 'MuiToggleButton-root') and contains(., 'Checklist')]"
+)
+PDF_HTML_TOGGLE_BUTTON_SELECTOR = (
+    "xpath=//button[@value='pdf-html'] "
+    "| //button[contains(., 'NEW XML / PDF TO HTML') or contains(., 'PDF to HTML') or contains(., 'PDF/HTML')] "
+    "| //*[contains(@class, 'MuiToggleButton-root') and contains(., 'HTML')]"
+)
+PDF_PDF_TOGGLE_BUTTON_SELECTOR = (
+    "xpath=//button[@value='pdf-pdf'] "
+    "| //button[contains(., 'PDF/PDF')] "
+    "| //*[contains(@class, 'MuiToggleButton-root') and contains(., 'PDF/PDF')]"
+)
+OLD_PDF_UPLOAD_SELECTOR = "xpath=//label[contains(., 'Old') or contains(., 'OLD')]//input[@type='file']"
 PIN_SIDEBAR_BUTTON_SELECTOR = "xpath=//button[contains(@class, 'sidebar-toggle-btn')] | //button[@aria-label='Pin Sidebar'] | //button[@title='Pin Sidebar']"
 DOWNLOAD_PATH = BASE_DIR / "Downloads"
 
@@ -292,15 +337,17 @@ async def perform_login(page: pw.Page, is_first_run: bool, username: Optional[st
             )
         logger.info('Attempting to log in…')
         try:
-            login_title_selector = "xpath=//*[normalize-space(.)='DJRB Review']"
-            await page.wait_for_selector(login_title_selector, timeout=10_000)
-            logger.info('Login page title "DJRB Review" found.')
+            try:
+                await page.wait_for_selector("xpath=//*[contains(text(), 'DJRB Review') or contains(text(), 'Sign in')]", timeout=10_000)
+                logger.info('Login page loaded.')
+            except Exception:
+                pass
 
             await page.wait_for_selector(WEBSITE_B_USERNAME_SELECTOR, timeout=30_000)
             logger.info('Login form found. Entering credentials…')
             await page.fill(WEBSITE_B_USERNAME_SELECTOR, user)
             await page.fill(WEBSITE_B_PASSWORD_SELECTOR, pwd)
-            await page.click(WEBSITE_B_LOGIN_BUTTON_SELECTOR)
+            await page.locator(WEBSITE_B_LOGIN_BUTTON_SELECTOR).first.click()
             logger.info('Login button clicked. Waiting for response…')
 
             welcome_selector = "xpath=//body//*[self::h1 or self::h2 or self::h3 or self::p or self::span][contains(text(), 'DJRB') or contains(text(), 'Review')]"
@@ -353,19 +400,17 @@ async def send_email(
 ) -> None:
     """Send an email with optional attachments.
 
-    If ``aiosmtplib`` is unavailable, the function logs a warning and returns.
+    Uses SSL on port 465 or STARTTLS on port 587 with automatic fallback to standard smtplib.
     Note: For Gmail, you likely need to use an 'App Password' if 2FA is enabled.
     See: https://support.google.com/mail/answer/185833
     """
-    if aiosmtplib is None:
-        logger.warning('Email library not available – skipping email sending.')
-        return
+    import smtplib
 
     email_user = os.getenv('EMAIL_USER', 'strdjrbservices@gmail.com')
     email_to = recipients or os.getenv('EMAIL_TO', 'strdjrbservices2@gmail.com')
-    email_pass = os.getenv('EMAIL_PASS','dqmt jfav iaes ujul')
+    email_pass = os.getenv('EMAIL_PASS', 'aqzt opqm rnpr qypr')
     
-    raw_cc = cc or os.getenv('EMAIL_CC', 'Kevin@djrbservices.com,Kedar@djrbservices.com')
+    raw_cc = cc or os.getenv('EMAIL_CC', 'strdjrbservices3@gmail.com')
     if isinstance(raw_cc, list):
         email_cc = ", ".join(raw_cc)
     else:
@@ -373,7 +418,7 @@ async def send_email(
     
     if not email_pass:
         logger.warning('EMAIL_PASS not set in environment – skipping email sending.')
-        return
+        return False
 
     allowed_attachments = []
     omitted_files = []
@@ -440,23 +485,27 @@ async def send_email(
 
     clean_email_pass = email_pass.replace(" ", "").strip()
 
+    def _send_sync():
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=180) as server:
+            server.login(email_user, clean_email_pass)
+            server.send_message(msg)
+
     try:
-        await aiosmtplib.send(msg, hostname='smtp.gmail.com', port=587, start_tls=True, username=email_user, password=clean_email_pass)
+        try:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, _send_sync)
+        except RuntimeError:
+            _send_sync()
+
         if email_cc:
             logger.info(f'Email sent to {email_to} (CC: {email_cc}).')
         else:
             logger.info(f'Email sent to {email_to}.')
+        return True
     except Exception as e:
         err_msg = str(e)
-        if '535' in err_msg or 'BadCredentials' in err_msg:
-            logger.error(
-                f'Failed to send email due to invalid Gmail credentials (535 Bad Credentials).\n'
-                f'To fix this, generate a new 16-character Gmail App Password at:\n'
-                f'  https://myaccount.google.com/apppasswords\n'
-                f'and set the environment variable EMAIL_PASS="<your-new-app-password>".'
-            )
-        else:
-            logger.error(f'Failed to send email: {err_msg}')
+        logger.error(f'Failed to send email: {err_msg}')
+        return False
 
 async def click_and_wait_for_extraction(
     page: pw.Page,
@@ -496,18 +545,23 @@ __all__ = [
     'WEBSITE_B_PASSWORD_SELECTOR',
     'WEBSITE_B_LOGIN_BUTTON_SELECTOR',
     'PDF_UPLOAD_SELECTOR',
+    'XML_UPLOAD_SELECTOR',
+    'HTML_UPLOAD_SELECTOR',
     'NEW_FILE_UPLOAD_SELECTOR_REVISED',
     'HTML_UPLOAD_SELECTOR_REVISED',
     'SUBMIT_BUTTON_SELECTOR',
     'MAIN_LOADING_INDICATOR_SELECTOR',
     'FULL_FILE_REVIEW_BUTTON_SELECTOR',
     'REVISED_FILE_REVIEW_BUTTON_SELECTOR',
+    'REVISED_FILE_REVIEW_CSS_SELECTOR',
     'VERIFY_SUBJECT_ADDRESS_BUTTON_SELECTOR',
     'VERIFY_state_requriment_seector',
     'verify_Check_Client_Requirements',
     'verify_Run_Escalation_Check',
     'REVISED_PROCESS_BUTTON_SELECTOR',
     'CONFIRMATION_CHECKLIST_BUTTON_SELECTOR',
+    'PDF_HTML_TOGGLE_BUTTON_SELECTOR',
+    'PDF_PDF_TOGGLE_BUTTON_SELECTOR',
     'OLD_PDF_UPLOAD_SELECTOR',
     'PIN_SIDEBAR_BUTTON_SELECTOR',
     'DOWNLOAD_PATH',

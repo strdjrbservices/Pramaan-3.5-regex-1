@@ -4,17 +4,92 @@ from datetime import datetime
 from pathlib import Path
 from playwright.sync_api import sync_playwright  # pyre-ignore
 import shutil
-from .utils import logger, check_pause_state_sync, get_browser_config, FULL_FILE_LOGS_PATH, send_email, HTML_UPLOAD_SELECTOR_REVISED, ERROR_FILES_PATH  # pyre-ignore
 
-def run_automation(pdf_path="1423 Country Club Cir.pdf", username=None, password=None):
+try:
+    from .utils import (
+        logger,
+        check_pause_state_sync,
+        get_browser_config,
+        FULL_FILE_LOGS_PATH,
+        send_email,
+        ERROR_FILES_PATH,
+        WEBSITE_B_URL,
+        PDF_UPLOAD_SELECTOR,
+        XML_UPLOAD_SELECTOR,
+        HTML_UPLOAD_SELECTOR,
+    )  # pyre-ignore
+except ImportError:
+    from utils import (
+        logger,
+        check_pause_state_sync,
+        get_browser_config,
+        FULL_FILE_LOGS_PATH,
+        send_email,
+        ERROR_FILES_PATH,
+        WEBSITE_B_URL,
+        PDF_UPLOAD_SELECTOR,
+        XML_UPLOAD_SELECTOR,
+        HTML_UPLOAD_SELECTOR,
+    )  # pyre-ignore
+
+
+def run_automation(pdf_path="1423 Country Club Cir.pdf", username=None, password=None, xml_path=None):
     save_path = None
+
+    # Resolve PDF, XML, and HTML paths
+    resolved_pdf = str(pdf_path) if pdf_path and os.path.exists(pdf_path) and not str(pdf_path).lower().endswith('.xml') else None
+    resolved_xml = str(xml_path) if xml_path and os.path.exists(xml_path) else None
+
+    # If pdf_path is actually an XML file and xml_path was not explicitly provided
+    if pdf_path and str(pdf_path).lower().endswith('.xml') and not resolved_xml:
+        resolved_xml = str(pdf_path)
+        candidate_pdf = Path(pdf_path).with_suffix('.pdf')
+        if candidate_pdf.exists():
+            resolved_pdf = str(candidate_pdf)
+
+    # If resolved_xml is still None, look for an XML file with the same stem next to pdf_path
+    if not resolved_xml and pdf_path:
+        candidate_xml = Path(pdf_path).with_suffix('.xml')
+        if candidate_xml.exists():
+            resolved_xml = str(candidate_xml)
+        else:
+            base_stem = Path(pdf_path).stem
+            dir_name = Path(pdf_path).parent
+            candidate_xml2 = dir_name / f"{base_stem}.xml"
+            if candidate_xml2.exists():
+                resolved_xml = str(candidate_xml2)
+
+    # Look for matching HTML file if present
+    candidate_html = None
+    target_base = resolved_pdf or resolved_xml or pdf_path
+    if target_base:
+        h = Path(target_base).with_suffix('.html')
+        if h.exists():
+            candidate_html = str(h)
+
     with sync_playwright() as p:
-        browser = p.chromium.launch(**get_browser_config())
+        launch_config = get_browser_config()
+        try:
+            browser = p.chromium.launch(**launch_config)
+        except Exception as launch_err:
+            logger.warning(f"Initial browser launch failed ({launch_err}). Attempting fallback launch...")
+            if "channel" in launch_config:
+                fallback_config = {k: v for k, v in launch_config.items() if k != "channel"}
+                try:
+                    browser = p.chromium.launch(**fallback_config)
+                except Exception:
+                    browser = p.chromium.launch(channel="msedge", **fallback_config)
+            else:
+                try:
+                    browser = p.chromium.launch(channel="chrome", **launch_config)
+                except Exception:
+                    browser = p.chromium.launch(channel="msedge", **launch_config)
         context = browser.new_context()
         page = context.new_page()
 
-        logger.info("Navigating to https://qa-pramaan.vercel.app/...")
-        page.goto("https://qa-pramaan.vercel.app/")
+        target_url = "https://strdjrb-pramaan-appraisal.hf.space/"
+        logger.info(f"Navigating to {target_url}...")
+        page.goto(target_url)
 
         page.wait_for_load_state("networkidle")
 
@@ -22,26 +97,23 @@ def run_automation(pdf_path="1423 Country Club Cir.pdf", username=None, password
 
         logger.info("Filling in login credentials...")
         page.get_by_label("Username").fill(username or "strdjrbservices")
-        page.get_by_label("Password", exact=False).fill(password or "Djrb@2025")
+        page.get_by_label("Password", exact=False).fill(password or "Admin")
 
         logger.info("Clicking Log In button...")
         check_pause_state_sync()
-        page.get_by_role("button", name="Log In").click()
+        page.locator("button[type='submit'], button:has-text('LOG IN'), button:has-text('Log In')").first.click()
 
         logger.info("Initiating step-by-step execution for Full File Review...")
 
-        def move_to_error_dir(file_path):
+        def move_to_error_dir(primary_file):
             try:
-                if os.path.exists(file_path):
-                    filename = Path(file_path).name
-                    dest = os.path.join(str(ERROR_FILES_PATH), filename)
-                    shutil.move(file_path, dest)
-                    logger.info(f"Moved {filename} to {dest}")
-                html_path = Path(file_path).with_suffix('.html')
-                if html_path.exists():
-                    html_dest = os.path.join(str(ERROR_FILES_PATH), html_path.name)
-                    shutil.move(str(html_path), html_dest)
-                    logger.info(f"Moved {html_path.name} to {html_dest}")
+                targets = set(filter(None, [primary_file, resolved_pdf, resolved_xml, candidate_html]))
+                for f_path in targets:
+                    if os.path.exists(f_path):
+                        filename = Path(f_path).name
+                        dest = os.path.join(str(ERROR_FILES_PATH), filename)
+                        shutil.move(f_path, dest)
+                        logger.info(f"Moved {filename} to {dest}")
             except Exception as e:
                 logger.error(f"Failed to move files to error directory: {e}")
 
@@ -64,68 +136,49 @@ def run_automation(pdf_path="1423 Country Club Cir.pdf", username=None, password
 
         def step_nav_full_file():
             logger.info("Waiting for Dashboard to load...")
-            page.get_by_text("Full File Review").wait_for(state="visible", timeout=30000)
+            page.get_by_text("Full File Review").first.wait_for(state="visible", timeout=30000)
             logger.info("Navigating to Full File Review...")
             check_pause_state_sync()
-            page.get_by_text("Full File Review").click()
+            page.get_by_text("Full File Review").first.click()
             logger.info("Waiting for Full File Review page to load...")
             page.wait_for_load_state("networkidle")
             page.wait_for_timeout(2000)
         steps.append(("Navigate Full File Review", step_nav_full_file))
 
         def step_upload_pdf():
-            logger.info(f"Uploading PDF file '{pdf_path}'...")
-            check_pause_state_sync()
-            page.locator('input[type="file"][accept=".pdf"]').first.set_input_files(pdf_path)
-            page.wait_for_timeout(3000)
-        steps.append(("Upload PDF", step_upload_pdf))
-
-        def step_upload_html():
-            html_path = Path(pdf_path).with_suffix('.html')
-            if html_path.exists():
-                logger.info(f"Uploading corresponding HTML file '{html_path}'...")
+            if resolved_pdf and os.path.exists(resolved_pdf):
+                logger.info(f"Uploading PDF file '{resolved_pdf}'...")
                 check_pause_state_sync()
-                page.locator(HTML_UPLOAD_SELECTOR_REVISED).first.set_input_files(str(html_path))
+                page.locator(PDF_UPLOAD_SELECTOR).first.set_input_files(resolved_pdf)
+                wait_for_spinner("PDF Upload / Extraction")
                 page.wait_for_timeout(3000)
             else:
-                logger.info(f"No corresponding HTML file found at '{html_path}'. Skipping HTML upload.")
+                logger.info(f"No PDF file found to upload for '{pdf_path}'. Skipping PDF upload.")
+        steps.append(("Upload PDF", step_upload_pdf))
+
+        def step_upload_xml():
+            if resolved_xml and os.path.exists(resolved_xml):
+                logger.info(f"Uploading XML file '{resolved_xml}'...")
+                check_pause_state_sync()
+                page.locator(XML_UPLOAD_SELECTOR).first.set_input_files(resolved_xml)
+                wait_for_spinner("XML Upload / Extraction")
+                page.wait_for_timeout(3000)
+            else:
+                logger.info(f"No corresponding XML file found for '{pdf_path}'. Skipping XML upload.")
+        steps.append(("Upload XML", step_upload_xml))
+
+        def step_upload_html():
+            if candidate_html and os.path.exists(candidate_html):
+                logger.info(f"Uploading corresponding HTML file '{candidate_html}'...")
+                check_pause_state_sync()
+                page.locator(HTML_UPLOAD_SELECTOR).first.set_input_files(candidate_html)
+                wait_for_spinner("HTML Upload / Extraction")
+                page.wait_for_timeout(3000)
+            else:
+                logger.info("No corresponding HTML file found. Skipping HTML upload.")
         steps.append(("Upload HTML", step_upload_html))
 
-        def step_pin_sidebar():
-            logger.info("Pinning the sidebar...")
-            try:
-                page.locator(".sidebar-toggle-btn, [title='Pin Sidebar'], button[aria-label='Pin Sidebar']").first.click(timeout=5000)
-            except Exception:
-                page.get_by_label("Pin Sidebar").click(timeout=5000)
-        steps.append(("Pin Sidebar", step_pin_sidebar))
-
-        def step_click_subject():
-            logger.info("Clicking 'Subject' first to determine Form Type...")
-            page.locator(".sidebar").get_by_text("Subject", exact=True).click(force=True)
-            wait_for_spinner("Subject")
-        steps.append(("Click Subject", step_click_subject))
-
-        step_index = 0
-
-        def step_read_sidebar():
-            nonlocal step_index
-            logger.info("Reading dynamically populated sidebar items for this specific Form Type...")
-            page.wait_for_timeout(2000)
-            dynamic_elements = page.locator(".sidebar a.sidebar-link span").all_inner_texts()
-            dynamic_sidebar_items = [text.strip() for text in dynamic_elements if text.strip() and text.strip() != "Subject"]
-            logger.info(f"Found {len(dynamic_sidebar_items)} targeted sections for this form: {dynamic_sidebar_items}")
-            
-            for idx, item in enumerate(dynamic_sidebar_items):
-                def make_click_func(sidebar_item):
-                    def _func():
-                        check_pause_state_sync()
-                        logger.info(f"  -> Clicking {sidebar_item}")
-                        page.locator(".sidebar").get_by_text(sidebar_item, exact=True).click(force=True)
-                        wait_for_spinner(sidebar_item)
-                    return _func
-                steps.insert(step_index + 1 + idx, (f"Click Sidebar: {item}", make_click_func(item)))
-        steps.append(("Read Dynamic Sidebar", step_read_sidebar))
-
+        # Analysis Pipeline (as it is)
         def step_check_state():
             logger.info("Clicking Check State Requirements...")
             page.get_by_role("button", name="Check State Requirements").click()
@@ -150,6 +203,7 @@ def run_automation(pdf_path="1423 Country Club Cir.pdf", username=None, password
             wait_for_spinner("Run Full Analysis")
         steps.append(("Run Full Analysis", step_run_full_analysis))
 
+        # Save & Export (as it is)
         def step_save():
             logger.info("Clicking Save...")
             save_btn = page.locator("button:has-text('Save'), button:has-text('SAVE')").first
@@ -169,6 +223,8 @@ def run_automation(pdf_path="1423 Country Club Cir.pdf", username=None, password
             logger.info(f"Log file successfully saved to: {save_path}")
         steps.append(("Download Log", step_download_log))
 
+        # Error & Retry Handling (as it is)
+        step_index = 0
         while step_index < len(steps):
             step_name, step_func = steps[step_index]
             attempts = 0
@@ -211,24 +267,31 @@ def run_automation(pdf_path="1423 Country Club Cir.pdf", username=None, password
         attachments = []
         if save_path and os.path.exists(save_path):
             attachments.append(str(save_path))
-        if os.path.exists(pdf_path):
-            attachments.append(pdf_path)
+        if resolved_pdf and os.path.exists(resolved_pdf):
+            attachments.append(resolved_pdf)
+        if resolved_xml and os.path.exists(resolved_xml):
+            attachments.append(resolved_xml)
 
         if terminal_log and os.path.exists(terminal_log):
             attachments.append(str(terminal_log))
 
-        logger.info(f"Sending completion email for {Path(pdf_path).name}...")
+        display_name = Path(pdf_path).name if pdf_path else (Path(xml_path).name if xml_path else "report")
+        logger.info(f"Sending completion email for {display_name}...")
 
-        asyncio.run(send_email(
-            subject=f"PRAMAAN Output: {status} - {Path(pdf_path).name} - {datetime.now().strftime('%c')}",
-            body_text=f"The Full File Review for {Path(pdf_path).name} has completed successfully.\n\nAttached:\n1. Downloaded Site Log\n2. Original PDF\n3. Terminal execution log",
+        email_ok = asyncio.run(send_email(
+            subject=f"PRAMAAN Output: {status} - {display_name} - {datetime.now().strftime('%c')}",
+            body_text=f"The Full File Review for {display_name} has completed successfully.\n\nAttached:\n1. Downloaded Site Log\n2. Original File(s)\n3. Terminal execution log",
             attachment_paths=attachments
         ))
-        logger.success("Completion email sent successfully.")
+        if email_ok:
+            logger.success("Completion email sent successfully.")
+        else:
+            logger.warning("Completion email could not be delivered (see error above).")
     except Exception as e:
         logger.error(f"Failed to send completion email: {str(e)}")
 
     return save_path if 'save_path' in locals() else None
+
 
 if __name__ == "__main__":
     run_automation()
