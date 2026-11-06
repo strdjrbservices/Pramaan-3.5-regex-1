@@ -252,22 +252,23 @@ export const checkPriorServicesDisclosure = (field, text) => {
         return {
             isError: true,
             skipBlankFilter: true,
-            message: "Prior Services (3-Year Period Disclosure) cannot be blank. Expected 'I HAVE performed'."
+            message: "Prior Services (3-Year Period Disclosure) must not be blank."
         };
     }
 
-    // 1. Negative phrasing: "not have performed", "have not performed", "did not perform", "never performed", "not performed", etc.
+    // 1. Negative phrasing: "not have performed", "have not performed", "did not perform", "never performed", "not performed", "no services", etc.
     const isNegative = (
-        /\b(?:not\s+have\s+performed|have\s+not\s+performed|have\s+not\s+provided|not\s+performed|did\s+not\s+perform|never\s+performed|no\s+prior\s+services?|not\s+provided)\b/i.test(value) ||
+        /\b(?:not\s+have\s+performed|have\s+not\s+performed|have\s+not\s+provided|not\s+performed|did\s+not\s+perform|never\s+performed|no\s+prior\s+services?|no\s+services|not\s+provided)\b/i.test(value) ||
         /\b(?:i|appraiser)\s+(?:have\s+|has\s+)?not\b/i.test(value) ||
         /\b(?:i|appraiser)\s+did\s+not\b/i.test(value) ||
+        /\bperformed\s+no\s+services\b/i.test(value) ||
         /\bnot\s+present\b/i.test(value)
     );
 
     if (isNegative) {
         return {
-            isError: true,
-            message: "Error: Prior services disclosure indicates services were not performed ('I have not performed'). Expected 'I HAVE performed'."
+            isMatch: true,
+            message: "Verified: Prior services disclosure confirms no services were performed ('I have NOT performed services...')."
         };
     }
 
@@ -280,14 +281,21 @@ export const checkPriorServicesDisclosure = (field, text) => {
     if (isPositive) {
         return {
             isMatch: true,
-            message: "Valid: Prior services disclosure confirms services were performed ('I HAVE performed')."
+            message: "Prior services were performed on subject within 3 years ('I HAVE performed services') - verify supporting explanation in report comments."
         };
     }
 
-    // 3. Otherwise show error / invalid
+    // 3. Compliant if statement contains standard disclosure text
+    if (value.toLowerCase().includes('three-year period') || value.toLowerCase().includes('prior services')) {
+        return {
+            isMatch: true,
+            message: "Verified: Prior services disclosure present."
+        };
+    }
+
     return {
         isError: true,
-        message: "Invalid: Prior Services disclosure must state 'I HAVE performed services...'."
+        message: "Invalid Prior Services disclosure format."
     };
 };
 

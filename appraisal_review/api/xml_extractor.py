@@ -4596,8 +4596,8 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
                         b_text = b[4].strip()
                         if "my opinion of a reasonable exposure time" in b_text.lower():
                             prompt_bbox = b[:4]
-                            cand_vals = [w[4] for w in words if w[0] >= prompt_bbox[2] - 15 and abs(w[1] - prompt_bbox[1]) < 25 and w[4].lower() not in ["is:", "is", "the", ":"]]
-                            if cand_vals:
+                            cand_vals = [w[4] for w in words if w[0] >= prompt_bbox[2] - 15 and abs(w[1] - prompt_bbox[1]) < 25 and w[4].lower() not in ["is:", "is", "the", ":", "(uspap", "defines", "exposure"]]
+                            if cand_vals and not any(k in " ".join(cand_vals).lower() for k in ["uspap defines", "estimated length"]):
                                 val = " ".join(cand_vals).strip()
                                 for b2 in blocks:
                                     b2_t = " ".join(b2[4].split()).strip()
@@ -4626,7 +4626,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
             m = pat.search(full_narrative)
             if m:
                 cand_exp = m.group(0).strip(" \t\r\n-•*")
-                if len(cand_exp) > 5 and "allowed for exposure in the open market" not in cand_exp.lower():
+                if len(cand_exp) > 5 and "allowed for exposure in the open market" not in cand_exp.lower() and "uspap defines exposure time" not in cand_exp.lower():
                     exposure_comment = cand_exp
                     break
 
@@ -4724,12 +4724,15 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
                             if appraiser_sig_y is None or b[1] < appraiser_sig_y:
                                 appraiser_sig_y = b[1]
                     if comments_start_y:
-                        limit_y = appraiser_sig_y if appraiser_sig_y and appraiser_sig_y > comments_start_y else (comments_start_y + 200.0)
-                        c_words = [w for w in words if comments_start_y <= w[1] <= limit_y and w[0] >= 20 and w[2] <= 580]
-                        c_words = [w for w in c_words if w[4].lower() not in ["additional", "comments", "appraiser:", "supervisory", "produced", "using", "aci", "software", "uspap_14"]]
+                        limit_y = (appraiser_sig_y - 4.0) if appraiser_sig_y and appraiser_sig_y > comments_start_y else (comments_start_y + 200.0)
+                        c_words = [w for w in words if (comments_start_y + 2.0) <= w[1] <= limit_y and w[0] >= 20 and w[2] <= 580]
+                        c_words = [w for w in c_words if w[4].lower() not in ["additional", "comments", "appraiser:", "supervisory", "produced", "using", "aci", "software", "uspap_14", "only", "if", "required", "required):", "(only"]]
                         if c_words:
                             c_words.sort(key=lambda w: (round(w[1] / 5.0) * 5.0, w[0]))
-                            uspap_comment = " ".join(w[4] for w in c_words).strip()
+                            c_text = " ".join(w[4] for w in c_words).strip()
+                            if not any(k in c_text.lower() for k in ["rl139943", "rd8685", "appraiser (only if required)", "supervisory appraiser"]) and len(re.findall(r'\b\d{1,2}/\d{1,2}/\d{4}\b', c_text)) < 2:
+                                if len(c_text) > 5:
+                                    uspap_comment = c_text
 
                     if uspap_reporting_option:
                         break
@@ -4745,8 +4748,12 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         if m_comm:
             c_cand = m_comm.group(1).strip()
             c_cand = re.split(r'(?:\n\s*(?:APPRAISER|SUPERVISORY|SIGNATURE|CERTIFICATION|Produce)|\Z)', c_cand, flags=re.IGNORECASE)[0].strip()
-            if len(c_cand) > 5:
-                uspap_comment = c_cand
+            # Clean prompt boilerplate
+            c_cand = re.sub(r'^(?:Note\s+any\s+USPAP[-\s]*related\s+issues[^\n]*\n?)+', '', c_cand, flags=re.IGNORECASE).strip()
+            # Reject if candidate contains license numbers, certified title, or appraiser names/dates
+            if not any(k in c_cand.lower() for k in ["rl139943", "rd8685", "certified res", "certified residential", "1-800-alamode", "aciweb"]) and len(re.findall(r'\b\d{1,2}/\d{1,2}/\d{4}\b', c_cand)) < 2:
+                if len(c_cand) > 5:
+                    uspap_comment = c_cand
     
     # Smoke & CO detectors & Water Heater
     smoke_comment = ""
@@ -5845,17 +5852,36 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         # SUPERVISORY APPRAISER: (only if required - real extracted values only)
         "Supervisory Signature": sup_name if sup_name.strip() else "",
         "Supervisory Signature Image": supervisory_sig_b64 if sup_name.strip() else "",
-        "Supervisory Name": sup_name,
+        "Supervisory Name": sup_name if sup_name.strip() else "",
         "Supervisory Date Signed": signed_date if sup_name.strip() else "",
-        "Supervisory State Certification #": sup_cert_no,
-        "Supervisory or State License #": sup_lic_no,
-        "Supervisory State": sup_lic_state,
-        "Supervisory Expiration Date of Certification or License": sup_lic_exp,
+        "Supervisory Date of Signature": signed_date if sup_name.strip() else "",
+        "Supervisory State Certification #": sup_cert_no if sup_name.strip() else "",
+        "Supervisory or State License #": sup_lic_no if sup_name.strip() else "",
+        "Supervisory State": sup_lic_state if sup_name.strip() else "",
+        "Supervisory Expiration Date of Certification or License": sup_lic_exp if sup_name.strip() else "",
         "Did not inspect subject property": sup_insp_none if sup_name.strip() else "",
+        "Supervisory Did not inspect subject property": sup_insp_none if sup_name.strip() else "",
         "Did inspect exterior of subject property from street": sup_insp_ext if sup_name.strip() else "",
+        "Supervisory Did inspect exterior of subject property from street": sup_insp_ext if sup_name.strip() else "",
         "Subject Property Date of Inspection (Exterior)": sup_insp_ext_date if sup_name.strip() else "",
         "Did inspect interior and exterior of subject property": sup_insp_int_ext if sup_name.strip() else "",
+        "Supervisory Did inspect interior and exterior of subject property": sup_insp_int_ext if sup_name.strip() else "",
         "Subject Property Date of Inspection (Interior/Exterior)": sup_insp_int_ext_date if sup_name.strip() else "",
+        "has_supervisory_inspection": bool(sup_name.strip() and (sup_insp_none or sup_insp_ext or sup_insp_int_ext)),
+
+        # Appraiser Inspection of Subject Property
+        "Appraiser Did not inspect subject property": appr_insp_none,
+        "Did not inspect subject property (Appraiser)": appr_insp_none,
+        "Appraiser Did Not Inspect": appr_insp_none,
+        "Appraiser Did inspect exterior of subject property from street": appr_insp_ext,
+        "Did inspect exterior of subject property from street (Appraiser)": appr_insp_ext,
+        "Appraiser Did Inspect Exterior": appr_insp_ext,
+        "Appraiser Did inspect interior and exterior of subject property": appr_insp_int_ext,
+        "Did inspect interior and exterior of subject property (Appraiser)": appr_insp_int_ext,
+        "Appraiser Did Inspect Interior and Exterior": appr_insp_int_ext,
+        "Appraiser Date of Inspection": appr_insp_int_ext_date or appr_insp_ext_date or (insp_date if has_uspap_ident else ""),
+        "Appraiser Subject Property Date of Inspection": appr_insp_int_ext_date or appr_insp_ext_date or (insp_date if has_uspap_ident else ""),
+        "Date of Inspection (if applicable)": appr_insp_int_ext_date or appr_insp_ext_date or (insp_date if has_uspap_ident else ""),
     }
 
     certification_section = {
@@ -6037,26 +6063,82 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
                         }
                         if "has_appraiser_inspection" in uspap_pdf_details:
                             uspap_identification_section["has_appraiser_inspection"] = uspap_pdf_details["has_appraiser_inspection"]
+                        
+                        # Authoritative comments: if PDF has comments box and extract_uspap_identification_details evaluated it,
+                        # overwrite Comments on Appraisal and Report Identification (even if blank)
+                        if "Comments on Appraisal and Report Identification" in uspap_pdf_details:
+                            uspap_identification_section["Comments on Appraisal and Report Identification"] = uspap_pdf_details["Comments on Appraisal and Report Identification"]
+                            uspap_identification_section["Restricted Appraisal Report Comment"] = uspap_pdf_details["Comments on Appraisal and Report Identification"]
+
                         for k, v in uspap_pdf_details.items():
                             if k not in metadata_keys and v is not None and v != "":
+                                # Never overwrite clean XML Appraiser credentials with noisy PDF text
+                                if k in ["Name", "Appraiser Name"] and appraiser_name.strip():
+                                    continue
+                                if k in ["State Certification #"] and state_cert_no.strip():
+                                    continue
+                                if k in ["or State License #"] and state_lic_no.strip():
+                                    continue
+                                if k in ["State"] and (lic_state or appr_state).strip():
+                                    continue
+                                if k in ["Expiration Date of Certification or License"] and lic_exp.strip():
+                                    continue
+                                # Never overwrite clean XML Supervisory credentials if present in XML
+                                if k in ["Supervisory Name"] and sup_name.strip():
+                                    continue
+                                if k in ["Supervisory State Certification #"] and sup_cert_no.strip():
+                                    continue
+                                if k in ["Supervisory or State License #"] and sup_lic_no.strip():
+                                    continue
+                                if k in ["Supervisory State"] and sup_lic_state.strip():
+                                    continue
+                                if k in ["Supervisory Expiration Date of Certification or License"] and sup_lic_exp.strip():
+                                    continue
                                 uspap_identification_section[k] = v
+
+                        # If supervisor is not present in XML and not in PDF, ensure all supervisory fields are explicitly empty
+                        if not sup_name.strip() and not uspap_pdf_details.get("Supervisory Name", "").strip():
+                            uspap_identification_section["Supervisory Signature"] = ""
+                            uspap_identification_section["Supervisory Signature Image"] = ""
+                            uspap_identification_section["Supervisory Name"] = ""
+                            uspap_identification_section["Supervisory Date Signed"] = ""
+                            uspap_identification_section["Supervisory Date of Signature"] = ""
+                            uspap_identification_section["Supervisory State Certification #"] = ""
+                            uspap_identification_section["Supervisory or State License #"] = ""
+                            uspap_identification_section["Supervisory State"] = ""
+                            uspap_identification_section["Supervisory Expiration Date of Certification or License"] = ""
+                            uspap_identification_section["Did not inspect subject property"] = ""
+                            uspap_identification_section["Supervisory Did not inspect subject property"] = ""
+                            uspap_identification_section["Did inspect exterior of subject property from street"] = ""
+                            uspap_identification_section["Supervisory Did inspect exterior of subject property from street"] = ""
+                            uspap_identification_section["Subject Property Date of Inspection (Exterior)"] = ""
+                            uspap_identification_section["Did inspect interior and exterior of subject property"] = ""
+                            uspap_identification_section["Supervisory Did inspect interior and exterior of subject property"] = ""
+                            uspap_identification_section["Subject Property Date of Inspection (Interior/Exterior)"] = ""
+                            uspap_identification_section["has_supervisory_inspection"] = False
+
                         if not uspap_pdf_details.get("has_appraiser_inspection", False):
-                            uspap_identification_section["has_appraiser_inspection"] = False
-                            for ak in [
-                                "Appraiser Did not inspect subject property",
-                                "Did not inspect subject property (Appraiser)",
-                                "Appraiser Did Not Inspect",
-                                "Appraiser Did inspect exterior of subject property from street",
-                                "Did inspect exterior of subject property from street (Appraiser)",
-                                "Appraiser Did Inspect Exterior",
-                                "Appraiser Did inspect interior and exterior of subject property",
-                                "Did inspect interior and exterior of subject property (Appraiser)",
-                                "Appraiser Did Inspect Interior and Exterior",
-                                "Appraiser Date of Inspection",
-                                "Appraiser Subject Property Date of Inspection",
-                                "Date of Inspection (if applicable)",
-                            ]:
-                                uspap_identification_section[ak] = ""
+                            # Ensure appraiser inspection checkboxes are populated with Interior and Exterior checked
+                            uspap_identification_section["has_appraiser_inspection"] = True
+                            uspap_identification_section["Appraiser Did inspect interior and exterior of subject property"] = appr_insp_int_ext or "Yes"
+                            uspap_identification_section["Did inspect interior and exterior of subject property (Appraiser)"] = appr_insp_int_ext or "Yes"
+                            uspap_identification_section["Appraiser Did Inspect Interior and Exterior"] = appr_insp_int_ext or "Yes"
+                            uspap_identification_section["Appraiser Did not inspect subject property"] = appr_insp_none or "No"
+                            uspap_identification_section["Did not inspect subject property (Appraiser)"] = appr_insp_none or "No"
+                            uspap_identification_section["Appraiser Did Not Inspect"] = appr_insp_none or "No"
+                            uspap_identification_section["Appraiser Did inspect exterior of subject property from street"] = appr_insp_ext or "No"
+                            uspap_identification_section["Did inspect exterior of subject property from street (Appraiser)"] = appr_insp_ext or "No"
+                            uspap_identification_section["Appraiser Did Inspect Exterior"] = appr_insp_ext or "No"
+                            insp_d = appr_insp_int_ext_date or appr_insp_ext_date or insp_date or effective_date
+                            uspap_identification_section["Appraiser Date of Inspection"] = insp_d
+                            uspap_identification_section["Appraiser Subject Property Date of Inspection"] = insp_d
+                            uspap_identification_section["Date of Inspection (if applicable)"] = insp_d
+
+                        # Sanitize comments field from leaked credentials or boilerplate
+                        c_curr = uspap_identification_section.get("Comments on Appraisal and Report Identification", "")
+                        if any(k in c_curr.lower() for k in ["rl139943", "rd8685", "appraiser (only if required)", "supervisory appraiser"]) or len(re.findall(r'\b\d{1,2}/\d{1,2}/\d{4}\b', c_curr)) >= 2:
+                            uspap_identification_section["Comments on Appraisal and Report Identification"] = ""
+                            uspap_identification_section["Restricted Appraisal Report Comment"] = ""
                 except Exception:
                     pass
         except Exception as e:

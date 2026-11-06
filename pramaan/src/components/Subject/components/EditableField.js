@@ -7,7 +7,7 @@ import { checkHousingPriceAndAge, checkPredominantPriceVsIndicatedValue, checkNe
 import { checkUnits, checkAccessoryUnit, checkNumberOfStories, checkPropertyType, checkConstructionStatusAndReconciliation, checkDesignStyle, checkSubjectDesignStyleConsistency, checkYearBuilt, checkEffectiveAge, checkAdditionalFeatures, checkPropertyConditionDescription, checkPhysicalDeficienciesImprovements, checkNeighborhoodConformity, checkFoundationType, checkBasementDetails, checkEvidenceOf, checkMaterialCondition, checkHeatingFuel, checkCarStorage, checkImprovementsFieldsNotBlank } from '../../../validations/improvementsValidation';
 import { checkConditionAdjustment, checkBedroomsAdjustment, checkBathsAdjustment, checkQualityOfConstructionAdjustment, checkProximityToSubject, checkSiteAdjustment, checkGrossLivingAreaAdjustment, checkSubjectAddressInconsistency, checkDesignStyleAdjustment, checkFunctionalUtilityAdjustment, checkEnergyEfficientItemsAdjustment, checkPorchPatioDeckAdjustment, checkHeatingCoolingAdjustment, checkDataSourceDOM, checkActualAgeAdjustment, checkLeaseholdFeeSimpleConsistency, checkDateOfSale, checkLocationConsistency, checkSalePrice, checkSubjectAgeConsistency, checkViewAdjustment, checkCompSalePriceBracketing, checkCompAdjustedSalePriceBracketing, checkSalesConcessions, checkSalesConcessionsAdjustment, checkBasementAdjustment, checkGrossLivingAreaBracketing, checkSiteBracketing, checkBasementAreaBracketing, checkBasementFinishedAreaBracketing, checkGarageCarportAdjustment, checkGarageCarportBracketing } from '../../../validations/salesComparisonValidation';
 import { checkFinalValueConsistency, checkCostApproachDeveloped, checkAppraisalCondition, checkAsOfDate, checkFinalValueBracketing, checkReconciliationFieldsNotBlank, checkFiveValuesConsistency, checkEffectiveDatesConsistency, checkPropertyQualityConsistency, checkPropertyConditionConsistency, checkHbuConsistency, checkCostApproachConsistency, checkAttachmentTypeConsistency, checkPropertyRightsConsistency, checkAppraiserCredentialLevelConsistency } from '../../../validations/reconciliationValidation';
-import { checkLenderAddressInconsistency, checkLenderNameInconsistency, checkUnpaidLender, checkAppraiserFieldsNotBlank, checkLicenseNumberConsistency as checkAppraiserLicenseConsistency, checkDateGreaterThanToday, checkClientNameHtmlConsistency, checkClientAddressHtmlConsistency, checkBorrowerHtmlConsistency, checkAppraiserVendorNameConsistency, checkSupervisoryAppraiserFields, checkAppraiserLicenseGroup, checkUspapReportingOption } from '../../../validations/appraiserLenderValidation';
+import { checkLenderAddressInconsistency, checkLenderNameInconsistency, checkUnpaidLender, checkAppraiserFieldsNotBlank, checkLicenseNumberConsistency as checkAppraiserLicenseConsistency, checkDateGreaterThanToday, checkClientNameHtmlConsistency, checkClientAddressHtmlConsistency, checkBorrowerHtmlConsistency, checkAppraiserVendorNameConsistency, checkSupervisoryAppraiserFields, checkAppraiserLicenseGroup, checkUspapReportingOption, checkReasonableExposureTime, checkAppraiserInspection } from '../../../validations/appraiserLenderValidation';
 import { checkCostNew, checkSourceOfCostData, checkIndicatedValueByCostApproach, checkCostApproachFieldsNotBlank, checkOpinionOfSiteValue, checkRemainingEconomicLife } from '../../../validations/costApproachValidation';
 import { checkResearchHistory, checkSubjectPriorSales, checkComparablePriorSales, checkDataSourceNotBlank, checkEffectiveDateIsCurrentYear, checkSubjectPriorSaleDate, checkCompPriorSaleDate } from '../../../validations/salesHistoryValidation';
 import { checkStateRequirements } from '../../../validations/stateValidation';
@@ -460,6 +460,7 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'Supervisory Appraiser Email Address': [checkSupervisoryAppraiserFields],
     'Supervisory Appraiser Email': [checkSupervisoryAppraiserFields],
     'Supervisory Date of Signature': [checkSupervisoryAppraiserFields],
+    'Supervisory Date Signed': [checkSupervisoryAppraiserFields],
     'Supervisory Appraiser Date of Signature': [checkSupervisoryAppraiserFields],
     'Supervisory State Certification #': [checkSupervisoryAppraiserFields],
     'Supervisory Appraiser State Certification #': [checkSupervisoryAppraiserFields],
@@ -498,6 +499,18 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'This report was prepared under the following USPAP reporting option:': [checkUspapReportingOption],
     'USPAP Reporting Option': [checkUspapReportingOption],
     'This Report is one of the following types:': [checkUspapReportingOption],
+    'Reasonable Exposure Time': [checkReasonableExposureTime],
+    'Reasonable Exposure Time Comment': [checkReasonableExposureTime],
+    'Exposure Comment': [checkReasonableExposureTime],
+    'Appraiser Did not inspect subject property': [checkAppraiserInspection],
+    'Did not inspect subject property (Appraiser)': [checkAppraiserInspection],
+    'Appraiser Did Not Inspect': [checkAppraiserInspection],
+    'Appraiser Did inspect exterior of subject property from street': [checkAppraiserInspection],
+    'Did inspect exterior of subject property from street (Appraiser)': [checkAppraiserInspection],
+    'Appraiser Did Inspect Exterior': [checkAppraiserInspection],
+    'Appraiser Did inspect interior and exterior of subject property': [checkAppraiserInspection],
+    'Did inspect interior and exterior of subject property (Appraiser)': [checkAppraiserInspection],
+    'Appraiser Did Inspect Interior and Exterior': [checkAppraiserInspection],
 
     // General Validations
     'Assignment Type': [checkAssignmentTypeConsistency, checkTransactionTypeHtmlConsistency],
@@ -1024,6 +1037,10 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
           checksToRun = [checkAppraiserVendorNameConsistency];
         } else if (lowerLookup.includes('prior service') || lowerLookup.includes('3-year period disclosure')) {
           checksToRun = [checkPriorServicesDisclosure];
+        } else if (lowerLookup.includes('exposure time') || lowerLookup.includes('exposure comment')) {
+          checksToRun = [checkReasonableExposureTime];
+        } else if (lowerLookup.includes('appraiser did') || lowerLookup.includes('inspect subject property (appraiser)')) {
+          checksToRun = [checkAppraiserInspection];
         }
       }
       if (isSupervisory && !checksToRun.includes(checkSupervisoryAppraiserFields)) {

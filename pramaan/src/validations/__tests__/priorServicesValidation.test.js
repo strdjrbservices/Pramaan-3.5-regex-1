@@ -3,14 +3,27 @@ import { checkPriorServicesDisclosure } from '../subjectValidation';
 describe('Prior Services (3-Year Period Disclosure) Validation', () => {
     const fullPositive = "I HAVE performed services, as an appraiser or in another capacity, regarding the property that is the subject of this report within the three-year period immediately preceding acceptance of this assignment.";
     const fullNegative = "I have not performed services, as an appraiser or in another capacity, regarding the property that is the subject of this report within the three-year period immediately preceding acceptance of this assignment.";
-    const userNegativeExample = "I not HAVE performed";
+    const standardNoServices = "Unless otherwise indicated, I have performed no services, as an appraiser or in any other capacity, regarding the property that is the subject of this report within the three-year";
 
-    describe('Valid positive disclosures ("I HAVE performed")', () => {
-        test('validates standard full positive statement from appraisal report', () => {
+    describe('Valid disclosures ("I have not performed" and "I HAVE performed")', () => {
+        test('validates standard full negative statement (most common compliant USPAP disclosure)', () => {
+            const res = checkPriorServicesDisclosure('Prior Service Statement', fullNegative);
+            expect(res.isMatch).toBe(true);
+            expect(res.isError).toBeUndefined();
+            expect(res.message).toContain('confirms no services were performed');
+        });
+
+        test('validates standard no services comment', () => {
+            const res = checkPriorServicesDisclosure('Prior service comment', standardNoServices);
+            expect(res.isMatch).toBe(true);
+            expect(res.isError).toBeUndefined();
+        });
+
+        test('validates standard full positive statement when services were performed', () => {
             const res = checkPriorServicesDisclosure('Prior Service Statement', fullPositive);
             expect(res.isMatch).toBe(true);
             expect(res.isError).toBeUndefined();
-            expect(res.message).toContain('confirms services were performed');
+            expect(res.message).toContain('Prior services were performed');
         });
 
         test('validates case-insensitive "i have performed"', () => {
@@ -28,36 +41,6 @@ describe('Prior Services (3-Year Period Disclosure) Validation', () => {
 
             const res3 = checkPriorServicesDisclosure('Prior Service Statement', 'performed prior services within the last 3 years');
             expect(res3.isMatch).toBe(true);
-        });
-    });
-
-    describe('Invalid / Error negative disclosures ("I not HAVE performed", "have not performed")', () => {
-        test('shows error when text contains "I not HAVE performed"', () => {
-            const res = checkPriorServicesDisclosure('Prior Service Statement', userNegativeExample);
-            expect(res.isError).toBe(true);
-            expect(res.message).toContain('services were not performed');
-        });
-
-        test('shows error when text contains standard full negative statement', () => {
-            const res = checkPriorServicesDisclosure('Prior Service Statement', fullNegative);
-            expect(res.isError).toBe(true);
-            expect(res.message).toContain('services were not performed');
-        });
-
-        test('shows error for other negative phrasing variations', () => {
-            const variations = [
-                'I HAVE NOT performed services',
-                'I did not perform any services',
-                'Never performed any services on this property',
-                'No prior services were performed',
-                'Appraiser has not performed services',
-                'Not Present'
-            ];
-
-            variations.forEach(text => {
-                const res = checkPriorServicesDisclosure('Prior Services Statement', text);
-                expect(res.isError).toBe(true);
-            });
         });
     });
 
@@ -85,7 +68,7 @@ describe('Prior Services (3-Year Period Disclosure) Validation', () => {
         test('shows error for non-matching or arbitrary comment text', () => {
             const res = checkPriorServicesDisclosure('Prior Service Statement', 'N/A - see comments section.');
             expect(res.isError).toBe(true);
-            expect(res.message).toContain('must state');
+            expect(res.message).toContain('Invalid Prior Services disclosure format');
         });
     });
 });

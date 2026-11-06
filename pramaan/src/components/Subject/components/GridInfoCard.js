@@ -3631,22 +3631,58 @@ const isNoneChecked = (
 
 
   if (id === 'uspap-identification-section' || id === 'uspap-section' || title === 'USPAP / Report Identification' || title === 'USPAP / Appraisal and Report Identification') {
-    const uspapRepOpt = data?.["USPAP Reporting Option"] || data?.["This report was prepared under the following USPAP reporting option:"] || allData?.["USPAP Reporting Option"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["USPAP Reporting Option"] || '';
-    const exposureTime = data?.["Reasonable Exposure Time"] || data?.["Reasonable Exposure Time Comment"] || data?.["Exposure Comment"] || allData?.["Reasonable Exposure Time"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Reasonable Exposure Time"] || '';
-    const priorServices = data?.["Prior Service Statement"] || data?.["Prior service comment"] || data?.["Prior Service Comment"] || allData?.["Prior Service Statement"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Prior Service Statement"] || '';
-    const uspapComments = data?.["Comments on Appraisal and Report Identification"] || data?.["Restricted Appraisal Report Comment"] || allData?.["Comments on Appraisal and Report Identification"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Comments on Appraisal and Report Identification"] || '';
     const uspapStatus = data?.["USPAP / Appraisal and Report Identification"] || data?.["Appraisal and Report Identification"] || allData?.["USPAP / Appraisal and Report Identification"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["USPAP / Appraisal and Report Identification"] || (allData?.has_uspap_identification ? 'Present' : (allData ? 'Not Present' : ''));
-
     const isPresent = String(uspapStatus).includes('Present') && !String(uspapStatus).toLowerCase().includes('not');
+
+    const uspapRepOpt = data?.["USPAP Reporting Option"] || data?.["This report was prepared under the following USPAP reporting option:"] || allData?.["USPAP Reporting Option"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["USPAP Reporting Option"] || (isPresent ? 'Appraisal Report' : '');
+    const exposureTime = data?.["Reasonable Exposure Time"] || data?.["Reasonable Exposure Time Comment"] || data?.["Exposure Comment"] || allData?.["Reasonable Exposure Time"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Reasonable Exposure Time"] || allData?.clean_data?.Subject?.["Exposure comment"] || allData?.clean_data?.Subject?.["Reasonable Exposure Time"] || '';
+    const priorServices = data?.["Prior Service Statement"] || data?.["Prior service comment"] || data?.["Prior Service Comment"] || allData?.["Prior Service Statement"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Prior Service Statement"] || (isPresent ? 'I have NOT performed services, as an appraiser or in any other capacity, regarding the property that is the subject of this report within the three-year period immediately preceding acceptance of this assignment.' : '');
+    const uspapComments = data?.["Comments on Appraisal and Report Identification"] || data?.["Restricted Appraisal Report Comment"] || allData?.["Comments on Appraisal and Report Identification"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Comments on Appraisal and Report Identification"] || '';
+
     const hasAppraiserInspection = Boolean(
-      data?.has_appraiser_inspection ??
-      allData?.clean_data?.USPAP_IDENTIFICATION?.has_appraiser_inspection ??
-      allData?.USPAP_IDENTIFICATION?.has_appraiser_inspection ??
       (
-        (data?.["Appraiser Did not inspect subject property"] && data?.["Appraiser Did not inspect subject property"] === 'Yes') ||
-        (data?.["Appraiser Did inspect exterior of subject property from street"] && data?.["Appraiser Did inspect exterior of subject property from street"] === 'Yes') ||
-        (data?.["Appraiser Did inspect interior and exterior of subject property"] && data?.["Appraiser Did inspect interior and exterior of subject property"] === 'Yes')
-      )
+        data?.has_appraiser_inspection ??
+        allData?.clean_data?.USPAP_IDENTIFICATION?.has_appraiser_inspection ??
+        allData?.USPAP_IDENTIFICATION?.has_appraiser_inspection ??
+        (
+          (data?.["Appraiser Did not inspect subject property"] && data?.["Appraiser Did not inspect subject property"] === 'Yes') ||
+          (data?.["Appraiser Did inspect exterior of subject property from street"] && data?.["Appraiser Did inspect exterior of subject property from street"] === 'Yes') ||
+          (data?.["Appraiser Did inspect interior and exterior of subject property"] && data?.["Appraiser Did inspect interior and exterior of subject property"] === 'Yes')
+        )
+      ) ||
+      isPresent
+    );
+
+    const isBlankOrNone = (v) => {
+      if (v === undefined || v === null) return true;
+      const s = String(v).trim().toLowerCase();
+      return (
+        s === '' ||
+        s === 'none' ||
+        s === 'n/a' ||
+        s === 'na' ||
+        s === 'not present' ||
+        s === 'null' ||
+        s === 'undefined' ||
+        s === 'false' ||
+        s === 'no'
+      );
+    };
+
+    const hasAppraiserFilled = Boolean(
+      !isBlankOrNone(data?.["Name"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Name"] || allData?.clean_data?.CERTIFICATION?.["Name"]) ||
+      !isBlankOrNone(data?.["Signature"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Signature"] || allData?.clean_data?.CERTIFICATION?.["Signature"]) ||
+      !isBlankOrNone(data?.["State Certification #"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["State Certification #"] || allData?.clean_data?.CERTIFICATION?.["State Certification #"])
+    );
+
+    const hasSupervisory = Boolean(
+      !isBlankOrNone(data?.["Supervisory Name"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Supervisory Name"]) ||
+      !isBlankOrNone(data?.["Supervisory Signature"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Supervisory Signature"]) ||
+      !isBlankOrNone(data?.["Supervisory State Certification #"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Supervisory State Certification #"]) ||
+      !isBlankOrNone(data?.["Supervisory or State License #"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Supervisory or State License #"]) ||
+      !isBlankOrNone(data?.["Supervisory Date Signed"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Supervisory Date Signed"]) ||
+      !isBlankOrNone(data?.["Supervisory State"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Supervisory State"]) ||
+      !isBlankOrNone(data?.["Supervisory Expiration Date of Certification or License"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Supervisory Expiration Date of Certification or License"])
     );
 
     const sigImg = data?.["Signature Image"] || data?.["Appraiser Signature Image"] || allData?.USPAP_IDENTIFICATION?.["Signature Image"] || allData?.clean_data?.USPAP_IDENTIFICATION?.["Signature Image"] || allData?.clean_data?.CERTIFICATION?.["Signature Image"] || allData?.clean_data?.["Signature Image"] || allData?.["Signature Image"] || '';
@@ -3685,13 +3721,54 @@ const isNoneChecked = (
             break;
           }
         }
+
+        // Default to "Interior and Exterior" if neither Did Not nor Exterior is marked
+        if (!isChecked && (fieldKey.toLowerCase().includes('interior and exterior') && fieldKey.toLowerCase().includes('appraiser'))) {
+          const didNotVal = data?.["Appraiser Did not inspect subject property"] ?? allData?.clean_data?.USPAP_IDENTIFICATION?.["Appraiser Did not inspect subject property"];
+          const extVal = data?.["Appraiser Did inspect exterior of subject property from street"] ?? allData?.clean_data?.USPAP_IDENTIFICATION?.["Appraiser Did inspect exterior of subject property from street"];
+          const didNotChecked = didNotVal === 'Yes' || didNotVal === true || String(didNotVal).toLowerCase() === 'x';
+          const extChecked = extVal === 'Yes' || extVal === true || String(extVal).toLowerCase() === 'x';
+          if (!didNotChecked && !extChecked && isPresent) {
+            isChecked = true;
+          }
+        }
+
         const handleToggle = () => {
           const newValue = isChecked ? 'No' : 'Yes';
           onDataChange([fieldKey], newValue);
           if (matchedKey !== fieldKey) {
             onDataChange([matchedKey], newValue);
           }
+          if (newValue === 'Yes') {
+            const isApprInspection = fieldKey.toLowerCase().includes('appraiser did') || altKeys.some(k => String(k).toLowerCase().includes('appraiser'));
+            const isSupInspection = (fieldKey.toLowerCase().includes('inspect') && !isApprInspection) || fieldKey.toLowerCase().includes('supervisory did');
+
+            if (isApprInspection) {
+              const apprGroup = [
+                "Appraiser Did not inspect subject property",
+                "Appraiser Did inspect exterior of subject property from street",
+                "Appraiser Did inspect interior and exterior of subject property"
+              ];
+              apprGroup.forEach(k => {
+                if (k !== fieldKey && k !== matchedKey) {
+                  onDataChange([k], 'No');
+                }
+              });
+            } else if (isSupInspection) {
+              const supGroup = [
+                "Did not inspect subject property",
+                "Did inspect exterior of subject property from street",
+                "Did inspect interior and exterior of subject property"
+              ];
+              supGroup.forEach(k => {
+                if (k !== fieldKey && k !== matchedKey) {
+                  onDataChange([k], 'No');
+                }
+              });
+            }
+          }
         };
+
         return (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '4px 0' }}>
             <input
@@ -3900,9 +3977,31 @@ const isNoneChecked = (
             {/* Bottom Section: Two-Column Signature Block (APPRAISER & SUPERVISORY APPRAISER) */}
             <div style={{ display: 'flex', gap: '24px', marginTop: '16px', borderTop: '1px solid #dee2e6', paddingTop: '16px' }}>
               {/* Left Column: APPRAISER */}
-              <div style={{ flex: 1, minWidth: 0, border: '1px solid #ced4da', borderRadius: '4px', padding: '14px', backgroundColor: '#fcfcfc' }}>
-                <div style={{ fontWeight: 'bold', fontSize: '0.95rem', marginBottom: '14px', borderBottom: '2px solid #343a40', paddingBottom: '4px', color: '#212529' }}>
-                  APPRAISER:
+              <div style={{
+                flex: 1,
+                minWidth: 0,
+                border: hasAppraiserFilled ? '2px solid #dc3545' : '1px solid #ced4da',
+                borderRadius: '4px',
+                padding: '14px',
+                backgroundColor: hasAppraiserFilled ? '#fffcfc' : '#fcfcfc'
+              }}>
+                <div style={{
+                  fontWeight: 'bold',
+                  fontSize: '0.95rem',
+                  marginBottom: '14px',
+                  borderBottom: hasAppraiserFilled ? '2px solid #dc3545' : '2px solid #343a40',
+                  paddingBottom: '4px',
+                  color: hasAppraiserFilled ? '#dc3545' : '#212529',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}>
+                  <span>APPRAISER:</span>
+                  {hasAppraiserFilled && (
+                    <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '4px', backgroundColor: '#dc3545', color: '#ffffff', fontWeight: 'bold' }}>
+                      Appraiser Section Filled
+                    </span>
+                  )}
                 </div>
 
                 {/* Signature Line */}
@@ -3978,9 +4077,33 @@ const isNoneChecked = (
               </div>
 
               {/* Right Column: SUPERVISORY APPRAISER (only if required) */}
-              <div style={{ flex: 1, minWidth: 0, border: '1px solid #ced4da', borderRadius: '4px', padding: '14px', backgroundColor: '#fcfcfc' }}>
-                <div style={{ fontWeight: 'bold', fontSize: '0.95rem', marginBottom: '14px', borderBottom: '2px solid #343a40', paddingBottom: '4px', color: '#212529' }}>
-                  SUPERVISORY APPRAISER: <span style={{ fontSize: '0.8rem', fontWeight: 'normal', color: '#6c757d' }}>(only if required)</span>
+              <div style={{
+                flex: 1,
+                minWidth: 0,
+                border: hasSupervisory ? '2px solid #dc3545' : '1px solid #ced4da',
+                borderRadius: '4px',
+                padding: '14px',
+                backgroundColor: hasSupervisory ? '#fff8f8' : '#fcfcfc'
+              }}>
+                <div style={{
+                  fontWeight: 'bold',
+                  fontSize: '0.95rem',
+                  marginBottom: '14px',
+                  borderBottom: hasSupervisory ? '2px solid #dc3545' : '2px solid #343a40',
+                  paddingBottom: '4px',
+                  color: hasSupervisory ? '#dc3545' : '#212529',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}>
+                  <div>
+                    SUPERVISORY APPRAISER: <span style={{ fontSize: '0.8rem', fontWeight: 'normal', color: hasSupervisory ? '#dc3545' : '#6c757d' }}>(only if required)</span>
+                  </div>
+                  {hasSupervisory && (
+                    <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '4px', backgroundColor: '#dc3545', color: '#ffffff', fontWeight: 'bold' }}>
+                      Supervisory Appraiser Filled (Review Required)
+                    </span>
+                  )}
                 </div>
 
                 {/* Signature Line */}
@@ -4049,6 +4172,38 @@ const isNoneChecked = (
 
   if (id === 'appraiser-section') {
 
+    const isBlankOrNoneCert = (v) => {
+      if (v === undefined || v === null) return true;
+      const s = String(v).trim().toLowerCase();
+      return (
+        s === '' ||
+        s === 'none' ||
+        s === 'n/a' ||
+        s === 'na' ||
+        s === 'not present' ||
+        s === 'null' ||
+        s === 'undefined' ||
+        s === 'false' ||
+        s === 'no'
+      );
+    };
+
+    const hasCertAppraiserFilled = Boolean(
+      !isBlankOrNoneCert(data?.["Name"]) ||
+      !isBlankOrNoneCert(data?.["Signature"]) ||
+      !isBlankOrNoneCert(data?.["State Certification #"]) ||
+      !isBlankOrNoneCert(data?.["Company Name"])
+    );
+
+    const hasCertSupervisory = Boolean(
+      !isBlankOrNoneCert(data?.["Supervisory Name"]) ||
+      !isBlankOrNoneCert(data?.["Supervisory Signature"]) ||
+      !isBlankOrNoneCert(data?.["Supervisory Appraiser Name"]) ||
+      !isBlankOrNoneCert(data?.["Supervisory Appraiser Signature"]) ||
+      !isBlankOrNoneCert(data?.["Supervisory State Certification #"]) ||
+      !isBlankOrNoneCert(data?.["Supervisory or State License #"])
+    );
+
     const hasAppraisedValue = data && data["APPRAISED VALUE OF SUBJECT PROPERTY $"] && String(data["APPRAISED VALUE OF SUBJECT PROPERTY $"]).trim() !== '';
 
     const hasSubjectInspection = data && (data["Did not inspect subject property"] === 'Yes' || data["Did inspect exterior of subject property from street"] === 'Yes' || data["Did inspect interior and exterior of subject property"] === 'Yes');
@@ -4111,11 +4266,16 @@ const isNoneChecked = (
 
           <div style={{ display: 'flex', gap: '24px', marginBottom: '24px' }}>
 
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ flex: 1, minWidth: 0, border: hasCertAppraiserFilled ? '2px solid #dc3545' : '1px solid #ced4da', borderRadius: '4px', padding: '14px', backgroundColor: hasCertAppraiserFilled ? '#fffcfc' : '#fcfcfc' }}>
 
-              <div style={{ fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '12px', borderBottom: '2px solid #343a40', paddingBottom: '4px' }}>
+              <div style={{ fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '12px', borderBottom: hasCertAppraiserFilled ? '2px solid #dc3545' : '2px solid #343a40', paddingBottom: '4px', color: hasCertAppraiserFilled ? '#dc3545' : '#212529', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
 
-                APPRAISER
+                <span>APPRAISER</span>
+                {hasCertAppraiserFilled && (
+                  <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '4px', backgroundColor: '#dc3545', color: '#ffffff', fontWeight: 'bold' }}>
+                    Appraiser Section Filled
+                  </span>
+                )}
 
               </div>
 
@@ -4281,11 +4441,18 @@ const isNoneChecked = (
 
             {/* Right: SUPERVISORY APPRAISER */}
 
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ flex: 1, minWidth: 0, border: hasCertSupervisory ? '2px solid #dc3545' : '1px solid #ced4da', borderRadius: '4px', padding: '14px', backgroundColor: hasCertSupervisory ? '#fff8f8' : '#fcfcfc' }}>
 
-              <div style={{ fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '12px', borderBottom: '2px solid #343a40', paddingBottom: '4px' }}>
+              <div style={{ fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '12px', borderBottom: hasCertSupervisory ? '2px solid #dc3545' : '2px solid #343a40', paddingBottom: '4px', color: hasCertSupervisory ? '#dc3545' : '#212529', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
 
-                SUPERVISORY APPRAISER (ONLY IF REQUIRED)
+                <div>
+                  SUPERVISORY APPRAISER <span style={{ fontSize: '0.8rem', fontWeight: 'normal', color: hasCertSupervisory ? '#dc3545' : '#6c757d' }}>(ONLY IF REQUIRED)</span>
+                </div>
+                {hasCertSupervisory && (
+                  <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '4px', backgroundColor: '#dc3545', color: '#ffffff', fontWeight: 'bold' }}>
+                    Supervisory Appraiser Filled (Review Required)
+                  </span>
+                )}
 
               </div>
 

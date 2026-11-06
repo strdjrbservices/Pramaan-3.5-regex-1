@@ -302,10 +302,38 @@ export const checkSupervisoryAppraiserFields = (field, text, allData, fieldPath)
         return null;
     }
 
+    // If Supervisory section is filled, flag as RED error/alert requiring review
     return {
-        isMatch: true,
-        message: `'${displayField}' is verified.`
+        isError: true,
+        message: `Supervisory Appraiser is filled: '${displayField}' has value '${val}'. Supervisory Appraiser requires review.`
     };
+};
+
+export const checkReasonableExposureTime = (field, text) => {
+    const rawVal = String(text || '').trim();
+    if (!rawVal) {
+        return { isError: true, skipBlankFilter: true, message: "Reasonable Exposure Time must not be blank." };
+    }
+    if (/^(\[?USPAP\s+defines\b|estimated\s+length\s+of\s+time)/i.test(rawVal)) {
+        return { isError: true, message: "Error: Definition boilerplate captured instead of actual exposure time." };
+    }
+    return { isMatch: true, message: `Reasonable Exposure Time verified ('${rawVal}').` };
+};
+
+export const checkAppraiserInspection = (field, text, allData) => {
+    const val = String(text || '').trim().toLowerCase();
+    if (field.includes('Did not inspect')) {
+        if (val === 'yes' || val === 'true') {
+            return { isError: true, message: "Warning: Appraiser marked 'Did not inspect subject property'." };
+        }
+        return { isMatch: true };
+    }
+    if (field.includes('interior and exterior') || field.includes('Interior and Exterior')) {
+        if (val === 'yes' || val === 'true') {
+            return { isMatch: true, message: "Verified: Appraiser inspected interior and exterior of subject property." };
+        }
+    }
+    return null;
 };
 
 export const checkUnpaidLender = (field, text, data) => {
