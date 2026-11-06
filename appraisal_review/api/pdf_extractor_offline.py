@@ -1513,19 +1513,37 @@ def extract_uspap_reporting_option_and_comment(doc=None, uspap_page_idx=None, fu
         appraiser_sig_y = None
         for b in blocks:
             bt = " ".join(b[4].split()).strip().lower()
-            if "additional comments" in bt or "comments on appraisal and report identification" in bt or "comments on standards rule" in bt:
+            if "additional comments" in bt or "comments on appraisal and report identification" in bt:
                 comments_start_y = b[3]
-            if "appraiser:" in bt or "supervisory appraiser" in bt:
+            if "appraiser:" in bt or "supervisory appraiser" in bt or "marketing time and exposure" in bt:
                 if appraiser_sig_y is None or b[1] < appraiser_sig_y:
-                    appraiser_sig_y = b[1]
+                    if b[1] > (comments_start_y or 500):
+                        appraiser_sig_y = b[1]
 
-        if comments_start_y:
-            limit_y = appraiser_sig_y if appraiser_sig_y and appraiser_sig_y > comments_start_y else (comments_start_y + 200.0)
-            c_words = [w for w in words if comments_start_y <= w[1] <= limit_y and w[0] >= 20 and w[2] <= 580]
-            c_words = [w for w in c_words if w[4].lower() not in ["additional", "comments", "appraiser:", "supervisory", "produced", "using", "aci", "software", "uspap_14"]]
+        if comments_start_y and appraiser_sig_y and appraiser_sig_y > comments_start_y:
+            c_words = [w for w in words if comments_start_y + 2 <= w[1] <= appraiser_sig_y - 2 and w[0] >= 20 and w[2] <= 585]
             if c_words:
-                c_words.sort(key=lambda w: (round(w[1] / 5.0) * 5.0, w[0]))
-                extracted_c = " ".join(w[4] for w in c_words).strip()
+                lines = []
+                for w in sorted(c_words, key=lambda x: (x[1], x[0])):
+                    placed = False
+                    for line in lines:
+                        if abs(line["top"] - w[1]) <= 4.0:
+                            line["words"].append(w)
+                            placed = True
+                            break
+                    if not placed:
+                        lines.append({"top": w[1], "words": [w]})
+                clean_lines = []
+                for l in lines:
+                    l["words"].sort(key=lambda x: x[0])
+                    lt = " ".join(str(w[4]) for w in l["words"]).strip()
+                    if re.match(r'^(?:Note\s+any\s+USPAP[-\s]*related\s+issues|Additional\s+USPAP\s+related\s+issues)', lt, re.I):
+                        continue
+                    if lt:
+                        clean_lines.append(lt)
+                extracted_c = "\n".join(clean_lines).strip()
+                if any(k in extracted_c.lower() for k in ["rl139943", "rd8685", "appraiser (only if required)"]) or len(re.findall(r'\b\d{1,2}/\d{1,2}/\d{4}\b', extracted_c)) >= 2:
+                    extracted_c = ""
                 if len(extracted_c) > 5:
                     comment = extracted_c
 
@@ -1533,7 +1551,7 @@ def extract_uspap_reporting_option_and_comment(doc=None, uspap_page_idx=None, fu
             break
 
     # If comment not yet found, check document narrative for Restricted Appraisal Report comments
-    if not comment and full_doc_text:
+    if not comment and full_doc_text and reporting_option == "Restricted Appraisal Report":
         m_comm = re.search(
             r'(?:Comments\s+on\s+Appraisal\s+and\s+Report\s+Identification|Restricted\s+Appraisal\s+Report(?:\s+Comments)?)\s*[:\n]\s*([^\n]+(?:\n[^\n]+){1,8})',
             full_doc_text,
@@ -1542,7 +1560,7 @@ def extract_uspap_reporting_option_and_comment(doc=None, uspap_page_idx=None, fu
         if m_comm:
             c_cand = m_comm.group(1).strip()
             c_cand = re.split(r'(?:\n\s*(?:APPRAISER|SUPERVISORY|SIGNATURE|CERTIFICATION|Produce)|\Z)', c_cand, flags=re.IGNORECASE)[0].strip()
-            if len(c_cand) > 5:
+            if len(c_cand) > 10 and not any(k in c_cand.lower() for k in ["rl139943", "rd8685", "1-800-alamode", "aciweb"]):
                 comment = c_cand
 
     return reporting_option, comment
@@ -1568,162 +1586,32 @@ def extract_uspap_identification_details(doc=None, uspap_page_idx=None, full_doc
     uspap_page = best_page
 
     exposure_time = ""
+    exposure_comment = ""
     prior_service = ""
     appraiser_sig_b64 = ""
     supervisory_sig_b64 = ""
     appr_fields = {}
     sup_fields = {}
-    sup_did_not = "No"
-    sup_ext = "No"
-    sup_int_ext = "No"
+    has_appraiser_inspection = False
+    has_supervisory_inspection = False
+    appr_did_not = ""
+    appr_ext = ""
+    appr_int_ext = ""
+    appr_insp_date = ""
+    sup_did_not = ""
+    sup_ext = ""
+    sup_int_ext = ""
+    sup_insp_date = ""
+    appr_name = ""
+    sup_name = ""
     has_uspap = False
 
     if uspap_page is not None:
         has_uspap = True
         ptxt = uspap_page.get_text()
+        blocks = uspap_page.get_text("blocks")
 
-        # Exposure time extraction
-        m_exp2 = re.search(r'reasonable\s+exposure\s+time\s+for\s+the\s+subject\s+property\s+is\s*([^\n\r]+(?:\r?\n[^\n\r]+)?)', ptxt, re.IGNORECASE)
-        if m_exp2:
-            cleaned_exp = " ".join(m_exp2.group(1).split()).strip()
-            exposure_time = re.split(r'(?:\bAdditional\s+Certifications|\bAPPRAISER:|\bThis\s+report\s+was|\Z)', cleaned_exp, flags=re.I)[0].strip()
-        if not exposure_time:
-            m_exp = re.search(r'(?:reasonable\s+exposure\s+time[^\n\r]*:\s*|\bexposure\s+time\b[^\n\r]*\n)([^\n\r]+)', ptxt, re.IGNORECASE)
-            if m_exp:
-                exposure_time = m_exp.group(1).strip()
-
-        # Prior service disclosure
-        if "have not performed services" in ptxt.lower():
-            prior_service = "I have NOT performed services, as an appraiser or in any other capacity, regarding the property that is the subject of this report within the three-year period immediately preceding acceptance of this assignment."
-        elif "have performed services" in ptxt.lower():
-            prior_service = "I HAVE performed services, as an appraiser or in another capacity, regarding the property that is the subject of this report within the three-year period immediately preceding acceptance of this assignment."
-
-        # Signature images on USPAP page
-        if doc is not None:
-            try:
-                for img_info in uspap_page.get_image_info(xrefs=True):
-                    bbox = img_info.get("bbox", ())
-                    if bbox and len(bbox) >= 4 and bbox[1] > 700:
-                        xref = img_info.get("xref")
-                        if xref:
-                            base_img = doc.extract_image(xref)
-                            if base_img and "image" in base_img:
-                                ext = base_img.get("ext", "png")
-                                b64_img = f"data:image/{ext};base64,{base64.b64encode(base_img['image']).decode('ascii')}"
-                                if bbox[0] < 310 and not appraiser_sig_b64:
-                                    appraiser_sig_b64 = b64_img
-                                elif bbox[0] >= 310 and not supervisory_sig_b64:
-                                    supervisory_sig_b64 = b64_img
-            except Exception:
-                pass
-
-        # Helper to detect corrupted/leaked label values
-        def _is_garbled_uspap_value(val):
-            if not val:
-                return False
-            s = str(val).strip()
-            bad_patterns = [
-                r'^#:\s*#:',
-                r'^\s*[:#\-]+\s*$',
-                r'^Date\s+of\s+Certification',
-                r'^Date\s+of\s+Appraisal',
-                r'^Date\s+of\s+Signature',
-                r'^Date\s+of\s+Inspection',
-                r'^Report:\s*',
-                r'^Exterior-Only$',
-                r'^Interior\s+and\s+Exterior$',
-                r'^None$',
-                r'by\s+a\s+la\s+mode',
-                r'1-800-ALAMODE',
-                r'Form\s+ID'
-            ]
-            return any(re.search(p, s, re.IGNORECASE) for p in bad_patterns)
-
-        def _parse_uspap_column_lines(lines_text_list, is_supervisory=False):
-            res = {
-                "Name": "",
-                "Date Signed": "",
-                "State Certification #": "",
-                "or State License #": "",
-                "State": "",
-                "Expiration Date of Certification or License": "",
-                "Effective Date of Appraisal": "",
-                "Date of Inspection": ""
-            }
-            cleaned_lines = [l for l in lines_text_list if not re.search(r'Form\s+ID|by\s+a\s+la\s+mode|1-800-ALAMODE', l, re.I)]
-            full_col_text = "\n".join(cleaned_lines)
-
-            # 1. Name
-            m = re.search(r'\bName\s*:\s*(.*?)(?=\n|$)', full_col_text, re.IGNORECASE)
-            if m:
-                val = m.group(1).strip()
-                val = re.split(r'\bState\b|\bSignature\b|\bExpiration\b', val, flags=re.I)[0].strip()
-                if not _is_garbled_uspap_value(val):
-                    res["Name"] = val
-
-            # If supervisory and Name is blank, everything for supervisory is blank!
-            if is_supervisory and not res["Name"]:
-                return res
-
-            # 2. State Certification #
-            m = re.search(r'State\s+Certification\s*#\s*:\s*(.*?)(?=\n|$)', full_col_text, re.IGNORECASE)
-            if m:
-                val = m.group(1).strip()
-                val = re.split(r'\bor\b|\bState\b|\bLicense\b', val, flags=re.I)[0].strip()
-                if not _is_garbled_uspap_value(val):
-                    res["State Certification #"] = val
-
-            # 3. or State License #
-            m = re.search(r'or\s+State\s+License\s*#\s*:\s*(.*?)(?=\n|$)', full_col_text, re.IGNORECASE)
-            if m:
-                val = m.group(1).strip()
-                val = re.split(r'\bState\b|\bExpiration\b', val, flags=re.I)[0].strip()
-                if not _is_garbled_uspap_value(val):
-                    res["or State License #"] = val
-
-            # 4. State & Expiration Date
-            m = re.search(r'State\s*:\s*(.*?)\s*Expiration\s+Date\s+of\s+Certification\s+or\s+License\s*:\s*(.*?)(?=\n|$)', full_col_text, re.IGNORECASE)
-            if m:
-                st = m.group(1).strip()
-                exp = m.group(2).strip()
-                if not _is_garbled_uspap_value(st):
-                    res["State"] = st
-                if not _is_garbled_uspap_value(exp):
-                    res["Expiration Date of Certification or License"] = exp
-            else:
-                m_st = re.search(r'\bState\s*:\s*([A-Za-z]{2})\b', full_col_text, re.IGNORECASE)
-                if m_st and not _is_garbled_uspap_value(m_st.group(1)):
-                    res["State"] = m_st.group(1).strip()
-                m_exp = re.search(r'Expiration\s+Date\s+of\s+Certification\s+or\s+License\s*:\s*(\d{1,2}/\d{1,2}/\d{4}|\d{4}-\d{2}-\d{2})', full_col_text, re.IGNORECASE)
-                if m_exp and not _is_garbled_uspap_value(m_exp.group(1)):
-                    res["Expiration Date of Certification or License"] = m_exp.group(1).strip()
-
-            # 5. Date of Signature and Report
-            m_sig_date = re.search(r'Date\s+(?:of\s+Signature(?:\s+and\s+Report)?|Signed)\s*:\s*(.*?)(?=\n|$)', full_col_text, re.IGNORECASE)
-            if m_sig_date:
-                val = m_sig_date.group(1).strip()
-                val = re.split(r'\bEffective\b|\bInspection\b', val, flags=re.I)[0].strip()
-                if not _is_garbled_uspap_value(val):
-                    res["Date Signed"] = val
-
-            # 6. Effective Date of Appraisal
-            m_eff = re.search(r'Effective\s+Date\s+of\s+Appraisal\s*:\s*(.*?)(?=\n|$)', full_col_text, re.IGNORECASE)
-            if m_eff:
-                val = m_eff.group(1).strip()
-                val = re.split(r'\bInspection\b', val, flags=re.I)[0].strip()
-                if not _is_garbled_uspap_value(val):
-                    res["Effective Date of Appraisal"] = val
-
-            # 7. Date of Inspection
-            m_insp_date = re.search(r'Date\s+of\s+Inspection(?:\s*\(if\s+applicable\))?\s*:\s*(.*?)(?=\n|$)', full_col_text, re.IGNORECASE)
-            if m_insp_date:
-                val = m_insp_date.group(1).strip()
-                if not _is_garbled_uspap_value(val):
-                    res["Date of Inspection"] = val
-
-            return res
-
-        # Extract words from uspap_page across PyMuPDF or pdfplumber
+        # Extract words across PyMuPDF or pdfplumber
         words = []
         if hasattr(uspap_page, "get_text"):
             try:
@@ -1737,15 +1625,116 @@ def extract_uspap_identification_details(doc=None, uspap_page_idx=None, full_doc
             except Exception:
                 words = []
 
-        # Find APPRAISER signature section header top Y
+        # 1. Exposure time extraction
+        for b in blocks:
+            bt = " ".join(b[4].split()).strip()
+            m = re.search(r'reasonable\s+exposure\s+time[^\n:]*:\s*(.*)', bt, re.I)
+            if m:
+                val_after = m.group(1).strip()
+                if val_after and len(val_after) < 60 and not val_after.lower().startswith("uspap"):
+                    exposure_time = val_after
+                else:
+                    prompt_bbox = b[:4]
+                    cand_words = [w for w in words if w.get("top", 0) >= prompt_bbox[1] - 5 and w.get("bottom", 0) <= prompt_bbox[3] + 10 and w.get("x0", 0) >= prompt_bbox[2] - 20]
+                    if cand_words:
+                        cand_words.sort(key=lambda w: w.get("x0", 0))
+                        exposure_time = " ".join(w.get("text", "") for w in cand_words).strip()
+        if not exposure_time:
+            for b in blocks:
+                if 200 <= b[1] <= 800:
+                    bt = b[4].strip()
+                    m = re.match(r'^([0-9]+\s*(?:to|-)\s*[0-9]+\s*(?:days?|months?|day\(s\)|years?\.?))$', bt, re.I)
+                    if m:
+                        exposure_time = m.group(1).strip()
+                        break
+        if not exposure_time:
+            # Check for Form ID20EC pattern (e.g. 90-220 day(s))
+            m_exp_narr = re.search(r'\b(\d+[\s\-to]+\d+\s*(?:day\(s\)|days?|months?))\b', ptxt, re.I)
+            if m_exp_narr:
+                exposure_time = m_exp_narr.group(1).strip()
+            else:
+                for w in words:
+                    if 760 <= w.get("top", 0) <= 800 and re.match(r'^\d+[\s\-to]+\d+$', w.get("text", "")):
+                        exposure_time = f"{w['text']} day(s)"
+                        break
+
+        if exposure_time:
+            exposure_time = re.sub(r'^(?:is:?|:)\s*', '', exposure_time, flags=re.I).strip()
+
+        # Exposure explanation comment
+        for b in blocks:
+            bt = " ".join(b[4].split()).strip()
+            if "opinion of reasonable exposure time is based on" in bt.lower() or ("reasonable exposure time" in bt.lower() and len(bt) > 60):
+                if not bt.lower().startswith("uspap defines") and "my opinion of a reasonable exposure" not in bt.lower():
+                    exposure_comment = bt
+
+        # 2. Prior service disclosure (check checkboxes first)
+        cross_rects_ps = []
+        if hasattr(uspap_page, "get_drawings"):
+            try:
+                for d in uspap_page.get_drawings():
+                    r = d.get("rect")
+                    if not r or r[1] > 600 or r[1] < 300:
+                        continue
+                    items = d.get("items", [])
+                    has_diag = False
+                    for it in items:
+                        if it[0] == "l":
+                            p1, p2 = it[1], it[2]
+                            if abs(p1.x - p2.x) > 3 and abs(p1.y - p2.y) > 3:
+                                has_diag = True
+                                break
+                    if has_diag:
+                        cross_rects_ps.append(r)
+            except Exception:
+                pass
+        for w in words:
+            if 300 <= w.get("top", 0) <= 600 and w.get("text", "").upper() in ('X', 'YES', '8', '☒', '☑', '✓'):
+                cross_rects_ps.append(fitz.Rect(w["x0"], w["top"], w["x1"], w["bottom"]))
+
+        opt_no_y = None
+        opt_have_y = None
+        for b in blocks:
+            bt = " ".join(b[4].split()).strip().lower()
+            if "performed no services" in bt or "have not performed services" in bt or "not performed services" in bt:
+                opt_no_y = (b[1] + b[3]) / 2.0
+            elif "have performed services" in bt and "no services" not in bt and "not performed" not in bt:
+                opt_have_y = (b[1] + b[3]) / 2.0
+
+        if opt_no_y is not None or opt_have_y is not None:
+            is_no = False
+            is_have = False
+            for cr in cross_rects_ps:
+                cy = (cr[1] + cr[3]) / 2.0
+                if opt_no_y and abs(cy - opt_no_y) < 25:
+                    is_no = True
+                elif opt_have_y and abs(cy - opt_have_y) < 25:
+                    is_have = True
+            if is_no:
+                prior_service = "I have NOT performed services, as an appraiser or in any other capacity, regarding the property that is the subject of this report within the three-year period immediately preceding acceptance of this assignment."
+            elif is_have:
+                prior_service = "I HAVE performed services, as an appraiser or in another capacity, regarding the property that is the subject of this report within the three-year period immediately preceding acceptance of this assignment."
+
+        if not prior_service:
+            m_ps = re.search(r'([^\n\r]*\b(?:Unless\s+otherwise\s+indicated,?\s+)?I\s+have\s+performed\s+no\s+services[^\n\r]*(?:\r?\n[^\n\r]*within\s+the\s+three-year\s+period[^\n\r]*)?)', ptxt, re.I)
+            if m_ps:
+                prior_service = " ".join(m_ps.group(1).split()).strip(" -•*")
+
+        # 3. Dynamic Column Separation for Appraiser vs Supervisory Appraiser
+        sup_header_x = None
         appr_header_y = 600.0
         for w in words:
             if "APPRAISER" in w.get("text", "").upper() and w.get("top", 0) > 500 and w.get("x0", 0) < 200:
-                appr_header_y = w.get("top", 0) - 5
-                break
+                if appr_header_y == 600.0 or w.get("top", 0) - 5 < appr_header_y:
+                    appr_header_y = w.get("top", 0) - 5
+            if "SUPERVISORY" in w.get("text", "").upper() and w.get("top", 0) > 500:
+                if sup_header_x is None or w.get("x0", 0) < sup_header_x:
+                    sup_header_x = w.get("x0", 0)
 
-        appr_col_words = [w for w in words if w.get("top", 0) >= appr_header_y and w.get("x0", 0) < 310]
-        sup_col_words = [w for w in words if w.get("top", 0) >= appr_header_y and w.get("x0", 0) >= 310]
+        col_split_x = (sup_header_x - 10.0) if sup_header_x else 295.0
+
+        appr_col_words = [w for w in words if w.get("top", 0) >= appr_header_y and w.get("x0", 0) < col_split_x]
+        sup_col_words = [w for w in words if w.get("top", 0) >= appr_header_y and w.get("x0", 0) >= col_split_x]
 
         def _group_words_into_lines(col_words):
             lines = []
@@ -1767,32 +1756,147 @@ def extract_uspap_identification_details(doc=None, uspap_page_idx=None, full_doc
         appr_lines = _group_words_into_lines(appr_col_words)
         sup_lines = _group_words_into_lines(sup_col_words)
 
+        def _is_garbled_uspap_value(val):
+            if not val:
+                return False
+            s = str(val).strip()
+            bad_patterns = [
+                r'^#:\s*#:',
+                r'^\s*[:#\-]+\s*$',
+                r'^Date\s+of\s+Certification',
+                r'^Date\s+of\s+Appraisal',
+                r'^Date\s+of\s+Signature',
+                r'^Date\s+of\s+Inspection',
+                r'^Report:\s*',
+                r'^Exterior-Only$',
+                r'^Interior\s+and\s+Exterior$',
+                r'^None$',
+                r'by\s+a\s+la\s+mode',
+                r'1-800-ALAMODE',
+                r'Form\s+ID',
+                r'Produced\s+using\s+ACI',
+                r'USPAP_14'
+            ]
+            return any(re.search(p, s, re.IGNORECASE) for p in bad_patterns)
+
+        def _parse_uspap_column_lines(lines_text_list, is_supervisory=False):
+            res = {
+                "Name": "",
+                "Date Signed": "",
+                "State Certification #": "",
+                "or State License #": "",
+                "State": "",
+                "Expiration Date of Certification or License": "",
+                "Effective Date of Appraisal": "",
+                "Date of Inspection": ""
+            }
+            cleaned_lines = [l for l in lines_text_list if not re.search(r'Form\s+ID|by\s+a\s+la\s+mode|1-800-ALAMODE|Produced\s+using\s+ACI|USPAP_14', l, re.I)]
+            full_col_text = "\n".join(cleaned_lines)
+
+            # 1. Name
+            m = re.search(r'\bName\s*:?\s*(.*?)(?=\n|$)', full_col_text, re.IGNORECASE)
+            if m:
+                val = m.group(1).strip()
+                val = re.split(r'\bState\b|\bSignature\b|\bExpiration\b|\bDate\b', val, flags=re.I)[0].strip(" :-")
+                if not _is_garbled_uspap_value(val):
+                    res["Name"] = val
+
+            # If supervisory and Name is blank, everything for supervisory is blank!
+            if is_supervisory and not res["Name"].strip():
+                return res
+
+            # 2. State Certification #
+            m = re.search(r'State\s+Certification\s*#\s*:?\s*(.*?)(?=\n|$)', full_col_text, re.IGNORECASE)
+            if m:
+                val = m.group(1).strip()
+                val = re.split(r'\bor\b|\bState\b|\bLicense\b', val, flags=re.I)[0].strip(" :-")
+                if not _is_garbled_uspap_value(val):
+                    res["State Certification #"] = val
+
+            # 3. or State License #
+            m = re.search(r'or\s+State\s+License\s*#\s*:?\s*(.*?)(?=\n|$)', full_col_text, re.IGNORECASE)
+            if m:
+                val = m.group(1).strip()
+                val = re.split(r'\bState\b|\bExpiration\b|\bor\b', val, flags=re.I)[0].strip(" :-")
+                if not _is_garbled_uspap_value(val) and val.lower() not in ["or", "license"]:
+                    res["or State License #"] = val
+
+            # 4. State & Expiration Date
+            m = re.search(r'State\s*:?\s*([A-Za-z]{2})\b', full_col_text, re.IGNORECASE)
+            if m and not _is_garbled_uspap_value(m.group(1)):
+                res["State"] = m.group(1).strip()
+
+            m_exp = re.search(r'Expiration\s+Date\s+(?:of\s+Certification\s+or\s+License\s*)?:?\s*(\d{1,2}/\d{1,2}/\d{4}|\d{4}-\d{2}-\d{2})', full_col_text, re.IGNORECASE)
+            if m_exp and not _is_garbled_uspap_value(m_exp.group(1)):
+                res["Expiration Date of Certification or License"] = m_exp.group(1).strip()
+
+            # 5. Date of Signature and Report / Date Signed
+            m_sig_date = re.search(r'Date\s+(?:of\s+Signature(?:\s+and\s+Report)?|Signed)\s*:?\s*(\d{1,2}/\d{1,2}/\d{4}|\d{4}-\d{2}-\d{2})', full_col_text, re.IGNORECASE)
+            if m_sig_date:
+                res["Date Signed"] = m_sig_date.group(1).strip()
+
+            # 6. Effective Date of Appraisal
+            m_eff = re.search(r'Effective\s+Date\s+(?:of\s+Appraisal\s*)?:?\s*(\d{1,2}/\d{1,2}/\d{4}|\d{4}-\d{2}-\d{2})', full_col_text, re.IGNORECASE)
+            if m_eff:
+                res["Effective Date of Appraisal"] = m_eff.group(1).strip()
+
+            # 7. Date of Inspection
+            m_insp_date = re.search(r'Date\s+of\s+Inspection(?:\s*\(if\s+applicable\))?\s*:?\s*(\d{1,2}/\d{1,2}/\d{4}|\d{4}-\d{2}-\d{2})', full_col_text, re.IGNORECASE)
+            if m_insp_date:
+                res["Date of Inspection"] = m_insp_date.group(1).strip()
+
+            return res
+
         appr_fields = _parse_uspap_column_lines(appr_lines, is_supervisory=False)
         sup_fields = _parse_uspap_column_lines(sup_lines, is_supervisory=True)
 
-        # Appraiser & Supervisory Inspection Detection (strictly when present on USPAP page)
-        has_appraiser_inspection = any("inspect" in w.get("text", "").lower() for w in appr_col_words)
-        has_supervisory_inspection = any("inspect" in w.get("text", "").lower() for w in sup_col_words)
+        appr_name = appr_fields.get("Name", "")
+        sup_name = sup_fields.get("Name", "")
 
-        appr_insp_y = min((w.get("top", 0) for w in appr_col_words if "inspect" in w.get("text", "").lower()), default=None) if has_appraiser_inspection else None
-        sup_insp_y = min((w.get("top", 0) for w in sup_col_words if "inspect" in w.get("text", "").lower()), default=None) if has_supervisory_inspection else None
+        # 4. Signature Images (Raster + Vector Fallback)
+        if doc is not None:
+            try:
+                for img_info in uspap_page.get_image_info(xrefs=True):
+                    bbox = img_info.get("bbox", ())
+                    if bbox and len(bbox) >= 4 and bbox[1] > 700:
+                        xref = img_info.get("xref")
+                        if xref:
+                            base_img = doc.extract_image(xref)
+                            if base_img and "image" in base_img:
+                                ext = base_img.get("ext", "png")
+                                b64_img = f"data:image/{ext};base64,{base64.b64encode(base_img['image']).decode('ascii')}"
+                                if bbox[0] < col_split_x and not appraiser_sig_b64:
+                                    appraiser_sig_b64 = b64_img
+                                elif bbox[0] >= col_split_x and not supervisory_sig_b64 and sup_name:
+                                    supervisory_sig_b64 = b64_img
+            except Exception:
+                pass
 
-        appr_did_not = "No" if has_appraiser_inspection else ""
-        appr_ext = "No" if has_appraiser_inspection else ""
-        appr_int_ext = "No" if has_appraiser_inspection else ""
-        appr_insp_date = ""
+        if doc is not None and hasattr(uspap_page, "get_drawings"):
+            try:
+                page_drawings = uspap_page.get_drawings()
+                appr_drawings = [d for d in page_drawings if 800 <= d.get("rect", [0, 0, 0, 0])[1] <= 870 and d.get("rect", [0, 0, 0, 0])[0] < col_split_x]
+                if not appraiser_sig_b64 and len(appr_drawings) > 5:
+                    pix_appr = uspap_page.get_pixmap(clip=fitz.Rect(25, 815, col_split_x, 855), dpi=150)
+                    if pix_appr:
+                        appraiser_sig_b64 = f"data:image/png;base64,{base64.b64encode(pix_appr.tobytes('png')).decode('ascii')}"
 
-        sup_did_not = "No" if has_supervisory_inspection else ""
-        sup_ext = "No" if has_supervisory_inspection else ""
-        sup_int_ext = "No" if has_supervisory_inspection else ""
-        sup_insp_date = ""
+                if sup_name and not supervisory_sig_b64:
+                    sup_drawings = [d for d in page_drawings if 800 <= d.get("rect", [0, 0, 0, 0])[1] <= 870 and d.get("rect", [0, 0, 0, 0])[0] >= col_split_x]
+                    if len(sup_drawings) > 5:
+                        pix_sup = uspap_page.get_pixmap(clip=fitz.Rect(col_split_x + 5, 815, 580, 855), dpi=150)
+                        if pix_sup:
+                            supervisory_sig_b64 = f"data:image/png;base64,{base64.b64encode(pix_sup.tobytes('png')).decode('ascii')}"
+            except Exception:
+                pass
 
-        # Check vector diagonal cross lines (PyMuPDF drawings)
+        # 5. Dynamic Inspection Checkbox Detection
+        cross_rects_insp = []
         if hasattr(uspap_page, "get_drawings"):
             try:
                 for d in uspap_page.get_drawings():
-                    rect = d.get("rect")
-                    if not rect:
+                    r = d.get("rect")
+                    if not r or r[1] < 700:
                         continue
                     items = d.get("items", [])
                     has_diag = False
@@ -1802,72 +1906,50 @@ def extract_uspap_identification_details(doc=None, uspap_page_idx=None, full_doc
                             if abs(p1.x - p2.x) > 3 and abs(p1.y - p2.y) > 3:
                                 has_diag = True
                                 break
-                    if not has_diag:
-                        continue
-                    cx = (rect[0] + rect[2]) / 2.0
-                    cy = (rect[1] + rect[3]) / 2.0
-
-                    if has_appraiser_inspection and appr_insp_y and abs(cy - appr_insp_y) < 25 and cx < 310:
-                        if cx < 170:
-                            appr_did_not = "Yes"
-                        elif 170 <= cx <= 220:
-                            appr_int_ext = "Yes"
-                        else:
-                            appr_ext = "Yes"
-
-                    if has_supervisory_inspection and sup_insp_y and abs(cy - sup_insp_y) < 25 and cx >= 310:
-                        if cx < 360 or (380 <= cx <= 420):
-                            sup_did_not = "Yes"
-                        elif (425 <= cx <= 485) or (480 <= cx <= 520):
-                            sup_int_ext = "Yes"
-                        else:
-                            sup_ext = "Yes"
+                    if has_diag:
+                        cross_rects_insp.append(r)
             except Exception:
                 pass
-
-        # Check character marks (X, 8, etc.)
         for w in words:
-            wt = w.get("text", "").upper()
-            if wt in ('X', 'YES', '8', '☒', '☑', '✓'):
-                cx = (w.get("x0", 0) + w.get("x1", 0)) / 2.0
-                cy = (w.get("top", 0) + w.get("bottom", 0)) / 2.0
-                if has_appraiser_inspection and appr_insp_y and abs(cy - appr_insp_y) < 20 and cx < 310:
-                    if cx < 170:
-                        appr_did_not = "Yes"
-                    elif 170 <= cx <= 220:
-                        appr_int_ext = "Yes"
-                    else:
-                        appr_ext = "Yes"
-                if has_supervisory_inspection and sup_insp_y and abs(cy - sup_insp_y) < 20 and cx >= 310:
-                    if cx < 360 or (380 <= cx <= 420):
-                        sup_did_not = "Yes"
-                    elif (425 <= cx <= 485) or (480 <= cx <= 520):
-                        sup_int_ext = "Yes"
-                    else:
-                        sup_ext = "Yes"
+            if w.get("top", 0) > 700 and w.get("text", "").upper() in ('X', 'YES', '8', '☒', '☑', '✓'):
+                cross_rects_insp.append(fitz.Rect(w["x0"], w["top"], w["x1"], w["bottom"]))
 
-        if has_appraiser_inspection and appr_insp_y:
-            for w in appr_col_words:
-                if w.get("top", 0) > appr_insp_y:
-                    m_d = re.search(r'\b\d{1,2}/\d{1,2}/\d{4}\b', w.get("text", ""))
-                    if m_d:
-                        appr_insp_date = m_d.group(0)
-                        break
-            if not appr_insp_date:
-                appr_insp_date = appr_fields.get("Date of Inspection", "")
+        def detect_inspection_checks_for_column(col_min, col_max):
+            res = {"did_not": "No", "ext": "No", "int_ext": "No"}
+            col_has_insp = any("inspection" in w.get("text", "").lower() for w in words if w.get("top", 0) > 700 and col_min <= w.get("x0", 0) <= col_max)
+            if not col_has_insp:
+                return False, res
 
-        if has_supervisory_inspection and sup_insp_y:
-            for w in sup_col_words:
-                if w.get("top", 0) > sup_insp_y:
-                    m_d = re.search(r'\b\d{1,2}/\d{1,2}/\d{4}\b', w.get("text", ""))
-                    if m_d:
-                        sup_insp_date = m_d.group(0)
-                        break
-            if not sup_insp_date:
-                sup_insp_date = sup_fields.get("Date of Inspection", "")
+            for w in words:
+                if w.get("top", 0) < 700 or w.get("x0", 0) < col_min or w.get("x0", 0) > col_max:
+                    continue
+                wt = w.get("text", "").lower()
+                if wt in ["none", "not"] and any(w2.get("text", "").lower() in ["did", "subject:"] for w2 in words if abs(w2.get("top", 0) - w.get("top", 0)) < 8 and abs(w2.get("x0", 0) - w.get("x0", 0)) < 30):
+                    for cr in cross_rects_insp:
+                        if abs((cr[1] + cr[3]) / 2.0 - (w.get("top", 0) + w.get("bottom", 0)) / 2.0) < 15 and -25 <= ((cr[0] + cr[2]) / 2.0 - w.get("x0", 0)) <= 5:
+                            res["did_not"] = "Yes"
+                elif wt == "interior":
+                    for cr in cross_rects_insp:
+                        if abs((cr[1] + cr[3]) / 2.0 - (w.get("top", 0) + w.get("bottom", 0)) / 2.0) < 15 and -25 <= ((cr[0] + cr[2]) / 2.0 - w.get("x0", 0)) <= 5:
+                            res["int_ext"] = "Yes"
+                elif "exterior-only" in wt or (wt == "exterior" and not any(w2.get("text", "").lower() == "interior" for w2 in words if abs(w2.get("top", 0) - w.get("top", 0)) < 8 and abs(w2.get("x0", 0) - w.get("x0", 0)) < 40)):
+                    for cr in cross_rects_insp:
+                        if abs((cr[1] + cr[3]) / 2.0 - (w.get("top", 0) + w.get("bottom", 0)) / 2.0) < 15 and -25 <= ((cr[0] + cr[2]) / 2.0 - w.get("x0", 0)) <= 5:
+                            res["ext"] = "Yes"
+            return True, res
 
-        appr_name = appr_fields.get("Name", "")
-    sup_name = sup_fields.get("Name", "")
+        has_appraiser_inspection, appr_insp_res = detect_inspection_checks_for_column(0, col_split_x)
+        has_supervisory_inspection, sup_insp_res = detect_inspection_checks_for_column(col_split_x, 1000)
+
+        appr_did_not = appr_insp_res["did_not"] if has_appraiser_inspection else ""
+        appr_ext = appr_insp_res["ext"] if has_appraiser_inspection else ""
+        appr_int_ext = appr_insp_res["int_ext"] if has_appraiser_inspection else ""
+        appr_insp_date = appr_fields.get("Date of Inspection", "")
+
+        sup_did_not = sup_insp_res["did_not"] if (sup_name and has_supervisory_inspection) else ""
+        sup_ext = sup_insp_res["ext"] if (sup_name and has_supervisory_inspection) else ""
+        sup_int_ext = sup_insp_res["int_ext"] if (sup_name and has_supervisory_inspection) else ""
+        sup_insp_date = sup_fields.get("Date of Inspection", "")
 
     return {
         "USPAP / Appraisal and Report Identification": "Present" if has_uspap else "Not Present",
@@ -1877,6 +1959,7 @@ def extract_uspap_identification_details(doc=None, uspap_page_idx=None, full_doc
         "has_appraiser_inspection": has_appraiser_inspection,
         "USPAP Reporting Option": reporting_option if has_uspap else "",
         "Reasonable Exposure Time": exposure_time,
+        "Reasonable Exposure Time Comment": exposure_comment,
         "Prior Service Statement": prior_service,
         "Comments on Appraisal and Report Identification": comment,
         # Distinct Appraiser Fields for USPAP
@@ -1897,8 +1980,8 @@ def extract_uspap_identification_details(doc=None, uspap_page_idx=None, full_doc
         "Date of Inspection (if applicable)": appr_insp_date if has_appraiser_inspection else "",
         "Appraiser Date of Inspection": appr_insp_date if has_appraiser_inspection else "",
         "Appraiser Subject Property Date of Inspection": appr_insp_date if has_appraiser_inspection else "",
-        "has_supervisory_inspection": has_supervisory_inspection,
-        "Supervisory Date of Inspection": sup_insp_date if has_supervisory_inspection else "",
+        "has_supervisory_inspection": has_supervisory_inspection if sup_name else False,
+        "Supervisory Date of Inspection": sup_insp_date if (sup_name and has_supervisory_inspection) else "",
         "Appraiser Did not inspect subject property": appr_did_not,
         "Did not inspect subject property (Appraiser)": appr_did_not,
         "Appraiser Did Not Inspect": appr_did_not,
@@ -1910,21 +1993,22 @@ def extract_uspap_identification_details(doc=None, uspap_page_idx=None, full_doc
         "Appraiser Did Inspect Interior and Exterior": appr_int_ext,
         # Distinct Supervisory Appraiser Fields for USPAP
         "Supervisory Signature": sup_name,
-        "Supervisory Signature Image": supervisory_sig_b64,
+        "Supervisory Signature Image": supervisory_sig_b64 if sup_name else "",
         "Supervisory Name": sup_name,
-        "Supervisory Date Signed": sup_fields.get("Date Signed", ""),
-        "Supervisory Date of Signature": sup_fields.get("Date Signed", ""),
-        "Supervisory State Certification #": sup_fields.get("State Certification #", ""),
-        "Supervisory or State License #": sup_fields.get("or State License #", ""),
-        "Supervisory State": sup_fields.get("State", ""),
-        "Supervisory Expiration Date of Certification or License": sup_fields.get("Expiration Date of Certification or License", ""),
-        "Supervisory Date of Inspection": sup_fields.get("Date of Inspection", ""),
+        "Supervisory Date Signed": sup_fields.get("Date Signed", "") if sup_name else "",
+        "Supervisory Date of Signature": sup_fields.get("Date Signed", "") if sup_name else "",
+        "Supervisory State Certification #": sup_fields.get("State Certification #", "") if sup_name else "",
+        "Supervisory or State License #": sup_fields.get("or State License #", "") if sup_name else "",
+        "Supervisory State": sup_fields.get("State", "") if sup_name else "",
+        "Supervisory Expiration Date of Certification or License": sup_fields.get("Expiration Date of Certification or License", "") if sup_name else "",
         "Did not inspect subject property": sup_did_not if sup_name else "",
         "Supervisory Did not inspect subject property": sup_did_not if sup_name else "",
         "Did inspect exterior of subject property from street": sup_ext if sup_name else "",
         "Supervisory Did inspect exterior of subject property from street": sup_ext if sup_name else "",
         "Did inspect interior and exterior of subject property": sup_int_ext if sup_name else "",
         "Supervisory Did inspect interior and exterior of subject property": sup_int_ext if sup_name else "",
+        "Subject Property Date of Inspection (Exterior)": sup_insp_date if (sup_name and sup_ext == "Yes") else "",
+        "Subject Property Date of Inspection (Interior/Exterior)": sup_insp_date if (sup_name and sup_int_ext == "Yes") else "",
     }
 
 def extract_appraiser_fee_from_doc(doc=None, full_doc_text=""):
