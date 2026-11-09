@@ -41,11 +41,11 @@ import {
 import { checkIncomeApproachFieldsNotBlank, checkIncomeApproach1007Required, INCOME_APPROACH_1007_REQUIRED_FIELDS } from '../../../validations/incomeApproachValidation';
 import { checkPudInformationFieldsNotBlank, checkPudControlAndFees } from '../../../validations/pudInformationValidation';
 import { checkMarketConditionsFieldsNotBlank } from '../../../validations/marketConditionsValidation';
-import { checkProjectInfoFieldsNotBlank, checkCondoForeclosureFieldsNotBlank } from '../../../validations/form1073Validation';
-import { checkProjectAnalysisFieldsNotBlank } from '../../../validations/projectAnalysisValidation';
-import { checkUnitDescriptionsFieldsNotBlank } from '../../../validations/unitDescriptionsValidation';
+import { checkProjectInfoFieldsNotBlank, checkCondoForeclosureFieldsNotBlank, PROJECT_INFO_FIELDS_TO_CHECK } from '../../../validations/form1073Validation';
+import { checkProjectAnalysisFieldsNotBlank, PROJECT_ANALYSIS_FIELDS_TO_CHECK } from '../../../validations/projectAnalysisValidation';
+import { checkUnitDescriptionsFieldsNotBlank, UNIT_DESCRIPTIONS_FIELDS_TO_CHECK } from '../../../validations/unitDescriptionsValidation';
 import { checkProjectSiteFieldsNotBlank } from '../../../validations/projectSiteValidation';
-import { checkPriorSaleHistoryFieldsNotBlank } from '../../../validations/priorSaleHistoryValidation';
+import { checkPriorSaleHistoryFieldsNotBlank, PRIOR_SALE_HISTORY_FIELDS_TO_CHECK } from '../../../validations/priorSaleHistoryValidation';
 import { checkInfoOfSalesFieldsNotBlank } from '../../../validations/infoOfSalesValidation';
 import { checkRentScheduleAsOfDateConsistency, checkRentScheduleToBeAmountConsistency, checkIncomeApproachIndicatedValueConsistency, checkCostApproachMatchConsistency } from '../../../validations/form1004And1007Validation';
 import { Tooltip, IconButton } from '@mui/material';
@@ -781,69 +781,27 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     validationRegistry[field].push(checkMarketConditionsFieldsNotBlank);
   });
 
-  const projectInfoFieldsToValidate = [
-    "Data source(s) for project information", "Project Description", "# of Stories",
-    "# of Elevators", "Existing/Proposed/Under Construction", "Year Built",
-    "Effective Age", "Exterior Walls",
-    "Roof Surface", "Total # Parking", "Ratio (spaces/units)", "Type", "Guest Parking", "# of Units", "# of Units Completed",
-    "# of Units For Sale", "# of Units Sold", "# of Units Rented", "# of Owner Occupied Units",
-    "# of Phases", "# of Planned Phases",
-    "Project Primary Occupancy", "Is the developer/builder in control of the Homeowners' Association (HOA)?",
-    "Management Group", "Does any single entity (the same individual, investor group, corporation, etc.) own more than 10% of the total units in the project?",
-    "Was the project created by the conversion of existing building(s) into a condominium?",
-    "If Yes,describe the original use and date of conversion",
-    "Are the units, common elements, and recreation facilities complete (including any planned rehabilitation for a condominium conversion)?", "If No, describe",
-    "Is there any commercial space in the project?",
-    "If Yes, describe and indicate the overall percentage of the commercial space.", "Describe the condition of the project and quality of construction.",
-    "Describe the common elements and recreational facilities.", "Are any common elements leased to or by the Homeowners' Association?",
-    "If Yes, describe the rental terms and options.", "Is the project subject to a ground rent?",
-    "If Yes, $ per year (describe terms and conditions)",
-    "Are the parking facilities adequate for the project size and type?", "If No, describe and comment on the effect on value and marketability."
-  ];
-  projectInfoFieldsToValidate.forEach(field => {
+  PROJECT_INFO_FIELDS_TO_CHECK.forEach(field => {
     if (!validationRegistry[field]) validationRegistry[field] = [];
-    validationRegistry[field].push(checkProjectInfoFieldsNotBlank);
+    if (!validationRegistry[field].includes(checkProjectInfoFieldsNotBlank)) {
+      validationRegistry[field].push(checkProjectInfoFieldsNotBlank);
+    }
   });
 
-  const projectAnalysisFieldsToValidate = [
-    "I did did not analyze the condominium project budget for the current year. Explain the results of the analysis of the budget (adequacy of fees, reserves, etc.), or why the analysis was not performed.",
-    "Are there any other fees (other than regular HOA charges) for the use of the project facilities?",
-    "If Yes, report the charges and describe.",
-    "Compared to other competitive projects of similar quality and design, the subject unit charge appears",
-    "If High or Low, describe",
-    "Are there any special or unusual characteristics of the project (based on the condominium documents, HOA meetings, or other information) known to the appraiser?",
-    "If Yes, describe and explain the effect on value and marketability."
-  ];
-  projectAnalysisFieldsToValidate.forEach(field => {
+  PROJECT_ANALYSIS_FIELDS_TO_CHECK.forEach(field => {
     if (!validationRegistry[field]) validationRegistry[field] = [];
-    validationRegistry[field].push(checkProjectAnalysisFieldsNotBlank);
+    if (!validationRegistry[field].includes(checkProjectAnalysisFieldsNotBlank)) {
+      validationRegistry[field].push(checkProjectAnalysisFieldsNotBlank);
+    }
   });
 
-  const unitDescriptionsFieldsToValidate = [
-    "Unit Charge$",
-    "per month X 12 = $",
-    "per year",
-    "Annual assessment charge per year per square feet of gross living area = $",
-    "Utilities included in the unit monthly assessment [None/Heat/Air/Conditioning/Electricity/Gas/Water/Sewer/Cable/Other (describe)]",
-    "Floor #",
-    "# of Levels",
-    "Heating Type/Fuel",
-    "Central AC/Individual AC/Other (describe)",
-    "Fireplace(s) #/Woodstove(s) #/Deck/Patio/Porch/Balcony/Other",
-    "Refrigerator/Range/Oven/Disp Microwave/Dishwasher/Washer/Dryer",
-    "Floors", "Walls", "Trim/Finish", "Bath Wainscot", "Doors",
-    "None/Garage/Covered/Open", "Assigned/Owned", "# of Cars", "Parking Space #",
-    "Finished area above grade contains:",
-    "Are the heating and cooling for the individual units separately metered?",
-    "Additional features (special energy efficient items, etc.)",
-    "Describe the condition of the property (including needed repairs, deterioration, renovations, remodeling, etc.)",
-  ];
-
-  unitDescriptionsFieldsToValidate.forEach(field => {
+  UNIT_DESCRIPTIONS_FIELDS_TO_CHECK.forEach(field => {
     if (!validationRegistry[field]) {
       validationRegistry[field] = [];
     }
-    validationRegistry[field].push(checkUnitDescriptionsFieldsNotBlank);
+    if (!validationRegistry[field].includes(checkUnitDescriptionsFieldsNotBlank)) {
+      validationRegistry[field].push(checkUnitDescriptionsFieldsNotBlank);
+    }
   });
 
   const projectSiteFieldsToValidate = [
@@ -860,29 +818,7 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     validationRegistry[field].push(checkProjectSiteFieldsNotBlank);
   });
 
-  const priorSaleHistoryFieldsToValidate = [
-    "Prior Sale History: I did did not research the sale or transfer history of the subject property and comparable sales",
-    "Prior Sale History: My research did did not reveal any prior sales or transfers of the subject property for the three years prior to the effective date of this appraisal",
-    "Prior Sale History: Data source(s) for subject",
-    "Prior Sale History: My research did did not reveal any prior sales or transfers of the comparable sales for the year prior to the date of sale of the comparable sale",
-    "Prior Sale History: Data source(s) for comparables",
-    "Prior Sale History: Report the results of the research and analysis of the prior sale or transfer history of the subject property and comparable sales",
-    "Prior Sale History: Date of Prior Sale/Transfer",
-    "Prior Sale History: Price of Prior Sale/Transfer",
-    "Prior Sale History: Data Source(s) for prior sale/transfer",
-    "Prior Sale History: Effective Date of Data Source(s)",
-    "Prior Sale History: Analysis of prior sale or transfer history of the subject property and comparable sales",
-    "Prior Sales or Transfers",
-    "Subject Transfer History Data Source",
-    "Comparable Number",
-    "Comparable Transfer Terms",
-    "Comparable Transfer Date",
-    "Comparable Transfer Amount",
-    "Comparable Transfer Data Source",
-    "Analysis of Prior Sale and Transfer History of Subject Property",
-    "Analysis of Prior Sale and Transfer History of Comparable Sales"
-  ];
-  priorSaleHistoryFieldsToValidate.forEach(field => {
+  PRIOR_SALE_HISTORY_FIELDS_TO_CHECK.forEach(field => {
     if (!validationRegistry[field]) validationRegistry[field] = [];
     validationRegistry[field].push(checkPriorSaleHistoryFieldsNotBlank);
   });
@@ -1011,12 +947,28 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     if (!validationResult) {
       let checksToRun = [...(validationRegistry[lookupField] || [])];
       if (checksToRun.length === 0 && typeof lookupField === 'string') {
+        const matchingKey = Object.keys(validationRegistry).find(
+          k => k.trim().toLowerCase() === lookupField.trim().toLowerCase()
+        );
+        if (matchingKey) {
+          checksToRun = [...(validationRegistry[matchingKey] || [])];
+        }
+      }
+      if (checksToRun.length === 0 && typeof lookupField === 'string') {
         const lowerLookup = lookupField.toLowerCase();
         if (lowerLookup.includes('comparable properties currently offered for sale') ||
           lowerLookup.includes('properties currently offered for sale') ||
           lowerLookup.includes('comparable sales in the subject neighborhood') ||
           (lowerLookup.includes('comparable sales') && lowerLookup.includes('twelve'))) {
           checksToRun = [checkInfoOfSalesFieldsNotBlank];
+        } else if (PROJECT_INFO_FIELDS_TO_CHECK.some(f => f.trim().toLowerCase() === lowerLookup.trim())) {
+          checksToRun = [checkProjectInfoFieldsNotBlank];
+        } else if (PROJECT_ANALYSIS_FIELDS_TO_CHECK.some(f => f.trim().toLowerCase() === lowerLookup.trim())) {
+          checksToRun = [checkProjectAnalysisFieldsNotBlank];
+        } else if (UNIT_DESCRIPTIONS_FIELDS_TO_CHECK.some(f => f.trim().toLowerCase() === lowerLookup.trim())) {
+          checksToRun = [checkUnitDescriptionsFieldsNotBlank];
+        } else if (PRIOR_SALE_HISTORY_FIELDS_TO_CHECK.some(f => f.trim().toLowerCase() === lowerLookup.trim())) {
+          checksToRun = [checkPriorSaleHistoryFieldsNotBlank];
         } else if (lowerLookup.includes('this appraisal is made') || lowerLookup === 'reconciliation status') {
           checksToRun = [checkAppraisalCondition];
         } else if (lowerLookup === 'existing/proposed/under const.' || lowerLookup === 'status' || lowerLookup === 'construction status' || lowerLookup.includes('existing/proposed')) {

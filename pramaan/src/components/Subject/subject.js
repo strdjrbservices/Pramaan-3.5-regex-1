@@ -836,11 +836,13 @@ function Subject({ defaultFormType }) {
       ];
     });
 
-    unitDescriptionsFields.forEach(field => {
+    const allUnitDescriptionsFields = Array.from(new Set([...unitDescriptionsFields, ...(unitDescriptionsValidation.UNIT_DESCRIPTIONS_FIELDS_TO_CHECK || [])]));
+    allUnitDescriptionsFields.forEach(field => {
       registry[field] = [unitDescriptionsValidation.checkUnitDescriptionsFieldsNotBlank];
     });
 
-    projectAnalysisFields.forEach(field => {
+    const allProjectAnalysisFields = Array.from(new Set([...projectAnalysisFields, ...(projectAnalysisValidation.PROJECT_ANALYSIS_FIELDS_TO_CHECK || [])]));
+    allProjectAnalysisFields.forEach(field => {
       registry[field] = [projectAnalysisValidation.checkProjectAnalysisFieldsNotBlank];
     });
 
@@ -858,7 +860,11 @@ function Subject({ defaultFormType }) {
       registry[field] = validators;
     });
 
-    priorSaleHistoryFields.forEach(field => {
+    const allPriorSaleHistoryFields = Array.from(new Set([
+      ...priorSaleHistoryFields,
+      ...(priorSaleHistoryValidation.PRIOR_SALE_HISTORY_FIELDS_TO_CHECK || [])
+    ]));
+    allPriorSaleHistoryFields.forEach(field => {
       registry[field] = [priorSaleHistoryValidation.checkPriorSaleHistoryFieldsNotBlank];
     });
 
@@ -876,7 +882,8 @@ function Subject({ defaultFormType }) {
       registry[f] = [infoOfSalesValidation.checkInfoOfSalesFieldsNotBlank];
     });
 
-    projectInfoFields.forEach(field => {
+    const allProjectInfoFields = Array.from(new Set([...projectInfoFields, ...(form1073Validation.PROJECT_INFO_FIELDS_TO_CHECK || [])]));
+    allProjectInfoFields.forEach(field => {
       registry[field] = [form1073Validation.checkProjectInfoFieldsNotBlank];
     });
 
@@ -5079,7 +5086,7 @@ function Subject({ defaultFormType }) {
           { id: 'site-section', title: 'Site', fields: siteFields, data: data.SITE },
           { id: 'improvements-section', title: 'Improvements', fields: improvementsFields, data: data.IMPROVEMENTS },
           { id: 'sales-history-section', title: 'Sales History', fields: salesHistoryFields, data: data.SALES_TRANSFER },
-          { id: 'prior-sale-history-section', title: 'Prior Sale History', fields: priorSaleHistoryFields, data: data.PRIOR_SALE_HISTORY, usePre: true },
+          { id: 'prior-sale-history-section', title: 'Prior Sale History', fields: priorSaleHistoryFields, data: data.PRIOR_SALE_HISTORY || data['Prior Sale History'] || data.clean_data?.['Prior Sale History'] || data.clean_data?.PRIOR_SALE_HISTORY, usePre: true },
           { id: 'reconciliation-section', title: 'Reconciliation', fields: reconciliationFields, data: data.RECONCILIATION },
           { id: 'cost-approach-section', title: 'Cost Approach', fields: costApproachFields, data: data.COST_APPROACH },
           { id: 'income-approach-section', title: 'Income Approach', fields: incomeApproachFields, data: data.INCOME_APPROACH },

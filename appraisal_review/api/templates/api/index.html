@@ -852,6 +852,65 @@
             border: 1px solid rgba(59, 130, 246, 0.35);
         }
 
+        .file-type-pill.badge-doc {
+            background: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.35);
+        }
+
+        .workflow-mode-switcher {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            border-radius: 9999px;
+        }
+
+        .btn-workflow-mode {
+            border: none;
+            background: transparent;
+            color: var(--text-dim);
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            padding: 4px 12px;
+            border-radius: 9999px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .btn-workflow-mode:hover {
+            color: var(--text-main);
+        }
+
+        .btn-workflow-mode.active {
+            background: var(--primary);
+            color: #ffffff;
+            box-shadow: 0 0 12px var(--primary-glow);
+        }
+
+        body.light-mode .workflow-mode-switcher {
+            background: rgba(0, 0, 0, 0.05);
+            border-color: rgba(0, 0, 0, 0.1);
+        }
+
+        body.light-mode .btn-workflow-mode {
+            color: #64748b;
+        }
+
+        body.light-mode .btn-workflow-mode:hover {
+            color: #0f172a;
+        }
+
+        body.light-mode .btn-workflow-mode.active {
+            background: var(--primary);
+            color: #ffffff;
+        }
+
         body.light-mode .file-filter-group {
             background: rgba(0, 0, 0, 0.04);
             border-color: rgba(0, 0, 0, 0.12);
@@ -1118,11 +1177,17 @@
 
                     <div class="glass-card d-flex flex-column" style="height: 600px">
                         <div class="management-header">
-                            <div class="d-flex align-items-center gap-2">
+                            <div class="d-flex align-items-center gap-3 flex-wrap">
                                 <h5 class="m-0 fw-bold fs-6 d-flex align-items-center text-nowrap">
                                     <span>FILE MANAGEMENT</span>
                                     <span id="fileCountBadge" class="file-count-badge ms-2">0 Files</span>
                                 </h5>
+                                <div class="workflow-mode-switcher" id="workflowModeSwitcher">
+                                    <button type="button" class="btn-workflow-mode active" id="wfModeRevised"
+                                        onclick="setWorkflowMode('revised')">Revised</button>
+                                    <button type="button" class="btn-workflow-mode" id="wfModeFull"
+                                        onclick="setWorkflowMode('full')">Full File</button>
+                                </div>
                             </div>
                             <div class="d-flex gap-2 align-items-center">
                                 <button id="startBatchBtn" onclick="launchBatch()"
@@ -1135,20 +1200,32 @@
                         </div>
 
                         <div class="nav-management">
-                            <a href="javascript:void(0)" class="mgmt-link"
+                            <!-- Full File Folders -->
+                            <a href="javascript:void(0)" class="mgmt-link d-none" data-workflow="full"
                                 onclick="switchFolder('full_file', this)">Full File</a>
-                            <a href="javascript:void(0)" class="mgmt-link active"
+                            <a href="javascript:void(0)" class="mgmt-link d-none" data-workflow="full"
+                                onclick="switchFolder('letters', this)">Letters</a>
+
+                            <!-- Revised Folders -->
+                            <a href="javascript:void(0)" class="mgmt-link active" data-workflow="revised"
                                 onclick="switchFolder('new_revised', this)">Revised</a>
-                            <a href="javascript:void(0)" class="mgmt-link" onclick="switchFolder('html_ref', this)">HTML
-                                Ref</a>
-                            <a href="javascript:void(0)" class="mgmt-link"
+                            <a href="javascript:void(0)" class="mgmt-link" data-workflow="revised"
                                 onclick="switchFolder('old_revised', this)">OLD (Rev)</a>
-                            <a href="javascript:void(0)" class="mgmt-link" onclick="switchFolder('logs', this)">Logs</a>
-                            <a href="javascript:void(0)" class="mgmt-link"
+
+                            <!-- Shared Reference Folder -->
+                            <a href="javascript:void(0)" class="mgmt-link" data-workflow="shared"
+                                onclick="switchFolder('html_ref', this)">HTML Ref</a>
+
+                            <!-- Logs Folders -->
+                            <a href="javascript:void(0)" class="mgmt-link" data-workflow="revised"
+                                onclick="switchFolder('logs', this)">Logs</a>
+                            <a href="javascript:void(0)" class="mgmt-link d-none" data-workflow="full"
                                 onclick="switchFolder('full_file_logs', this)">Full File Logs</a>
-                            <a href="javascript:void(0)" class="mgmt-link"
+
+                            <!-- Shared Output Folders -->
+                            <a href="javascript:void(0)" class="mgmt-link" data-workflow="shared"
                                 onclick="switchFolder('processed', this)">Processed</a>
-                            <a href="javascript:void(0)" class="mgmt-link"
+                            <a href="javascript:void(0)" class="mgmt-link" data-workflow="shared"
                                 onclick="switchFolder('errors', this)">Errors</a>
                         </div>
 
@@ -1168,15 +1245,21 @@
                                         onclick="setFileFilter('xml', this)">
                                         XML <span id="xmlBadge" class="filter-count"></span>
                                     </button>
+                                    <button type="button" class="btn-filter-tab" id="filterBtnDoc"
+                                        onclick="setFileFilter('doc', this)">
+                                        DOC <span id="docBadge" class="filter-count"></span>
+                                    </button>
                                 </div>
                             </div>
                             <div class="d-flex align-items-center gap-3" id="selectionToolbarGroup">
                                 <div class="d-flex align-items-center gap-1" id="selectActionsGroup">
                                     <span class="mgmt-toolbar-label me-1">SELECT:</span>
-                                    <button type="button" class="btn-select-action" onclick="selectByType('pdf')"
+                                    <button type="button" class="btn-select-action" id="selectPdfBtn" onclick="selectByType('pdf')"
                                         title="Select all PDF files only">PDF ONLY</button>
-                                    <button type="button" class="btn-select-action" onclick="selectByType('xml')"
+                                    <button type="button" class="btn-select-action" id="selectXmlBtn" onclick="selectByType('xml')"
                                         title="Select all XML files only">XML ONLY</button>
+                                    <button type="button" class="btn-select-action" id="selectDocBtn" onclick="selectByType('doc')"
+                                        title="Select all DOC/DOCX and letter files only">DOC ONLY</button>
                                 </div>
                                 <div class="form-check m-0 d-flex align-items-center gap-1" id="masterCheckWrapper"
                                     style="font-size: 0.75rem;">
@@ -1447,6 +1530,7 @@
 
         <script>
             let currentFolder = 'new_revised';
+            let currentWorkflowMode = 'revised';
             let isDarkMode = true;
             let lastLogContent = "";
             let logPollInterval = null;
@@ -1456,16 +1540,69 @@
                 'fastapp': { user: 'DJRBREVIEW', pass: 'DJRB2605!#' }
             };
 
+            function setWorkflowMode(mode, targetFolder = null) {
+                const isFull = (mode === 'full');
+                currentWorkflowMode = mode;
+                try { localStorage.setItem('af_workflow_mode', mode); } catch (e) {}
+
+                // Update Workflow Switcher buttons
+                const btnRevised = document.getElementById('wfModeRevised');
+                const btnFull = document.getElementById('wfModeFull');
+                if (btnRevised) btnRevised.classList.toggle('active', !isFull);
+                if (btnFull) btnFull.classList.toggle('active', isFull);
+
+                // Sync Settings Automation Mode dropdown
+                const modeSelect = document.getElementById('mode');
+                if (modeSelect && modeSelect.value !== mode) {
+                    modeSelect.value = mode;
+                    try { localStorage.setItem('af_mode', mode); } catch (e) {}
+                    if (typeof updateAuthFieldsByMode === 'function') updateAuthFieldsByMode(mode);
+                }
+
+                // Filter folder tabs in nav-management
+                document.querySelectorAll('.nav-management .mgmt-link').forEach(link => {
+                    const wf = link.getAttribute('data-workflow');
+                    if (wf === 'shared' || wf === mode) {
+                        link.classList.remove('d-none');
+                    } else {
+                        link.classList.add('d-none');
+                    }
+                });
+
+                // Sync live terminal log tab
+                if (typeof switchLogTab === 'function') {
+                    if (isFull && typeof activeTab !== 'undefined' && activeTab !== 'full') switchLogTab('full');
+                    else if (!isFull && typeof activeTab !== 'undefined' && activeTab !== 'revised') switchLogTab('revised');
+                }
+
+                // Determine target folder
+                const fullFolders = ['full_file', 'letters', 'html_ref', 'full_file_logs', 'processed', 'errors'];
+                const revisedFolders = ['new_revised', 'old_revised', 'html_ref', 'logs', 'processed', 'errors'];
+                const validFolders = isFull ? fullFolders : revisedFolders;
+
+                let nextFolder = targetFolder || currentFolder;
+                if (!validFolders.includes(nextFolder)) {
+                    nextFolder = isFull ? 'full_file' : 'new_revised';
+                }
+
+                const targetLink = document.querySelector(`.nav-management .mgmt-link[onclick*="'${nextFolder}'"]`);
+                switchFolder(nextFolder, targetLink);
+            }
+
             function setupPersistence() {
                 const user = localStorage.getItem('af_user');
                 const pass = localStorage.getItem('af_pass');
                 const mode = localStorage.getItem('af_mode');
                 const dpref = localStorage.getItem('af_download_pref');
+                const savedFolder = localStorage.getItem('af_current_folder');
+                const savedWorkflow = localStorage.getItem('af_workflow_mode') || (mode === 'full' ? 'full' : 'revised');
 
                 if (user) document.getElementById('user').value = user;
                 if (pass) document.getElementById('pass').value = pass;
                 if (mode) document.getElementById('mode').value = mode;
                 if (dpref) document.getElementById('fastappDownloadPref').value = dpref;
+
+                setWorkflowMode(savedWorkflow === 'full' ? 'full' : 'revised', savedFolder);
 
                 document.getElementById('user').onchange = (e) => localStorage.setItem('af_user', e.target.value);
                 document.getElementById('pass').onchange = (e) => localStorage.setItem('af_pass', e.target.value);
@@ -1474,6 +1611,7 @@
                     const selectedMode = e.target.value;
                     localStorage.setItem('af_mode', selectedMode);
                     updateAuthFieldsByMode(selectedMode);
+                    setWorkflowMode(selectedMode);
                 };
 
                 document.getElementById('fastappDownloadPref').onchange = (e) => localStorage.setItem('af_download_pref', e.target.value);
@@ -1533,10 +1671,10 @@
             }
 
             function isBatchFolder(key) {
-                return ['new_revised', 'full_file'].includes(key);
+                return ['new_revised', 'full_file', 'letters'].includes(key);
             }
 
-            let currentFilter = 'all'; // 'all', 'pdf', 'xml'
+            let currentFilter = 'all'; // 'all', 'pdf', 'xml', 'doc'
             let cachedFiles = [];
 
             async function loadFiles() {
@@ -1568,15 +1706,47 @@
                 }
             }
 
+            function isLetterFile(name) {
+                const fl = (name || '').toLowerCase();
+                return fl.endsWith('.doc') || fl.endsWith('.docx') || fl.includes('letter') || fl.includes('engagement') || fl.includes('_el.');
+            }
+
             function updateFilterBadges() {
                 const pdfCount = cachedFiles.filter(f => f.toLowerCase().endsWith('.pdf')).length;
                 const xmlCount = cachedFiles.filter(f => f.toLowerCase().endsWith('.xml')).length;
+                const docCount = cachedFiles.filter(f => isLetterFile(f)).length;
+
                 const allBadge = document.getElementById('allBadge');
                 const pdfBadge = document.getElementById('pdfBadge');
                 const xmlBadge = document.getElementById('xmlBadge');
+                const docBadge = document.getElementById('docBadge');
+
+                const filterBtnXml = document.getElementById('filterBtnXml');
+                const filterBtnDoc = document.getElementById('filterBtnDoc');
+                const selectXmlBtn = document.getElementById('selectXmlBtn');
+                const selectDocBtn = document.getElementById('selectDocBtn');
+
                 if (allBadge) allBadge.innerText = cachedFiles.length > 0 ? `(${cachedFiles.length})` : '';
                 if (pdfBadge) pdfBadge.innerText = pdfCount > 0 ? `(${pdfCount})` : '';
                 if (xmlBadge) xmlBadge.innerText = xmlCount > 0 ? `(${xmlCount})` : '';
+                if (docBadge) docBadge.innerText = docCount > 0 ? `(${docCount})` : '';
+
+                if (currentFolder === 'letters') {
+                    if (xmlCount > 0) {
+                        if (filterBtnXml) filterBtnXml.classList.remove('d-none');
+                        if (selectXmlBtn) selectXmlBtn.classList.remove('d-none');
+                    } else {
+                        if (filterBtnXml) filterBtnXml.classList.add('d-none');
+                        if (selectXmlBtn) selectXmlBtn.classList.add('d-none');
+                    }
+                    if (filterBtnDoc) filterBtnDoc.classList.remove('d-none');
+                    if (selectDocBtn) selectDocBtn.classList.remove('d-none');
+                } else {
+                    if (filterBtnXml) filterBtnXml.classList.remove('d-none');
+                    if (selectXmlBtn) selectXmlBtn.classList.remove('d-none');
+                    if (filterBtnDoc) filterBtnDoc.classList.remove('d-none');
+                    if (selectDocBtn) selectDocBtn.classList.remove('d-none');
+                }
             }
 
             function setFileFilter(filterType, btnEl) {
@@ -1586,7 +1756,7 @@
                     btnEl.classList.add('active');
                 } else {
                     const targetBtn = document.getElementById(
-                        filterType === 'pdf' ? 'filterBtnPdf' : (filterType === 'xml' ? 'filterBtnXml' : 'filterBtnAll')
+                        filterType === 'pdf' ? 'filterBtnPdf' : (filterType === 'xml' ? 'filterBtnXml' : (filterType === 'doc' ? 'filterBtnDoc' : 'filterBtnAll'))
                     );
                     if (targetBtn) targetBtn.classList.add('active');
                 }
@@ -1612,6 +1782,8 @@
                     visibleFiles = cachedFiles.filter(f => f.toLowerCase().endsWith('.pdf'));
                 } else if (currentFilter === 'xml') {
                     visibleFiles = cachedFiles.filter(f => f.toLowerCase().endsWith('.xml'));
+                } else if (currentFilter === 'doc') {
+                    visibleFiles = cachedFiles.filter(f => isLetterFile(f));
                 }
 
                 if (fileCountBadge) {
@@ -1634,9 +1806,22 @@
 
                 container.innerHTML = visibleFiles.map(f => {
                     const isChecked = uncheckedFiles ? !uncheckedFiles.has(f) : true;
-                    const isXml = f.toLowerCase().endsWith('.xml');
-                    const badgeClass = isXml ? 'badge-xml' : 'badge-pdf';
-                    const badgeText = isXml ? 'XML' : 'PDF';
+                    const fLower = f.toLowerCase();
+                    let badgeClass = 'badge-pdf';
+                    let badgeText = 'PDF';
+                    if (fLower.endsWith('.xml')) {
+                        badgeClass = 'badge-xml';
+                        badgeText = 'XML';
+                    } else if (fLower.endsWith('.docx')) {
+                        badgeClass = 'badge-doc';
+                        badgeText = 'DOCX';
+                    } else if (fLower.endsWith('.doc')) {
+                        badgeClass = 'badge-doc';
+                        badgeText = 'DOC';
+                    } else if (isLetterFile(f)) {
+                        badgeClass = 'badge-doc';
+                        badgeText = 'LETTER';
+                    }
 
                     return `
                     <div class="file-item">
@@ -1658,13 +1843,16 @@
             function selectByType(type) {
                 const checks = document.querySelectorAll('.batch-check');
                 checks.forEach(c => {
-                    const val = c.value.toLowerCase();
+                    const val = c.value;
+                    const valLower = val.toLowerCase();
                     if (type === 'all') {
                         c.checked = true;
                     } else if (type === 'pdf') {
-                        c.checked = val.endsWith('.pdf');
+                        c.checked = valLower.endsWith('.pdf');
                     } else if (type === 'xml') {
-                        c.checked = val.endsWith('.xml');
+                        c.checked = valLower.endsWith('.xml');
+                    } else if (type === 'doc') {
+                        c.checked = isLetterFile(val);
                     } else if (type === 'none') {
                         c.checked = false;
                     }
@@ -1692,8 +1880,26 @@
             function switchFolder(folder, el) {
                 currentFolder = folder;
                 currentFilter = 'all';
+                try { localStorage.setItem('af_current_folder', folder); } catch (e) {}
+
+                // If folder clicked belongs exclusively to the other workflow, switch workflow mode
+                if (['full_file', 'letters', 'full_file_logs'].includes(folder) && currentWorkflowMode !== 'full') {
+                    setWorkflowMode('full', folder);
+                    return;
+                } else if (['new_revised', 'old_revised', 'logs'].includes(folder) && currentWorkflowMode !== 'revised') {
+                    setWorkflowMode('revised', folder);
+                    return;
+                }
+
                 document.querySelectorAll('.mgmt-link').forEach(l => l.classList.remove('active'));
-                el.classList.add('active');
+                if (el) el.classList.add('active');
+
+                // Sync Settings Automation Mode with active folder
+                const modeSelect = document.getElementById('mode');
+                if (modeSelect) {
+                    if (folder === 'full_file') modeSelect.value = 'full';
+                    else if (folder === 'new_revised') modeSelect.value = 'revised';
+                }
 
                 // Reset filter UI tab to ALL
                 document.querySelectorAll('.btn-filter-tab').forEach(b => b.classList.remove('active'));
@@ -1709,7 +1915,10 @@
                     if (toolbar) toolbar.classList.remove('d-none');
                     if (selectionGroup) selectionGroup.classList.remove('d-none');
                     if (filterWrapper) filterWrapper.classList.remove('d-none');
-                    if (startBtn) startBtn.classList.remove('d-none');
+                    if (startBtn) {
+                        if (currentFolder === 'letters') startBtn.classList.add('d-none');
+                        else startBtn.classList.remove('d-none');
+                    }
                 } else if (['processed', 'old_revised'].includes(currentFolder)) {
                     if (toolbar) toolbar.classList.remove('d-none');
                     if (selectionGroup) selectionGroup.classList.add('d-none');
