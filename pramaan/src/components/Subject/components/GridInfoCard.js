@@ -766,11 +766,19 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
       ?? data?.['Unit Descriptions']?.[field]
 
+      ?? data?.PRIOR_SALE_HISTORY?.[field]
+
+      ?? data?.['Prior Sale History']?.[field]
+
       ?? data?.PROJECT_SITE?.[field]
 
       ?? data?.['Project Site']?.[field]
 
       ?? data?.clean_data?.['Unit Descriptions']?.[field]
+
+      ?? data?.clean_data?.['Prior Sale History']?.[field]
+
+      ?? data?.clean_data?.PRIOR_SALE_HISTORY?.[field]
 
       ?? data?.clean_data?.['Project Site']?.[field]
 
@@ -808,11 +816,19 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
       ?? allData?.['Unit Descriptions']?.[field]
 
+      ?? allData?.PRIOR_SALE_HISTORY?.[field]
+
+      ?? allData?.['Prior Sale History']?.[field]
+
       ?? allData?.PROJECT_SITE?.[field]
 
       ?? allData?.['Project Site']?.[field]
 
       ?? allData?.clean_data?.['Unit Descriptions']?.[field]
+
+      ?? allData?.clean_data?.['Prior Sale History']?.[field]
+
+      ?? allData?.clean_data?.PRIOR_SALE_HISTORY?.[field]
 
       ?? allData?.clean_data?.['Project Site']?.[field]
 
@@ -924,7 +940,7 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
             revisionHandlers={revisionHandlers}
 
-            showBlankValidation={showBlankValidation || id === 'info-of-sales-section'}
+            showBlankValidation={showBlankValidation || id === 'info-of-sales-section' || id === 'project-info-section' || id === 'project-analysis-section' || id === 'unit-descriptions-section' || id === 'prior-sale-history-section' || title === 'Project Information' || title === 'Project Analysis' || title === 'Unit Descriptions' || title === 'Prior Sale History'}
 
             inputStyle={{ width: '100%', border: 'none', background: 'transparent', padding: 0, height: 'auto', resize: 'vertical', fontSize: '0.9rem', color: '#1f2937' }}
 
@@ -982,7 +998,7 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
           handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers}
 
-          showBlankValidation={showBlankValidation || id === 'info-of-sales-section'}
+          showBlankValidation={showBlankValidation || id === 'info-of-sales-section' || id === 'project-info-section' || id === 'project-analysis-section' || id === 'unit-descriptions-section' || id === 'prior-sale-history-section' || title === 'Project Information' || title === 'Project Analysis' || title === 'Unit Descriptions' || title === 'Prior Sale History'}
 
           inputStyle={{ width: '100%', border: 'none', background: 'transparent', padding: 0, height: 'auto', resize: usePre ? 'vertical' : 'none' }}
 

@@ -57,7 +57,7 @@ from .automation_fastapp import run_fastapp_automation
 from .utils import (
     NEW_FILES_REVISED_PATH, OLD_FILES_REVISED_PATH, HTML_FILES_PATH, 
     LOG_FILES_PATH, DOWNLOAD_PATH, PROCESSED_FILES_PATH, ERROR_FILES_PATH, 
-    FULL_FILE_PATH, FULL_FILE_LOGS_PATH, PAUSE_LOCK_FILE, TERMINATION_LOCK_FILE, logger
+    FULL_FILE_PATH, FULL_FILE_LOGS_PATH, LETTERS_PATH, PAUSE_LOCK_FILE, TERMINATION_LOCK_FILE, logger
 )
 
 automation_status: Dict[str, Any] = {
@@ -78,6 +78,7 @@ FOLDER_MAP = {
     'new_revised': NEW_FILES_REVISED_PATH,
     'old_revised': OLD_FILES_REVISED_PATH,
     'html_ref': HTML_FILES_PATH,
+    'letters': LETTERS_PATH,
     'logs': LOG_FILES_PATH,
     'processed': PROCESSED_FILES_PATH,
     'errors': ERROR_FILES_PATH,
@@ -86,13 +87,14 @@ FOLDER_MAP = {
 }
 
 VALID_EXTENSIONS = {
-    'html_ref': ['.html'],
-    'new_revised': ['_revised.pdf', '.pdf', '.xml', '_revised.xml'],
+    'html_ref': ['.html', '.htm'],
+    'letters': ['.pdf', '.doc', '.docx'],
+    'new_revised': ['_revised.pdf', '.pdf', '.xml', '_revised.xml', '.doc', '.docx', '.html', '.htm'],
     'old_revised': ['.pdf', '.xml'],
     'processed': ['.pdf', '.xlsx', '.xml'],
     'logs': ['.log', '.xlsx', '.html'],
     'errors': ['.png', '.pdf'],
-    'full_file': ['.pdf', '.xml'],
+    'full_file': ['.pdf', '.xml', '.doc', '.docx', '.html', '.htm'],
     'full_file_logs': ['.log', '.xlsx', '.html']
 }
 
@@ -185,7 +187,94 @@ def execute_automation_batch(filenames, username, password, mode='revised'):
                 if i > 0: logger.warning(f"RETRY ATTEMPT {attempt_num} for: {filename}")
                 else: logger.info(f"\n--- Starting workflow for: {filename} ---")
                 if mode == 'full':
-                    run_automation(source_path, username, password)
+                    base_name = os.path.splitext(filename)[0]
+                    el_candidates = [
+                        f"{base_name}.pdf",
+                        f"{base_name}.docx",
+                        f"{base_name}.doc",
+                        f"{base_name}_engagement_letter.pdf",
+                        f"{base_name}_engagement_letter.pdf.pdf",
+                        f"{base_name}_engagement.pdf",
+                        f"{base_name}_el.pdf",
+                        f"{base_name}_letter.pdf",
+                        f"{base_name} Engagement Letter.pdf",
+                        f"{base_name} EL.pdf",
+                        f"{base_name} letter.pdf",
+                        f"{base_name}_engagement_letter.docx",
+                        f"{base_name} Engagement Letter.docx",
+                        f"{base_name}_engagement_letter.doc",
+                        f"{base_name} Engagement Letter.doc",
+                    ]
+                    # Check Downloads/Letters/ first (Pramaan-3.5-regex-1\appraisal_review\Downloads\Letters)
+                    el_path = next((os.path.join(str(LETTERS_PATH), c) for c in el_candidates if os.path.exists(os.path.join(str(LETTERS_PATH), c))), None)
+                    if not el_path:
+                        el_path = next((os.path.join(search_path, c) for c in el_candidates if os.path.exists(os.path.join(search_path, c))), None)
+                    if not el_path and os.path.exists(LETTERS_PATH):
+                        for f in os.listdir(LETTERS_PATH):
+                            if base_name.lower() in f.lower():
+                                el_path = os.path.join(str(LETTERS_PATH), f)
+                                break
+                    # Fallback: pick available letter in Downloads/Letters
+                    if not el_path and os.path.exists(LETTERS_PATH):
+                        valid_letters = [
+                            f for f in os.listdir(LETTERS_PATH)
+                            if os.path.isfile(os.path.join(str(LETTERS_PATH), f))
+                            and f.lower().endswith(('.pdf', '.doc', '.docx'))
+                            and not f.startswith('.')
+                        ]
+                        if valid_letters:
+                            el_preferred = [f for f in valid_letters if any(k in f.lower() for k in ['letter', 'engagement', 'el'])]
+                            chosen = el_preferred[0] if el_preferred else sorted(
+                                valid_letters,
+                                key=lambda x: os.path.getmtime(os.path.join(str(LETTERS_PATH), x)),
+                                reverse=True
+                            )[0]
+                            el_path = os.path.join(str(LETTERS_PATH), chosen)
+
+                    # Resolve XML
+                    xml_candidates = [f"{base_name}.xml", f"{base_name}.XML"]
+                    xml_path = next((os.path.join(search_path, c) for c in xml_candidates if os.path.exists(os.path.join(search_path, c))), None)
+                    if not xml_path and filename.lower().endswith('.xml'):
+                        xml_path = source_path
+
+                    # Resolve HTML from Downloads/HTMLFiles/ (Pramaan-3.5-regex-1\appraisal_review\Downloads\HTMLFiles)
+                    html_candidates = [
+                        f"{base_name}.html",
+                        f"{base_name}.HTML",
+                        f"{base_name}.htm",
+                        f"{base_name}.HTM",
+                        f"{base_name}.html.html",
+                        f"{base_name}_order.html",
+                        f"{base_name} order.html",
+                        f"{base_name}_instructions.html",
+                        f"{base_name} instructions.html",
+                    ]
+                    html_path = next((os.path.join(str(HTML_FILES_PATH), c) for c in html_candidates if os.path.exists(os.path.join(str(HTML_FILES_PATH), c))), None)
+                    if not html_path:
+                        html_path = next((os.path.join(search_path, c) for c in html_candidates if os.path.exists(os.path.join(search_path, c))), None)
+                    if not html_path and os.path.exists(HTML_FILES_PATH):
+                        for f in os.listdir(HTML_FILES_PATH):
+                            if f.lower().endswith(('.html', '.htm')) and base_name.lower() in f.lower():
+                                html_path = os.path.join(str(HTML_FILES_PATH), f)
+                                break
+                    # Fallback: pick available HTML file in Downloads/HTMLFiles
+                    if not html_path and os.path.exists(HTML_FILES_PATH):
+                        valid_htmls = [
+                            f for f in os.listdir(HTML_FILES_PATH)
+                            if os.path.isfile(os.path.join(str(HTML_FILES_PATH), f))
+                            and f.lower().endswith(('.html', '.htm'))
+                            and not f.startswith('.')
+                        ]
+                        if valid_htmls:
+                            html_preferred = [f for f in valid_htmls if 'order' in f.lower() or 'instruction' in f.lower()]
+                            chosen = html_preferred[0] if html_preferred else sorted(
+                                valid_htmls,
+                                key=lambda x: os.path.getmtime(os.path.join(str(HTML_FILES_PATH), x)),
+                                reverse=True
+                            )[0]
+                            html_path = os.path.join(str(HTML_FILES_PATH), chosen)
+
+                    run_automation(source_path, username, password, xml_path=xml_path, html_path=html_path, engagement_letter_path=el_path)
                 else:
                     new_pdf = source_path
                     base_name = os.path.splitext(filename)[0]
@@ -231,6 +320,15 @@ def execute_automation_batch(filenames, username, password, mode='revised'):
                             logger.info(f"Moved accompanying sibling {sibling_ext} to: {sibling_dst}")
                         except Exception as e:
                             logger.warning(f"Could not move sibling file: {e}")
+                if mode == 'full':
+                    for comp_path in [html_path, el_path]:
+                        if comp_path and os.path.exists(comp_path):
+                            try:
+                                comp_dst = os.path.join(str(PROCESSED_FILES_PATH), os.path.basename(comp_path))
+                                shutil.move(comp_path, comp_dst)
+                                logger.info(f"Moved companion {os.path.basename(comp_path)} to: {comp_dst}")
+                            except Exception as ce:
+                                logger.warning(f"Could not move companion file: {ce}")
             else:
                 error_path = os.path.join(ERROR_FILES_PATH, filename)
                 shutil.move(source_path, error_path)
@@ -1258,6 +1356,14 @@ def generic_upload_to_folder(request, folder_key):
     with open(save_path, 'wb+') as destination:
         for chunk in file_obj.chunks():
             destination.write(chunk)
+
+    # If uploaded to full_file, ensure companion files are also available in their respective dedicated folders
+    fn_lower = file_obj.name.lower()
+    if folder_key in ('full_file', 'new_revised'):
+        if fn_lower.endswith(('.html', '.htm')) and HTML_FILES_PATH != path:
+            shutil.copy2(save_path, os.path.join(str(HTML_FILES_PATH), file_obj.name))
+        elif (fn_lower.endswith(('.doc', '.docx')) or 'letter' in fn_lower or 'engagement' in fn_lower or '_el.' in fn_lower) and LETTERS_PATH != path:
+            shutil.copy2(save_path, os.path.join(str(LETTERS_PATH), file_obj.name))
     return Response({"message": f"Successfully stored {file_obj.name} in {folder_key.upper()} repository"})
 
 @api_view(['GET', 'DELETE'])

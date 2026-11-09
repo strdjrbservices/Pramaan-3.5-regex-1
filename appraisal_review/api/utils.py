@@ -118,14 +118,30 @@ WEBSITE_B_PASSWORD = os.getenv("WEBSITE_B_PASSWORD", "Admin")
 WEBSITE_B_USERNAME_SELECTOR = "xpath=//label[contains(., 'Username')]/following-sibling::div/input | //input[@label='Username'] | //input[@name='username']"
 WEBSITE_B_PASSWORD_SELECTOR = "xpath=//label[contains(., 'Password')]/following-sibling::div/input | //input[@type='password']"
 WEBSITE_B_LOGIN_BUTTON_SELECTOR = "button[type='submit'], button:has-text('LOG IN'), button:has-text('Log In')"
-PDF_UPLOAD_SELECTOR = "xpath=//div[contains(@class, 'MuiPaper-root') and .//*[contains(., 'PDF')]]//input[@type='file'] | //input[@type='file'][contains(@accept, '.pdf')]"
-XML_UPLOAD_SELECTOR = "xpath=//div[contains(@class, 'MuiPaper-root') and .//*[contains(., 'XML')]]//input[@type='file'] | //input[@type='file'][contains(@accept, '.xml')]"
+PDF_UPLOAD_SELECTOR = "input[type='file'][accept='.pdf']"
+XML_UPLOAD_SELECTOR = "input[type='file'][accept='.xml']"
+XML_UPLOAD_JSPATH_USER = "body > div:nth-child(2) > div:nth-child(3) > div:nth-child(3) > div:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(2) > div:nth-child(2) > div:nth-child(1)"
 NEW_FILE_UPLOAD_SELECTOR_REVISED = "xpath=//label[contains(., 'New') or contains(., 'NEW')]//input[@type='file']"
 HTML_UPLOAD_SELECTOR_REVISED = "xpath=//label[contains(., 'HTML') or contains(., 'Html') or contains(., 'html')]//input[@type='file']"
-HTML_UPLOAD_SELECTOR = "xpath=//div[contains(@class, 'MuiPaper-root') and .//*[contains(., 'HTML')]]//input[@type='file'] | //input[@type='file'][contains(@accept, '.html')] | //label[contains(., 'Upload HTML')]//input[@type='file'] | //button[contains(., 'Upload HTML')]//input[@type='file']"
+HTML_UPLOAD_SELECTOR = "input[type='file'][accept='.html']"
+HTML_UPLOAD_XPATH_USER = "//div[@class='MuiPaper-root MuiPaper-elevation MuiPaper-rounded MuiPaper-elevation0 css-eczq37']//div[4]//div[1]//div[1]//*[name()='svg']"
+HTML_UPLOAD_JSPATH_USER = "body > div:nth-child(2) > div:nth-child(3) > div:nth-child(3) > div:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(2) > div:nth-child(3) > div:nth-child(1)"
+ENGAGEMENT_LETTER_UPLOAD_SELECTOR = "xpath=(//input[@type='file'][contains(@accept, '.doc')])[last()]"
+ENGAGEMENT_LETTER_JSPATH_USER = "body > div:nth-child(2) > div:nth-child(3) > div:nth-child(3) > div:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(2) > div:nth-child(5) > div:nth-child(1)"
+ENGAGEMENT_LETTER_XPATH_USER = (
+    "//div[contains(@class, 'MuiPaper-root') and .//*[normalize-space()='Letter']]//*[name()='svg'] "
+    "| //body/div[2]/div[3]/div[3]/div[2]/div[1]/div[1]/div[1]/div[2]/div[5]/div[1]"
+)
 SUBMIT_BUTTON_SELECTOR = '#submit-form-button'
 MAIN_LOADING_INDICATOR_SELECTOR = "xpath=//*[contains(@class, 'MuiCircularProgress-root') or contains(@class, 'MuiLoadingButton-loadingIndicator')]"
-FULL_FILE_REVIEW_BUTTON_SELECTOR = "xpath=//a[contains(., 'Full File Review')] | //button[contains(., 'Full File Review')] | //div[contains(., 'Full File Review')]"
+FULL_FILE_REVIEW_URL = os.getenv("FULL_FILE_REVIEW_URL", "https://strdjrb-pramaan-appraisal.hf.space/extractor")
+FULL_FILE_REVIEW_BUTTON_SELECTOR = (
+    "xpath=//a[contains(@href, 'extractor')] "
+    "| //a[contains(@href, '/extractor')] "
+    "| //a[contains(., 'Full File Review')] "
+    "| //button[contains(., 'Full File Review')] "
+    "| //div[contains(., 'Full File Review')]"
+)
 REVISED_FILE_REVIEW_BUTTON_SELECTOR = (
     "xpath=//p[normalize-space()='Revised File Review'] "
     "| //p[contains(text(), 'Revised File Review')] "
@@ -171,8 +187,9 @@ PROCESSED_FILES_PATH = DOWNLOAD_PATH / "Processed"
 ERROR_FILES_PATH = DOWNLOAD_PATH / "Errors"
 FULL_FILE_LOGS_PATH = DOWNLOAD_PATH / "full_file_logs"
 FULL_FILE_PATH = DOWNLOAD_PATH / "Full File"
+LETTERS_PATH = DOWNLOAD_PATH / "Letters"
 
-for folder in [DOWNLOAD_PATH, OLD_FILES_REVISED_PATH, NEW_FILES_REVISED_PATH, HTML_FILES_PATH, LOG_FILES_PATH, ERROR_SCREENSHOTS_PATH, PROCESSED_FILES_PATH, ERROR_FILES_PATH, FULL_FILE_PATH, FULL_FILE_LOGS_PATH]:
+for folder in [DOWNLOAD_PATH, OLD_FILES_REVISED_PATH, NEW_FILES_REVISED_PATH, HTML_FILES_PATH, LOG_FILES_PATH, ERROR_SCREENSHOTS_PATH, PROCESSED_FILES_PATH, ERROR_FILES_PATH, FULL_FILE_PATH, FULL_FILE_LOGS_PATH, LETTERS_PATH]:
     folder.mkdir(parents=True, exist_ok=True)
 
 PAUSE_LOCK_FILE = BASE_DIR / "pause.lock"
@@ -546,11 +563,18 @@ __all__ = [
     'WEBSITE_B_LOGIN_BUTTON_SELECTOR',
     'PDF_UPLOAD_SELECTOR',
     'XML_UPLOAD_SELECTOR',
+    'XML_UPLOAD_JSPATH_USER',
     'HTML_UPLOAD_SELECTOR',
+    'HTML_UPLOAD_XPATH_USER',
+    'HTML_UPLOAD_JSPATH_USER',
+    'ENGAGEMENT_LETTER_UPLOAD_SELECTOR',
+    'ENGAGEMENT_LETTER_JSPATH_USER',
+    'ENGAGEMENT_LETTER_XPATH_USER',
     'NEW_FILE_UPLOAD_SELECTOR_REVISED',
     'HTML_UPLOAD_SELECTOR_REVISED',
     'SUBMIT_BUTTON_SELECTOR',
     'MAIN_LOADING_INDICATOR_SELECTOR',
+    'FULL_FILE_REVIEW_URL',
     'FULL_FILE_REVIEW_BUTTON_SELECTOR',
     'REVISED_FILE_REVIEW_BUTTON_SELECTOR',
     'REVISED_FILE_REVIEW_CSS_SELECTOR',
@@ -574,6 +598,7 @@ __all__ = [
     'ERROR_FILES_PATH',
     'FULL_FILE_PATH',
     'FULL_FILE_LOGS_PATH',
+    'LETTERS_PATH',
     'PAUSE_LOCK_FILE',
     'wait_for_download',
     'wait_and_click',

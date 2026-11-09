@@ -1,27 +1,83 @@
+export const PROJECT_INFO_FIELDS_TO_CHECK = [
+    "Data source(s) for project information",
+    "Project Description",
+    "# of Stories",
+    "FEMA Special Flood Hazard Area",
+    "Density",
+    "Size",
+    "Topography",
+    "Zoning Compliance",
+    "# of Elevators",
+    "Existing/Proposed/Under Const.",
+    "Existing/Proposed/Under Construction",
+    "Year Built",
+    "Effective Age",
+    "Exterior Walls",
+    "Roof Surface",
+    "Total # Parking",
+    "Ratio (spaces/units)",
+    "Type",
+    "Guest Parking",
+    "# of Units",
+    "# of Units Completed",
+    "# of Units For Sale",
+    "# of Units for Sale",
+    "# of Units Sold",
+    "# of Units Rented",
+    "# of Owner Occupied Units",
+    "# of Phases",
+    "# of Planned Phases",
+    "# of Planned Units",
+    "# of Planned Units for Sale",
+    "# of Planned Units For Sale",
+    "# of Planned Units Sold",
+    "# of Planned Units Rented",
+    "# of Planned Owner Occupied Units",
+    "Project Primary Occupancy",
+    "Is the developer/builder in control of the Homeowners' Association (HOA)?",
+    "Management Group",
+    "Does any single entity (the same individual, investor group, corporation, etc.) own more than 10% of the total units in the project?",
+    "Was the project created by the conversion of existing building(s) into a condominium?",
+    "Was the project created by the conversion of existing building(s) into a condominium? If Yes,describe the original use and date of conversion",
+    "Was the project created by the conversion of existing building(s) into a condominium? If Yes, describe the original use and date of conversion",
+    "If Yes,describe the original use and date of conversion",
+    "If Yes, describe the original use and date of conversion",
+    "Are the units, common elements, and recreation facilities complete (including any planned rehabilitation for a condominium conversion)?",
+    "If No, describe",
+    "Is there any commercial space in the project?",
+    "If Yes, describe and indicate the overall percentage of the commercial space.",
+    "Describe the condition of the project and quality of construction.",
+    "Describe the common elements and recreational facilities.",
+    "Are any common elements leased to or by the Homeowners' Association?",
+    "If Yes, describe the rental terms and options.",
+    "Is the project subject to a ground rent?",
+    "If Yes, $ per year (describe terms and conditions)",
+    "Are the parking facilities adequate for the project size and type?",
+    "If No, describe and comment on the effect on value and marketability."
+];
+
 export const checkProjectInfoFieldsNotBlank = (field, text) => {
-    const fieldsToCheck = [
-        "Data source(s) for project information", "Project Description", "# of Stories", "FEMA Special Flood Hazard Area", "Density", "Size", "Topography", "Zoning Compliance",
-        "# of Elevators", "Existing/Proposed/Under Construction", "Year Built",
-        "Effective Age", "Exterior Walls",
-        "Roof Surface", "Total # Parking", "Ratio (spaces/units)", "Type", "Guest Parking", "# of Units", "# of Units Completed",
-        "# of Units For Sale", "# of Units Sold", "# of Units Rented", "# of Owner Occupied Units",
-        "# of Phases", "# of Planned Phases",
-        "Project Primary Occupancy", "Is the developer/builder in control of the Homeowners' Association (HOA)?",
-        "Management Group", "Does any single entity (the same individual, investor group, corporation, etc.) own more than 10% of the total units in the project?"
-        , "Was the project created by the conversion of existing building(s) into a condominium?",
-        "If Yes,describe the original use and date of conversion",
-        "Are the units, common elements, and recreation facilities complete (including any planned rehabilitation for a condominium conversion)?", "If No, describe",
-        "Is there any commercial space in the project?",
-        "If Yes, describe and indicate the overall percentage of the commercial space.", "Describe the condition of the project and quality of construction.",
-        "Describe the common elements and recreational facilities.", "Are any common elements leased to or by the Homeowners' Association?",
-        "If Yes, describe the rental terms and options.", "Is the project subject to a ground rent?",
-        "If Yes, $ per year (describe terms and conditions)",
-        "Are the parking facilities adequate for the project size and type?", "If No, describe and comment on the effect on value and marketability."
-    ];
-    if (fieldsToCheck.includes(field) && (!text || String(text).trim() === '')) {
-        return { isError: true, message: `'${field}' should not be blank.` };
+    const cleanField = String(field || '').trim().toLowerCase().replace(/[\s\r\n\t]+/g, ' ');
+    const isMatch = PROJECT_INFO_FIELDS_TO_CHECK.some(
+        f => f.trim().toLowerCase().replace(/[\s\r\n\t]+/g, ' ') === cleanField
+    );
+
+    if (!isMatch) {
+        return null;
     }
-    return null;
+
+    if (!text || String(text).trim() === '') {
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: `'${field}' must not be blank.`
+        };
+    }
+
+    return {
+        isMatch: true,
+        message: "Validation successful!"
+    };
 };
 
 export const isGrayCondoProjectCell = (field) => {

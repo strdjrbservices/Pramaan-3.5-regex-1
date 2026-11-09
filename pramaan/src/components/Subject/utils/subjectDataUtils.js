@@ -100,6 +100,12 @@ export const normalizeFullFileData = (raw) => {
   if (!normalized['Unit Descriptions'] || typeof normalized['Unit Descriptions'] !== 'object') {
     normalized['Unit Descriptions'] = normalized.UNIT_DESCRIPTIONS;
   }
+  if (!normalized.PRIOR_SALE_HISTORY || typeof normalized.PRIOR_SALE_HISTORY !== 'object') {
+    normalized.PRIOR_SALE_HISTORY = raw.PRIOR_SALE_HISTORY || raw['Prior Sale History'] || raw.clean_data?.['Prior Sale History'] || raw.clean_data?.PRIOR_SALE_HISTORY || {};
+  }
+  if (!normalized['Prior Sale History'] || typeof normalized['Prior Sale History'] !== 'object') {
+    normalized['Prior Sale History'] = normalized.PRIOR_SALE_HISTORY;
+  }
 
   const sectionKeyMap = {
     CONTRACT: [
@@ -311,6 +317,7 @@ export const getCleanDisplayJson = (data) => {
     ['PROJECT_ANALYSIS', 'Project Analysis'],
     ['PROJECT_SITE', 'Project Site'],
     ['UNIT_DESCRIPTIONS', 'Unit Descriptions'],
+    ['PRIOR_SALE_HISTORY', 'Prior Sale History'],
     ['MARKET_CONDITIONS', 'Market Conditions Addendum'],
     ['CONDO_COOP_PROJECTS', 'Condo / Coop Projects'],
     ['CONDO_FORECLOSURE', 'Condo Foreclosure'],

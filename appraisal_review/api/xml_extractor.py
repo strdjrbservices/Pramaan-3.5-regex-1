@@ -6796,6 +6796,72 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "If Yes, describe and explain the effect on value and marketability.": proj_spec_desc,
     }
 
+    # Prior Sale History Section
+    res_research_val = res_comment if res_did == "did not" and res_comment else res_did
+    prior_anal_comment_full = prior_anal_comment
+    if not prior_anal_comment_full:
+        for ps_elem in root.findall(".//PRIOR_SALE"):
+            c = ps_elem.attrib.get("GSEPriorSaleComment", "").strip()
+            if c:
+                prior_anal_comment_full = c
+                break
+
+    subj_ps_date = subj_grid.get("Date of Prior Sale/Transfer", "")
+    subj_ps_price = subj_grid.get("Price of Prior Sale/Transfer", "")
+    subj_ps_src = subj_grid.get("Data Source(s) for prior sale", "") or subj_prior_src
+    subj_ps_eff = subj_grid.get("Effective Date of Data Source(s) for prior sale", "")
+
+    comp1_grid = comps_dict.get("Comparable #1", {}) or comps_dict.get("Comparable Sale 1", {}) or comps_dict.get("COMPARABLE SALE #1", {})
+    comp1_date = comp1_grid.get("Date of Prior Sale/Transfer", "") if isinstance(comp1_grid, dict) else ""
+    comp1_price = comp1_grid.get("Price of Prior Sale/Transfer", "") if isinstance(comp1_grid, dict) else ""
+    comp1_src = (comp1_grid.get("Data Source(s) for prior sale", "") if isinstance(comp1_grid, dict) else "") or comp_prior_src
+    comp1_terms = (comp1_grid.get("Sales Concessions", "") or comp1_grid.get("Sales or Financing Concessions", "")) if isinstance(comp1_grid, dict) else ""
+
+    prior_sale_history_section: Dict[str, Any] = {
+        "Prior Sale History: I did did not research the sale or transfer history of the subject property and comparable sales": res_research_val,
+        "Prior Sale History: My research did did not reveal any prior sales or transfers of the subject property for the three years prior to the effective date of this appraisal": subj_prior_did,
+        "Prior Sale History: Data source(s) for subject": subj_prior_src,
+        "Prior Sale History: My research did did not reveal any prior sales or transfers of the comparable sales for the year prior to the date of sale of the comparable sale": comp_prior_did,
+        "Prior Sale History: Data source(s) for comparables": comp_prior_src,
+        "Prior Sale History: Report the results of the research and analysis of the prior sale or transfer history of the subject property and comparable sales": prior_anal_comment_full,
+        "Prior Sale History: Date of Prior Sale/Transfer": subj_ps_date,
+        "Prior Sale History: Price of Prior Sale/Transfer": subj_ps_price,
+        "Prior Sale History: Data Source(s) for prior sale/transfer": subj_ps_src,
+        "Prior Sale History: Effective Date of Data Source(s)": subj_ps_eff,
+        "Prior Sale History: Analysis of prior sale or transfer history of the subject property and comparable sales": prior_anal_comment_full,
+        "Prior Sales or Transfers": subj_prior_did,
+        "Subject Transfer History Data Source": subj_prior_src or subj_ps_src,
+        "Comparable Number": "1" if comps_dict else "",
+        "Comparable Transfer Terms": comp1_terms,
+        "Comparable Transfer Date": comp1_date,
+        "Comparable Transfer Amount": comp1_price,
+        "Comparable Transfer Data Source": comp1_src,
+        "Analysis of Prior Sale and Transfer History of Subject Property": prior_anal_comment_full,
+        "Analysis of Prior Sale and Transfer History of Comparable Sales": prior_anal_comment_full,
+        "I did did not research the sale or transfer history of the subject property and comparable sales": res_research_val,
+        "I did did not research the sale or transfer history of the subject property and comparable sales. If not, explain": res_research_val,
+        "My research did did not reveal any prior sales or transfers of the subject property for the three years prior to the effective date of this appraisal": subj_prior_did,
+        "My research did did not reveal any prior sales or transfers of the subject property for the three years prior to the effective date of this appraisal.": subj_prior_did,
+        "Data source(s) for subject": subj_prior_src,
+        "Data Source(s) for subject": subj_prior_src,
+        "Data source(s) for subject property research": subj_prior_src,
+        "Data Source(s) for subject property research": subj_prior_src,
+        "My research did did not reveal any prior sales or transfers of the comparable sales for the year prior to the date of sale of the comparable sale": comp_prior_did,
+        "My research did did not reveal any prior sales or transfers of the comparable sales for the year prior to the date of sale of the comparable sale.": comp_prior_did,
+        "Data source(s) for comparables": comp_prior_src,
+        "Data Source(s) for comparables": comp_prior_src,
+        "Data source(s) for comparable sales research": comp_prior_src,
+        "Data Source(s) for comparable sales research": comp_prior_src,
+        "Report the results of the research and analysis of the prior sale or transfer history of the subject property and comparable sales": prior_anal_comment_full,
+        "Date of Prior Sale/Transfer": subj_ps_date,
+        "Price of Prior Sale/Transfer": subj_ps_price,
+        "Data Source(s) for prior sale/transfer": subj_ps_src,
+        "Data Source(s) for prior sale": subj_ps_src,
+        "Effective Date of Data Source(s)": subj_ps_eff,
+        "Effective Date of Data Source(s) for prior sale": subj_ps_eff,
+        "Analysis of prior sale or transfer history of the subject property and comparable sales": prior_anal_comment_full,
+    }
+
     # Combined master fields object
     fields: Dict[str, Any] = {
         "From Type": form_type,
@@ -6901,6 +6967,9 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         "Project Information": project_info_section,
         "PROJECT_ANALYSIS": project_analysis_section,
         "Project Analysis": project_analysis_section,
+        "PRIOR_SALE_HISTORY": prior_sale_history_section,
+        "Prior Sale History": prior_sale_history_section,
+        "prior_sale_history": prior_sale_history_section,
         "MARKET_CONDITIONS": market_conditions_section,
         "CONDO_COOP_PROJECTS": condo_coop_section,
         "CONDO_FORECLOSURE": condo_foreclosure_section,
@@ -6944,7 +7013,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         fields["Invoice"] = fields["INVOICE"]
 
     # Flatten category fields into root fields so data[field] is directly available to UI
-    for cat_dict in [clean_subject, contract_section, neighborhood_section, site_section, improvements_section, reconciliation_section, income_approach_section, cost_approach_section, pud_info_section, project_info_section, project_analysis_section, market_conditions_section, condo_coop_section, condo_foreclosure_section, certification_section, uspap_identification_section, info_of_sales_section]:
+    for cat_dict in [clean_subject, contract_section, neighborhood_section, site_section, improvements_section, reconciliation_section, income_approach_section, cost_approach_section, pud_info_section, project_info_section, project_analysis_section, prior_sale_history_section, market_conditions_section, condo_coop_section, condo_foreclosure_section, certification_section, uspap_identification_section, info_of_sales_section]:
         for k, v in cat_dict.items():
             if k not in fields:
                 fields[k] = v
@@ -7028,6 +7097,9 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         clean_data["Project Information"] = project_info_section
     if project_analysis_section and any(project_analysis_section.values()):
         clean_data["Project Analysis"] = project_analysis_section
+    if prior_sale_history_section and any(prior_sale_history_section.values()):
+        clean_data["Prior Sale History"] = prior_sale_history_section
+        clean_data["PRIOR_SALE_HISTORY"] = prior_sale_history_section
     if market_conditions_section and any(market_conditions_section.values()):
         clean_data["Market Conditions Addendum"] = market_conditions_section
     if condo_coop_section and any(condo_coop_section.values()):
