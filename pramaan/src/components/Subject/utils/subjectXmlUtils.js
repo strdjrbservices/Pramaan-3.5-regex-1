@@ -5,6 +5,17 @@
 export const detectFormTypeFromXmlString = (xmlString) => {
   if (!xmlString) return null;
   try {
+    // 0. Check UAD 3.6 / Appraisal Version #1
+    if (
+      /MISMOReferenceModelIdentifier\s*=\s*["']3\.6/i.test(xmlString) ||
+      /<AboutVersionIdentifier>\s*1\s*<\/AboutVersionIdentifier>/i.test(xmlString) ||
+      /URAR\s+Delivery\s+Specification/i.test(xmlString) ||
+      /Appraisal\s+Version\s+#?1/i.test(xmlString) ||
+      (/<DocumentType>AppraisalReport<\/DocumentType>/i.test(xmlString) && /FNM_FRE/i.test(xmlString))
+    ) {
+      return 'Appraisal Version #1';
+    }
+
     const reportMatch = xmlString.match(/<REPORT\b([^>]*)/i);
     const reportAttrs = reportMatch ? reportMatch[1] : '';
 
@@ -97,7 +108,7 @@ export const normalizeExtractedFormType = (raw) => {
   if (upper.includes('1004MC')) return '1004MC';
   if (upper.includes('1004') || upper.includes('URAR') || upper.includes('FRE70')) return '1004';
   if (upper.includes('ERC') || upper.includes('ECR')) return 'ERC';
-  if (upper.includes('VERSION 1') || upper.includes('VERSION #1')) return 'Appraisal Version #1';
+  if (upper.includes('VERSION 1') || upper.includes('VERSION #1') || upper.includes('APPRAISAL VERSION') || upper.includes('UAD 3.6') || upper.includes('3.6')) return 'Appraisal Version #1';
   return s;
 };
 

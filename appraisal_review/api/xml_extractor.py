@@ -1343,6 +1343,17 @@ def _detect_form_type_from_xml(root: ET.Element) -> str:
     '1075', '2090', '2095', '203k-FHA', '1007', '216', '1025 + 1007', '1073 + 1007',
     '1004 + 1007', '1004MC', 'Appraisal Version #1', 'ERC'.
     """
+    # 0. Check UAD 3.6 / Appraisal Version #1
+    mismo_model = root.attrib.get("MISMOReferenceModelIdentifier", "")
+    if "3.6" in mismo_model or "3.6" in str(root.attrib):
+        about_ver = root.find(".//{*}AboutVersionIdentifier")
+        ver_num = about_ver.text.strip() if about_ver is not None and about_ver.text else "1"
+        return f"Appraisal Version #{ver_num}"
+
+    about_ver = root.find(".//{*}AboutVersionIdentifier")
+    if about_ver is not None and about_ver.text:
+        return f"Appraisal Version #{about_ver.text.strip()}"
+
     report = root.find(".//REPORT")
     rep_attrib = report.attrib if report is not None else {}
     mismo_form = rep_attrib.get("AppraisalFormType", "")
@@ -2645,6 +2656,11 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
         purpose = report.attrib.get("AppraisalPurposeType", "")
 
     form_type = _detect_form_type_from_xml(root)
+
+    # UAD 3.6 / Appraisal Version #1 dispatch
+    if "Appraisal Version" in form_type or "3.6" in root.attrib.get("MISMOReferenceModelIdentifier", ""):
+        from .uad36_extractor import extract_fields_from_uad36_xml
+        return extract_fields_from_uad36_xml(root, extract_images=extract_images)
 
     # Appraiser & Parties
     appraiser_name = ""

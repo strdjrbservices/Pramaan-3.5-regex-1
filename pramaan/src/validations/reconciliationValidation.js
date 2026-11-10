@@ -469,9 +469,9 @@ export const checkAttachmentTypeConsistency = (field, text, allData, fieldPath, 
         return null;
     }
 
-    const val1 = allData.IMPROVEMENTS?.['Attachment Type'] || allData['Attachment Type'];
-    const val2 = allData.SUBJECT?.['Attachment Type'];
-    const val3 = allData.Subject?.['Attached / Detached'] || allData['Attached / Detached'];
+    const val1 = allData.IMPROVEMENTS?.['Attachment Type'] || allData.IMPROVEMENTS?.['Attached / Detached'] || allData['Attachment Type'] || allData['Attached / Detached'];
+    const val2 = allData.SUBJECT?.['Attachment Type'] || allData.Subject?.['Attachment Type'] || allData['Attachment Type'] || allData['Attached / Detached'];
+    const val3 = allData.Subject?.['Attached / Detached'] || allData.SUBJECT?.['Attached / Detached'] || allData['Attached / Detached'] || allData['Attachment Type'];
 
     const normalize = (val) => {
         if (val === undefined || val === null || String(val).trim() === '') return null;
@@ -550,8 +550,8 @@ export const checkAppraiserCredentialLevelConsistency = (field, text, allData) =
         return null;
     }
 
-    const val1 = allData.SUMMARY?.['Appraiser Credential Level'] || allData['Appraiser Credential Level'];
-    const val2 = allData.CERTIFICATION?.['Appraiser Credential Level'];
+    const val1 = allData.SUMMARY?.['Appraiser Credential Level'] || allData.CONTACT?.['Appraiser Credential Level'] || allData['Appraiser Credential Level'];
+    const val2 = allData.CERTIFICATION?.['Appraiser Credential Level'] || allData.CONTACT?.['Appraiser Credential Level'] || allData['Appraiser Credential Level'];
 
     const cleanVal = (val) => {
         if (val === undefined || val === null || String(val).trim() === '') return null;

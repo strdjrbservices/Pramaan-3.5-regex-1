@@ -1059,6 +1059,22 @@ def extract_pdf(request):
 
             # 7. PDF Field Extraction (Offline & Model pipelines)
             form_type_str = str(form_type or "").strip().upper()
+
+            # Auto-detect Appraisal Version #1 / UAD 3.6 from PDF
+            if not form_type_str or form_type_str in ["AUTO", "1004", "NONE", ""]:
+                try:
+                    try:
+                        import pymupdf as fitz
+                    except ImportError:
+                        import fitz
+                    _doc = fitz.open(tmp_path)
+                    _p_text = (_doc[0].get_text() if len(_doc) > 0 else "") + (_doc[1].get_text() if len(_doc) > 1 else "")
+                    _doc.close()
+                    if re.search(r"Appraisal\s+Version\s+(#?\w+)", _p_text, re.IGNORECASE) or ("Fannie Mae | Freddie Mac" in _p_text and "Uniform Residential Appraisal Report" in _p_text):
+                        form_type_str = "APPRAISAL VERSION #1"
+                except Exception:
+                    pass
+
             if not custom_prompt:
                 # 100% Offline Pure Python Extraction (Fast & $0.00 cost)
                 if form_type_str in ["ECR", "ERC", "WORLDWIDE ERC"]:
@@ -1178,7 +1194,23 @@ def compare_pdf_to_xml(request):
         pdf_tmp_path = _save_temp_file(pdf_file)
         xml_tmp_path = _save_temp_file(xml_file)
 
-        pdf_data = extract_fields_from_pdf_offline(pdf_tmp_path)
+        # Auto-detect if PDF is Appraisal Version #1
+        is_v1_pdf = False
+        try:
+            import fitz
+            _doc = fitz.open(pdf_tmp_path)
+            _t = (_doc[0].get_text() if len(_doc) > 0 else "") + (_doc[1].get_text() if len(_doc) > 1 else "")
+            _doc.close()
+            if re.search(r"Appraisal\s+Version\s+(#?\w+)", _t, re.IGNORECASE) or ("Fannie Mae | Freddie Mac" in _t and "Uniform Residential Appraisal Report" in _t):
+                is_v1_pdf = True
+        except Exception:
+            pass
+
+        if is_v1_pdf:
+            pdf_data = extract_fields_from_pdf_v1_offline(pdf_tmp_path)
+        else:
+            pdf_data = extract_fields_from_pdf_offline(pdf_tmp_path)
+
         xml_data = extract_fields_from_xml(xml_tmp_path)
 
         pdf_fields = pdf_data.get("fields", {})

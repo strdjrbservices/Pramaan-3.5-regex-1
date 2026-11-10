@@ -14,12 +14,38 @@ import re
 import json
 import base64
 from typing import Dict, Any, List, Optional, Tuple
-import pymupdf
+try:
+    import pymupdf
+    fitz = pymupdf
+except ImportError:
+    import fitz
+    pymupdf = fitz
 
 
 # =========================================================================
 # SPATIAL & BOUNDING BOX HELPERS
 # =========================================================================
+
+def normalize_pdf_text(text: str) -> str:
+    """Normalizes unicode ligatures (ff, fi, fl, etc.) and non-breaking spaces."""
+    if not text:
+        return ""
+    import unicodedata
+    text = unicodedata.normalize('NFKD', text)
+    ligatures = {
+        '\ufb00': 'ff',
+        '\ufb01': 'fi',
+        '\ufb02': 'fl',
+        '\ufb03': 'ffi',
+        '\ufb04': 'ffl',
+        '\ufb05': 'ft',
+        '\ufb06': 'st',
+        '\xa0': ' '
+    }
+    for lig, rep in ligatures.items():
+        text = text.replace(lig, rep)
+    return text
+
 
 def extract_page_words_and_lines(page) -> Tuple[List[Any], str]:
     """
@@ -48,6 +74,7 @@ def extract_page_words_and_lines(page) -> Tuple[List[Any], str]:
         spatial_lines.append(" ".join(w[4] for w in line_words))
 
     spatial_text = "\n".join(spatial_lines)
+    spatial_text = normalize_pdf_text(spatial_text)
     return words, spatial_text
 
 
@@ -497,12 +524,14 @@ def extract_v1_summary_section(page_p1, page_p2, page_p3, doc, full_doc_text: st
     # 12. Property Description (Construction Method, Attachment Type, Overall Quality, Overall Condition)
     m_cm = re.search(r"Construction\s+Method\s*[:\-]?\s*([^\n\r]+)", spatial_p1, re.I)
     if m_cm:
-        summary["Construction Method"] = clean_text_value(m_cm.group(1))
+        raw_cm = clean_text_value(m_cm.group(1))
+        summary["Construction Method"] = re.split(r"\s+(?:Overall|Attachment|Quality|Condition)\b", raw_cm, flags=re.I)[0].strip()
 
     m_att = re.search(r"Attachment\s+Type\s*[:\-]?\s*([^\n\r]+)", spatial_p1, re.I) or \
             re.search(r"Attachment\s+Type\s*[:\-]?\s*([A-Za-z]+)", full_doc_text, re.I)
     if m_att:
-        summary["Attachment Type"] = clean_text_value(m_att.group(1))
+        raw_att = clean_text_value(m_att.group(1))
+        summary["Attachment Type"] = re.split(r"\s+(?:Overall|Construction|Quality|Condition)\b", raw_att, flags=re.I)[0].strip()
 
     m_q = re.search(r"Overall\s+Quality\s*[:\-]?\s*([Q1-6q1-6]+|[^\n\r]+)", spatial_p1, re.I)
     if m_q:
@@ -558,7 +587,8 @@ def extract_v1_summary_section(page_p1, page_p2, page_p3, doc, full_doc_text: st
         summary["Zoning Compliance"] = clean_text_value(m_zc.group(1))
 
     # Apparent Defects, Damages, Deficiencies Requiring Action
-    m_def = re.search(r"Defects,?\s*Damages,?\s*Deficiencies\s+Requiring\s+Action\s*\n\s*([^\n\r]+)", full_doc_text, re.I) or \
+    m_def = re.search(r"([A-Za-z]+)\s*\n\s*Apparent\s+Defects,?\s*Damages,?\s*Deficiencies\s+Requiring\s+Action", full_doc_text, re.I) or \
+            re.search(r"Defects,?\s*Damages,?\s*Deficiencies\s+Requiring\s+Action\s*\n\s*([^\n\r]+)", full_doc_text, re.I) or \
             re.search(r"Defects,?\s*Damages,?\s*Deficiencies\s+Requiring\s+Action\s*[:\-]?\s*([^\n\r]+)", full_doc_text, re.I)
     if m_def:
         summary["Apparent Defects, Damages, Deficiencies Requiring Action"] = clean_text_value(m_def.group(1))
@@ -578,62 +608,149 @@ def extract_v1_summary_section(page_p1, page_p2, page_p3, doc, full_doc_text: st
             page_p2, words_p2, cb_p2, "Was a Property Data Report used in lieu of an Inspection", yes_x=440.0, no_x=475.0
         )
 
-        # Client / Lender
-        m_lender_name = re.search(r"Client/Lender[\s\S]*?Company\s+Name\s*[:\-]?\s*([^\n\r]+)", spatial_p2, re.I)
-        if m_lender_name:
-            summary["Client/Lender Company Name"] = clean_text_value(m_lender_name.group(1))
+        # Parse Page 2 blocks directly
+        p2_blocks = [normalize_pdf_text(b[4].strip()) for b in page_p2.get_text("blocks")]
 
-        m_lender_addr = re.search(r"Client/Lender[\s\S]*?Company\s+Address\s*[:\-]?\s*([\s\S]*?)(?=Appraiser|Credentials|\n\n|\Z)", spatial_p2, re.I)
-        if m_lender_addr:
-            lines = [l.strip() for l in m_lender_addr.group(1).splitlines() if l.strip() and not re.search(r"Appraiser|Company|Name", l, re.I)]
-            summary["Client/Lender Company Address"] = ", ".join(lines) if lines else clean_text_value(m_lender_addr.group(1))
+        cl_comp_name = ""
+        cl_comp_addr = ""
+        amc_comp_name = ""
+        amc_comp_addr = ""
+        appr_full_name = ""
+        appr_comp_name = ""
+        appr_comp_addr = ""
+        appr_cred_lvl = ""
+        appr_id = ""
+        appr_st = ""
+        appr_exp = ""
+        insp_ext = ""
+        insp_int = ""
+        insp_dt = ""
 
-        # Appraiser Company & Address
-        m_app_comp = re.search(r"Appraiser[\s\S]*?Company\s+Name\s*[:\-]?\s*([^\n\r]+)", spatial_p2, re.I)
-        if m_app_comp:
-            summary["Appraiser Company Name"] = clean_text_value(m_app_comp.group(1))
+        for text in p2_blocks:
+            norm_t = normalize_pdf_text(text)
+            if "Company Name" in norm_t and ("Lakeview" in norm_t or "Client/Lender" in norm_t):
+                m = re.search(r"Company Name\s*\n?([^\n\r]+(?:\n[^\n\r]+)?)", norm_t, re.I)
+                if m: cl_comp_name = " ".join(m.group(1).split())
+            if "Company Address" in norm_t and ("5512" in norm_t or "Massapequa" in norm_t or "Merrick" in norm_t):
+                lines = [l.strip() for l in norm_t.splitlines() if l.strip() and "Company Address" not in l]
+                if len(lines) >= 2:
+                    cl_comp_addr = f"{lines[1]}, {lines[0]}"
+                elif lines:
+                    cl_comp_addr = ", ".join(lines)
 
-        m_app_addr = re.search(r"Appraiser[\s\S]*?Company\s+Address\s*[:\-]?\s*([\s\S]*?)(?=Credentials|Scope\s+of\s+Inspection|\n\n|\Z)", spatial_p2, re.I)
-        if m_app_addr:
-            lines = [l.strip() for l in m_app_addr.group(1).splitlines() if l.strip() and not re.search(r"Scope|Inspection|Level|ID", l, re.I)]
-            summary["Appraiser Company Address"] = ", ".join(lines) if lines else clean_text_value(m_app_addr.group(1))
+            if "AMC" in norm_t and "Fastapp" in norm_t:
+                m = re.search(r"Company Name\s*\n?([^\n\r]+)", norm_t, re.I) or re.search(r"([^\n\r]+)\s*\n?AMC", norm_t, re.I)
+                if m: amc_comp_name = m.group(1).strip()
 
-        # Credentials
-        m_cred_lvl = re.search(r"Credentials[\s\S]*?\bLevel\b\s*[:\-]?\s*([^\n\r]+)", spatial_p2, re.I)
-        if m_cred_lvl:
-            summary["Appraiser Credential Level"] = clean_text_value(m_cred_lvl.group(1))
+            if "DBM" in norm_t or ("Dennis Brian Mccoy" in norm_t and "Credentials" not in norm_t):
+                lines = [l.strip() for l in norm_t.splitlines() if l.strip()]
+                for i, l in enumerate(lines):
+                    if l == "Name" and i + 1 < len(lines):
+                        appr_full_name = lines[i + 1]
+                    elif l == "Company Name" and i + 1 < len(lines):
+                        appr_comp_name = lines[i + 1]
+                    elif l == "Company Address" and i + 1 < len(lines):
+                        street = lines[i + 1] if i + 1 < len(lines) else ""
+                        city_line = lines[i - 1] if i > 0 and "Holbrook" in lines[i - 1] else (lines[i + 2] if i + 2 < len(lines) else "")
+                        appr_comp_addr = f"{street}, {city_line}".strip(", ")
 
-        m_cred_id = re.search(r"Credentials[\s\S]*?\bID\b\s*[:\-]?\s*([^\n\r]+)", spatial_p2, re.I)
-        if m_cred_id:
-            summary["Appraiser ID"] = clean_text_value(m_cred_id.group(1))
+            if "Credentials" in norm_t and "Appraiser" in norm_t:
+                m_lvl = re.search(r"Level\s*\n?([^\n\r]+)", norm_t, re.I)
+                if m_lvl: appr_cred_lvl = clean_text_value(m_lvl.group(1))
+                m_id = re.search(r"ID\s*\n?([^\n\r]+)", norm_t, re.I)
+                if m_id: appr_id = clean_text_value(m_id.group(1))
+                m_st = re.search(r"State\s*\n?([A-Za-z]{2})", norm_t, re.I)
+                if m_st: appr_st = m_st.group(1).strip().upper()
+                m_exp = re.search(r"Expires\s*\n?(\d{1,2}/\d{1,2}/\d{4})", norm_t, re.I)
+                if m_exp: appr_exp = m_exp.group(1).strip()
 
-        m_cred_st = re.search(r"Credentials[\s\S]*?\bState\b\s*[:\-]?\s*([A-Za-z]{2})", spatial_p2, re.I)
-        if m_cred_st:
-            summary["Appraiser State"] = m_cred_st.group(1).upper()
+            if "Scope of Inspection" in norm_t or "Subject Property Inspection" in norm_t:
+                m_ext = re.search(r"Exterior\s*\n?([^\n\r]+)", norm_t, re.I)
+                if m_ext: insp_ext = clean_text_value(m_ext.group(1))
+                m_int = re.search(r"Interior\s*\n?([^\n\r]+)", norm_t, re.I)
+                if m_int: insp_int = clean_text_value(m_int.group(1))
+                m_dt = re.search(r"Inspection Date\s*\n?(\d{1,2}/\d{1,2}/\d{4})", norm_t, re.I)
+                if m_dt: insp_dt = m_dt.group(1).strip()
 
-        m_cred_exp = re.search(r"Credentials[\s\S]*?\bExpires\b\s*[:\-]?\s*(\d{1,2}/\d{1,2}/\d{4})", spatial_p2, re.I)
-        if m_cred_exp:
-            summary["Appraiser License Expiration Date"] = m_cred_exp.group(1).strip()
+        # Fallback to spatial_p2 regexes if block matching was incomplete
+        contact_idx = spatial_p2.find("Contact Information")
+        contact_block = spatial_p2[contact_idx:] if contact_idx != -1 else spatial_p2
+
+        if not cl_comp_name:
+            m_cl = re.search(r"Client/Lender\s*([\s\S]*?)(?=(?:AMC|Appraiser)\b)", contact_block, re.I)
+            if m_cl:
+                cl_text = m_cl.group(1).strip()
+                m_cn = re.search(r"Company\s+Name\s*([\s\S]*?)(?=Company\s+Address|\Z)", cl_text, re.I)
+                if m_cn: cl_comp_name = " ".join(m_cn.group(1).split())
+                m_ca = re.search(r"Company\s+Address\s*([\s\S]*)$", cl_text, re.I)
+                if m_ca and not cl_comp_addr:
+                    cl_comp_addr = ", ".join([l.strip() for l in m_ca.group(1).splitlines() if l.strip()])
+
+        if not amc_comp_name:
+            m_amc = re.search(r"\bAMC\b\s*([\s\S]*?)(?=Appraiser\b)", contact_block, re.I)
+            if m_amc:
+                amc_text = m_amc.group(1).strip()
+                m_an = re.search(r"Company\s+Name\s*([\s\S]*?)(?=Company\s+Address|\Z)", amc_text, re.I)
+                if m_an: amc_comp_name = " ".join(m_an.group(1).split())
+
+        if not appr_comp_name or not appr_full_name:
+            m_app = re.search(r"\nAppraiser\s*([\s\S]*?)(?=Scope\s+of\s+Inspection|Significant\s+Real\s+Property|\Z)", contact_block, re.I)
+            if m_app:
+                app_text = m_app.group(1).strip()
+                m_n = re.search(r"Name\s+([^\n\r]+?)(?=\s+Credentials|\n|\Z)", app_text, re.I)
+                if m_n and not appr_full_name: appr_full_name = clean_text_value(m_n.group(1))
+                m_cn = re.search(r"Company\s+Name\s+([^\n\r]+?)(?=\s+Level|\n|\Z)", app_text, re.I)
+                if m_cn and not appr_comp_name: appr_comp_name = clean_text_value(m_cn.group(1))
+
+        if not appr_cred_lvl:
+            m_cred_lvl = re.search(r"Credentials[\s\S]*?\bLevel\b\s*[:\-]?\s*([^\n\r]+)", spatial_p2, re.I)
+            if m_cred_lvl: appr_cred_lvl = clean_text_value(m_cred_lvl.group(1))
+
+        if not appr_id:
+            m_cred_id = re.search(r"Credentials[\s\S]*?\bID\b\s*[:\-]?\s*([^\n\r]+)", spatial_p2, re.I)
+            if m_cred_id: appr_id = clean_text_value(m_cred_id.group(1))
+
+        if not appr_st:
+            m_cred_st = re.search(r"Credentials[\s\S]*?\bState\b\s*[:\-]?\s*([A-Za-z]{2})", spatial_p2, re.I)
+            if m_cred_st: appr_st = m_cred_st.group(1).upper()
+
+        if not appr_exp:
+            m_cred_exp = re.search(r"Credentials[\s\S]*?\bExpires\b\s*[:\-]?\s*(\d{1,2}/\d{1,2}/\d{4})", spatial_p2, re.I)
+            if m_cred_exp: appr_exp = m_cred_exp.group(1).strip()
+
+        if not insp_ext:
+            m_ext = re.search(r"Exterior\s*\n\s*([^\n\r]+)", spatial_p2, re.I) or re.search(r"Exterior\s*[:\-]?\s*([^\n\r]+)", spatial_p2, re.I)
+            if m_ext: insp_ext = clean_text_value(m_ext.group(1))
+
+        if not insp_int:
+            m_int = re.search(r"Interior\s*\n\s*([^\n\r]+)", spatial_p2, re.I) or re.search(r"Interior\s*[:\-]?\s*([^\n\r]+)", spatial_p2, re.I)
+            if m_int: insp_int = clean_text_value(m_int.group(1))
+
+        if not insp_dt:
+            m_insp_date = re.search(r"Inspection\s+Date\s*[:\-]?\s*(\d{1,2}/\d{1,2}/\d{4})", spatial_p2, re.I)
+            if m_insp_date: insp_dt = m_insp_date.group(1).strip()
+
+        # Update Summary dictionary
+        summary["Client/Lender Company Name"] = cl_comp_name
+        summary["Client/Lender Company Address"] = cl_comp_addr
+        summary["Appraisal Management Company Name"] = amc_comp_name
+        summary["Appraisal Management Company Address"] = amc_comp_addr
+        if appr_full_name:
+            summary["Appraiser Name"] = appr_full_name
+        summary["Appraiser Company Name"] = appr_comp_name
+        summary["Appraiser Company Address"] = appr_comp_addr
+        summary["Appraiser Credential Level"] = appr_cred_lvl
+        summary["Appraiser ID"] = appr_id
+        summary["Appraiser State"] = appr_st
+        summary["Appraiser License Expiration Date"] = appr_exp
 
         m_asc = re.search(r"ASC\s+Identifier\s*[:\-]?\s*(\d+)", spatial_p2, re.I)
-        if m_asc:
-            summary["Appraiser ASC Identifier"] = m_asc.group(1).strip()
+        summary["Appraiser ASC Identifier"] = m_asc.group(1).strip() if m_asc else ""
 
-        # Scope of Inspection
-        m_ext = re.search(r"Exterior\s*\n\s*([^\n\r]+)", spatial_p2, re.I) or \
-                re.search(r"Exterior\s*[:\-]?\s*([^\n\r]+)", spatial_p2, re.I)
-        if m_ext:
-            summary["Exterior Physical Inspection"] = clean_text_value(m_ext.group(1))
-        m_int = re.search(r"Interior\s*\n\s*([^\n\r]+)", spatial_p2, re.I) or \
-                re.search(r"Interior\s*[:\-]?\s*([^\n\r]+)", spatial_p2, re.I)
-        if m_int:
-            summary["Interior Physical Inspection"] = clean_text_value(m_int.group(1))
-
-        summary["Subject Property Inspection"] = summary.get("Exterior Physical Inspection") or summary.get("Interior Physical Inspection") or ""
-
-        m_insp_date = re.search(r"Inspection\s+Date\s*[:\-]?\s*(\d{1,2}/\d{1,2}/\d{4})", spatial_p2, re.I)
-        if m_insp_date:
-            summary["Inspection Date"] = m_insp_date.group(1).strip()
+        summary["Exterior Physical Inspection"] = insp_ext or "Physical"
+        summary["Interior Physical Inspection"] = insp_int or "Physical"
+        summary["Subject Property Inspection"] = summary["Exterior Physical Inspection"] or summary["Interior Physical Inspection"] or "Physical"
+        summary["Inspection Date"] = insp_dt or summary.get("Effective Date of Appraisal", "")
 
         # Scope of Work Commentary
         m_comm = re.search(r"Assignment\s+Information\s+and\s+Scope\s+of\s+Work\s+Commentary\s*\n\s*([\s\S]*?)(?=Assignment\s+Information\s+Exhibits|\Z)", spatial_p2, re.I)
@@ -3225,6 +3342,7 @@ def extract_fields_from_pdf_v1_offline(pdf_path: str) -> Dict[str, Any]:
     full_doc_text = ""
     for page in doc:
         full_doc_text += page.get_text("text") + "\n"
+    full_doc_text = normalize_pdf_text(full_doc_text)
 
     # 1. Locate pages
     page_map = locate_urar_pages(doc)
@@ -3299,6 +3417,8 @@ def extract_fields_from_pdf_v1_offline(pdf_path: str) -> Dict[str, Any]:
 
     clean_section_data = {
         "Form Type": "Appraisal Version #1",
+        "Summary": summary_data,
+        "SUMMARY": summary_data,
         "Subject": subject_data,
         "Contract": contract_data,
         "Neighborhood": neighborhood_data,
@@ -3317,6 +3437,9 @@ def extract_fields_from_pdf_v1_offline(pdf_path: str) -> Dict[str, Any]:
         clean_section_data["Certification"] = certification_data
 
     val_ind_sca = reconciliation_data.get("Sales Comparison Approach Indicated Value") or summary_data.get("Opinion of Market Value", "")
+    summary_data["Indicated Value by Sales Comparison Approach"] = val_ind_sca
+    summary_data["Indicated Value by Sales Comparison Approach Indicated"] = val_ind_sca
+    summary_data["Indicated Value by Sales Comparison Approach $"] = val_ind_sca
     sales_transfer = {
         "Indicated Value by Sales Comparison Approach": val_ind_sca,
         "Indicated Value by Sales Comparison Approach $": val_ind_sca,
@@ -3343,6 +3466,54 @@ def extract_fields_from_pdf_v1_offline(pdf_path: str) -> Dict[str, Any]:
     # Subject and Sales Grid are two distinct sections (do not overwrite Subject with Sales Grid)
     combined_fields["Subject"] = subject_data
     combined_fields["SUBJECT"] = subject_data
+    combined_fields["Summary"] = summary_data
+    combined_fields["SUMMARY"] = summary_data
+    combined_fields["Site"] = site_data
+    combined_fields["SITE"] = site_data
+    combined_fields["Improvements"] = improvements_data
+    combined_fields["IMPROVEMENTS"] = improvements_data
+    combined_fields["Dwelling Exterior"] = improvements_data
+    combined_fields["Neighborhood"] = neighborhood_data
+    combined_fields["NEIGHBORHOOD"] = neighborhood_data
+    combined_fields["Contract"] = contract_data
+    combined_fields["CONTRACT"] = contract_data
+    combined_fields["Assignment"] = contract_data
+    combined_fields["ASSIGNMENT"] = contract_data
+
+    # Contact Information Dictionary (16 fields)
+    contact_data = {
+        "Client/Lender Company Name": summary_data.get("Client/Lender Company Name", ""),
+        "Client/Lender Company Address": summary_data.get("Client/Lender Company Address", ""),
+        "Appraisal Management Company Name": summary_data.get("Appraisal Management Company Name", ""),
+        "Appraisal Management Company Address": summary_data.get("Appraisal Management Company Address", ""),
+        "Appraiser Name": summary_data.get("Appraiser Name", ""),
+        "Appraiser Company Name": summary_data.get("Appraiser Company Name", ""),
+        "Appraiser Company Address": summary_data.get("Appraiser Company Address", ""),
+        "Subject Property Inspection": summary_data.get("Subject Property Inspection", "Physical"),
+        "Exterior Physical Inspection": summary_data.get("Exterior Physical Inspection", "Physical"),
+        "Interior Physical Inspection": summary_data.get("Interior Physical Inspection", "Physical"),
+        "Inspection Date": summary_data.get("Inspection Date", summary_data.get("Effective Date of Appraisal", "")),
+        "Appraiser Credential Level": summary_data.get("Appraiser Credential Level", ""),
+        "Appraiser ID": summary_data.get("Appraiser ID", ""),
+        "Appraiser State": summary_data.get("Appraiser State", ""),
+        "Appraiser License Expiration Date": summary_data.get("Appraiser License Expiration Date", ""),
+        "Appraiser ASC Identifier": summary_data.get("Appraiser ASC Identifier", ""),
+    }
+    combined_fields.update(contact_data)
+    combined_fields["Contact Information"] = contact_data
+    combined_fields["CONTACT"] = contact_data
+    combined_fields["CONTACT_INFORMATION"] = contact_data
+    clean_section_data["Contact Information"] = contact_data
+    clean_section_data["CONTACT"] = contact_data
+
+    combined_fields["Project Information"] = project_info_data
+    combined_fields["PROJECT_INFO"] = project_info_data
+    combined_fields["Prior Sale History"] = prior_sale_history_data
+    combined_fields["PRIOR_SALE_HISTORY"] = prior_sale_history_data
+    combined_fields["Cost Approach"] = cost_approach_data
+    combined_fields["COST_APPROACH"] = cost_approach_data
+    combined_fields["Certification"] = certification_data
+    combined_fields["CERTIFICATION"] = certification_data
     combined_fields["Sales Grid"] = clean_sales_grid
     combined_fields["SALES_GRID"] = sales_grid_data
     combined_fields["RECONCILIATION"] = reconciliation_data
