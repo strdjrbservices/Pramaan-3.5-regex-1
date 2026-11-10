@@ -225,7 +225,7 @@ const Version1 = ({
         id="summary-section"
         title="Summary"
         fields={version1SummaryFields}
-        data={data.SUMMARY || data}
+        data={{ ...(data || {}), ...(data.SUMMARY || {}) }}
         cardClass="bg-primary"
         extractionAttempted={extractionAttempted}
         onDataChange={(field, value) => handleDataChange(['SUMMARY', ...field], value)}
@@ -245,7 +245,7 @@ const Version1 = ({
         id="assignment-information"
         title="Assignment Information"
         fields={assignmentFields}
-        data={data.SUMMARY || data}
+        data={{ ...(data || {}), ...(data.ASSIGNMENT || {}), ...(data.SUMMARY || {}) }}
         cardClass="bg-secondary"
         extractionAttempted={extractionAttempted}
         onDataChange={(field, value) => handleDataChange(['SUMMARY', ...field], value)}
@@ -267,10 +267,13 @@ const Version1 = ({
         id="contact-information"
         title="Contact Information"
         fields={contactFields}
-        data={data.SUMMARY || data}
+        data={{ ...(data || {}), ...(data.CONTACT || {}), ...(data['Contact Information'] || {}), ...(data.SUMMARY || {}) }}
         cardClass="bg-info"
         extractionAttempted={extractionAttempted}
-        onDataChange={(field, value) => handleDataChange(['SUMMARY', ...field], value)}
+        onDataChange={(field, value) => {
+          handleDataChange(['SUMMARY', ...field], value);
+          handleDataChange(['CONTACT', ...field], value);
+        }}
         editingField={editingField}
         setEditingField={setEditingField}
         isEditable={true}
@@ -289,7 +292,7 @@ const Version1 = ({
         id="subject-property"
         title="Subject Property"
         fields={subjectPropertyFields}
-        data={data.SUMMARY || data}
+        data={{ ...(data || {}), ...(data.SUBJECT || {}), ...(data.SUMMARY || {}) }}
         cardClass="bg-primary"
         extractionAttempted={extractionAttempted}
         onDataChange={(field, value) => handleDataChange(['SUMMARY', ...field], value)}
@@ -333,7 +336,7 @@ const Version1 = ({
                   <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#666', display: 'block' }}>{field}</span>
                   <EditableField
                     fieldPath={['SITE', field]}
-                    value={data.SITE?.[field] || ''}
+                    value={data.SITE?.[field] || data[field] || ''}
                     onDataChange={handleDataChange}
                     editingField={editingField}
                     setEditingField={setEditingField}
@@ -366,19 +369,19 @@ const Version1 = ({
               <TableBody>
                 <TableRow hover>
                   <TableCell sx={{ py: 0.5 }}>
-                    <EditableField fieldPath={['SITE', 'Site Influence']} value={data.SITE?.['Site Influence'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
+                    <EditableField fieldPath={['SITE', 'Site Influence']} value={data.SITE?.['Site Influence'] || data['Site Influence'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
                   </TableCell>
                   <TableCell sx={{ py: 0.5 }}>
-                    <EditableField fieldPath={['SITE', 'Site Influence Proximity']} value={data.SITE?.['Site Influence Proximity'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
+                    <EditableField fieldPath={['SITE', 'Site Influence Proximity']} value={data.SITE?.['Site Influence Proximity'] || data['Site Influence Proximity'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
                   </TableCell>
                   <TableCell sx={{ py: 0.5 }}>
-                    <EditableField fieldPath={['SITE', 'Site Influence Detail']} value={data.SITE?.['Site Influence Detail'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
+                    <EditableField fieldPath={['SITE', 'Site Influence Detail']} value={data.SITE?.['Site Influence Detail'] || data['Site Influence Detail'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
                   </TableCell>
                   <TableCell sx={{ py: 0.5 }}>
-                    <EditableField fieldPath={['SITE', 'Site Influence Impact']} value={data.SITE?.['Site Influence Impact'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
+                    <EditableField fieldPath={['SITE', 'Site Influence Impact']} value={data.SITE?.['Site Influence Impact'] || data['Site Influence Impact'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
                   </TableCell>
                   <TableCell sx={{ py: 0.5 }}>
-                    <EditableField fieldPath={['SITE', 'Site Influence Comment']} value={data.SITE?.['Site Influence Comment'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
+                    <EditableField fieldPath={['SITE', 'Site Influence Comment']} value={data.SITE?.['Site Influence Comment'] || data['Site Influence Comment'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
                   </TableCell>
                 </TableRow>
               </TableBody>
@@ -406,13 +409,13 @@ const Version1 = ({
               <TableBody>
                 <TableRow hover>
                   <TableCell sx={{ py: 0.5 }}>
-                    <EditableField fieldPath={['SITE', 'View']} value={data.SITE?.['View'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
+                    <EditableField fieldPath={['SITE', 'View']} value={data.SITE?.['View'] || data['View'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
                   </TableCell>
                   <TableCell sx={{ py: 0.5 }}>
-                    <EditableField fieldPath={['SITE', 'Range of View']} value={data.SITE?.['Range of View'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
+                    <EditableField fieldPath={['SITE', 'Range of View']} value={data.SITE?.['Range of View'] || data['Range of View'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
                   </TableCell>
                   <TableCell sx={{ py: 0.5 }}>
-                    <EditableField fieldPath={['SITE', 'View Impact']} value={data.SITE?.['View Impact'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
+                    <EditableField fieldPath={['SITE', 'View Impact']} value={data.SITE?.['View Impact'] || data['View Impact'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
                   </TableCell>
                 </TableRow>
               </TableBody>
@@ -420,7 +423,7 @@ const Version1 = ({
             <Box sx={{ p: 2, borderTop: '1px solid #e0e0e0', display: 'flex', alignItems: 'center', gap: '12px' }}>
               <Typography variant="subtitle2" fontWeight="bold" sx={{ minWidth: '130px' }}>View Commentary:</Typography>
               <Box sx={{ flexGrow: 1 }}>
-                <EditableField fieldPath={['SITE', 'View Commentary']} value={data.SITE?.['View Commentary'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
+                <EditableField fieldPath={['SITE', 'View Commentary']} value={data.SITE?.['View Commentary'] || data['View Commentary'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
               </Box>
             </Box>
           </TableContainer>
@@ -468,7 +471,7 @@ const Version1 = ({
               <Typography variant="subtitle2" fontWeight="bold">Utilities and Impact to Value/Marketability</Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Broadband Internet Available:</span>
-                <EditableField fieldPath={['SITE', 'Broadband Internet Available']} value={data.SITE?.['Broadband Internet Available'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
+                <EditableField fieldPath={['SITE', 'Broadband Internet Available']} value={data.SITE?.['Broadband Internet Available'] || data['Broadband Internet Available'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
               </Box>
             </Box>
             <Table size="small">
@@ -484,7 +487,7 @@ const Version1 = ({
               </TableHead>
               <TableBody>
                 {['Electricity', 'Sanitary Sewer', 'Water'].map(utility => {
-                  const val = data.SITE?.[utility] || '';
+                  const val = data.SITE?.[utility] || data[utility] || '';
                   const detailKey = `${utility} Detail`;
                   const impactKey = `${utility} Private Utility Impact`;
                   const commentKey = `${utility} Comment`;
@@ -507,13 +510,13 @@ const Version1 = ({
                         />
                       </TableCell>
                       <TableCell sx={{ py: 0.5 }}>
-                        <EditableField fieldPath={['SITE', detailKey]} value={data.SITE?.[detailKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
+                        <EditableField fieldPath={['SITE', detailKey]} value={data.SITE?.[detailKey] || data[detailKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
                       </TableCell>
                       <TableCell sx={{ py: 0.5 }}>
-                        <EditableField fieldPath={['SITE', impactKey]} value={data.SITE?.[impactKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
+                        <EditableField fieldPath={['SITE', impactKey]} value={data.SITE?.[impactKey] || data[impactKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
                       </TableCell>
                       <TableCell sx={{ py: 0.5 }}>
-                        <EditableField fieldPath={['SITE', commentKey]} value={data.SITE?.[commentKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
+                        <EditableField fieldPath={['SITE', commentKey]} value={data.SITE?.[commentKey] || data[commentKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
                       </TableCell>
                     </TableRow>
                   );
@@ -705,7 +708,7 @@ const Version1 = ({
                 <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#666', display: 'block' }}>{field}</span>
                 <EditableField
                   fieldPath={[field]}
-                  value={data[field] || ''}
+                  value={data[field] || data.IMPROVEMENTS?.[field] || ''}
                   onDataChange={handleDataChange}
                   editingField={editingField}
                   setEditingField={setEditingField}
@@ -728,13 +731,13 @@ const Version1 = ({
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <Typography variant="subtitle2" fontWeight="bold" sx={{ color: '#495057' }}>Exterior Quality Rating:</Typography>
                 <Box sx={{ width: '100px' }}>
-                  <EditableField fieldPath={['Exterior Quality Rating']} value={data['Exterior Quality Rating'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
+                  <EditableField fieldPath={['Exterior Quality Rating']} value={data['Exterior Quality Rating'] || data.IMPROVEMENTS?.['Exterior Quality Rating'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
                 </Box>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <Typography variant="subtitle2" fontWeight="bold" sx={{ color: '#495057' }}>Exterior Condition Rating:</Typography>
                 <Box sx={{ width: '100px' }}>
-                  <EditableField fieldPath={['Exterior Condition Rating']} value={data['Exterior Condition Rating'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
+                  <EditableField fieldPath={['Exterior Condition Rating']} value={data['Exterior Condition Rating'] || data.IMPROVEMENTS?.['Exterior Condition Rating'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
                 </Box>
               </div>
             </Box>
@@ -777,24 +780,24 @@ const Version1 = ({
                       <TableCell sx={{ py: 0.5 }}>
                         {feature.label === 'Roof' ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <EditableField fieldPath={['Roof']} value={data['Roof'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} placeholder="Roof type" />
+                            <EditableField fieldPath={['Roof']} value={data['Roof'] || data.IMPROVEMENTS?.['Roof'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} placeholder="Roof type" />
                             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                               <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#666' }}>Est. Age:</span>
-                              <EditableField fieldPath={['Roof Estimated Age']} value={data['Roof Estimated Age'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} placeholder="e.g. 1-10 years" />
+                              <EditableField fieldPath={['Roof Estimated Age']} value={data['Roof Estimated Age'] || data.IMPROVEMENTS?.['Roof Estimated Age'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} placeholder="e.g. 1-10 years" />
                             </div>
                           </div>
                         ) : (
-                          <EditableField fieldPath={[detailKey]} value={data[detailKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
+                          <EditableField fieldPath={[detailKey]} value={data[detailKey] || data.IMPROVEMENTS?.[detailKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
                         )}
                       </TableCell>
                       <TableCell sx={{ py: 0.5 }}>
-                        <EditableField fieldPath={[qCommentKey]} value={data[qCommentKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
+                        <EditableField fieldPath={[qCommentKey]} value={data[qCommentKey] || data.IMPROVEMENTS?.[qCommentKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
                       </TableCell>
                       <TableCell sx={{ py: 0.5 }}>
-                        <EditableField fieldPath={[cStatusKey]} value={data[cStatusKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
+                        <EditableField fieldPath={[cStatusKey]} value={data[cStatusKey] || data.IMPROVEMENTS?.[cStatusKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
                       </TableCell>
                       <TableCell sx={{ py: 0.5 }}>
-                        <EditableField fieldPath={[cCommentKey]} value={data[cCommentKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
+                        <EditableField fieldPath={[cCommentKey]} value={data[cCommentKey] || data.IMPROVEMENTS?.[cCommentKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
                       </TableCell>
                     </TableRow>
                   );
@@ -820,16 +823,16 @@ const Version1 = ({
                   <TableRow hover>
                     <TableCell sx={{ fontWeight: 'bold' }}>Heating</TableCell>
                     <TableCell sx={{ py: 0.5 }}>
-                      <EditableField fieldPath={['Heating System']} value={data['Heating System'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
+                      <EditableField fieldPath={['Heating System']} value={data['Heating System'] || data.IMPROVEMENTS?.['Heating System'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
                     </TableCell>
                     <TableCell sx={{ py: 0.5 }}>
-                      <EditableField fieldPath={['Heating Fuel']} value={data['Heating Fuel'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
+                      <EditableField fieldPath={['Heating Fuel']} value={data['Heating Fuel'] || data.IMPROVEMENTS?.['Heating Fuel'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
                     </TableCell>
                   </TableRow>
                   <TableRow hover>
                     <TableCell sx={{ fontWeight: 'bold' }}>Cooling</TableCell>
                     <TableCell sx={{ py: 0.5 }}>
-                      <EditableField fieldPath={['Cooling System']} value={data['Cooling System'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
+                      <EditableField fieldPath={['Cooling System']} value={data['Cooling System'] || data.IMPROVEMENTS?.['Cooling System'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
                     </TableCell>
                     <TableCell sx={{ py: 0.5 }}></TableCell>
                   </TableRow>
@@ -844,7 +847,7 @@ const Version1 = ({
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Checkbox
                       size="small"
-                      checked={String(data['Core Heating System Below Grade']).toLowerCase() === 'yes' || data['Core Heating System Below Grade'] === true}
+                      checked={String(data['Core Heating System Below Grade'] || data.IMPROVEMENTS?.['Core Heating System Below Grade'] || '').toLowerCase() === 'yes' || (data['Core Heating System Below Grade'] || data.IMPROVEMENTS?.['Core Heating System Below Grade']) === true}
                       onChange={(e) => handleDataChange(['Core Heating System Below Grade'], e.target.checked ? 'Yes' : 'No')}
                     />
                     <Typography variant="body2" fontWeight="medium">Yes</Typography>
@@ -852,7 +855,7 @@ const Version1 = ({
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Checkbox
                       size="small"
-                      checked={String(data['Core Heating System Below Grade']).toLowerCase() === 'no' || data['Core Heating System Below Grade'] === false}
+                      checked={String(data['Core Heating System Below Grade'] || data.IMPROVEMENTS?.['Core Heating System Below Grade'] || '').toLowerCase() === 'no' || (data['Core Heating System Below Grade'] || data.IMPROVEMENTS?.['Core Heating System Below Grade']) === false}
                       onChange={(e) => handleDataChange(['Core Heating System Below Grade'], e.target.checked ? 'No' : 'Yes')}
                     />
                     <Typography variant="body2" fontWeight="medium">No</Typography>
@@ -864,7 +867,7 @@ const Version1 = ({
                 <Typography variant="caption" fontWeight="bold" sx={{ color: '#666', display: 'block', mb: 0.5 }}>Other Mechanical Systems</Typography>
                 <EditableField
                   fieldPath={['Other Mechanical Systems']}
-                  value={data['Other Mechanical Systems'] || ''}
+                  value={data['Other Mechanical Systems'] || data.IMPROVEMENTS?.['Other Mechanical Systems'] || ''}
                   onDataChange={handleDataChange}
                   editingField={editingField}
                   setEditingField={setEditingField}
@@ -883,7 +886,7 @@ const Version1 = ({
             <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>Apparent Defects, Damages, Deficiencies (Dwelling Exterior)</Typography>
             <EditableField
               fieldPath={['Apparent Defects, Damages, Deficiencies (Dwelling Exterior)']}
-              value={data['Apparent Defects, Damages, Deficiencies (Dwelling Exterior)'] || ''}
+              value={data['Apparent Defects, Damages, Deficiencies (Dwelling Exterior)'] || data.IMPROVEMENTS?.['Apparent Defects, Damages, Deficiencies (Dwelling Exterior)'] || ''}
               onDataChange={handleDataChange}
               editingField={editingField}
               setEditingField={setEditingField}
@@ -943,7 +946,7 @@ const Version1 = ({
                     <TableRow key={row.label} hover>
                       <TableCell sx={{ fontWeight: 'bold', width: '200px', py: 0.5 }}>{row.label}</TableCell>
                       <TableCell sx={{ py: 0.5 }}>
-                        <EditableField fieldPath={[row.key]} value={data[row.key] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
+                        <EditableField fieldPath={[row.key]} value={data[row.key] || data.IMPROVEMENTS?.[row.key] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -967,7 +970,7 @@ const Version1 = ({
                     <TableRow key={row.label} hover>
                       <TableCell sx={{ fontWeight: 'bold', width: '200px', py: 0.5 }}>{row.label}</TableCell>
                       <TableCell sx={{ py: 0.5 }}>
-                        <EditableField fieldPath={[row.key]} value={data[row.key] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
+                        <EditableField fieldPath={[row.key]} value={data[row.key] || data.IMPROVEMENTS?.[row.key] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -998,26 +1001,26 @@ const Version1 = ({
                   const areaKey = `Area Row ${rowIdx}`;
                   const roomKey = `Room Summary Row ${rowIdx}`;
 
-                  if (rowIdx > 1 && !data[levelKey] && !data[gradeKey] && !data[finishKey] && !data[areaKey] && !data[roomKey] && editingField !== levelKey) {
+                  if (rowIdx > 1 && !data[levelKey] && !data.IMPROVEMENTS?.[levelKey] && !data[gradeKey] && !data.IMPROVEMENTS?.[gradeKey] && !data[finishKey] && !data.IMPROVEMENTS?.[finishKey] && !data[areaKey] && !data.IMPROVEMENTS?.[areaKey] && !data[roomKey] && !data.IMPROVEMENTS?.[roomKey] && editingField !== levelKey) {
                     return null;
                   }
 
                   return (
                     <TableRow key={rowIdx} hover>
                       <TableCell sx={{ py: 0.5 }}>
-                        <EditableField fieldPath={[levelKey]} value={data[levelKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} placeholder={rowIdx === 1 ? "e.g. Level 1" : ""} />
+                        <EditableField fieldPath={[levelKey]} value={data[levelKey] || data.IMPROVEMENTS?.[levelKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} placeholder={rowIdx === 1 ? "e.g. Level 1" : ""} />
                       </TableCell>
                       <TableCell sx={{ py: 0.5 }}>
-                        <EditableField fieldPath={[gradeKey]} value={data[gradeKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} placeholder={rowIdx === 1 ? "e.g. Above Grade" : ""} />
+                        <EditableField fieldPath={[gradeKey]} value={data[gradeKey] || data.IMPROVEMENTS?.[gradeKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} placeholder={rowIdx === 1 ? "e.g. Above Grade" : ""} />
                       </TableCell>
                       <TableCell sx={{ py: 0.5 }}>
-                        <EditableField fieldPath={[finishKey]} value={data[finishKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} placeholder={rowIdx === 1 ? "e.g. Finished" : ""} />
+                        <EditableField fieldPath={[finishKey]} value={data[finishKey] || data.IMPROVEMENTS?.[finishKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} placeholder={rowIdx === 1 ? "e.g. Finished" : ""} />
                       </TableCell>
                       <TableCell sx={{ py: 0.5 }}>
-                        <EditableField fieldPath={[areaKey]} value={data[areaKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} placeholder={rowIdx === 1 ? "e.g. 1492 Sq. Ft." : ""} />
+                        <EditableField fieldPath={[areaKey]} value={data[areaKey] || data.IMPROVEMENTS?.[areaKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} placeholder={rowIdx === 1 ? "e.g. 1492 Sq. Ft." : ""} />
                       </TableCell>
                       <TableCell sx={{ py: 0.5 }}>
-                        <EditableField fieldPath={[roomKey]} value={data[roomKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} placeholder={rowIdx === 1 ? "e.g. 1-Kitchen, 3-Bedroom" : ""} style={{ whiteSpace: 'pre-line' }} />
+                        <EditableField fieldPath={[roomKey]} value={data[roomKey] || data.IMPROVEMENTS?.[roomKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} placeholder={rowIdx === 1 ? "e.g. 1-Kitchen, 3-Bedroom" : ""} style={{ whiteSpace: 'pre-line' }} />
                       </TableCell>
                     </TableRow>
                   );
@@ -1044,7 +1047,8 @@ const Version1 = ({
               <TableBody>
                 {(() => {
                   const indices = new Set([1, 2, 3]);
-                  Object.keys(data || {}).forEach(k => {
+                  const allSources = { ...(data || {}), ...(data.IMPROVEMENTS || {}) };
+                  Object.keys(allSources).forEach(k => {
                     const m = k.match(/^Kitchen\/Bath Row (\d+) Room$/);
                     if (m) indices.add(parseInt(m[1], 10));
                   });
@@ -1056,29 +1060,30 @@ const Version1 = ({
                     const cStatusKey = `Kitchen/Bath Row ${rowIdx} Condition Status`;
                     const cCommentKey = `Kitchen/Bath Row ${rowIdx} Condition Comment`;
 
-                    if (rowIdx > 1 && !data[roomKey] && !data[statusKey] && !data[tfKey] && !data[qCommentKey] && !data[cStatusKey] && !data[cCommentKey] && editingField !== roomKey) {
+                    const hasVal = (k) => Boolean(data[k] || data.IMPROVEMENTS?.[k]);
+                    if (rowIdx > 1 && !hasVal(roomKey) && !hasVal(statusKey) && !hasVal(tfKey) && !hasVal(qCommentKey) && !hasVal(cStatusKey) && !hasVal(cCommentKey) && editingField !== roomKey) {
                       return null;
                     }
 
                     return (
                       <TableRow key={rowIdx} hover>
                         <TableCell sx={{ py: 0.5 }}>
-                          <EditableField fieldPath={[roomKey]} value={data[roomKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} placeholder={rowIdx === 1 ? "e.g. Kitchen Level 1" : "e.g. Bath - Full Level 1"} />
+                          <EditableField fieldPath={[roomKey]} value={data[roomKey] || data.IMPROVEMENTS?.[roomKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} placeholder={rowIdx === 1 ? "e.g. Kitchen Level 1" : "e.g. Bath - Full Level 1"} />
                         </TableCell>
                         <TableCell sx={{ py: 0.5 }}>
-                          <EditableField fieldPath={[statusKey]} value={data[statusKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} placeholder="e.g. Partially Updated" />
+                          <EditableField fieldPath={[statusKey]} value={data[statusKey] || data.IMPROVEMENTS?.[statusKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} placeholder="e.g. Partially Updated" />
                         </TableCell>
                         <TableCell sx={{ py: 0.5 }}>
-                          <EditableField fieldPath={[tfKey]} value={data[tfKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} placeholder="e.g. 5-10 Years" />
+                          <EditableField fieldPath={[tfKey]} value={data[tfKey] || data.IMPROVEMENTS?.[tfKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} placeholder="e.g. 5-10 Years" />
                         </TableCell>
                         <TableCell sx={{ py: 0.5 }}>
-                          <EditableField fieldPath={[qCommentKey]} value={data[qCommentKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
+                          <EditableField fieldPath={[qCommentKey]} value={data[qCommentKey] || data.IMPROVEMENTS?.[qCommentKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
                         </TableCell>
                         <TableCell sx={{ py: 0.5 }}>
-                          <EditableField fieldPath={[cStatusKey]} value={data[cStatusKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} placeholder="e.g. Typical Wear & Tear" />
+                          <EditableField fieldPath={[cStatusKey]} value={data[cStatusKey] || data.IMPROVEMENTS?.[cStatusKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} placeholder="e.g. Typical Wear & Tear" />
                         </TableCell>
                         <TableCell sx={{ py: 0.5 }}>
-                          <EditableField fieldPath={[cCommentKey]} value={data[cCommentKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
+                          <EditableField fieldPath={[cCommentKey]} value={data[cCommentKey] || data.IMPROVEMENTS?.[cCommentKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
                         </TableCell>
                       </TableRow>
                     );
@@ -1089,7 +1094,7 @@ const Version1 = ({
             <Box sx={{ p: 2, borderTop: '1px solid #e0e0e0', display: 'flex', alignItems: 'center', gap: '12px' }}>
               <Typography variant="subtitle2" fontWeight="bold" sx={{ minWidth: '220px' }}>Overall Update Status for Bathrooms:</Typography>
               <Box sx={{ width: '250px' }}>
-                <EditableField fieldPath={['Overall Update Status for Bathrooms']} value={data['Overall Update Status for Bathrooms'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} placeholder="e.g. Moderately Updated" />
+                <EditableField fieldPath={['Overall Update Status for Bathrooms']} value={data['Overall Update Status for Bathrooms'] || data.IMPROVEMENTS?.['Overall Update Status for Bathrooms'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} placeholder="e.g. Moderately Updated" />
               </Box>
             </Box>
           </TableContainer>
@@ -1112,7 +1117,7 @@ const Version1 = ({
                 {[
                   { label: 'Flooring', valueKey: 'Flooring' },
                   { label: 'Walls and Ceiling', valueKey: 'Walls and Ceiling' },
-                  ...((data['Bath Floor Detail'] || data['Bath Floor Condition Status']) ? [{ label: 'Bath Floor', valueKey: 'Bath Floor' }] : [])
+                  ...((data['Bath Floor Detail'] || data.IMPROVEMENTS?.['Bath Floor Detail'] || data['Bath Floor Condition Status'] || data.IMPROVEMENTS?.['Bath Floor Condition Status']) ? [{ label: 'Bath Floor', valueKey: 'Bath Floor' }] : [])
                 ].map(feature => {
                   const detailKey = `${feature.valueKey} Detail`;
                   const qCommentKey = `${feature.valueKey} Quality Comment`;
@@ -1123,16 +1128,16 @@ const Version1 = ({
                     <TableRow key={feature.label} hover>
                       <TableCell sx={{ fontWeight: 'bold', fontSize: '0.85rem' }}>{feature.label}</TableCell>
                       <TableCell sx={{ py: 0.5 }}>
-                        <EditableField fieldPath={[detailKey]} value={data[detailKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
+                        <EditableField fieldPath={[detailKey]} value={data[detailKey] || data.IMPROVEMENTS?.[detailKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
                       </TableCell>
                       <TableCell sx={{ py: 0.5 }}>
-                        <EditableField fieldPath={[qCommentKey]} value={data[qCommentKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
+                        <EditableField fieldPath={[qCommentKey]} value={data[qCommentKey] || data.IMPROVEMENTS?.[qCommentKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
                       </TableCell>
                       <TableCell sx={{ py: 0.5 }}>
-                        <EditableField fieldPath={[cStatusKey]} value={data[cStatusKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
+                        <EditableField fieldPath={[cStatusKey]} value={data[cStatusKey] || data.IMPROVEMENTS?.[cStatusKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
                       </TableCell>
                       <TableCell sx={{ py: 0.5 }}>
-                        <EditableField fieldPath={[cCommentKey]} value={data[cCommentKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
+                        <EditableField fieldPath={[cCommentKey]} value={data[cCommentKey] || data.IMPROVEMENTS?.[cCommentKey] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
                       </TableCell>
                     </TableRow>
                   );
@@ -1142,7 +1147,7 @@ const Version1 = ({
             <Box sx={{ p: 2, borderTop: '1px solid #e0e0e0', display: 'flex', alignItems: 'center', gap: '12px' }}>
               <Typography variant="subtitle2" fontWeight="bold" sx={{ minWidth: '220px' }}>Overall Update Status for Flooring:</Typography>
               <Box sx={{ width: '250px' }}>
-                <EditableField fieldPath={['Overall Update Status for Flooring']} value={data['Overall Update Status for Flooring'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} placeholder="e.g. Fully Updated" />
+                <EditableField fieldPath={['Overall Update Status for Flooring']} value={data['Overall Update Status for Flooring'] || data.IMPROVEMENTS?.['Overall Update Status for Flooring'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} placeholder="e.g. Fully Updated" />
               </Box>
             </Box>
           </TableContainer>
@@ -1151,7 +1156,7 @@ const Version1 = ({
             <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>Apparent Defects, Damages, Deficiencies (Unit Interior)</Typography>
             <EditableField
               fieldPath={['Apparent Defects, Damages, Deficiencies (Unit Interior)']}
-              value={data['Apparent Defects, Damages, Deficiencies (Unit Interior)'] || ''}
+              value={data['Apparent Defects, Damages, Deficiencies (Unit Interior)'] || data.IMPROVEMENTS?.['Apparent Defects, Damages, Deficiencies (Unit Interior)'] || ''}
               onDataChange={handleDataChange}
               editingField={editingField}
               setEditingField={setEditingField}
@@ -1172,13 +1177,13 @@ const Version1 = ({
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <Typography variant="subtitle2" fontWeight="bold" sx={{ color: '#495057' }}>Interior Quality Rating:</Typography>
                 <Box sx={{ width: '100px' }}>
-                  <EditableField fieldPath={['Interior Quality Rating']} value={data['Interior Quality Rating'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
+                  <EditableField fieldPath={['Interior Quality Rating']} value={data['Interior Quality Rating'] || data.IMPROVEMENTS?.['Interior Quality Rating'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
                 </Box>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <Typography variant="subtitle2" fontWeight="bold" sx={{ color: '#495057' }}>Interior Condition Rating:</Typography>
                 <Box sx={{ width: '100px' }}>
-                  <EditableField fieldPath={['Interior Condition Rating']} value={data['Interior Condition Rating'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
+                  <EditableField fieldPath={['Interior Condition Rating']} value={data['Interior Condition Rating'] || data.IMPROVEMENTS?.['Interior Condition Rating'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} showBlankValidation={extractionAttempted} />
                 </Box>
               </div>
             </Box>
@@ -1215,7 +1220,7 @@ const Version1 = ({
                 <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#666', display: 'block' }}>{field.label}</span>
                 <EditableField
                   fieldPath={['SITE', field.key]}
-                  value={data.SITE?.[field.key] || ''}
+                  value={data.SITE?.[field.key] || data[field.key] || ''}
                   onDataChange={handleDataChange}
                   editingField={editingField}
                   setEditingField={setEditingField}
@@ -1229,7 +1234,7 @@ const Version1 = ({
             <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>Highest and Best Use Commentary</Typography>
             <EditableField
               fieldPath={['SITE', 'Highest and Best Use Commentary']}
-              value={data.SITE?.['Highest and Best Use Commentary'] || ''}
+              value={data.SITE?.['Highest and Best Use Commentary'] || data['Highest and Best Use Commentary'] || ''}
               onDataChange={handleDataChange}
               editingField={editingField}
               setEditingField={setEditingField}
@@ -1250,13 +1255,13 @@ const Version1 = ({
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', borderBottom: '1px solid #e0e0e0', paddingBottom: '8px' }}>
               <Typography variant="subtitle2" fontWeight="bold" sx={{ minWidth: '180px' }}>Market Area Boundary:</Typography>
               <Box sx={{ flexGrow: 1 }}>
-                <EditableField fieldPath={['NEIGHBORHOOD', 'Market Area Boundary']} value={data.NEIGHBORHOOD?.['Market Area Boundary'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
+                <EditableField fieldPath={['NEIGHBORHOOD', 'Market Area Boundary']} value={data.NEIGHBORHOOD?.['Market Area Boundary'] || data['Market Area Boundary'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
               </Box>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', borderBottom: '1px solid #e0e0e0', paddingBottom: '8px' }}>
               <Typography variant="subtitle2" fontWeight="bold" sx={{ minWidth: '180px' }}>Search Criteria Description:</Typography>
               <Box sx={{ flexGrow: 1 }}>
-                <EditableField fieldPath={['NEIGHBORHOOD', 'Search Criteria Description']} value={data.NEIGHBORHOOD?.['Search Criteria Description'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
+                <EditableField fieldPath={['NEIGHBORHOOD', 'Search Criteria Description']} value={data.NEIGHBORHOOD?.['Search Criteria Description'] || data['Search Criteria Description'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
               </Box>
             </div>
           </div>
@@ -1280,7 +1285,7 @@ const Version1 = ({
                       <TableRow key={row.key} hover>
                         <TableCell sx={{ fontWeight: 'bold', pl: row.indent ? 4 : 2, py: 0.5, fontSize: '0.85rem' }}>{row.label}</TableCell>
                         <TableCell sx={{ py: 0.5 }}>
-                          <EditableField fieldPath={['NEIGHBORHOOD', row.key]} value={data.NEIGHBORHOOD?.[row.key] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
+                          <EditableField fieldPath={['NEIGHBORHOOD', row.key]} value={data.NEIGHBORHOOD?.[row.key] || data[row.key] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
                         </TableCell>
                       </TableRow>
                     ))}
@@ -1302,7 +1307,7 @@ const Version1 = ({
                       <TableRow key={row.key} hover>
                         <TableCell sx={{ fontWeight: 'bold', pl: row.indent ? 4 : 2, py: 0.5, fontSize: '0.85rem' }}>{row.label}</TableCell>
                         <TableCell sx={{ py: 0.5 }}>
-                          <EditableField fieldPath={['NEIGHBORHOOD', row.key]} value={data.NEIGHBORHOOD?.[row.key] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={row.key === 'Median Sale Price' ? false : extractionAttempted} manualValidations={row.key === 'Median Sale Price' ? manualValidations : undefined} handleManualValidation={row.key === 'Median Sale Price' ? handleManualValidation : undefined} />
+                          <EditableField fieldPath={['NEIGHBORHOOD', row.key]} value={data.NEIGHBORHOOD?.[row.key] || data[row.key] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={row.key === 'Median Sale Price' ? false : extractionAttempted} manualValidations={row.key === 'Median Sale Price' ? manualValidations : undefined} handleManualValidation={row.key === 'Median Sale Price' ? handleManualValidation : undefined} />
                         </TableCell>
                       </TableRow>
                     ))}
@@ -1316,7 +1321,7 @@ const Version1 = ({
             <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>Price Trend Analysis Commentary</Typography>
             <EditableField
               fieldPath={['NEIGHBORHOOD', 'Price Trend Analysis Commentary']}
-              value={data.NEIGHBORHOOD?.['Price Trend Analysis Commentary'] || ''}
+              value={data.NEIGHBORHOOD?.['Price Trend Analysis Commentary'] || data['Price Trend Analysis Commentary'] || ''}
               onDataChange={handleDataChange}
               editingField={editingField}
               setEditingField={setEditingField}
@@ -1333,13 +1338,13 @@ const Version1 = ({
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', borderBottom: '1px solid #e0e0e0', paddingBottom: '4px' }}>
                 <Typography variant="subtitle2" fontWeight="bold" sx={{ color: '#555', minWidth: '130px' }}>Demand/Supply:</Typography>
                 <Box sx={{ flexGrow: 1 }}>
-                  <EditableField fieldPath={['NEIGHBORHOOD', 'Demand / Supply']} value={data.NEIGHBORHOOD?.['Demand / Supply'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
+                  <EditableField fieldPath={['NEIGHBORHOOD', 'Demand / Supply']} value={data.NEIGHBORHOOD?.['Demand / Supply'] || data.NEIGHBORHOOD?.['Demand/Supply'] || data['Demand / Supply'] || data['Demand/Supply'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
                 </Box>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', borderBottom: '1px solid #e0e0e0', paddingBottom: '4px' }}>
                 <Typography variant="subtitle2" fontWeight="bold" sx={{ color: '#555', minWidth: '130px' }}>Marketing Time:</Typography>
                 <Box sx={{ flexGrow: 1 }}>
-                  <EditableField fieldPath={['NEIGHBORHOOD', 'Marketing Time']} value={data.NEIGHBORHOOD?.['Marketing Time'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
+                  <EditableField fieldPath={['NEIGHBORHOOD', 'Marketing Time']} value={data.NEIGHBORHOOD?.['Marketing Time'] || data['Marketing Time'] || ''} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} showBlankValidation={extractionAttempted} />
                 </Box>
               </div>
             </div>
@@ -1349,7 +1354,7 @@ const Version1 = ({
             <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>Market Commentary</Typography>
             <EditableField
               fieldPath={['NEIGHBORHOOD', 'Market Commentary']}
-              value={data.NEIGHBORHOOD?.['Market Commentary'] || ''}
+              value={data.NEIGHBORHOOD?.['Market Commentary'] || data['Market Commentary'] || ''}
               onDataChange={handleDataChange}
               editingField={editingField}
               setEditingField={setEditingField}
@@ -1370,7 +1375,7 @@ const Version1 = ({
                 <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#666', display: 'block' }}>{field.label}</span>
                 <EditableField
                   fieldPath={['NEIGHBORHOOD', field.key]}
-                  value={data.NEIGHBORHOOD?.[field.key] || ''}
+                  value={data.NEIGHBORHOOD?.[field.key] || data[field.key] || ''}
                   onDataChange={handleDataChange}
                   editingField={editingField}
                   setEditingField={setEditingField}

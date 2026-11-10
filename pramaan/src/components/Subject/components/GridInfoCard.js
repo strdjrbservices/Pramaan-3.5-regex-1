@@ -340,6 +340,147 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
     }
 
+    if (field === 'Appraiser Credential Level') {
+      const credVal = data?.['Appraiser Credential Level']
+        ?? data?.CONTACT?.['Appraiser Credential Level']
+        ?? data?.['Contact Information']?.['Appraiser Credential Level']
+        ?? data?.CERTIFICATION?.['Appraiser Credential Level']
+        ?? data?.CERTIFICATION?.['Credential Level']
+        ?? data?.CERTIFICATION?.['License Type']
+        ?? allData?.['Appraiser Credential Level']
+        ?? allData?.CONTACT?.['Appraiser Credential Level']
+        ?? allData?.['Contact Information']?.['Appraiser Credential Level']
+        ?? allData?.CERTIFICATION?.['Appraiser Credential Level']
+        ?? allData?.CERTIFICATION?.['Credential Level'];
+      if (credVal) return renderValue(credVal);
+    }
+
+    if (field === 'Appraiser ID') {
+      const idVal = data?.['Appraiser ID']
+        ?? data?.CONTACT?.['Appraiser ID']
+        ?? data?.['Contact Information']?.['Appraiser ID']
+        ?? data?.CERTIFICATION?.['Appraiser ID']
+        ?? data?.CERTIFICATION?.['License Number']
+        ?? data?.CERTIFICATION?.['Appraiser License #']
+        ?? allData?.['Appraiser ID']
+        ?? allData?.CONTACT?.['Appraiser ID']
+        ?? allData?.['Contact Information']?.['Appraiser ID']
+        ?? allData?.CERTIFICATION?.['Appraiser ID']
+        ?? allData?.CERTIFICATION?.['License Number'];
+      if (idVal) return renderValue(idVal);
+    }
+
+    if (field === 'Appraiser State') {
+      const stVal = data?.['Appraiser State']
+        ?? data?.CONTACT?.['Appraiser State']
+        ?? data?.['Contact Information']?.['Appraiser State']
+        ?? data?.CERTIFICATION?.['Appraiser State']
+        ?? data?.CERTIFICATION?.['State']
+        ?? allData?.['Appraiser State']
+        ?? allData?.CONTACT?.['Appraiser State']
+        ?? allData?.['Contact Information']?.['Appraiser State']
+        ?? allData?.CERTIFICATION?.['Appraiser State']
+        ?? allData?.CERTIFICATION?.['State'];
+      if (stVal) return renderValue(stVal);
+    }
+
+    if (field === 'Appraiser License Expiration Date') {
+      const expVal = data?.['Appraiser License Expiration Date']
+        ?? data?.CONTACT?.['Appraiser License Expiration Date']
+        ?? data?.['Contact Information']?.['Appraiser License Expiration Date']
+        ?? data?.CERTIFICATION?.['Appraiser License Expiration Date']
+        ?? data?.CERTIFICATION?.['Expiration Date of License']
+        ?? data?.CERTIFICATION?.['License Expiration Date']
+        ?? allData?.['Appraiser License Expiration Date']
+        ?? allData?.CONTACT?.['Appraiser License Expiration Date']
+        ?? allData?.['Contact Information']?.['Appraiser License Expiration Date']
+        ?? allData?.CERTIFICATION?.['Appraiser License Expiration Date']
+        ?? allData?.CERTIFICATION?.['Expiration Date of License'];
+      if (expVal) return renderValue(expVal);
+    }
+
+    if (field === 'Appraiser Company Name') {
+      const compVal = data?.['Appraiser Company Name']
+        ?? data?.CONTACT?.['Appraiser Company Name']
+        ?? data?.['Contact Information']?.['Appraiser Company Name']
+        ?? data?.['Company Name']
+        ?? data?.CERTIFICATION?.['Company Name']
+        ?? allData?.['Appraiser Company Name']
+        ?? allData?.CONTACT?.['Appraiser Company Name']
+        ?? allData?.['Contact Information']?.['Appraiser Company Name']
+        ?? allData?.['Company Name']
+        ?? allData?.CERTIFICATION?.['Company Name'];
+      if (compVal) return renderValue(compVal);
+    }
+
+    if (field === 'Appraiser Company Address') {
+      const addrVal = data?.['Appraiser Company Address']
+        ?? data?.CONTACT?.['Appraiser Company Address']
+        ?? data?.['Contact Information']?.['Appraiser Company Address']
+        ?? data?.['Company Address']
+        ?? data?.CERTIFICATION?.['Company Address']
+        ?? allData?.['Appraiser Company Address']
+        ?? allData?.CONTACT?.['Appraiser Company Address']
+        ?? allData?.['Contact Information']?.['Appraiser Company Address']
+        ?? allData?.['Company Address']
+        ?? allData?.CERTIFICATION?.['Company Address'];
+      if (addrVal) return renderValue(addrVal);
+    }
+
+    if (field === 'Client/Lender Company Name') {
+      const clNameVal = data?.['Client/Lender Company Name']
+        ?? data?.CONTACT?.['Client/Lender Company Name']
+        ?? data?.['Contact Information']?.['Client/Lender Company Name']
+        ?? data?.['Lender/Client']
+        ?? data?.['LENDER/CLIENT']
+        ?? data?.SUBJECT?.['Lender/Client']
+        ?? allData?.['Client/Lender Company Name']
+        ?? allData?.CONTACT?.['Client/Lender Company Name']
+        ?? allData?.['Contact Information']?.['Client/Lender Company Name']
+        ?? allData?.['Lender/Client']
+        ?? allData?.SUBJECT?.['Lender/Client'];
+      if (clNameVal) return renderValue(clNameVal);
+    }
+
+    if (field === 'Client/Lender Company Address') {
+      const clAddrVal = data?.['Client/Lender Company Address']
+        ?? data?.CONTACT?.['Client/Lender Company Address']
+        ?? data?.['Contact Information']?.['Client/Lender Company Address']
+        ?? data?.['Address (Lender/Client)']
+        ?? data?.['ADDRESS (LENDER/CLIENT)']
+        ?? data?.SUBJECT?.['Address (Lender/Client)']
+        ?? allData?.['Client/Lender Company Address']
+        ?? allData?.CONTACT?.['Client/Lender Company Address']
+        ?? allData?.['Contact Information']?.['Client/Lender Company Address']
+        ?? allData?.['Address (Lender/Client)']
+        ?? allData?.SUBJECT?.['Address (Lender/Client)'];
+      if (clAddrVal) return renderValue(clAddrVal);
+    }
+
+    if (field === 'Attachment Type') {
+      const attVal = data?.['Attachment Type']
+        ?? data?.SUMMARY?.['Attachment Type']
+        ?? data?.SUBJECT?.['Attachment Type']
+        ?? data?.IMPROVEMENTS?.['Attachment Type']
+        ?? allData?.['Attachment Type']
+        ?? allData?.SUMMARY?.['Attachment Type']
+        ?? allData?.SUBJECT?.['Attachment Type']
+        ?? allData?.IMPROVEMENTS?.['Attachment Type']
+        ?? data?.['Attached / Detached']
+        ?? allData?.['Attached / Detached'];
+      if (attVal) return renderValue(attVal);
+    }
+
+    if (field === 'Zoning Compliance') {
+      const zcVal = data?.['Zoning Compliance']
+        ?? data?.SUMMARY?.['Zoning Compliance']
+        ?? data?.SITE?.['Zoning Compliance']
+        ?? allData?.['Zoning Compliance']
+        ?? allData?.SUMMARY?.['Zoning Compliance']
+        ?? allData?.SITE?.['Zoning Compliance'];
+      if (zcVal) return renderValue(zcVal);
+    }
+
     if (field === "Appraiser's Fee" || field === "Appraiser Fee" || field === "Appraisal Fee") {
 
       const feeVal = data?.["Appraiser's Fee"]
@@ -738,6 +879,10 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
     const val = data?.[field]
 
+      ?? data?.SUMMARY?.[field]
+
+      ?? data?.Summary?.[field]
+
       ?? data?.CONTRACT?.[field]
 
       ?? data?.NEIGHBORHOOD?.[field]
@@ -786,6 +931,16 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
       ?? data?.SUBJECT?.[field]
 
+      ?? data?.CONTACT?.[field]
+
+      ?? data?.['Contact Information']?.[field]
+
+      ?? data?.clean_data?.['Contact Information']?.[field]
+
+      ?? data?.ASSIGNMENT?.[field]
+
+      ?? data?.Assignment?.[field]
+
       ?? data?.RECONCILIATION?.[field]
 
       ?? data?.Reconciliation?.[field]
@@ -793,6 +948,10 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
       ?? data?.CERTIFICATION?.[field]
 
       ?? allData?.[field]
+
+      ?? allData?.SUMMARY?.[field]
+
+      ?? allData?.Summary?.[field]
 
       ?? allData?.CONTRACT?.[field]
 
@@ -835,6 +994,16 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
       ?? allData?.SITE?.[field]
 
       ?? allData?.SUBJECT?.[field]
+
+      ?? allData?.CONTACT?.[field]
+
+      ?? allData?.['Contact Information']?.[field]
+
+      ?? allData?.clean_data?.['Contact Information']?.[field]
+
+      ?? allData?.ASSIGNMENT?.[field]
+
+      ?? allData?.Assignment?.[field]
 
       ?? allData?.RECONCILIATION?.[field]
 

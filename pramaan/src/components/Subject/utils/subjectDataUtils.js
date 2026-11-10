@@ -64,6 +64,25 @@ export const normalizeFullFileData = (raw) => {
     normalized['Sales Grid'] = normalized.SALES_GRID;
   }
 
+  if (!normalized.SUMMARY || typeof normalized.SUMMARY !== 'object') {
+    normalized.SUMMARY = raw.SUMMARY || raw.Summary || raw.summary || raw.clean_data?.Summary || raw.clean_data?.SUMMARY || {};
+  }
+  if (!normalized.Summary || typeof normalized.Summary !== 'object') {
+    normalized.Summary = normalized.SUMMARY;
+  }
+  if (!normalized.IMPROVEMENTS || typeof normalized.IMPROVEMENTS !== 'object') {
+    normalized.IMPROVEMENTS = raw.IMPROVEMENTS || raw.Improvements || raw.improvements || raw['Dwelling Exterior'] || raw.clean_data?.Improvements || {};
+  }
+  if (!normalized.RECONCILIATION || typeof normalized.RECONCILIATION !== 'object') {
+    normalized.RECONCILIATION = raw.RECONCILIATION || raw.Reconciliation || raw.reconciliation || raw.clean_data?.Reconciliation || {};
+  }
+  if (!normalized.CERTIFICATION || typeof normalized.CERTIFICATION !== 'object') {
+    normalized.CERTIFICATION = raw.CERTIFICATION || raw.Certification || raw.certification || raw.clean_data?.Certification || {};
+  }
+  if (!normalized.COST_APPROACH || typeof normalized.COST_APPROACH !== 'object') {
+    normalized.COST_APPROACH = raw.COST_APPROACH || raw['Cost Approach'] || raw.clean_data?.['Cost Approach'] || {};
+  }
+
   if (!normalized.CONTRACT || typeof normalized.CONTRACT !== 'object') {
     normalized.CONTRACT = raw.CONTRACT || raw.Contract || raw.contract || {};
   }
@@ -106,8 +125,78 @@ export const normalizeFullFileData = (raw) => {
   if (!normalized['Prior Sale History'] || typeof normalized['Prior Sale History'] !== 'object') {
     normalized['Prior Sale History'] = normalized.PRIOR_SALE_HISTORY;
   }
+  if (!normalized.CONTACT || typeof normalized.CONTACT !== 'object') {
+    normalized.CONTACT = raw.CONTACT || raw.contact || raw['Contact Information'] || raw.clean_data?.['Contact Information'] || raw.clean_data?.CONTACT || {};
+  }
+  if (!normalized['Contact Information'] || typeof normalized['Contact Information'] !== 'object') {
+    normalized['Contact Information'] = normalized.CONTACT;
+  }
 
   const sectionKeyMap = {
+    SUMMARY: [
+      'Opinion of Market Value',
+      'Indicated Value by Sales Comparison Approach Indicated',
+      'Indicated Value by Sales Comparison Approach',
+      'Market Value Condition',
+      'Effective Date of Appraisal',
+      'Assignment Reason',
+      'Borrower Name',
+      'Current Owner of Public Record',
+      'Listing Status',
+      'Property Valuation Method',
+      'Appraiser Name',
+      'Construction Method',
+      'Attachment Type',
+      'Overall Quality',
+      'Overall Condition',
+      'Planned Unit Development (PUD)',
+      'Condominium',
+      'Cooperative',
+      'Condop',
+      'Subject Site Owned in Common',
+      'Units Excluding ADUs',
+      'Accessory Dwelling Units (ADUs)',
+      'Property Rights Appraised',
+      'Highest and Best Use as Present Use',
+      'Zoning Compliance',
+      'Apparent Defects, Damages, Deficiencies Requiring Action',
+      'Appraisal Version',
+      'Appraiser Reference ID',
+      'FHA Case #',
+      'Client/Lender Company Name',
+      'Client/Lender Company Address',
+      'Appraisal Management Company Name',
+      'Appraisal Management Company Address',
+      'Appraiser Company Name',
+      'Appraiser Company Address',
+      'Subject Property Inspection',
+      'Exterior Physical Inspection',
+      'Interior Physical Inspection',
+      'Inspection Date',
+      'Appraiser Credential Level',
+      'Appraiser ID',
+      'Appraiser State',
+      'Appraiser License Expiration Date',
+      'Appraiser ASC Identifier'
+    ],
+    CONTACT: [
+      'Client/Lender Company Name',
+      'Client/Lender Company Address',
+      'Appraisal Management Company Name',
+      'Appraisal Management Company Address',
+      'Appraiser Name',
+      'Appraiser Company Name',
+      'Appraiser Company Address',
+      'Subject Property Inspection',
+      'Exterior Physical Inspection',
+      'Interior Physical Inspection',
+      'Inspection Date',
+      'Appraiser Credential Level',
+      'Appraiser ID',
+      'Appraiser State',
+      'Appraiser License Expiration Date',
+      'Appraiser ASC Identifier'
+    ],
     CONTRACT: [
       "I did did not analyze the contract for sale for the subject purchase transaction. Explain the results of the analysis of the contract for sale or why the analysis was not performed.",
       "Contract Price $", "Contract Price", "Date of Contract",
@@ -118,15 +207,104 @@ export const normalizeFullFileData = (raw) => {
     NEIGHBORHOOD: [
       "Location", "Built-Up", "Growth", "Property Values", "Demand/Supply",
       "Marketing Time", "One-Unit", "2-4 Unit", "Multi-Family", "Commercial", "Other",
-      "Neighborhood Boundaries", "Neighborhood Description", "Market Conditions"
+      "Neighborhood Boundaries", "Neighborhood Description", "Market Conditions",
+      "Market Area Boundary", "Market Area Boundary:", "Search Criteria Description", "Search Criteria Description:",
+      "Active Listings", "Median Days on Market", "Lowest List Price", "Median List Price", "Highest List Price",
+      "Pending Sales", "Sales in Past 12 Months", "Lowest Sale Price", "Median Sale Price", "Highest Sale Price",
+      "Distressed Market Competition", "Price Trend Source", "Price Trend Source (Graph)", "Price Trend Analysis Commentary",
+      "Demand/Supply:", "Demand / Supply", "Marketing Time:", "Market Commentary",
+      "Current or Relevant Listings", "Data Source", "Subject Listing Information Commentary", "Subject Listing Information Exhibits"
     ],
     SITE: [
       "Dimensions", "Area", "Shape", "View", "Zoning Compliance", "Zoning Description",
       "Specific Zoning Classification", "FEMA Special Flood Hazard Area", "FEMA Flood Zone",
-      "FEMA Map #", "FEMA Map Date", "Electricity", "Gas", "Water", "Sanitary Sewer", "Street", "Alley"
+      "FEMA Map #", "FEMA Map Date", "Electricity", "Gas", "Water", "Sanitary Sewer", "Street", "Alley",
+      "Total Site Size", "Site Size", "Number of Parcels", "Assessor Parcel Number (APN)", "APN Description",
+      "Parcel Size", "Zoning Classification Code", "Zoning Classification Description",
+      "Description of Zoning Compliance", "Primary Access", "Street Type and Surface", "Typical for Market",
+      "Non-Residential Use", "Apparent Defects, Damages, Deficiencies (Site)",
+      "Site Influence", "Site Influence Proximity", "Site Influence Detail", "Site Influence Impact",
+      "Site Influence Comment", "Site Influence Commentary", "Range of View", "View Impact", "View Commentary",
+      "Site Feature", "Site Feature Detail", "Site Feature Impact", "Site Feature Comment", "Site Features Commentary",
+      "Broadband Internet Available",
+      "Electricity Detail", "Electricity Private Utility Impact", "Electricity Comment",
+      "Sanitary Sewer Detail", "Sanitary Sewer Private Utility Impact", "Sanitary Sewer Comment",
+      "Water Detail", "Water Private Utility Impact", "Water Comment",
+      "Site Commentary", "Renewable Energy Components", "Ownership", "Financing Arrangement",
+      "Known Building Certifications", "Known Efficiency Ratings",
+      "Energy Efficient and Green Features Impact to Value/Marketability", "Impact to Value/Marketability",
+      "Opinion of Site Value", "Primary Site Valuation Method", "Reconciliation of Site Value",
+      "Legally Permissible", "Physically Possible", "Financially Feasible", "Maximally Productive",
+      "Highest and Best Use as Improved (Present Use)", "Highest and Best Use Commentary"
+    ],
+    IMPROVEMENTS: [
+      "Subject Property Units in Structure", "Units in Structure", "Floors in Building", "Dwelling Style",
+      "Front Door Elevation", "Year Built", "Construction Method", "Converted Area", "Dwelling Exterior Exhibits",
+      "Exterior Quality Rating", "Exterior Condition Rating",
+      "Exterior Walls and Trim", "Exterior Walls and Trim Quality Comment", "Exterior Walls and Trim Condition Status", "Exterior Walls and Trim Condition Comment",
+      "Foundation", "Foundation Quality Comment", "Foundation Condition Status", "Foundation Condition Comment",
+      "Roof", "Roof Estimated Age", "Roof Quality Comment", "Roof Condition Status", "Roof Condition Comment",
+      "Windows", "Windows Quality Comment", "Windows Condition Status", "Windows Condition Comment",
+      "Heating System", "Heating Detail", "Heating Fuel", "Cooling System", "Core Heating System Below Grade",
+      "Other Mechanical Systems", "Apparent Defects, Damages, Deficiencies (Dwelling Exterior)", "Dwelling Exterior Commentary",
+      "Finished Above Grade", "Unfinished Above Grade", "Finished Below Grade", "Unfinished Below Grade", "Area Data Source",
+      "Levels in Unit", "Occupancy", "Total Bedrooms", "Total Bathrooms - Full", "Total Bathrooms - Half",
+      "Overall Update Status for Bathrooms",
+      "Flooring Detail", "Flooring Quality Comment", "Flooring Condition Status", "Flooring Condition Comment", "Overall Update Status for Flooring",
+      "Walls and Ceiling Detail", "Walls and Ceiling Quality Comment", "Walls and Ceiling Condition Status", "Walls and Ceiling Condition Comment",
+      "Apparent Defects, Damages, Deficiencies (Unit Interior)", "Interior Quality Rating", "Interior Condition Rating", "Unit Interior Commentary",
+      "Level in Unit Row 1", "Grade Level Detail Row 1", "Finish Row 1", "Area Row 1", "Room Summary Row 1",
+      "Level in Unit Row 2", "Grade Level Detail Row 2", "Finish Row 2", "Area Row 2", "Room Summary Row 2",
+      "Level in Unit Row 3", "Grade Level Detail Row 3", "Finish Row 3", "Area Row 3", "Room Summary Row 3",
+      "Kitchen/Bath Row 1 Room", "Kitchen/Bath Row 1 Update Status", "Kitchen/Bath Row 1 Time Frame", "Kitchen/Bath Row 1 Quality Comment", "Kitchen/Bath Row 1 Condition Status", "Kitchen/Bath Row 1 Condition Comment",
+      "Kitchen/Bath Row 2 Room", "Kitchen/Bath Row 2 Update Status", "Kitchen/Bath Row 2 Time Frame", "Kitchen/Bath Row 2 Quality Comment", "Kitchen/Bath Row 2 Condition Status", "Kitchen/Bath Row 2 Condition Comment",
+      "Kitchen/Bath Row 3 Room", "Kitchen/Bath Row 3 Update Status", "Kitchen/Bath Row 3 Time Frame", "Kitchen/Bath Row 3 Quality Comment", "Kitchen/Bath Row 3 Condition Status", "Kitchen/Bath Row 3 Condition Comment"
     ],
     INFO_OF_SALES: [
       "Sales Comparison Approach Indicated Value", "Data Source(s)", "Verification Source(s)"
+    ],
+    PRIOR_SALE_HISTORY: [
+      'Prior Sales or Transfers',
+      'Subject Transfer History Data Source',
+      'Data Source',
+      'Analysis of Prior Sale and Transfer History of Subject Property',
+      'Comparable 1 Transfer Terms',
+      'Comparable 1 Transfer Date',
+      'Comparable 1 Transfer Amount',
+      'Comparable 1 Transfer Data Source',
+      'Comparable 2 Transfer Terms',
+      'Comparable 2 Transfer Date',
+      'Comparable 2 Transfer Amount',
+      'Comparable 2 Transfer Data Source',
+      'Comparable 3 Transfer Terms',
+      'Comparable 3 Transfer Date',
+      'Comparable 3 Transfer Amount',
+      'Comparable 3 Transfer Data Source',
+      'Analysis of Prior Sale and Transfer History of Comparable Sales'
+    ],
+    PROJECT_INFO: [
+      'Planned Unit Development (PUD)',
+      'Condominium',
+      'Cooperative',
+      'Condop',
+      'Project Information Data Source',
+      'Monthly Amount',
+      'Common Amenities / Services Included',
+      'Utilities Included',
+      'Developer/Sponsor in Control Detail',
+      'Developer/Sponsor in Control Impact',
+      'Developer/Sponsor in Control Comment',
+      'Known Legal Actions Detail',
+      'Known Legal Actions Impact',
+      'Known Legal Actions Comment',
+      'Unit Special Assessments Detail',
+      'Unit Special Assessments Impact',
+      'Unit Special Assessments Comment',
+      'Unit Tax Abatements or Exemptions Detail',
+      'Unit Tax Abatements or Exemptions Impact',
+      'Unit Tax Abatements or Exemptions Comment',
+      'Project Factors Commentary',
+      'Project Information Commentary'
     ]
   };
 

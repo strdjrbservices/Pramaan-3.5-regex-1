@@ -271,8 +271,8 @@ export const checkAppraiserNameConsistency = (field, text, data) => {
     const targetFields = ['Appraiser Name'];
     if (!targetFields.includes(field) || !data) return null;
 
-    const val1 = String(data['Appraiser Name'] || data.APPRAISER?.['Appraiser Name'] || '').trim();
-    const val2 = String(data.CERTIFICATION?.['Appraiser Name'] || '').trim();
+    const val1 = String(data['Appraiser Name'] || data.APPRAISER?.['Appraiser Name'] || data.CONTACT?.['Appraiser Name'] || data.SUMMARY?.['Appraiser Name'] || '').trim();
+    const val2 = String(data.CERTIFICATION?.['Appraiser Name'] || data.CERTIFICATION?.['Appraiser Signature'] || data['Appraiser Signature'] || val1).trim();
 
     if (!val1 || !val2) return null;
 
@@ -287,8 +287,13 @@ export const checkAppraiserNameConsistency = (field, text, data) => {
     return { isMatch: true };
 };
 
-export const checkVersion1ComparableListingStatusConsistency = (field, text, data) => {
+export const checkVersion1ComparableListingStatusConsistency = (field, text, data, fieldPath, saleName) => {
     if (field !== 'Listing Status' || !data) return null;
+
+    const currentTarget = saleName || (fieldPath && fieldPath[0]);
+    if (currentTarget === 'Subject' || currentTarget === 'SUMMARY' || (fieldPath && (fieldPath[0] === 'Subject' || fieldPath[0] === 'SUMMARY'))) {
+        return { isMatch: true };
+    }
 
     const comparableSales = [
         'COMPARABLE SALE #1', 'COMPARABLE SALE #2', 'COMPARABLE SALE #3',
@@ -305,23 +310,31 @@ export const checkVersion1ComparableListingStatusConsistency = (field, text, dat
 
     if (values.length < 2) return null;
 
-    const firstVal = values[0].val.toLowerCase();
-    const hasMismatch = values.some(item => item.val.toLowerCase() !== firstVal);
-
-    if (hasMismatch) {
-        const details = values.map(item => `${item.comp.replace('COMPARABLE SALE #', 'Comp ')}: '${item.val}'`).join(', ');
-        return {
-            isError: true,
-            skipBlankFilter: true,
-            message: `Listing Status must be the same for all comparables. ${details}`
-        };
+    // Only compare settled comps against settled comps
+    const settledValues = values.filter(item => /settled/i.test(item.val));
+    if (settledValues.length >= 2) {
+        const firstSettled = settledValues[0].val.toLowerCase();
+        const hasMismatch = settledValues.some(item => item.val.toLowerCase() !== firstSettled);
+        if (hasMismatch) {
+            const details = settledValues.map(item => `${item.comp.replace('COMPARABLE SALE #', 'Comp ')}: '${item.val}'`).join(', ');
+            return {
+                isError: true,
+                skipBlankFilter: true,
+                message: `Listing Status must be consistent for settled comparables. ${details}`
+            };
+        }
     }
 
     return { isMatch: true };
 };
 
-export const checkVersion1ComparableTransferTermsConsistency = (field, text, data) => {
+export const checkVersion1ComparableTransferTermsConsistency = (field, text, data, fieldPath, saleName) => {
     if (field !== 'Transfer Terms' || !data) return null;
+
+    const currentTarget = saleName || (fieldPath && fieldPath[0]);
+    if (currentTarget === 'Subject' || (fieldPath && fieldPath[0] === 'Subject')) {
+        return { isMatch: true };
+    }
 
     const comparableSales = [
         'COMPARABLE SALE #1', 'COMPARABLE SALE #2', 'COMPARABLE SALE #3',

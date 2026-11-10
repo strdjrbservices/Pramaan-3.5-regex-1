@@ -51,6 +51,21 @@ def get_mongo_db():
 def get_reports_collection():
     return get_mongo_db()["appraisal_reports"]
 
+_reports_indexes_ensured = False
+
+def ensure_reports_indexes(col=None):
+    global _reports_indexes_ensured
+    if not _reports_indexes_ensured:
+        try:
+            if col is None:
+                col = get_reports_collection()
+            col.create_index([("created_at", pymongo.DESCENDING)], background=True)
+            col.create_index([("id", pymongo.ASCENDING)], background=True)
+            _reports_indexes_ensured = True
+            logger.info("Successfully ensured indexes on appraisal_reports (created_at: -1, id: 1)")
+        except Exception as e:
+            logger.warning(f"Could not ensure index on appraisal_reports: {e}")
+
 def get_messages_collection():
     return get_mongo_db()["contact_messages"]
 
@@ -94,6 +109,7 @@ def mongo_get_reports(limit=100):
     ['id', 'user_name', 'file_name', 'report_data', 'created_at', 'status']
     """
     col = get_reports_collection()
+    ensure_reports_indexes(col)
     projection = {
         "_id": 1,
         "id": 1,
@@ -105,7 +121,7 @@ def mongo_get_reports(limit=100):
     }
     
     try:
-        cursor = col.find({}, projection).sort("created_at", -1).limit(limit)
+        cursor = col.find({}, projection).sort("created_at", -1).allow_disk_use(True).limit(limit)
         results = []
         for doc in cursor:
             created_at_val = doc.get("created_at")

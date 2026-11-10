@@ -4228,6 +4228,96 @@ function Subject({ defaultFormType }) {
     });
     Object.assign(normalizedFields, result.fields);
 
+    // Unpack SUMMARY section for Appraisal Version #1 / UAD 3.6
+    const summarySec = result.fields?.SUMMARY || result.fields?.Summary || result.clean_data?.Summary || result.clean_data?.SUMMARY;
+    if (summarySec && typeof summarySec === 'object') {
+      normalizedFields["SUMMARY"] = { ...(normalizedFields["SUMMARY"] || {}), ...summarySec };
+      normalizedFields["Summary"] = normalizedFields["SUMMARY"];
+      Object.assign(normalizedFields, summarySec);
+    } else {
+      normalizedFields["SUMMARY"] = { ...(normalizedFields["SUMMARY"] || {}) };
+      const summaryKeys = [
+        'Opinion of Market Value', 'Indicated Value by Sales Comparison Approach Indicated',
+        'Indicated Value by Sales Comparison Approach', 'Market Value Condition', 'Effective Date of Appraisal',
+        'Assignment Reason', 'Borrower Name', 'Current Owner of Public Record', 'Listing Status',
+        'Property Valuation Method', 'Appraiser Name', 'Construction Method', 'Attachment Type',
+        'Overall Quality', 'Overall Condition', 'Planned Unit Development (PUD)', 'Condominium',
+        'Cooperative', 'Condop', 'Subject Site Owned in Common', 'Units Excluding ADUs',
+        'Accessory Dwelling Units (ADUs)', 'Property Rights Appraised', 'Highest and Best Use as Present Use',
+        'Zoning Compliance', 'Apparent Defects, Damages, Deficiencies Requiring Action',
+        'Appraisal Version', 'Appraiser Reference ID', 'FHA Case #'
+      ];
+      summaryKeys.forEach(k => {
+        if (result.fields && result.fields[k] !== undefined && result.fields[k] !== null) {
+          normalizedFields["SUMMARY"][k] = result.fields[k];
+        }
+      });
+      normalizedFields["Summary"] = normalizedFields["SUMMARY"];
+    }
+
+    // Unpack CONTACT section
+    const contactSec = result.fields?.CONTACT || result.fields?.['Contact Information'] || result.clean_data?.['Contact Information'] || result.clean_data?.CONTACT;
+    if (contactSec && typeof contactSec === 'object') {
+      normalizedFields["CONTACT"] = { ...(normalizedFields["CONTACT"] || {}), ...contactSec };
+      normalizedFields["Contact Information"] = normalizedFields["CONTACT"];
+      Object.assign(normalizedFields, contactSec);
+    }
+
+    // Unpack CERTIFICATION section
+    const certSec = result.fields?.CERTIFICATION || result.fields?.Certification || result.clean_data?.Certification || result.clean_data?.CERTIFICATION;
+    if (certSec && typeof certSec === 'object') {
+      normalizedFields["CERTIFICATION"] = { ...(normalizedFields["CERTIFICATION"] || {}), ...certSec };
+      normalizedFields["Certification"] = normalizedFields["CERTIFICATION"];
+    }
+
+    // Unpack PRIOR_SALE_HISTORY section
+    const priorSaleSec = result.fields?.PRIOR_SALE_HISTORY || result.fields?.['Prior Sale History'] || result.clean_data?.['Prior Sale History'] || result.clean_data?.PRIOR_SALE_HISTORY;
+    if (priorSaleSec && typeof priorSaleSec === 'object') {
+      normalizedFields["PRIOR_SALE_HISTORY"] = { ...(normalizedFields["PRIOR_SALE_HISTORY"] || {}), ...priorSaleSec };
+      normalizedFields["Prior Sale History"] = normalizedFields["PRIOR_SALE_HISTORY"];
+      Object.assign(normalizedFields, priorSaleSec);
+    }
+
+    // Unpack PROJECT_INFO section
+    const projectInfoSec = result.fields?.PROJECT_INFO || result.fields?.['Project Information'] || result.clean_data?.['Project Information'] || result.clean_data?.PROJECT_INFO;
+    if (projectInfoSec && typeof projectInfoSec === 'object') {
+      normalizedFields["PROJECT_INFO"] = { ...(normalizedFields["PROJECT_INFO"] || {}), ...projectInfoSec };
+      normalizedFields["Project Information"] = normalizedFields["PROJECT_INFO"];
+      Object.assign(normalizedFields, projectInfoSec);
+    }
+
+    // Unpack SITE section
+    const siteSec = result.fields?.SITE || result.fields?.Site || result.clean_data?.Site || result.clean_data?.SITE;
+    if (siteSec && typeof siteSec === 'object') {
+      normalizedFields["SITE"] = { ...(normalizedFields["SITE"] || {}), ...siteSec };
+      normalizedFields["Site"] = normalizedFields["SITE"];
+      Object.assign(normalizedFields, siteSec);
+    }
+
+    // Unpack IMPROVEMENTS section
+    const impSec = result.fields?.IMPROVEMENTS || result.fields?.Improvements || result.clean_data?.Improvements || result.clean_data?.IMPROVEMENTS;
+    if (impSec && typeof impSec === 'object') {
+      normalizedFields["IMPROVEMENTS"] = { ...(normalizedFields["IMPROVEMENTS"] || {}), ...impSec };
+      normalizedFields["Improvements"] = normalizedFields["IMPROVEMENTS"];
+      normalizedFields["Dwelling Exterior"] = normalizedFields["IMPROVEMENTS"];
+      Object.assign(normalizedFields, impSec);
+    }
+
+    // Unpack NEIGHBORHOOD section
+    const neighSec = result.fields?.NEIGHBORHOOD || result.fields?.Neighborhood || result.clean_data?.Neighborhood || result.clean_data?.NEIGHBORHOOD;
+    if (neighSec && typeof neighSec === 'object') {
+      normalizedFields["NEIGHBORHOOD"] = { ...(normalizedFields["NEIGHBORHOOD"] || {}), ...neighSec };
+      normalizedFields["Neighborhood"] = normalizedFields["NEIGHBORHOOD"];
+      Object.assign(normalizedFields, neighSec);
+    }
+
+    // Unpack Subject section
+    const subjSec = result.fields?.Subject || result.fields?.SUBJECT || result.clean_data?.Subject || result.clean_data?.SUBJECT;
+    if (subjSec && typeof subjSec === 'object') {
+      normalizedFields["Subject"] = { ...(normalizedFields["Subject"] || {}), ...subjSec };
+      normalizedFields["SUBJECT"] = normalizedFields["Subject"];
+    }
+
     // Unpack SALES_GRID comps (keep Subject section and Sales Grid completely distinct)
     const salesGrid = result.fields?.SALES_GRID || result.clean_data?.['Sales Grid'] || result.clean_data?.SALES_GRID || result.SALES_GRID;
     if (salesGrid && typeof salesGrid === 'object') {
@@ -4441,14 +4531,16 @@ function Subject({ defaultFormType }) {
     const activeFile = fileOverride || (currentSource === 'xml' ? (xmlFile || selectedFile) : (selectedFile || xmlFile));
     if (!activeFile) return;
 
-    const initialCategories = ['SUBJECT'];
+    let detectedFormType = selectedFormType || '1004';
+    const isV1 = detectedFormType === 'Appraisal Version #1' || detectedFormType === 'Version 1';
+    const isXmlFile = activeFile.name ? activeFile.name.toLowerCase().endsWith('.xml') : false;
+    const initialCategories = isXmlFile ? ['SUMMARY'] : (isV1 ? ['SUMMARY', 'SUBJECT'] : ['SUBJECT']);
     setLoading(true);
     setExtractionAttempted(true);
     setTimer(0);
     timerRef.current = setInterval(() => setTimer(prev => prev + 1), 1000);
 
     let extractedDataResult = null;
-    let detectedFormType = selectedFormType || '1004';
 
     for (const category of initialCategories) {
       try {

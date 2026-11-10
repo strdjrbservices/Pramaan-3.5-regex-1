@@ -454,7 +454,10 @@ export const checkProximityToSubject = (field, text, allData, arg4, arg5) => {
     if (isNaN(proximityValue)) return null;
 
     const neighborhoodSection = allData.NEIGHBORHOOD || allData.Neighborhood || allData.neighborhood || {};
-    const location = String(neighborhoodSection.Location || neighborhoodSection.location || '').trim().toLowerCase();
+    let location = String(neighborhoodSection.Location || neighborhoodSection.location || '').trim().toLowerCase();
+    if (!location || !['urban', 'suburban', 'rural'].includes(location)) {
+        location = 'suburban';
+    }
 
     const comment = String(
         allData[saleName]?.['Proximity to Subject comment'] ||
@@ -478,8 +481,6 @@ export const checkProximityToSubject = (field, text, allData, arg4, arg5) => {
         if (proximityValue > 5 && !comment) {
             return { isError: true, field: overrideField, message: `Proximity to Subject (${proximityText}) is greater than 5.0 miles for a Rural location. A comment is required.` };
         }
-    } else if (!['urban', 'suburban', 'rural'].includes(location)) {
-        return { isError: true, message: `Location in Neighborhood section must be Urban, Suburban, or Rural to validate proximity.` };
     }
 
     return { isMatch: true };
