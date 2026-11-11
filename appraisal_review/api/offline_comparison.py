@@ -4051,28 +4051,51 @@ def compare_engagement_letter_offline(main_report_path: str, letter_path: str) -
     """
     rep = extract_report_data_offline(main_report_path)
     rep_fields = rep.get("fields", {})
-    subj_fields = rep_fields.get("SUBJECT", {})
 
-    # 1. Main Report - Property Address
-    rep_addr = str(
-        subj_fields.get("Full Address")
-        or subj_fields.get("Property Address")
-        or ""
-    ).strip()
-    city = subj_fields.get("City", "")
-    state = subj_fields.get("State", "")
-    zip_c = subj_fields.get("Zip Code", "") or subj_fields.get("Postal Code", "")
-    if rep_addr and city and str(city).lower() not in rep_addr.lower():
-        rep_addr = f"{rep_addr}, {city}, {state} {zip_c}".strip()
+    # Support UAD 3.6 XML: lender fields are in ASSIGNMENT/CONTACT, not SUBJECT
+    subj_fields = rep_fields.get("SUBJECT", rep_fields.get("Subject", {}))
+    summary_fields = rep_fields.get("SUMMARY", rep_fields.get("Summary", {}))
+    assignment_fields = rep_fields.get("ASSIGNMENT", rep_fields.get("Assignment",
+                        rep_fields.get("CONTRACT", rep_fields.get("Contract", {}))))
+    contact_fields = rep_fields.get("CONTACT", rep_fields.get("Contact Information", {}))
+
+    def _first_nonempty(*vals):
+        for v in vals:
+            s = str(v).strip() if v is not None else ""
+            if s and s.lower() not in ("none", "n/a", ""):
+                return s
+        return ""
+
+    # 1. Main Report - Property Address (UAD 3.6 uses "Physical Address" in subject_data)
+    rep_addr = _first_nonempty(
+        subj_fields.get("Physical Address"),
+        subj_fields.get("Full Address"),
+        subj_fields.get("Property Address"),
+        summary_fields.get("Physical Address"),
+        rep_fields.get("Physical Address"),
+        rep_fields.get("Full Address"),
+        rep_fields.get("Property Address"),
+    )
+    if rep_addr:
+        city = _first_nonempty(subj_fields.get("City"), rep_fields.get("City"))
+        state = _first_nonempty(subj_fields.get("State"), rep_fields.get("State"))
+        zip_c = _first_nonempty(
+            subj_fields.get("Zip Code"), subj_fields.get("Postal Code"),
+            rep_fields.get("Zip Code"), rep_fields.get("Postal Code")
+        )
+        if city and str(city).lower() not in rep_addr.lower():
+            rep_addr = f"{rep_addr}, {city}, {state} {zip_c}".strip(", ")
     # Clean OCR labels or prefixes
     rep_addr = re.sub(r'^(?:Property\s*Address\s*[:\s]*)', '', rep_addr, flags=re.IGNORECASE).strip()
     rep_addr = re.sub(r'\s*State\b', '', rep_addr, flags=re.IGNORECASE)
     rep_addr = re.sub(r'\s*Zip\s*Code\b', '', rep_addr, flags=re.IGNORECASE)
 
-    # 2. Main Report - Vendor's Fee
+    # 2. Main Report - Vendor's Fee (UAD 3.6: "Appraiser Fee" in assignment_data)
     rep_fee = _clean_numeric(
-        subj_fields.get("Appraiser Fee")
+        assignment_fields.get("Appraiser Fee")
+        or subj_fields.get("Appraiser Fee")
         or subj_fields.get("Appraiser's Fee")
+        or rep_fields.get("Appraiser Fee")
         or rep_fields.get("CONTRACT", {}).get("Fee")
         or rep_fields.get("INVOICE", {}).get("Fee Amount")
         or rep_fields.get("INVOICE", {}).get("Invoice Amount")
@@ -4102,22 +4125,32 @@ def compare_engagement_letter_offline(main_report_path: str, letter_path: str) -
                 if rep_fee is not None:
                     break
 
-    # 3. Main Report - Lender Name
-    rep_lender = str(
-        subj_fields.get("Lender/Client")
-        or subj_fields.get("Lender Name")
-        or subj_fields.get("Client")
-        or subj_fields.get("Lender")
-        or ""
-    ).strip()
+    # 3. Main Report - Lender Name (UAD 3.6: "Client/Lender Company Name" in assignment/contact)
+    rep_lender = _first_nonempty(
+        assignment_fields.get("Client/Lender Company Name"),
+        contact_fields.get("Client/Lender Company Name"),
+        summary_fields.get("Client/Lender Company Name"),
+        rep_fields.get("Client/Lender Company Name"),
+        subj_fields.get("Lender/Client"),
+        subj_fields.get("Lender Name"),
+        subj_fields.get("Client"),
+        subj_fields.get("Lender"),
+        rep_fields.get("Lender/Client"),
+        rep_fields.get("Lender Name"),
+    )
 
-    # 4. Main Report - Lender Address
-    rep_lender_addr = str(
-        subj_fields.get("Address (Lender/Client)")
-        or subj_fields.get("Lender Address")
-        or subj_fields.get("Client Address")
-        or ""
-    ).strip()
+    # 4. Main Report - Lender Address (UAD 3.6: "Client/Lender Company Address" in assignment/contact)
+    rep_lender_addr = _first_nonempty(
+        assignment_fields.get("Client/Lender Company Address"),
+        contact_fields.get("Client/Lender Company Address"),
+        summary_fields.get("Client/Lender Company Address"),
+        rep_fields.get("Client/Lender Company Address"),
+        subj_fields.get("Address (Lender/Client)"),
+        subj_fields.get("Lender Address"),
+        subj_fields.get("Client Address"),
+        rep_fields.get("Address (Lender/Client)"),
+        rep_fields.get("Lender Address"),
+    )
 
     # --- Extract from Engagement Letter ---
     letter_pages = _extract_full_text_with_pages(letter_path)

@@ -9,15 +9,37 @@ import difflib
 import argparse
 from datetime import datetime
 from playwright.sync_api import sync_playwright
-from .utils import logger, check_pause_state_sync, FULL_FILE_PATH, HTML_FILES_PATH, NEW_FILES_REVISED_PATH, OLD_FILES_REVISED_PATH, get_browser_config
+try:
+    from .utils import (
+        logger,
+        check_pause_state_sync,
+        FULL_FILE_PATH,
+        HTML_FILES_PATH,
+        NEW_FILES_REVISED_PATH,
+        OLD_FILES_REVISED_PATH,
+        LETTERS_PATH,
+        get_browser_config,
+    )
+except ImportError:
+    from utils import (
+        logger,
+        check_pause_state_sync,
+        FULL_FILE_PATH,
+        HTML_FILES_PATH,
+        NEW_FILES_REVISED_PATH,
+        OLD_FILES_REVISED_PATH,
+        LETTERS_PATH,
+        get_browser_config,
+    )
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PDF_DIR = str(FULL_FILE_PATH)
 REVISED_DIR = str(NEW_FILES_REVISED_PATH)
 OLD_DIR = str(OLD_FILES_REVISED_PATH)
+LETTERS_DIR = str(LETTERS_PATH)
 
-for d in [PDF_DIR, REVISED_DIR, OLD_DIR, str(HTML_FILES_PATH)]:
+for d in [PDF_DIR, REVISED_DIR, OLD_DIR, str(HTML_FILES_PATH), LETTERS_DIR]:
     os.makedirs(d, exist_ok=True)
 
 def update_status(status, message, progress=0, mode='full_file'):
@@ -82,6 +104,35 @@ def download_pdfs_for_order(page, appr_id, mode='full_file', download_pref='appr
 
         if has_revised and has_old and has_html:
             logger.info(f"Order {name_id} already fully processed locally (revised, old, and html exist). Skipping.")
+            return -1
+
+    elif mode == 'full_file':
+        has_report = (
+            os.path.exists(os.path.join(PDF_DIR, f"{name_id}.xml")) or
+            os.path.exists(os.path.join(PDF_DIR, f"{name_id}.pdf"))
+        )
+        if not has_report and os.path.exists(PDF_DIR):
+            has_report = any(name_id.lower() in f.lower() for f in os.listdir(PDF_DIR) if f.lower().endswith(('.xml', '.pdf')))
+
+        has_html = os.path.exists(os.path.join(str(HTML_FILES_PATH), f"{name_id}.html"))
+
+        el_patterns = [
+            f"{name_id}_engagement_letter.pdf",
+            f"{name_id}_engagement_letter.docx",
+            f"{name_id}_engagement_letter.doc",
+            f"{name_id}.pdf",
+            f"{name_id}.docx",
+            f"{name_id}.doc",
+            f"{name_id}_engagement.pdf",
+            f"{name_id}_el.pdf",
+            f"{name_id}_letter.pdf",
+        ]
+        has_letter = any(os.path.exists(os.path.join(LETTERS_DIR, pat)) for pat in el_patterns)
+        if not has_letter and os.path.exists(LETTERS_DIR):
+            has_letter = any(name_id.lower() in f.lower() for f in os.listdir(LETTERS_DIR) if f.lower().endswith(('.pdf', '.doc', '.docx')))
+
+        if has_report and has_html and has_letter:
+            logger.info(f"Order {name_id} already fully processed locally (report, HTML, and engagement letter exist). Skipping.")
             return -1
 
     try:
@@ -218,6 +269,7 @@ def download_pdfs_for_order(page, appr_id, mode='full_file', download_pref='appr
 
         else:
             # mode == 'full_file'
+            # 1. Download Primary XML and Fallback PDF reports from reportsTable
             table_selector = "div#lnkDivReports + div table.reportsTable, table.reportsTable"
             try:
                 page.wait_for_selector(table_selector, timeout=5000)
@@ -261,10 +313,106 @@ def download_pdfs_for_order(page, appr_id, mode='full_file', download_pref='appr
                         logger.info(f"Saved PDF report as {filename}: {dest}")
                         count += 1
 
-                return count
             except Exception as e:
                 logger.warning(f"Failed to download reports for {appr_id}: {e}")
-                return 0
+
+            # 2. Download Engagement Letter from Other Supporting Documents (grdDocs)
+            try:
+                docs_table = page.locator("#ctl00_cphBody_grdDocs, table:has(th:has-text('Document Type')):visible").first
+                if docs_table.is_visible(timeout=3000):
+                    rows = docs_table.locator("tr").all()
+                    candidates = []
+                    for row in rows:
+                        link = row.locator("a[id*='lnkDocumentName'], a[href*='OpenDocument.aspx']").first
+                        if link.count() == 0:
+                            continue
+
+                        raw_text = (link.inner_text() or "").strip()
+                        href = (link.get_attribute("href") or "").strip()
+                        if not raw_text and not href:
+                            continue
+
+                        doc_type_elem = row.locator(".lblDocumentType, .hdnDocTypeName, span[id*='lblDocumentType'], input[id*='hdnDocTypeName']").first
+                        doc_type_text = ""
+                        if doc_type_elem.count() > 0:
+                            doc_type_text = (doc_type_elem.inner_text() or doc_type_elem.get_attribute("value") or "").strip()
+
+                        raw_lower = raw_text.lower()
+                        doc_lower = doc_type_text.lower()
+
+                        is_engagement_letter = False
+                        if any(kw in doc_lower for kw in [
+                            "statement of engagement", "engagement letter", "engagement", "letter of engagement"
+                        ]):
+                            is_engagement_letter = True
+                        elif any(kw in raw_lower for kw in [
+                            "engagementletter", "engagement_letter", "engagement-letter", "statement_of_engagement"
+                        ]):
+                            is_engagement_letter = True
+                        elif "engagement" in raw_lower and raw_lower.endswith(('.pdf', '.doc', '.docx')):
+                            is_engagement_letter = True
+                        elif any(raw_lower.endswith(sfx) for sfx in ['_el.pdf', '-el.pdf', ' el.pdf']):
+                            is_engagement_letter = True
+                        elif "letter" in doc_lower and not any(bad in doc_lower for bad in ["rejection", "closing", "welcome", "acknowledgment"]):
+                            if raw_lower.endswith(('.pdf', '.doc', '.docx')):
+                                is_engagement_letter = True
+
+                        if is_engagement_letter:
+                            sub_date_elem = row.locator("span[id*='lblSubmittedOn']").first
+                            sub_date = parse_datetime(sub_date_elem.inner_text().strip()) if sub_date_elem.count() > 0 else None
+                            candidates.append((link, raw_text, doc_type_text, sub_date))
+
+                    if candidates:
+                        candidates.sort(key=lambda x: x[3] or datetime.min, reverse=True)
+                        logger.info(f"Found {len(candidates)} Engagement Letter candidate(s) for {name_id}")
+
+                        for i, (link, raw_text, doc_type_text, _) in enumerate(candidates):
+                            ext = os.path.splitext(raw_text)[1] if "." in raw_text else ".pdf"
+                            if not ext or ext.lower() not in ['.pdf', '.doc', '.docx']:
+                                ext = ".pdf"
+
+                            if download_pref == 'appr_id':
+                                letter_filename = f"{name_id}_engagement_letter{ext}" if i == 0 else f"{name_id}_engagement_letter_{i}{ext}"
+                            else:
+                                clean_name = raw_text if raw_text.lower().endswith(('.pdf', '.doc', '.docx')) else f"{raw_text}{ext}"
+                                letter_filename = clean_name if clean_name.lower().startswith(name_id.lower()) else f"{name_id}_{clean_name}"
+
+                            dest = os.path.join(LETTERS_DIR, letter_filename)
+                            if os.path.exists(dest):
+                                logger.info(f"Engagement Letter '{letter_filename}' already exists: {dest}")
+                            else:
+                                logger.info(f"Targeting Engagement Letter: '{raw_text}' (Type: '{doc_type_text}') -> {letter_filename}")
+                                with page.expect_download(timeout=25000) as download_info:
+                                    link.click()
+                                download = download_info.value
+                                download.save_as(dest)
+                                logger.info(f"Saved Engagement Letter as {letter_filename}: {dest}")
+                                count += 1
+
+                            # Primary (most recent) engagement letter downloaded
+                            if i == 0:
+                                break
+                    else:
+                        logger.info(f"No Engagement Letter found in supporting documents for {name_id}")
+            except Exception as el_err:
+                logger.warning(f"Failed to check/download Engagement Letter for {name_id}: {el_err}")
+
+            # 3. Save Order Form HTML
+            try:
+                html_dest = os.path.join(str(HTML_FILES_PATH), f"{name_id}.html")
+                if os.path.exists(html_dest):
+                    logger.info(f"Order form HTML already exists: {html_dest}")
+                else:
+                    content = page.content()
+                    with open(html_dest, "w", encoding="utf-8") as f:
+                        f.write(content)
+                    logger.info(f"Saved order form HTML: {html_dest}")
+                    count += 1
+            except Exception as he:
+                logger.warning(f"Failed to save order form HTML for {name_id}: {he}")
+
+            logger.info(f"Completed download sequence for {name_id} (New items saved: {count})")
+            return count
     except Exception as e:
         logger.error(f"Error downloading for ApprID {appr_id}: {e}")
         return 0
@@ -335,8 +483,12 @@ def find_date_column_index(headers=None, rows=None):
     return -1
 
 def extract_orders_from_tab(page, tab_name, submitted_after=None):
-    """Extracts ApprIDs from the specified tab for orders with status 'File In Review'."""
+    """Extracts ApprIDs from the specified tab.
+    For 'Revised Review Orders' tab, accepts any row with an ApprID link (no status filter).
+    For other tabs, filters rows where status contains 'File In Review'.
+    """
     submitted_after_dt = parse_datetime(submitted_after) if submitted_after else None
+    is_revised_tab = "revised" in tab_name.lower()
     try:
         tab = page.locator(f"strong:has-text('{tab_name}'), a:has-text('{tab_name}')").first
         if not tab.is_visible():
@@ -348,6 +500,7 @@ def extract_orders_from_tab(page, tab_name, submitted_after=None):
         page.wait_for_timeout(3000)
         table = page.locator("table").filter(has=page.locator("tr:has-text('Order Details')")).filter(has=page.locator("visible=true")).first
         if not table.is_visible():
+            logger.info(f"No visible 'Order Details' table found in tab '{tab_name}'.")
             return []
 
         headers = []
@@ -371,17 +524,27 @@ def extract_orders_from_tab(page, tab_name, submitted_after=None):
         date_col_idx = find_date_column_index(headers, rows) if submitted_after_dt else -1
 
         count = rows.count()
+        logger.info(f"Tab '{tab_name}': found {count - 1} data row(s) to scan.")
         appr_ids = []
         for i in range(1, count):
             cols = rows.nth(i).locator("td")
-            if cols.count() <= status_col_idx:
-                logger.info(f"Skipping row {i} - status column not present (got {cols.count()} cols, needed index {status_col_idx})")
+            if cols.count() == 0:
                 continue
 
-            status_text = cols.nth(status_col_idx).inner_text().strip()
-            if "file in review" not in status_text.lower():
-                logger.info(f"Skipping row {i} - status is '{status_text}' (not containing 'File In Review')")
-                continue
+            # Status filter: Revised tab accepts all orders; other tabs require 'File In Review'
+            if not is_revised_tab:
+                if cols.count() <= status_col_idx:
+                    logger.info(f"Skipping row {i} - status column not present (got {cols.count()} cols, needed index {status_col_idx})")
+                    continue
+                status_text = cols.nth(status_col_idx).inner_text().strip()
+                if "file in review" not in status_text.lower():
+                    logger.info(f"Skipping row {i} - status is '{status_text}' (not 'File In Review')")
+                    continue
+            else:
+                # For Revised tab: log the status but don't filter it out
+                if cols.count() > status_col_idx >= 0:
+                    status_text = cols.nth(status_col_idx).inner_text().strip()
+                    logger.info(f"Row {i} status: '{status_text}'")
 
             if cols.count() >= 1:
                 link = cols.first.locator("a")
@@ -406,7 +569,7 @@ def extract_orders_from_tab(page, tab_name, submitted_after=None):
         logger.error(f"Error extracting from {tab_name}: {e}")
         return []
 
-def run_fastapp_automation(username=None, password=None, mode='full_file', headless=False, download_pref='appr_id', submitted_after=None):
+def run_fastapp_automation(username=None, password=None, mode='full_file', headless=False, download_pref='appr_id', submitted_after=None, order_id=None):
     """
     Automates login to FastApp (https://fastapp.spurams.com/login.aspx)
     and processes report downloads for available orders.
@@ -421,11 +584,36 @@ def run_fastapp_automation(username=None, password=None, mode='full_file', headl
         context = browser.new_context()
         page = context.new_page()
 
+        # Increase default navigation timeout globally (60s)
+        page.set_default_navigation_timeout(60000)
+        page.set_default_timeout(60000)
+
         target_url = "https://fastapp.spurams.com/login.aspx?ReturnUrl=%2f"
         logger.info(f"Navigating to {target_url}...")
-        page.goto(target_url)
 
-        page.wait_for_load_state("networkidle")
+        # Retry navigation up to 3 times with progressive wait-until strategies
+        nav_success = False
+        for nav_attempt in range(1, 4):
+            try:
+                # Use "domcontentloaded" first (faster than "load") then fall back to "commit"
+                wait_until = "domcontentloaded" if nav_attempt <= 2 else "commit"
+                page.goto(target_url, timeout=60000, wait_until=wait_until)
+                nav_success = True
+                logger.info(f"Navigation succeeded on attempt {nav_attempt} (wait_until='{wait_until}').")
+                break
+            except Exception as nav_err:
+                logger.warning(f"Navigation attempt {nav_attempt}/3 failed: {nav_err}")
+                if nav_attempt < 3:
+                    logger.info(f"Retrying in 5 seconds...")
+                    time.sleep(5)
+
+        if not nav_success:
+            raise RuntimeError(f"Cannot reach FastApp login page after 3 attempts. Check network connectivity to fastapp.spurams.com.")
+
+        try:
+            page.wait_for_load_state("networkidle", timeout=30000)
+        except Exception:
+            logger.warning("networkidle wait timed out — continuing anyway (page may still be usable).")
 
         logger.info(f"Page loaded successfully! Title is: '{page.title()}'")
 
@@ -484,16 +672,21 @@ def run_fastapp_automation(username=None, password=None, mode='full_file', headl
 
              logger.success(f"Final Count Report - New: {results['New Review Orders']}, In Progress: {results['Review Orders In Progress']}, Revised: {results['Revised Review Orders']}")
 
-             tabs = ["Revised Review Orders"] if mode == 'update_review' else ["New Review Orders", "Review Orders In Progress"]
-             all_appr_ids = []
+             if order_id:
+                 logger.info(f"Direct order ID target specified: {order_id}")
+                 clean_oid = str(order_id).strip()
+                 unique_ids = [(clean_oid, clean_oid)]
+             else:
+                 tabs = ["Revised Review Orders"] if mode == 'update_review' else ["New Review Orders", "Review Orders In Progress"]
+                 all_appr_ids = []
 
-             for i, tab in enumerate(tabs):
-                 update_status("running", f"Scanning {tab}...", 20 + i*10, mode)
-                 appr_ids = extract_orders_from_tab(page, tab, submitted_after=submitted_after)
-                 all_appr_ids.extend(appr_ids)
-                 logger.info(f"Found {len(appr_ids)} orders in {tab}")
+                 for i, tab in enumerate(tabs):
+                     update_status("running", f"Scanning {tab}...", 20 + i*10, mode)
+                     appr_ids = extract_orders_from_tab(page, tab, submitted_after=submitted_after)
+                     all_appr_ids.extend(appr_ids)
+                     logger.info(f"Found {len(appr_ids)} orders in {tab}")
 
-             unique_ids = list(set(all_appr_ids))
+                 unique_ids = list(set(all_appr_ids))
              total = len(unique_ids)
              added_count = 0
              skipped_count = 0
@@ -559,11 +752,18 @@ def run_fastapp_automation(username=None, password=None, mode='full_file', headl
         return str(logger.current_log_file)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="PRAMAAN FastApp Download Automation (XML, PDF, Letters, HTML)")
     parser.add_argument('--mode', default='full_file', choices=['full_file', 'update_review'])
-    parser.add_argument('--headless', type=bool, default=False)
+    parser.add_argument('--headless', action='store_true', default=False)
     parser.add_argument('--download_pref', default='appr_id', choices=['appr_id', 'original'])
     parser.add_argument('--submitted_after', default=None)
+    parser.add_argument('--order_id', default=None, help='Target specific ApprID or Appraisal number directly')
     args = parser.parse_args()
 
-    run_fastapp_automation(mode=args.mode, headless=args.headless, download_pref=args.download_pref, submitted_after=args.submitted_after)
+    run_fastapp_automation(
+        mode=args.mode,
+        headless=args.headless,
+        download_pref=args.download_pref,
+        submitted_after=args.submitted_after,
+        order_id=args.order_id
+    )

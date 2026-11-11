@@ -121,7 +121,7 @@ def execute_playwright_background(file_path, username, password):
     finally:
         automation_status["is_running"] = False
 
-def execute_fastapp_background(username, password, mode='full_file', download_pref='appr_id', headless=True, submitted_after=None):
+def execute_fastapp_background(username, password, mode='full_file', download_pref='appr_id', headless=True, submitted_after=None, order_id=None):
     global automation_status
     automation_status["is_running"] = True
     automation_status["error"] = None
@@ -140,7 +140,8 @@ def execute_fastapp_background(username, password, mode='full_file', download_pr
             mode=fa_mode,
             download_pref=download_pref,
             headless=headless,
-            submitted_after=submitted_after
+            submitted_after=submitted_after,
+            order_id=order_id
         )
         logger.success("--- FastApp Process Completed ---")
     except InterruptedError:
@@ -675,13 +676,16 @@ def health(request):
     return Response({"status": "ok"})
 
 
-def _save_temp_file(file):
-    """Helper function to save uploaded file."""
-    suffix = os.path.splitext(file.name)[1] or ".tmp"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+def _save_temp_file(file, custom_name=None):
+    """Helper function to save uploaded file, preserving original filename in a dedicated temp folder."""
+    filename = custom_name or getattr(file, "name", None) or "upload.tmp"
+    clean_name = os.path.basename(filename.replace("\\", "/"))
+    temp_dir = tempfile.mkdtemp(prefix="pramaan_upload_")
+    dest_path = os.path.join(temp_dir, clean_name)
+    with open(dest_path, "wb") as f:
         for chunk in file.chunks():
-            tmp.write(chunk)
-        return tmp.name
+            f.write(chunk)
+    return dest_path
 
 
 @api_view(["POST"])
@@ -1049,7 +1053,27 @@ def extract_pdf(request):
 
             # 7. XML Field Extraction (When not a specialized check request)
             if is_xml:
-                xml_result = extract_fields_from_xml(tmp_path)
+                # Save companion PDF if provided by client or in request
+                companion_pdf = request.FILES.get("companion_pdf") or request.FILES.get("pdf_file")
+                companion_pdf_path = None
+                if companion_pdf:
+                    try:
+                        c_dir = os.path.dirname(tmp_path)
+                        c_name = os.path.basename(companion_pdf.name.replace("\\", "/"))
+                        xml_stem = os.path.splitext(os.path.basename(tmp_path))[0]
+                        # Save with its own name and also as <xml_stem>.pdf
+                        c_path1 = os.path.join(c_dir, c_name)
+                        with open(c_path1, "wb") as f_c:
+                            for chunk in companion_pdf.chunks():
+                                f_c.write(chunk)
+                        c_path2 = os.path.join(c_dir, f"{xml_stem}.pdf")
+                        if c_path1 != c_path2 and not os.path.exists(c_path2):
+                            shutil.copyfile(c_path1, c_path2)
+                        companion_pdf_path = c_path1
+                    except Exception as c_err:
+                        logger.warning(f"Failed to save companion PDF for XML: {c_err}")
+
+                xml_result = extract_fields_from_xml(tmp_path, companion_pdf_path=companion_pdf_path)
                 if xml_result.get("status") == "success":
                     return Response(xml_result)
                 return Response(
@@ -1533,9 +1557,10 @@ def start_fastapp_automation_view(request):
     download_pref = request.data.get('downloadPref', 'appr_id')
     headless = request.data.get('headless', True)
     submitted_after = request.data.get('submittedAfter')
+    order_id = request.data.get('orderId') or request.data.get('order_id')
     threading.Thread(
         target=execute_fastapp_background,
-        args=(username, password, mode, download_pref, headless, submitted_after)
+        args=(username, password, mode, download_pref, headless, submitted_after, order_id)
     ).start()
     return Response({"message": "FastApp Independent automation sequence started."})
 
@@ -1593,6 +1618,7 @@ def extract_photos_view(request):
     }
     """
     uploaded_file = request.FILES.get("file") or request.FILES.get("pdf_file") or request.FILES.get("xml_file")
+    companion_file = request.FILES.get("companion_pdf") or request.FILES.get("pdf")
     file_path = request.data.get("file_path") or request.data.get("path")
     try:
         max_photos = int(request.data.get("max_photos", 60))
@@ -1614,12 +1640,23 @@ def extract_photos_view(request):
         )
 
     tmp_path = None
+    tmp_companion_path = None
     if uploaded_file:
-        suffix = os.path.splitext(uploaded_file.name)[1].lower() or ".xml"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            for chunk in uploaded_file.chunks():
-                tmp.write(chunk)
-            tmp_path = tmp.name
+        tmp_path = _save_temp_file(uploaded_file)
+        if companion_file:
+            try:
+                temp_dir = os.path.dirname(tmp_path)
+                comp_name = re.sub(r'[^a-zA-Z0-9_.-]', '_', os.path.basename(companion_file.name))
+                tmp_companion_path = os.path.join(temp_dir, comp_name)
+                with open(tmp_companion_path, "wb") as f_c:
+                    for chunk in companion_file.chunks():
+                        f_c.write(chunk)
+                xml_stem = os.path.splitext(os.path.basename(tmp_path))[0]
+                alt_path = os.path.join(temp_dir, f"{xml_stem}.pdf")
+                if tmp_companion_path != alt_path and not os.path.exists(alt_path):
+                    shutil.copyfile(tmp_companion_path, alt_path)
+            except Exception as c_err:
+                logger.warning(f"Could not save companion PDF for photo extraction: {c_err}")
     else:
         tmp_path = file_path
 
@@ -1628,7 +1665,8 @@ def extract_photos_view(request):
             tmp_path,
             max_photos=max_photos,
             dpi=dpi,
-            include_images=include_images
+            include_images=include_images,
+            companion_pdf_path=tmp_companion_path
         )
         cats = sorted(list(set(p.get("category", "General") for p in photos)))
         return Response({
@@ -1646,7 +1684,8 @@ def extract_photos_view(request):
     finally:
         if uploaded_file and tmp_path and os.path.exists(tmp_path):
             try:
-                os.remove(tmp_path)
+                temp_dir = os.path.dirname(tmp_path)
+                shutil.rmtree(temp_dir, ignore_errors=True)
             except Exception:
                 pass
 

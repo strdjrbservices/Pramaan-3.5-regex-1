@@ -4152,6 +4152,9 @@ function Subject({ defaultFormType }) {
         if (category) {
           formData.append('category', category);
         }
+        if (currentSource === 'xml' && selectedFile && selectedFile !== xmlFile) {
+          formData.append('companion_pdf', selectedFile);
+        }
 
         progressInterval = setInterval(() => {
           setExtractionProgress(prev => (prev < 40 ? prev + 5 : prev));
@@ -4549,6 +4552,9 @@ function Subject({ defaultFormType }) {
         formData.append('file', activeFile);
         formData.append('form_type', detectedFormType);
         formData.append('category', category);
+        if (currentSource === 'xml' && selectedFile && selectedFile !== xmlFile) {
+          formData.append('companion_pdf', selectedFile);
+        }
 
         const res = await fetch(`${API_BASE_URL}/api/extract/`, { method: 'POST', body: formData });
 
