@@ -2228,7 +2228,8 @@ def extract_photos_from_xml(
     max_photos: int = 100,
     dpi: int = 72,
     include_images: bool = True,
-    reference_records: Optional[Dict[str, Any]] = None
+    reference_records: Optional[Dict[str, Any]] = None,
+    companion_pdf_path: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
     Dynamically extracts all photos and their labels/captions from any MISMO 2.6 XML file.
@@ -2254,6 +2255,24 @@ def extract_photos_from_xml(
 
     if not xml_text:
         return []
+
+    # UAD 3.6 / Appraisal Version #1 dispatch
+    if 'MISMOReferenceModelIdentifier="3.6' in xml_text or "Appraisal Version" in xml_text or "<VALUATION_RESPONSE>" in xml_text or "<DEAL_SETS>" in xml_text:
+        try:
+            try:
+                from .uad36_extractor import extract_photos_from_uad36_xml
+            except (ImportError, ValueError):
+                from uad36_extractor import extract_photos_from_uad36_xml
+            return extract_photos_from_uad36_xml(
+                xml_path_or_bytes,
+                max_photos=max_photos,
+                dpi=dpi,
+                include_images=include_images,
+                reference_records=reference_records,
+                companion_pdf_path=companion_pdf_path
+            )
+        except Exception as e:
+            print(f"[xml_extractor] UAD 3.6 photo extraction notice: {e}")
 
     # 2. Extract base64 encoded PDF from <DOCUMENT> or <EMBEDDED_FILE>
     pdf_bytes = None
@@ -2618,7 +2637,7 @@ def extract_photos_from_xml(
     return photos
 
 
-def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True) -> Dict[str, Any]:
+def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True, companion_pdf_path: Optional[str] = None) -> Dict[str, Any]:
     """
     Parses a MISMO 2.6 XML appraisal file and returns the full structured fields dictionary.
     All data is extracted dynamically from the XML DOM and attributes.
@@ -2659,8 +2678,15 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True)
 
     # UAD 3.6 / Appraisal Version #1 dispatch
     if "Appraisal Version" in form_type or "3.6" in root.attrib.get("MISMOReferenceModelIdentifier", ""):
-        from .uad36_extractor import extract_fields_from_uad36_xml
-        return extract_fields_from_uad36_xml(root, extract_images=extract_images)
+        try:
+            from .uad36_extractor import extract_fields_from_uad36_xml
+        except (ImportError, ValueError):
+            from uad36_extractor import extract_fields_from_uad36_xml
+        return extract_fields_from_uad36_xml(
+            xml_path_or_bytes if isinstance(xml_path_or_bytes, (str, os.PathLike)) else root,
+            extract_images=extract_images,
+            companion_pdf_path=companion_pdf_path
+        )
 
     # Appraiser & Parties
     appraiser_name = ""

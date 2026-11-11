@@ -1,6 +1,29 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { checkFiveValuesConsistency, checkHbuConsistency } from '../validations/reconciliationValidation';
+import {
+  checkFiveValuesConsistency,
+  checkVersion1UtilitySubfields,
+  checkZoningClassificationDescription,
+  checkSiteSizesConsistency,
+  checkVersion1EffectiveDatesConsistency,
+  checkAboveGradeFinishedAreaConsistency,
+  checkYearBuiltConsistency,
+  checkAppraiserNameConsistency,
+  checkVersion1ComparableListingStatusConsistency,
+  checkVersion1ComparableTransferTermsConsistency,
+  checkVersion1YearBuiltAdjustmentConsistency,
+  checkVersion1ConstructionMethodAdjustmentConsistency,
+  checkVersion1SiteSizeAdjustmentConsistency,
+  checkVersion1LocationAdjustmentConsistency,
+  checkVersion1AttachedDetachedAdjustmentConsistency,
+  checkVersion1HeatingAdjustmentConsistency,
+  checkVersion1AmenitiesAdjustmentConsistency,
+  checkVersion1QualityConditionConsistency,
+  checkVersion1AreaAdjustmentConsistency,
+  checkVersion1OverallQualityConditionAdjustmentConsistency,
+  checkVersion1VehicleStorageAdjustmentConsistency
+} from '../validations/appraisalVersion1Validation';
+import { checkHbuConsistency } from '../validations/reconciliationValidation';
 
 
 /**
@@ -23,7 +46,7 @@ export const generateVersion1ValidationLogPDF = ({
   clientReqResponse = null,
   escalationResponse = null,
   promptAnalysisResponse = null,
-  setNotification = () => {}
+  setNotification = () => { }
 }) => {
   if (!data || Object.keys(data).length === 0) {
     setNotification({ open: true, message: 'No data to generate Appraisal Version #1 log.', severity: 'warning' });
@@ -121,13 +144,21 @@ export const generateVersion1ValidationLogPDF = ({
   };
 
   // -------------------------------------------------------------
-  // PRE-CALCULATE VALIDATION ERRORS & METRICS
+  // PRE-CALCULATE VALIDATION ERRORS & SUCCESSES
   // -------------------------------------------------------------
-  const validationErrors = getValidationErrors();
-  const validationErrorRows = validationErrors.map(([section, field, message, path]) => {
+  const rawValidationErrors = (typeof getValidationErrors === 'function') ? getValidationErrors() : [];
+  const rawValidationSuccesses = (typeof getValidationSuccesses === 'function') ? getValidationSuccesses() : [];
+
+  const validationErrorRows = rawValidationErrors.map(([section, field, message, path]) => {
     const valStr = getFieldValueByPath(reviewAllData, path) || getVal(field);
     const revLanguage = getRevisionLanguage(path, field, message, valStr);
     return [section, field, valStr, message, revLanguage];
+  });
+
+  const validationSuccessRows = rawValidationSuccesses.map(([section, field, statusOrMsg, path]) => {
+    const valStr = getFieldValueByPath(reviewAllData, path) || getVal(field);
+    const displayStatus = String(statusOrMsg || 'Passed');
+    return [section, field, valStr, displayStatus, 'Rule satisfied'];
   });
 
   const collectReqCheckErrors = (sectionTitle, responseObj) => {
@@ -156,30 +187,261 @@ export const generateVersion1ValidationLogPDF = ({
   collectReqCheckErrors('Client Requirement Check', clientReqResponse);
   collectReqCheckErrors('Escalation Check', escalationResponse);
 
-  // Direct safety fallback for Appraisal Version #1 consistency rules
+  const addErrorIfUnique = (section, field, value, message, path = []) => {
+    const valStr = (value !== undefined && value !== null && String(value).trim() !== '') ? String(value).trim() : 'Missing / Incomplete';
+    const revLang = getRevisionLanguage(path, field, message, valStr) || `Please verify and revise '${field}' in the ${section} section.`;
+    const alreadyAdded = validationErrorRows.some(row =>
+      (row[1] === field && row[3] === message) ||
+      (row[1] === field && String(row[3]).includes(String(message).substring(0, 30)))
+    );
+    if (!alreadyAdded) {
+      validationErrorRows.push([section, field, valStr, message, revLang]);
+    }
+  };
+
+  const addSuccessIfUnique = (section, field, value, ruleTitle = 'Rule validated successfully') => {
+    const alreadyInErrors = validationErrorRows.some(row => row[1] === field);
+    if (alreadyInErrors) return;
+
+    const alreadyAdded = validationSuccessRows.some(row => row[1] === field);
+    if (!alreadyAdded) {
+      const valStr = (value !== undefined && value !== null && String(value).trim() !== '') ? String(value).trim() : 'Verified';
+      validationSuccessRows.push([section, field, valStr, 'Passed', ruleTitle]);
+    }
+  };
+
+  // Comprehensive safety checks for all Appraisal Version #1 validation rules
   try {
     const v1Val = getVal('Opinion of Market Value');
-    const fiveValRes = checkFiveValuesConsistency('Opinion of Market Value', v1Val, reviewAllData, ['SUMMARY', 'Opinion of Market Value']);
-    if (fiveValRes && fiveValRes.isError) {
-      const message = fiveValRes.message;
-      const revLang = getRevisionLanguage(['SUMMARY', 'Opinion of Market Value'], 'Opinion of Market Value', message) || `Please update 'Opinion of Market Value' in the Summary / Reconciliation section to resolve the value mismatch.`;
-      const alreadyAdded = validationErrorRows.some(row => row[3] === message || (row[1] === 'Opinion of Market Value' && String(row[3]).includes('values is not same')));
-      if (!alreadyAdded) {
-        validationErrorRows.unshift(['Summary', 'Opinion of Market Value', v1Val || '3100', message, revLang]);
-      }
+    const res = checkFiveValuesConsistency('Opinion of Market Value', v1Val, reviewAllData, ['SUMMARY', 'Opinion of Market Value']);
+    if (res?.isError) {
+      addErrorIfUnique('Summary', 'Opinion of Market Value', v1Val, res.message, ['SUMMARY', 'Opinion of Market Value']);
+    } else if (res?.isMatch) {
+      addSuccessIfUnique('Summary', 'Opinion of Market Value', v1Val, 'Five market values consistent across all approaches');
     }
   } catch (e) { }
 
   try {
-    const hbuVal = getVal('Highest and Best Use as Present Use');
-    const hbuRes = checkHbuConsistency('Highest and Best Use as Present Use', hbuVal, reviewAllData, ['SITE', 'Highest and Best Use as Present Use']);
-    if (hbuRes && hbuRes.isError) {
-      const message = hbuRes.message;
-      const revLang = getRevisionLanguage(['SITE', 'Highest and Best Use as Present Use'], 'Highest and Best Use as Present Use', message) || `Please verify 'Highest and Best Use' fields.`;
-      const alreadyAdded = validationErrorRows.some(row => row[3] === message);
-      if (!alreadyAdded) {
-        validationErrorRows.push(['Site', 'Highest and Best Use as Present Use', hbuVal || 'Yes', message, revLang]);
+    const hbuVal = getVal('Highest and Best Use as Present Use') || getVal('Highest and Best Use as Improved (Present Use)');
+    const res = checkHbuConsistency('Highest and Best Use as Present Use', hbuVal, reviewAllData, ['SITE', 'Highest and Best Use as Present Use']);
+    if (res?.isError) {
+      addErrorIfUnique('Site', 'Highest and Best Use as Present Use', hbuVal, res.message, ['SITE', 'Highest and Best Use as Present Use']);
+    } else if (res?.isMatch) {
+      addSuccessIfUnique('Site', 'Highest and Best Use as Present Use', hbuVal, 'Highest & Best Use criteria fully satisfied');
+    }
+  } catch (e) { }
+
+  try {
+    const effVal = getVal('Effective Date of Appraisal') || getVal('Effective Date') || getVal('Inspection Date');
+    const res = checkVersion1EffectiveDatesConsistency('Effective Date of Appraisal', effVal, reviewAllData);
+    if (res?.isError) {
+      addErrorIfUnique('Summary', 'Effective Date of Appraisal', effVal, res.message, ['SUMMARY', 'Effective Date of Appraisal']);
+    } else if (res?.isMatch) {
+      addSuccessIfUnique('Summary', 'Effective Date of Appraisal', effVal, 'Effective & inspection dates identical across sections');
+    }
+  } catch (e) { }
+
+  try {
+    const siteVal = getVal('Site Size', ['Subject', 'Site Size']) || getVal('Total Site Size', ['SITE', 'Total Site Size']) || getVal('Parcel Size', ['SITE', 'Parcel Size']);
+    const res = checkSiteSizesConsistency('Site Size', siteVal, reviewAllData);
+    if (res?.isError) {
+      addErrorIfUnique('Site', 'Site Size', siteVal, res.message, ['SITE', 'Site Size']);
+    } else if (res?.isMatch) {
+      addSuccessIfUnique('Site', 'Site Size', siteVal, 'Site sizes match between sales grid and site section');
+    }
+  } catch (e) { }
+
+  try {
+    const glaVal = getVal('Finished Area Above Grade', ['Subject', 'Finished Area Above Grade']) || getVal('Above Grade Finished Area', ['IMPROVEMENTS', 'Above Grade Finished Area']);
+    const res = checkAboveGradeFinishedAreaConsistency('Finished Area Above Grade', glaVal, reviewAllData);
+    if (res?.isError) {
+      addErrorIfUnique('Dwelling', 'Finished Area Above Grade', glaVal, res.message, ['Subject', 'Finished Area Above Grade']);
+    } else if (res?.isMatch) {
+      addSuccessIfUnique('Dwelling', 'Finished Area Above Grade', glaVal, 'GLA matches between Improvements and Sales Grid');
+    }
+  } catch (e) { }
+
+  try {
+    const ybVal = getVal('Year Built', ['Subject', 'Year Built']) || getVal('Year Built', ['IMPROVEMENTS', 'Year Built']);
+    const res = checkYearBuiltConsistency('Year Built', ybVal, reviewAllData);
+    if (res?.isError) {
+      addErrorIfUnique('Dwelling', 'Year Built', ybVal, res.message, ['Subject', 'Year Built']);
+    } else if (res?.isMatch) {
+      addSuccessIfUnique('Dwelling', 'Year Built', ybVal, 'Year Built matches between Improvements and Sales Grid');
+    }
+  } catch (e) { }
+
+  try {
+    const appraiserVal = getVal('Appraiser Name');
+    const res = checkAppraiserNameConsistency('Appraiser Name', appraiserVal, reviewAllData);
+    if (res?.isError) {
+      addErrorIfUnique('Appraiser', 'Appraiser Name', appraiserVal, res.message, ['APPRAISER', 'Appraiser Name']);
+    } else if (res?.isMatch) {
+      addSuccessIfUnique('Appraiser', 'Appraiser Name', appraiserVal, 'Appraiser Name identical across sections');
+    }
+  } catch (e) { }
+
+  try {
+    const zoningVal = getVal('Zoning Classification Description', ['SITE', 'Zoning Classification Description']) || getVal('Classification Code Description', ['SITE', 'Classification Code Description']);
+    const res = checkZoningClassificationDescription('Zoning Classification Description', zoningVal);
+    if (res?.isError) {
+      addErrorIfUnique('Site', 'Zoning Classification Description', zoningVal, res.message, ['SITE', 'Zoning Classification Description']);
+    } else if (res?.isMatch && zoningVal) {
+      addSuccessIfUnique('Site', 'Zoning Classification Description', zoningVal, 'Zoning classification non-agricultural verified');
+    }
+  } catch (e) { }
+
+  try {
+    const utilities = [
+      { name: 'Electricity', subfields: ['Electricity Detail', 'Electricity Private Utility Impact', 'Electricity Comment'] },
+      { name: 'Sanitary Sewer', subfields: ['Sanitary Sewer Detail', 'Sanitary Sewer Private Utility Impact', 'Sanitary Sewer Comment'] },
+      { name: 'Water', subfields: ['Water Detail', 'Water Private Utility Impact', 'Water Comment'] }
+    ];
+    utilities.forEach(({ name, subfields }) => {
+      const utilVal = String(reviewAllData?.SITE?.[name] || reviewAllData?.[name] || '').trim().toLowerCase();
+      if (utilVal === 'private') {
+        subfields.forEach(sub => {
+          const subVal = reviewAllData?.SITE?.[sub] || reviewAllData?.[sub];
+          const res = checkVersion1UtilitySubfields(sub, subVal, reviewAllData);
+          if (res?.isError) {
+            addErrorIfUnique('Site', sub, subVal, res.message, ['SITE', sub]);
+          } else {
+            addSuccessIfUnique('Site', sub, subVal, `Private ${name} subfield populated`);
+          }
+        });
       }
+    });
+  } catch (e) { }
+
+  try {
+    const compNames = ['COMPARABLE SALE #1', 'COMPARABLE SALE #2', 'COMPARABLE SALE #3', 'COMPARABLE SALE #4', 'COMPARABLE SALE #5', 'COMPARABLE SALE #6'];
+    const activeComps = compNames.filter(name => reviewAllData[name] && typeof reviewAllData[name] === 'object' && Object.keys(reviewAllData[name]).length > 0);
+
+    if (activeComps.length > 0) {
+      const firstComp = activeComps[0];
+
+      // Comparable Listing Status Consistency
+      const lsRes = checkVersion1ComparableListingStatusConsistency('Listing Status', reviewAllData[firstComp]?.['Listing Status'], reviewAllData, [firstComp, 'Listing Status'], firstComp);
+      if (lsRes?.isError) {
+        addErrorIfUnique('Sales Comparison', 'Listing Status', reviewAllData[firstComp]?.['Listing Status'], lsRes.message, [firstComp, 'Listing Status']);
+      } else if (lsRes?.isMatch) {
+        addSuccessIfUnique('Sales Comparison', 'Listing Status', 'All settled comps', 'Listing Status consistent across settled comparables');
+      }
+
+      // Comparable Transfer Terms Consistency
+      const ttRes = checkVersion1ComparableTransferTermsConsistency('Transfer Terms', reviewAllData[firstComp]?.['Transfer Terms'], reviewAllData, [firstComp, 'Transfer Terms'], firstComp);
+      if (ttRes?.isError) {
+        addErrorIfUnique('Sales Comparison', 'Transfer Terms', reviewAllData[firstComp]?.['Transfer Terms'], ttRes.message, [firstComp, 'Transfer Terms']);
+      } else if (ttRes?.isMatch) {
+        addSuccessIfUnique('Sales Comparison', 'Transfer Terms', 'All comps', 'Transfer Terms consistent across comparables');
+      }
+
+      // Per-comp checks
+      activeComps.forEach(compName => {
+        const compLabel = compName.replace('COMPARABLE SALE #', 'Comp ');
+        const compData = reviewAllData[compName];
+
+        // Year Built Adjustment
+        const ybRes = checkVersion1YearBuiltAdjustmentConsistency('Year Built', compData['Year Built'], reviewAllData, [compName, 'Year Built'], compName);
+        if (ybRes?.isError) {
+          addErrorIfUnique('Sales Comparison', `Year Built (${compLabel})`, compData['Year Built'], ybRes.message, [compName, 'Year Built']);
+        } else if (ybRes?.isMatch) {
+          addSuccessIfUnique('Sales Comparison', `Year Built (${compLabel})`, compData['Year Built'], 'Year Built adjustment / equivalence validated');
+        }
+
+        // Construction Method Adjustment
+        const cmRes = checkVersion1ConstructionMethodAdjustmentConsistency('Construction Method', compData['Construction Method'], reviewAllData, [compName, 'Construction Method'], compName);
+        if (cmRes?.isError) {
+          addErrorIfUnique('Sales Comparison', `Construction Method (${compLabel})`, compData['Construction Method'], cmRes.message, [compName, 'Construction Method']);
+        } else if (cmRes?.isMatch) {
+          addSuccessIfUnique('Sales Comparison', `Construction Method (${compLabel})`, compData['Construction Method'], 'Construction Method adjustment / equivalence validated');
+        }
+
+        // Site Size Adjustment
+        const ssRes = checkVersion1SiteSizeAdjustmentConsistency('Site Size', compData['Site Size'], reviewAllData, [compName, 'Site Size'], compName);
+        if (ssRes?.isError) {
+          addErrorIfUnique('Sales Comparison', `Site Size (${compLabel})`, compData['Site Size'], ssRes.message, [compName, 'Site Size']);
+        } else if (ssRes?.isMatch) {
+          addSuccessIfUnique('Sales Comparison', `Site Size (${compLabel})`, compData['Site Size'], 'Site Size adjustment / equivalence validated');
+        }
+
+        // Location Adjustment
+        const locVal = compData['Site Influence (Location)'] || compData['Location'];
+        const locRes = checkVersion1LocationAdjustmentConsistency('Site Influence (Location)', locVal, reviewAllData, [compName, 'Site Influence (Location)'], compName);
+        if (locRes?.isError) {
+          addErrorIfUnique('Sales Comparison', `Location (${compLabel})`, locVal, locRes.message, [compName, 'Site Influence (Location)']);
+        } else if (locRes?.isMatch) {
+          addSuccessIfUnique('Sales Comparison', `Location (${compLabel})`, locVal, 'Location adjustment / equivalence validated');
+        }
+
+        // Attached / Detached Adjustment
+        const adVal = compData['Attached / Detached'];
+        const adRes = checkVersion1AttachedDetachedAdjustmentConsistency('Attached / Detached', adVal, reviewAllData, [compName, 'Attached / Detached'], compName);
+        if (adRes?.isError) {
+          addErrorIfUnique('Sales Comparison', `Attached/Detached (${compLabel})`, adVal, adRes.message, [compName, 'Attached / Detached']);
+        } else if (adRes?.isMatch) {
+          addSuccessIfUnique('Sales Comparison', `Attached/Detached (${compLabel})`, adVal, 'Attached/Detached adjustment / equivalence validated');
+        }
+
+        // Heating Adjustment
+        const heatVal = compData['Heating'];
+        const heatRes = checkVersion1HeatingAdjustmentConsistency('Heating', heatVal, reviewAllData, [compName, 'Heating'], compName);
+        if (heatRes?.isError) {
+          addErrorIfUnique('Sales Comparison', `Heating (${compLabel})`, heatVal, heatRes.message, [compName, 'Heating']);
+        } else if (heatRes?.isMatch) {
+          addSuccessIfUnique('Sales Comparison', `Heating (${compLabel})`, heatVal, 'Heating adjustment / equivalence validated');
+        }
+
+        // Amenities Adjustment
+        const amenVal = compData['Amenities'];
+        const amenRes = checkVersion1AmenitiesAdjustmentConsistency('Amenities', amenVal, reviewAllData, [compName, 'Amenities'], compName);
+        if (amenRes?.isError) {
+          addErrorIfUnique('Sales Comparison', `Amenities (${compLabel})`, amenVal, amenRes.message, [compName, 'Amenities']);
+        } else if (amenRes?.isMatch) {
+          addSuccessIfUnique('Sales Comparison', `Amenities (${compLabel})`, amenVal, 'Amenities adjustment / equivalence validated');
+        }
+
+        // Quality & Condition Consistency
+        ['Exterior Quality', 'Exterior Condition', 'Interior Quality', 'Interior Condition'].forEach(qcField => {
+          const qcVal = compData[qcField];
+          const qcRes = checkVersion1QualityConditionConsistency(qcField, qcVal, reviewAllData, [compName, qcField], compName);
+          if (qcRes?.isError) {
+            addErrorIfUnique('Sales Comparison', `${qcField} (${compLabel})`, qcVal, qcRes.message, [compName, qcField]);
+          } else if (qcRes?.isMatch) {
+            addSuccessIfUnique('Sales Comparison', `${qcField} (${compLabel})`, qcVal, `${qcField} rating verified`);
+          }
+        });
+
+        // Area Adjustments
+        ['Finished Area Above Grade', 'Finished Area Below Grade', 'Unfinished Area Below Grade'].forEach(areaField => {
+          const areaVal = compData[areaField];
+          const areaRes = checkVersion1AreaAdjustmentConsistency(areaField, areaVal, reviewAllData, [compName, areaField], compName);
+          if (areaRes?.isError) {
+            addErrorIfUnique('Sales Comparison', `${areaField} (${compLabel})`, areaVal, areaRes.message, [compName, areaField]);
+          } else if (areaRes?.isMatch) {
+            addSuccessIfUnique('Sales Comparison', `${areaField} (${compLabel})`, areaVal, `${areaField} adjustment / equivalence validated`);
+          }
+        });
+
+        // Overall Quality / Condition Adjustments
+        ['Overall Quality', 'Overall Condition'].forEach(oqField => {
+          const oqVal = compData[oqField];
+          const oqRes = checkVersion1OverallQualityConditionAdjustmentConsistency(oqField, oqVal, reviewAllData, [compName, oqField], compName);
+          if (oqRes?.isError) {
+            addErrorIfUnique('Sales Comparison', `${oqField} (${compLabel})`, oqVal, oqRes.message, [compName, oqField]);
+          } else if (oqRes?.isMatch) {
+            addSuccessIfUnique('Sales Comparison', `${oqField} (${compLabel})`, oqVal, `${oqField} adjustment / equivalence validated`);
+          }
+        });
+
+        // Vehicle Storage Adjustment
+        const vsRes = checkVersion1VehicleStorageAdjustmentConsistency('Vehicle Storage Spaces', compData['Vehicle Storage Spaces'], reviewAllData, [compName, 'Vehicle Storage Spaces'], compName);
+        if (vsRes?.isError) {
+          addErrorIfUnique('Sales Comparison', `Vehicle Storage (${compLabel})`, compData['Vehicle Storage Spaces'], vsRes.message, [compName, 'Vehicle Storage Spaces']);
+        } else if (vsRes?.isMatch) {
+          addSuccessIfUnique('Sales Comparison', `Vehicle Storage (${compLabel})`, compData['Vehicle Storage Spaces'], 'Vehicle Storage adjustment / equivalence validated');
+        }
+      });
     }
   } catch (e) { }
 
@@ -193,9 +455,30 @@ export const generateVersion1ValidationLogPDF = ({
   };
 
   const errorFieldsSet = new Set();
-  validationErrors.forEach(([s, field, m, path]) => {
+  rawValidationErrors.forEach(([s, field, m, path]) => {
     if (field) errorFieldsSet.add(cleanFieldName(field));
   });
+
+  const combineValidationSuccessRows = (rows) => {
+    if (!Array.isArray(rows) || rows.length === 0) return [];
+    const seen = new Set();
+    const unique = [];
+    rows.forEach(row => {
+      const [sec, field, val, result, rule] = row;
+      const key = `${String(sec || '').toLowerCase()}|${String(field || '').toLowerCase()}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push([
+          String(sec || 'General').trim(),
+          String(field || '').trim(),
+          String(val || '').trim() || 'Verified',
+          String(result || 'Passed').trim(),
+          String(rule || 'Rule satisfied').trim()
+        ]);
+      }
+    });
+    return unique;
+  };
 
   const combineValidationErrorRows = (rows) => {
     if (!Array.isArray(rows) || rows.length === 0) return [];
@@ -281,6 +564,7 @@ export const generateVersion1ValidationLogPDF = ({
   };
 
   const uniqueValidationErrorRows = combineValidationErrorRows(validationErrorRows);
+  const uniqueValidationSuccessRows = combineValidationSuccessRows(validationSuccessRows);
   uniqueValidationErrorRows.forEach(row => {
     if (row[1]) errorFieldsSet.add(cleanFieldName(row[1]));
     const msg = String(row[3] || '');
@@ -471,8 +755,7 @@ export const generateVersion1ValidationLogPDF = ({
 
   // KPI Metric Cards (2 rows x 4 cols - 4-Color Strict Palette)
   const totalErrCount = uniqueValidationErrorRows.length;
-  const validationSuccesses = getValidationSuccesses();
-  const totalPassCount = (validationSuccesses && validationSuccesses.length > 0) ? validationSuccesses.length : Math.max(0, 50 - totalErrCount);
+  const totalPassCount = uniqueValidationSuccessRows.length > 0 ? uniqueValidationSuccessRows.length : Math.max(0, 50 - totalErrCount);
   const totalFieldCount = totalPassCount + totalErrCount;
   const scoreVal = totalFieldCount > 0 ? Math.round((totalPassCount / totalFieldCount) * 100) : (totalErrCount === 0 ? 100 : 0);
 
@@ -619,11 +902,11 @@ export const generateVersion1ValidationLogPDF = ({
         headStyles: { fillColor: headerColor, textColor: 255 },
         styles: { fontSize: 8.5, overflow: 'linebreak' },
         columnStyles: columns.length === 5 ? {
-          0: { cellWidth: 35, fontStyle: 'bold' },
-          1: { cellWidth: 25 },
-          2: { cellWidth: 55 },
-          3: { cellWidth: 'auto' },
-          4: { cellWidth: 22, halign: 'center' }
+          0: { cellWidth: 38, fontStyle: 'bold' },
+          1: { cellWidth: 26 },
+          2: { cellWidth: 22, halign: 'center', fontStyle: 'bold' },
+          3: { cellWidth: 55 },
+          4: { cellWidth: 'auto' }
         } : columns.length === 4 ? {
           0: { cellWidth: 40 },
           1: { cellWidth: 30 },
@@ -633,7 +916,19 @@ export const generateVersion1ValidationLogPDF = ({
         didDrawPage: (d) => { yPos = d.cursor.y + 10; },
         didParseCell: (d) => {
           if (d.section === 'body') {
-            if (mainTitle.includes('Errors')) {
+            const rowData = d.row.raw || [];
+            if (columns.length === 5 && d.column.index === 2) {
+              const statusStr = String(rowData[2] || '').toUpperCase();
+              if (statusStr === 'FAILED' || statusStr.includes('ERROR') || statusStr.includes('FAIL')) {
+                d.cell.styles.textColor = [220, 53, 69];
+                d.cell.styles.fillColor = [255, 235, 235];
+                d.cell.styles.fontStyle = 'bold';
+              } else if (statusStr === 'PASSED' || statusStr.includes('PASS')) {
+                d.cell.styles.textColor = [34, 139, 34];
+                d.cell.styles.fillColor = [235, 247, 235];
+                d.cell.styles.fontStyle = 'bold';
+              }
+            } else if (mainTitle.includes('Errors')) {
               if (d.column.index === 2) {
                 d.cell.styles.textColor = [220, 53, 69];
                 d.cell.styles.fontStyle = 'bold';
@@ -717,15 +1012,15 @@ export const generateVersion1ValidationLogPDF = ({
     addSection('Requirement Checks Summary', ['Requirement Check', 'Overall Status', 'Executive Summary'], reqCheckSummaryRows, [70, 130, 180]);
   }
 
-  // 3. Validation Successes / Passed Log Section (Success paths tracked for in-grid green cell highlighting)
 
   // Path Tracking Sets for Cell Highlighting
   const errorPathsSet = new Set(
-    validationErrors.map(([s, f, m, path]) => path ? JSON.stringify(path) : null).filter(Boolean)
+    rawValidationErrors.map(([s, f, m, path]) => path ? JSON.stringify(path) : null).filter(Boolean)
   );
-  const successPathsSet = new Set(
-    validationSuccesses.map(([s, f, m, path]) => path ? JSON.stringify(path) : null).filter(Boolean)
-  );
+  const successPathsSet = new Set([
+    ...rawValidationSuccesses.map(([s, f, m, path]) => path ? JSON.stringify(path) : null).filter(Boolean),
+    ...uniqueValidationSuccessRows.map(row => JSON.stringify([row[1]]))
+  ]);
 
   // Grid Section Renderer with Universal Value Lookup & Status Styling
   const renderGridSection = (sectionTitle, fieldsMap, headerColor = [41, 128, 185], sectionKeyPrefixes = []) => {
@@ -809,7 +1104,7 @@ export const generateVersion1ValidationLogPDF = ({
 
     autoTable(doc, {
       startY: yPos,
-      head: [['Field', 'Value', 'Field', 'Value', 'Field', 'Value']],
+      head: [['Field 1', 'Value 1', 'Field 2', 'Value 2', 'Field 3', 'Value 3']],
       body: gridBody,
       theme: 'grid',
       headStyles: { fillColor: headerColor, textColor: 255, fontSize: 8, fontStyle: 'bold' },
@@ -1015,18 +1310,18 @@ export const generateVersion1ValidationLogPDF = ({
       {
         field: 'THERE ARE ____ COMPARABLE PROPERTIES CURRENTLY OFFERED FOR SALE IN THE SUBJECT NEIGHBORHOOD RANGING IN PRICE FROM $ ___ TO $ ___',
         val: data['There are ____ comparable properties currently offered for sale in the subject neighborhood ranging in price from$ ___to $___'] ??
-             data['THERE ARE ____ COMPARABLE PROPERTIES CURRENTLY OFFERED FOR SALE IN THE SUBJECT NEIGHBORHOOD RANGING IN PRICE FROM$ ___TO $___'] ??
-             data['THERE ARE ____ COMPARABLE PROPERTIES CURRENTLY OFFERED FOR SALE IN THE SUBJECT NEIGHBORHOOD RANGING IN PRICE FROM $ ___ TO $ ___'] ??
-             data['Comparable Properties Currently Offered for Sale'] ??
-             data.Subject?.['There are ____ comparable properties currently offered for sale in the subject neighborhood ranging in price from$ ___to $___'] ?? ''
+          data['THERE ARE ____ COMPARABLE PROPERTIES CURRENTLY OFFERED FOR SALE IN THE SUBJECT NEIGHBORHOOD RANGING IN PRICE FROM$ ___TO $___'] ??
+          data['THERE ARE ____ COMPARABLE PROPERTIES CURRENTLY OFFERED FOR SALE IN THE SUBJECT NEIGHBORHOOD RANGING IN PRICE FROM $ ___ TO $ ___'] ??
+          data['Comparable Properties Currently Offered for Sale'] ??
+          data.Subject?.['There are ____ comparable properties currently offered for sale in the subject neighborhood ranging in price from$ ___to $___'] ?? ''
       },
       {
         field: 'THERE ARE ____ COMPARABLE SALES IN THE SUBJECT NEIGHBORHOOD WITHIN THE PAST TWELVE MONTHS RANGING IN SALE PRICE FROM $ ___ TO $ ___',
         val: data['There are ___comparable sales in the subject neighborhoodwithin the past twelvemonths ranging in sale price from$___ to $____'] ??
-             data['THERE ARE ____ COMPARABLE SALES IN THE SUBJECT NEIGHBORHOOD WITHIN THE PAST TWELVE MONTHS RANGING IN SALE PRICE FROM$___ TO $____'] ??
-             data['THERE ARE ____ COMPARABLE SALES IN THE SUBJECT NEIGHBORHOOD WITHIN THE PAST TWELVE MONTHS RANGING IN SALE PRICE FROM $ ___ TO $ ___'] ??
-             data['Comparable Sales in Subject Neighborhood Past 12 Months'] ??
-             data.Subject?.['There are ___comparable sales in the subject neighborhoodwithin the past twelvemonths ranging in sale price from$___ to $____'] ?? ''
+          data['THERE ARE ____ COMPARABLE SALES IN THE SUBJECT NEIGHBORHOOD WITHIN THE PAST TWELVE MONTHS RANGING IN SALE PRICE FROM$___ TO $____'] ??
+          data['THERE ARE ____ COMPARABLE SALES IN THE SUBJECT NEIGHBORHOOD WITHIN THE PAST TWELVE MONTHS RANGING IN SALE PRICE FROM $ ___ TO $ ___'] ??
+          data['Comparable Sales in Subject Neighborhood Past 12 Months'] ??
+          data.Subject?.['There are ___comparable sales in the subject neighborhoodwithin the past twelvemonths ranging in sale price from$___ to $____'] ?? ''
       },
       {
         field: 'I did did not research the sale or transfer history of the subject property and comparable sales. If not, explain',
@@ -1205,11 +1500,11 @@ export const generateVersion1ValidationLogPDF = ({
         }
 
         adj = compObj[`${featKey} Adjustment`] ||
-              compObj[`${featKey} Adj`] ||
-              compObj[`${featKey}_adjustment`] ||
-              compObj[`${featKey}_adj`] ||
-              compObj[`${featKey} Value Adjustment`] ||
-              '';
+          compObj[`${featKey} Adj`] ||
+          compObj[`${featKey}_adjustment`] ||
+          compObj[`${featKey}_adj`] ||
+          compObj[`${featKey} Value Adjustment`] ||
+          '';
 
         if (typeof val === 'object' && val !== null) {
           val = val.value ?? val.text ?? val.val ?? JSON.stringify(val);

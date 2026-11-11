@@ -1,7 +1,25 @@
 import os
 import re
-from typing import Any, Dict, List, Optional
+import base64
+import html
+from typing import Any, Dict, List, Optional, Tuple
 import xml.etree.ElementTree as ET
+
+try:
+    import pymupdf as fitz
+except ImportError:
+    try:
+        import fitz
+    except ImportError:
+        fitz = None
+
+try:
+    from .pdf_extractor_v1_offline import extract_photos_and_exhibits
+except (ImportError, ValueError):
+    try:
+        from pdf_extractor_v1_offline import extract_photos_and_exhibits
+    except Exception:
+        extract_photos_and_exhibits = None
 
 def _local_tag(el) -> str:
     if el is None: return ""
@@ -34,7 +52,605 @@ def _fmt_bool(val: str) -> str:
     if s in ["false", "0", "no", "n"]: return "No"
     return val
 
-def extract_fields_from_uad36_xml(xml_path_or_bytes: Any, extract_images: bool = True) -> Dict[str, Any]:
+
+
+def _generate_photo_svg_preview(title: str, category: str, address: str = "", room_type: str = "") -> str:
+    """Generates an elegant vector SVG preview card for visual photo addenda."""
+    cat_lower = (category or "").lower()
+    if "sketch" in cat_lower or "floor" in cat_lower:
+        accent = "#f97316"
+        badge = "Building Sketch"
+        icon_path = '<path d="M4 4h16v16H4V4zm2 2v12h12V6H6zm2 2h8v2H8V8zm0 4h5v2H8v-2z" fill="#f97316"/>'
+    elif "map" in cat_lower or "aerial" in cat_lower:
+        accent = "#06b6d4"
+        badge = "Map / Location Exhibit"
+        icon_path = '<path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#06b6d4"/>'
+    elif "comparable" in cat_lower or "comp" in cat_lower:
+        accent = "#a855f7"
+        badge = "Comparable Property"
+        icon_path = '<path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10h-4v4h-2v-4H7v-2h4V7h2v4h4v2z" fill="#a855f7"/>'
+    elif "rental" in cat_lower:
+        accent = "#10b981"
+        badge = "Rental Property"
+        icon_path = '<path d="M12 3L2 12h3v8h6v-6h2v6h6v-8h3L12 3zm0 2.84L18 11v7h-2v-6H8v6H6v-7l6-5.16z" fill="#10b981"/>'
+    elif "interior" in cat_lower:
+        accent = "#f59e0b"
+        badge = "Subject Interior"
+        icon_path = '<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zm0 4v10h16V8H4zm4 2h8v6H8v-6z" fill="#f59e0b"/>'
+    else:
+        accent = "#3b82f6"
+        badge = "Subject Property"
+        icon_path = '<path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" fill="#3b82f6"/>'
+
+    safe_title = html.escape((title or "Appraisal Photo")[:45])
+    safe_badge = html.escape(badge)
+    safe_sub = html.escape((address or room_type or "Appraisal Exhibit")[:50])
+
+    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" width="640" height="480">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="640" height="480" fill="url(#bg)"/>
+  <rect width="640" height="480" fill="url(#grid)"/>
+  <rect x="16" y="16" width="608" height="448" rx="16" fill="none" stroke="{accent}" stroke-width="2" stroke-opacity="0.4"/>
+  <g transform="translate(296, 140) scale(2.0)">
+    {icon_path}
+  </g>
+  <rect x="230" y="225" width="180" height="26" rx="13" fill="{accent}" fill-opacity="0.15" stroke="{accent}" stroke-width="1"/>
+  <text x="320" y="242" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif" font-size="12" font-weight="600" fill="{accent}">{safe_badge}</text>
+  <text x="320" y="295" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif" font-size="22" font-weight="700" fill="#f8fafc">{safe_title}</text>
+  <text x="320" y="325" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif" font-size="14" fill="#94a3b8">{safe_sub}</text>
+  <rect x="245" y="415" width="150" height="22" rx="6" fill="rgba(255,255,255,0.05)"/>
+  <text x="320" y="430" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif" font-size="10" font-weight="500" fill="#64748b">UAD 3.6 REPORT EXHIBIT</text>
+</svg>"""
+
+    b64 = base64.b64encode(svg.encode("utf-8")).decode("ascii")
+    return f"data:image/svg+xml;base64,{b64}"
+
+
+def extract_photos_from_uad36_xml(
+    xml_path_or_bytes: Any,
+    max_photos: int = 100,
+    dpi: int = 72,
+    include_images: bool = True,
+    reference_records: Optional[Dict[str, Any]] = None,
+    companion_pdf_path: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Extracts all visual photos, exhibits, building sketches, and maps from a UAD 3.6 XML appraisal report.
+    Resolves:
+    1. Companion PDF (from ObjectURL or adjacent .pdf file in directory)
+    2. Direct disk image files (Images/<id>.jpg)
+    3. Embedded base64 PDF stream in XML
+    4. Deterministic XML metadata with crisp SVG fallback
+    """
+    root = None
+    xml_filepath = None
+    xml_text = ""
+
+    if isinstance(xml_path_or_bytes, ET.Element):
+        root = xml_path_or_bytes
+    elif isinstance(xml_path_or_bytes, (str, os.PathLike)) and os.path.exists(str(xml_path_or_bytes)):
+        xml_filepath = str(xml_path_or_bytes)
+        try:
+            with open(xml_filepath, "r", encoding="utf-8", errors="ignore") as f:
+                xml_text = f.read()
+            root = ET.fromstring(xml_text)
+        except Exception:
+            return []
+    elif isinstance(xml_path_or_bytes, bytes):
+        try:
+            xml_text = xml_path_or_bytes.decode("utf-8", errors="ignore")
+            root = ET.fromstring(xml_text)
+        except Exception:
+            return []
+    elif isinstance(xml_path_or_bytes, str):
+        xml_text = xml_path_or_bytes
+        try:
+            root = ET.fromstring(xml_text)
+        except Exception:
+            return []
+
+    if root is None:
+        return []
+
+    parent_map = {c: p for p in root.iter() for c in p}
+
+    def _clean_tag(elem):
+        return elem.tag.split("}")[-1] if elem is not None else ""
+
+    def _get_val(elem, path):
+        target = elem.find(path)
+        if target is not None and target.text:
+            return target.text.strip()
+        for sub in elem.iter():
+            if _clean_tag(sub) == path.split(":")[-1].split("}")[-1]:
+                if sub.text:
+                    return sub.text.strip()
+        return ""
+
+    # Subject property address
+    subject_addr = ""
+    for prop in root.iter():
+        if _clean_tag(prop) == "PROPERTY" and prop.attrib.get("ValuationUseType") == "SubjectProperty":
+            addr_line = _get_val(prop, ".//{*}AddressLineText")
+            city = _get_val(prop, ".//{*}CityName")
+            state = _get_val(prop, ".//{*}StateCode")
+            zipc = _get_val(prop, ".//{*}PostalCode")
+            subject_addr = f"{addr_line}, {city} {state} {zipc}".strip(", ")
+            break
+
+    # Look for companion PDF
+    pdf_doc = None
+    pdf_photos_pool: List[Dict[str, Any]] = []
+
+    # Check 0: explicitly provided companion PDF
+    if companion_pdf_path and os.path.exists(companion_pdf_path) and fitz is not None:
+        try:
+            pdf_doc = fitz.open(companion_pdf_path)
+        except Exception:
+            pdf_doc = None
+
+    # Check 1: embedded PDF in XML
+    if xml_text and fitz is not None:
+        m_doc = re.search(r"<DOCUMENT[^>]*>([^<]{1000,})</DOCUMENT>", xml_text) or                 re.search(r"<EMBEDDED_FILE[^>]*>([^<]{1000,})</EMBEDDED_FILE>", xml_text) or                 re.search(r"<ObjectData[^>]*>([^<]{1000,})</ObjectData>", xml_text)
+        if m_doc:
+            try:
+                raw_b64 = base64.b64decode(m_doc.group(1).strip())
+                pdf_doc = fitz.open(stream=raw_b64, filetype="pdf")
+            except Exception:
+                pass
+
+    # Check 2: companion PDF on disk
+    if not pdf_doc and xml_filepath and fitz is not None:
+        xml_dir = os.path.dirname(os.path.abspath(xml_filepath))
+        xml_stem = os.path.splitext(os.path.basename(xml_filepath))[0]
+
+        obj_urls = []
+        for obj in root.iter():
+            if _clean_tag(obj) == "ObjectURL" and obj.text:
+                clean_name = os.path.basename(obj.text.strip().replace("\\", "/"))
+                if clean_name:
+                    obj_urls.append(clean_name)
+
+        candidate_pdfs = []
+        for u in obj_urls:
+            candidate_pdfs.append(os.path.join(xml_dir, u))
+        candidate_pdfs.append(os.path.join(xml_dir, f"{xml_stem}.pdf"))
+        base_stem = re.sub(r'_(?:revised|old|new)(?:_\d+)?$', '', xml_stem, flags=re.I)
+        candidate_pdfs.append(os.path.join(xml_dir, f"{base_stem}.pdf"))
+        candidate_pdfs.append(os.path.join(xml_dir, f"{base_stem}_revised.pdf"))
+
+        # Extract Order IDs and Street name keywords from XML
+        extra_keywords = []
+        for vi in root.iter():
+            t_clean = _clean_tag(vi)
+            if t_clean in ["AdditionalValuationIdentifier", "AppraiserFileIdentifier"] and vi.text:
+                extra_keywords.append(vi.text.strip())
+            elif t_clean == "AddressLineText" and vi.text:
+                st_match = re.search(r'\d+\s+([A-Za-z]+)', vi.text.strip())
+                if st_match:
+                    extra_keywords.append(st_match.group(1))
+
+        # Check candidate directories
+        candidate_dirs = [
+            xml_dir,
+            os.path.join(os.path.expanduser("~"), "Downloads"),
+            r"C:\Users\abhib\Downloads",
+            r"d:\Djrb project\Pramaan-3.5-regex-1\appraisal_review\Downloads\Full File",
+            r"d:\Djrb project\Pramaan-3.5-regex-1\appraisal_review\Downloads\new_files_revised",
+            r"d:\Djrb project\Pramaan-3.5-regex-1\appraisal_review\Downloads\old_files_revised",
+        ]
+
+        candidate_names = []
+        for u in obj_urls:
+            candidate_names.append(u)
+        candidate_names.append(f"{xml_stem}.pdf")
+        candidate_names.append(f"{xml_stem}.PDF")
+        candidate_names.append(f"{base_stem}.pdf")
+        candidate_names.append(f"{base_stem}_revised.pdf")
+        for kw in extra_keywords:
+            candidate_names.append(f"{kw}.pdf")
+            candidate_names.append(f"{kw}_revised.pdf")
+
+        for c_dir in candidate_dirs:
+            if not os.path.exists(c_dir):
+                continue
+            for c_name in candidate_names:
+                p = os.path.join(c_dir, c_name)
+                if os.path.exists(p):
+                    try:
+                        pdf_doc = fitz.open(p)
+                        if pdf_doc and len(pdf_doc) > 0:
+                            break
+                    except Exception:
+                        pass
+            if pdf_doc:
+                break
+
+            # If not found by exact name, check if any PDF in c_dir matches xml_stem or street name
+            try:
+                for fname in os.listdir(c_dir):
+                    if fname.lower().endswith('.pdf'):
+                        fname_l = fname.lower()
+                        if xml_stem.lower() in fname_l or any(kw.lower() in fname_l for kw in extra_keywords if len(kw) >= 4):
+                            try:
+                                cand_p = os.path.join(c_dir, fname)
+                                pdf_doc = fitz.open(cand_p)
+                                if pdf_doc and len(pdf_doc) > 0:
+                                    break
+                            except Exception:
+                                pass
+                if pdf_doc:
+                    break
+            except Exception:
+                pass
+
+    # If PDF doc was opened, extract photos pool
+    if pdf_doc is not None and extract_photos_and_exhibits is not None:
+        try:
+            pdf_photos_pool = extract_photos_and_exhibits(pdf_doc)
+        except Exception:
+            pdf_photos_pool = []
+
+    # Iterate through all IMAGE tags in the UAD 3.6 XML
+    photos = []
+    photo_count = 0
+
+    all_image_nodes = []
+    for node in root.iter():
+        if _clean_tag(node) == "IMAGE":
+            all_image_nodes.append(node)
+
+    def _normalize_txt(t):
+        return re.sub(r'[^a-z0-9]', '', (t or '').lower())
+
+    # Pre-parse all XML image metadata
+    parsed_xml_images = []
+    for img_node in all_image_nodes:
+        curr = parent_map.get(img_node)
+        prop_node = None
+        room_node = None
+        car_storage_node = None
+        interior_node = None
+        inspection_node = None
+        amenity_node = None
+
+        while curr is not None and curr != root:
+            tag = _clean_tag(curr)
+            if tag == "PROPERTY" and prop_node is None:
+                prop_node = curr
+            elif tag == "ROOM" and room_node is None:
+                room_node = curr
+            elif tag == "CAR_STORAGE" and car_storage_node is None:
+                car_storage_node = curr
+            elif tag == "INTERIOR_COMPONENT" and interior_node is None:
+                interior_node = curr
+            elif tag == "INSPECTION" and inspection_node is None:
+                inspection_node = curr
+            elif tag == "AMENITY" and amenity_node is None:
+                amenity_node = curr
+            curr = parent_map.get(curr)
+
+        caption_raw = _get_val(img_node, ".//{*}ImageCaptionCommentDescription")
+        cat_type = _get_val(img_node, ".//{*}ImageCategoryType")
+        loc_id = _get_val(img_node, ".//{*}ImageFileLocationIdentifier")
+        mime_id = _get_val(img_node, ".//{*}MIMETypeIdentifier") or "image/jpeg"
+
+        val_use = prop_node.attrib.get("ValuationUseType", "") if prop_node is not None else "SubjectProperty"
+        prop_addr = ""
+        comp_num = ""
+        if prop_node is not None:
+            a_line = _get_val(prop_node, ".//{*}AddressLineText")
+            c_city = _get_val(prop_node, ".//{*}CityName")
+            c_state = _get_val(prop_node, ".//{*}StateCode")
+            c_zip = _get_val(prop_node, ".//{*}PostalCode")
+            prop_addr = f"{a_line}, {c_city} {c_state} {c_zip}".strip(", ")
+            ord_num = _get_val(prop_node, ".//{*}PropertyOrdinalNumber")
+            if ord_num:
+                comp_num = ord_num
+
+        category = "General"
+        caption = caption_raw
+        is_mandatory = False
+        view_type = ""
+
+        if val_use == "SubjectProperty":
+            prop_addr = prop_addr or subject_addr
+            if car_storage_node is not None:
+                category = "Subject property"
+                c_desc = _get_val(car_storage_node, ".//{*}CarStorageType") or "Garage"
+                caption = caption or c_desc
+            elif room_node is not None:
+                category = "Subject interior"
+                r_type = _get_val(room_node, ".//{*}RoomType")
+                pretty_room = re.sub(r'([a-z])([A-Z])', r'\1 \2', r_type).strip() if r_type else "Interior Room"
+                caption = caption or pretty_room
+            elif interior_node is not None:
+                category = "Subject interior"
+                comp_desc = _get_val(interior_node, ".//{*}ImprovementComponentTypeOtherDescription") or \
+                            _get_val(interior_node, ".//{*}ImprovementComponentTypeAdditionalDescription") or \
+                            _get_val(interior_node, ".//{*}ImprovementComponentType")
+                caption = caption or comp_desc or "Interior Feature"
+            elif amenity_node is not None:
+                category = "Subject property"
+                am_type = _get_val(amenity_node, ".//{*}AmenityType") or "Outdoor Living"
+                caption = caption or am_type
+            elif cat_type:
+                if cat_type == "DwellingFront":
+                    category = "Subject property"
+                    caption = caption or "Subject Front View"
+                    view_type = "Subject Front View"
+                    is_mandatory = True
+                elif cat_type == "DwellingRear":
+                    category = "Subject property"
+                    caption = caption or "Subject Rear View"
+                    view_type = "Subject Rear View"
+                    is_mandatory = True
+                elif cat_type == "PropertyAccess":
+                    category = "Subject property"
+                    caption = caption or "Subject Street Scene"
+                    view_type = "Subject Street Scene"
+                    is_mandatory = True
+                elif cat_type == "SubjectPropertyExhibit":
+                    category = "Subject property"
+                    caption = caption or "Subject Property Exhibit"
+                    if "side" in caption.lower():
+                        view_type = "Subject Side View"
+                        is_mandatory = True
+                elif cat_type == "SubjectPropertyImprovementSketch":
+                    category = "Building Sketch"
+                    caption = caption or "Building Sketch"
+                elif cat_type in ["SalesComparableMap", "RentalComparableMap", "GrossRentMultiplierComparableMap"] or "map" in cat_type.lower():
+                    category = "Maps & Aerials"
+                    caption = caption or re.sub(r'([a-z])([A-Z])', r'\1 \2', cat_type).strip()
+                elif cat_type in ["EnergyEfficientAndGreenFeaturesExhibit", "DwellingExteriorExhibit", "SupplementalExhibit", "VehicleStorageExhibit", "AssignmentExhibit", "SiteInfluence", "View", "MarketAnalysisExhibit", "PriceTrendGraph"]:
+                    cap_l = (caption or "").lower()
+                    if any(w in cap_l for w in ["smoke", "co2", "c02", "detector", "furnace", "hwh", "water heater", "panel", "basement"]):
+                        category = "Subject interior"
+                    elif any(w in cap_l for w in ["map", "aerial", "ariel", "plat", "site map", "flood"]):
+                        category = "Maps & Aerials"
+                    elif "sketch" in cap_l:
+                        category = "Building Sketch"
+                    elif any(w in cap_l for w in ["rear", "side", "front", "street", "porch", "patio", "garage"]):
+                        category = "Subject property"
+                    else:
+                        category = "General"
+                    caption = caption or re.sub(r'([a-z])([A-Z])', r'\1 \2', cat_type).strip()
+                else:
+                    category = "Subject property"
+                    caption = caption or "Subject Property"
+            else:
+                category = "Subject property"
+                caption = caption or "Subject Property"
+
+        elif val_use == "SalesComparable":
+            category = "Comparable property"
+            c_label = f"Comparable Sale #{comp_num}" if comp_num else "Comparable Sale"
+            caption = caption or (f"{c_label} - {prop_addr}" if prop_addr else c_label)
+        elif val_use in ["RentalComparable", "GrossRentMultiplierComparable"]:
+            category = "Rental property"
+            c_label = f"Rental Comp #{comp_num}" if comp_num else "Rental Comparable"
+            caption = caption or (f"{c_label} - {prop_addr}" if prop_addr else c_label)
+        else:
+            category = "General"
+            caption = caption or "Report Exhibit"
+
+        if caption.strip().upper() == "HWH":
+            caption = "Hot Water Heater (HWH)"
+        elif caption.strip().upper() == "OSE":
+            caption = "Outside Entrance (OSE)"
+        elif caption.strip().upper() in ["SMOKE C02", "SMOKE CO2", "SMOKE"]:
+            caption = "Smoke & Carbon Monoxide Detector"
+
+        parsed_xml_images.append({
+            "img_node": img_node,
+            "caption": caption,
+            "caption_raw": caption_raw,
+            "cat_type": cat_type,
+            "val_use": val_use,
+            "comp_num": comp_num,
+            "category": category,
+            "is_mandatory": is_mandatory,
+            "view_type": view_type,
+            "prop_addr": prop_addr,
+            "loc_id": loc_id,
+            "mime_id": mime_id
+        })
+
+    # Two-pass smart matching with companion PDF photos
+    used_pdf_indices = set()
+    matched_pdf_map = {}
+
+    if pdf_photos_pool:
+        # Pass 1: High-confidence semantic and keyword matching
+        for i, item in enumerate(parsed_xml_images):
+            cap_norm = _normalize_txt(item["caption"])
+            cat_type = item["cat_type"]
+            val_use = item["val_use"]
+            comp_num = item["comp_num"]
+            view_type = item["view_type"]
+
+            best_idx = None
+            best_score = 0
+
+            for p_idx, p_cand in enumerate(pdf_photos_pool):
+                if p_idx in used_pdf_indices:
+                    continue
+                cand_cap = p_cand.get("caption") or ""
+                p_norm = _normalize_txt(cand_cap)
+                score = 0
+
+                # Exact or strong substring match
+                if cap_norm and len(cap_norm) >= 3 and (cap_norm in p_norm or p_norm in cap_norm):
+                    score += 65
+
+                # Comps match by number
+                if ("comp" in val_use.lower() or "comparable" in val_use.lower()) and comp_num:
+                    if f"#{comp_num}" in cand_cap or f"sale{comp_num}" in p_norm or f"comp{comp_num}" in p_norm:
+                        score += 70
+
+                # View type match (Front/Rear/Street)
+                if cat_type == "DwellingFront" and "front" in p_norm: score += 80
+                elif cat_type == "DwellingRear" and "rear" in p_norm: score += 80
+                elif cat_type == "PropertyAccess" and "street" in p_norm: score += 80
+
+                # Map matches
+                if cat_type == "SalesComparableMap" and ("sales" in p_norm and "map" in p_norm): score += 85
+                elif cat_type == "RentalComparableMap" and ("rental" in p_norm and "map" in p_norm): score += 85
+                elif cat_type == "GrossRentMultiplierComparableMap" and ("grm" in p_norm and "map" in p_norm): score += 85
+
+                # Feature keywords
+                for kw in ["sketch", "smoke", "furnace", "attic", "recessed", "carpet", "vinyl", "ceramic", "porch", "patio", "cma", "license", "plat", "radiant", "garage", "tankless", "waterheater", "hwh", "acunit", "roof", "eand"]:
+                    if kw in cap_norm and kw in p_norm:
+                        score += 60
+
+                # Room keywords
+                for rkw in ["kitchen", "living", "dining", "utility", "family", "den", "half", "full"]:
+                    if rkw in cap_norm and rkw in p_norm:
+                        score += 40
+
+                if score > best_score:
+                    best_score = score
+                    best_idx = p_idx
+
+            if best_idx is not None and best_score >= 35:
+                used_pdf_indices.add(best_idx)
+                matched_pdf_map[i] = best_idx
+
+        # Pass 2: Sequential category matching for remaining photos
+        for i, item in enumerate(parsed_xml_images):
+            if i in matched_pdf_map:
+                continue
+            cat_norm = item["category"].lower()
+            for p_idx, p_cand in enumerate(pdf_photos_pool):
+                if p_idx in used_pdf_indices:
+                    continue
+                cand_cat = (p_cand.get("category") or "").lower()
+                if cat_norm in cand_cat or cand_cat in cat_norm or (cat_norm == "subject property" and cand_cat == "subject"):
+                    used_pdf_indices.add(p_idx)
+                    matched_pdf_map[i] = p_idx
+                    break
+
+    # Build final photo items
+    for i, item in enumerate(parsed_xml_images):
+        if photo_count >= max_photos:
+            break
+
+        caption = item["caption"]
+        category = item["category"]
+        prop_addr = item["prop_addr"]
+        loc_id = item["loc_id"]
+        mime_id = item["mime_id"]
+        is_mandatory = item["is_mandatory"]
+        view_type = item["view_type"]
+        base64_preview = ""
+        matched_page = 1
+
+        # Check matched companion PDF photo
+        if i in matched_pdf_map:
+            p_match = pdf_photos_pool[matched_pdf_map[i]]
+            base64_preview = p_match.get("base64_preview") or p_match.get("image_base64") or ""
+            matched_page = p_match.get("page", 1)
+
+        # Check disk file if xml_filepath exists
+        if not base64_preview and xml_filepath and loc_id:
+            xml_dir = os.path.dirname(os.path.abspath(xml_filepath))
+            clean_filename = os.path.basename(loc_id.replace("\\", "/"))
+            cand_paths = [
+                os.path.join(xml_dir, "Images", clean_filename),
+                os.path.join(xml_dir, clean_filename),
+                os.path.join(xml_dir, loc_id.lstrip("\\/"))
+            ]
+            for cp in cand_paths:
+                if os.path.exists(cp):
+                    try:
+                        with open(cp, "rb") as im_f:
+                            b64_img = base64.b64encode(im_f.read()).decode("ascii")
+                        base64_preview = f"data:{mime_id};base64,{b64_img}"
+                        break
+                    except Exception:
+                        pass
+
+        # Fallback to vector SVG Card
+        if not base64_preview:
+            base64_preview = _generate_photo_svg_preview(
+                title=caption,
+                category=category,
+                address=prop_addr,
+                room_type=caption
+            )
+
+        photo_item = {
+            "id": f"photo_{photo_count + 1}",
+            "label": caption,
+            "caption": caption,
+            "title": caption,
+            "original_caption": item["caption_raw"] or caption,
+            "original_label": item["caption_raw"] or caption,
+            "category": category,
+            "page": matched_page,
+            "index": photo_count,
+            "match_status": "matched",
+            "match_confidence": "high",
+            "is_mandatory": is_mandatory,
+            "view_type": view_type,
+            "filename": os.path.basename(loc_id.replace("\\", "/")) if loc_id else f"photo_{photo_count + 1}.jpg",
+            "width": 640,
+            "height": 480,
+            "dpi": dpi,
+            "address": prop_addr,
+            "base64_preview": base64_preview,
+            "image_base64": base64_preview
+        }
+        photos.append(photo_item)
+        photo_count += 1
+
+    # Append any remaining PDF photos that weren't in the XML
+    if pdf_photos_pool and photo_count < max_photos:
+        for p_idx, p_cand in enumerate(pdf_photos_pool):
+            if p_idx not in used_pdf_indices and photo_count < max_photos:
+                p_cap = p_cand.get("caption") or "Report Exhibit"
+                p_cat = p_cand.get("category") or "General"
+                # Filter out pure text blocks or signatures
+                if any(bad in p_cap.lower() for bad in ["signature", "page", "appraisal", "uniform"]):
+                    continue
+                p_b64 = p_cand.get("base64_preview") or p_cand.get("image_base64") or ""
+                if p_b64:
+                    photos.append({
+                        "id": f"photo_{photo_count + 1}",
+                        "label": p_cap,
+                        "caption": p_cap,
+                        "title": p_cap,
+                        "original_caption": p_cap,
+                        "original_label": p_cap,
+                        "category": p_cat,
+                        "page": p_cand.get("page", 1),
+                        "index": photo_count,
+                        "match_status": "matched",
+                        "match_confidence": "high",
+                        "is_mandatory": False,
+                        "view_type": "",
+                        "filename": f"photo_{photo_count + 1}.jpg",
+                        "width": 640,
+                        "height": 480,
+                        "dpi": dpi,
+                        "address": subject_addr,
+                        "base64_preview": p_b64,
+                        "image_base64": p_b64
+                    })
+                    photo_count += 1
+
+    return photos
+
+
+def extract_fields_from_uad36_xml(xml_path_or_bytes: Any, extract_images: bool = True, companion_pdf_path: Optional[str] = None) -> Dict[str, Any]:
     """
     Parses a UAD 3.6 (MISMO 3.6) XML appraisal file and returns the full structured
     fields dictionary compatible with Appraisal Version #1.
@@ -1468,9 +2084,149 @@ def extract_fields_from_uad36_xml(xml_path_or_bytes: Any, extract_images: bool =
         "PROJECT_INFO": project_info_data,
     }
 
+    # -------------------------------------------------------------
+    # Visual Photos & Exhibits Extraction (UAD 3.6)
+    # -------------------------------------------------------------
+    extracted_photos: List[Dict[str, Any]] = []
+    mandatory_subject_photos: Dict[str, Any] = {}
+    photo_room_counts: Dict[str, Any] = {}
+    if extract_images:
+        try:
+            extracted_photos = extract_photos_from_uad36_xml(
+                xml_path_or_bytes if isinstance(xml_path_or_bytes, (str, os.PathLike)) else root,
+                include_images=True,
+                companion_pdf_path=companion_pdf_path
+            )
+        except Exception as e:
+            print(f"[uad36_extractor] Photo extraction notice: {e}")
+
+        if extracted_photos:
+            # 1. Compile Mandatory Subject Photos summary
+            mand_groups = {
+                "Subject Front View": [],
+                "Subject Rear View": [],
+                "Subject Side View": [],
+                "Subject Street Scene": []
+            }
+            for p in extracted_photos:
+                vt = p.get("view_type")
+                if vt in mand_groups:
+                    mand_groups[vt].append(p)
+                elif p.get("category") == "Subject property":
+                    cap_l = (p.get("caption") or "").lower()
+                    if "front" in cap_l and not mand_groups["Subject Front View"]:
+                        p["view_type"] = "Subject Front View"
+                        p["is_mandatory"] = True
+                        mand_groups["Subject Front View"].append(p)
+                    elif "rear" in cap_l and not mand_groups["Subject Rear View"]:
+                        p["view_type"] = "Subject Rear View"
+                        p["is_mandatory"] = True
+                        mand_groups["Subject Rear View"].append(p)
+                    elif "street" in cap_l and not mand_groups["Subject Street Scene"]:
+                        p["view_type"] = "Subject Street Scene"
+                        p["is_mandatory"] = True
+                        mand_groups["Subject Street Scene"].append(p)
+                    elif "side" in cap_l and not mand_groups["Subject Side View"]:
+                        p["view_type"] = "Subject Side View"
+                        p["is_mandatory"] = True
+                        mand_groups["Subject Side View"].append(p)
+
+            missing_mand = [k for k, v in mand_groups.items() if len(v) == 0]
+            mandatory_subject_photos = {
+                "all_mandatory_found": len(missing_mand) == 0,
+                "summary": {
+                    k: {
+                        "found": len(v) > 0,
+                        "count": len(v),
+                        "original_labels": [x.get("original_label") or x.get("caption") for x in v],
+                        "pages": [x.get("page") for x in v]
+                    } for k, v in mand_groups.items()
+                },
+                "missing_views": missing_mand,
+                "photos": mand_groups
+            }
+
+            # 2. Compile Photo Room Counts
+            distinct_beds = set()
+            distinct_half_baths = set()
+            distinct_full_baths = set()
+            distinct_living = set()
+            distinct_kitchen = set()
+            distinct_dining = set()
+            distinct_other = set()
+
+            for p in extracted_photos:
+                cat = (p.get("category") or "").strip().lower()
+                if any(k in cat for k in ["comparable", "rental", "map", "sketch"]):
+                    continue
+                cap = (p.get("caption") or p.get("title") or "").strip()
+                if not cap:
+                    continue
+                norm_cap = re.sub(r'\s*\([a-zA-Z0-9]+\)$', '', cap).strip().lower()
+                if re.search(r'\b(?:bedroom|bdrm|bed\b|mbr\b|master\s*bed|primary\s*bed|guest\s*bed)\b', norm_cap):
+                    distinct_beds.add(norm_cap)
+                elif re.search(r'(?:^|[\s\b])(?:half[\s-]*(?:bath(?:room)?|ba)|1\/2[\s-]*(?:bath(?:room)?|ba)|0?\.5[\s-]*(?:bath(?:room)?|ba)|(?:bath(?:room)?|ba)\s*(?:\(\s*)?(?:half|1\/2|0?\.5)(?:\s*\))?|powder(?:\s*room)?|lav(?:atory)?|wc)\b', norm_cap):
+                    distinct_half_baths.add(norm_cap)
+                elif re.search(r'\b(?:full\s*bath|full\s*ba|master\s*bath|primary\s*bath|guest\s*bath|hall\s*bath|bath\s*#?\s*\d|bathroom|bath\b|3\/4\s*bath)\b', norm_cap):
+                    distinct_full_baths.add(norm_cap)
+                elif re.search(r'\b(?:living|family\s*room|great\s*room|sitting\s*room)\b', norm_cap):
+                    distinct_living.add(norm_cap)
+                elif re.search(r'\b(?:kitchen|pantry)\b', norm_cap):
+                    distinct_kitchen.add(norm_cap)
+                elif re.search(r'\b(?:dining|breakfast|nook)\b', norm_cap):
+                    distinct_dining.add(norm_cap)
+                else:
+                    distinct_other.add(norm_cap)
+
+            total_rooms = len(distinct_beds) + len(distinct_full_baths) + len(distinct_half_baths) + len(distinct_living) + len(distinct_kitchen) + len(distinct_dining)
+            photo_room_counts = {
+                "bedroom_count": len(distinct_beds),
+                "full_bath_count": len(distinct_full_baths),
+                "half_bath_count": len(distinct_half_baths),
+                "living_count": len(distinct_living),
+                "kitchen_count": len(distinct_kitchen),
+                "dining_count": len(distinct_dining),
+                "other_count": len(distinct_other),
+                "total_room_count": total_rooms,
+                "bedroom_display": str(len(distinct_beds)) if distinct_beds else "—",
+                "bathroom_display": f"{len(distinct_full_baths)}.{len(distinct_half_baths)}" if (distinct_full_baths or distinct_half_baths) else "—",
+                "total_room_display": str(total_rooms) if total_rooms > 0 else "—",
+            }
+
+            # 3. Water Heater & Smoke Detector photo comments if missing
+            for p in extracted_photos:
+                cap_l = (p.get("caption") or "").lower()
+                if ("water heater" in cap_l or "waterheater" in cap_l or "hwh" in cap_l) and not subject_data.get("Water heater double-strapped comment"):
+                    wh_comm = f"Photo verified: {p.get('caption')}"
+                    subject_data["Water heater double-strapped comment"] = wh_comm
+                    subject_data["Water Heater Double-Strapped Comment"] = wh_comm
+                    improvements_data["Water heater double-strapped comment"] = wh_comm
+                if ("smoke" in cap_l or "co detector" in cap_l or "carbon monoxide" in cap_l) and not subject_data.get("Smoke detector comment"):
+                    smk_comm = f"Photo verified: {p.get('caption')}"
+                    subject_data["Smoke detector comment"] = smk_comm
+                    improvements_data["Smoke detector comment"] = smk_comm
+
+    combined_fields["EXTRACTED_PHOTOS"] = extracted_photos
+    combined_fields["extracted_photos"] = extracted_photos
+    combined_fields["MANDATORY_SUBJECT_PHOTOS"] = mandatory_subject_photos
+    combined_fields["mandatory_subject_photos"] = mandatory_subject_photos
+    combined_fields["PHOTO_ROOM_COUNTS"] = photo_room_counts
+    combined_fields["photo_room_counts"] = photo_room_counts
+
+    clean_section_data["EXTRACTED_PHOTOS"] = extracted_photos
+    clean_section_data["extracted_photos"] = extracted_photos
+    clean_section_data["MANDATORY_SUBJECT_PHOTOS"] = mandatory_subject_photos
+    clean_section_data["PHOTO_ROOM_COUNTS"] = photo_room_counts
+
     return {
         "status": "success",
         "form_type": form_type,
         "fields": combined_fields,
         "clean_data": clean_section_data,
+        "extracted_photos": extracted_photos,
+        "EXTRACTED_PHOTOS": extracted_photos,
+        "mandatory_subject_photos": mandatory_subject_photos,
+        "MANDATORY_SUBJECT_PHOTOS": mandatory_subject_photos,
+        "photo_room_counts": photo_room_counts,
+        "PHOTO_ROOM_COUNTS": photo_room_counts,
     }

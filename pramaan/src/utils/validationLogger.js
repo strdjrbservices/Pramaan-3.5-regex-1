@@ -507,11 +507,11 @@ export const generateValidationLogPDF = (params) => {
         headStyles: { fillColor: headerColor, textColor: 255 },
         styles: { fontSize: 8.5, overflow: 'linebreak' },
         columnStyles: columns.length === 5 ? {
-          0: { cellWidth: 35, fontStyle: 'bold' },
-          1: { cellWidth: 25 },
-          2: { cellWidth: 55 },
-          3: { cellWidth: 'auto' },
-          4: { cellWidth: 22, halign: 'center' }
+          0: { cellWidth: 38, fontStyle: 'bold' },
+          1: { cellWidth: 26 },
+          2: { cellWidth: 22, halign: 'center', fontStyle: 'bold' },
+          3: { cellWidth: 55 },
+          4: { cellWidth: 'auto' }
         } : columns.length === 4 ? {
           0: { cellWidth: 40 },
           1: { cellWidth: 30 },
@@ -525,9 +525,26 @@ export const generateValidationLogPDF = (params) => {
         didDrawPage: (data) => { yPos = data.cursor.y + 10; },
         didParseCell: (data) => {
           if (data.section === 'body') {
-            if (mainTitle === 'Validation Errors') {
+            const rowData = data.row.raw || [];
+            if (columns.length === 5 && data.column.index === 2) {
+              const statusStr = String(rowData[2] || '').toUpperCase();
+              if (statusStr === 'FAILED' || statusStr.includes('ERROR') || statusStr.includes('FAIL')) {
+                data.cell.styles.textColor = [220, 53, 69];
+                data.cell.styles.fillColor = [255, 235, 235];
+                data.cell.styles.fontStyle = 'bold';
+              } else if (statusStr === 'PASSED' || statusStr.includes('PASS')) {
+                data.cell.styles.textColor = [34, 139, 34];
+                data.cell.styles.fillColor = [235, 247, 235];
+                data.cell.styles.fontStyle = 'bold';
+              }
+            } else if (mainTitle === 'Validation Errors') {
               if (data.column.index === 2) {
                 data.cell.styles.textColor = [220, 53, 69];
+                data.cell.styles.fontStyle = 'bold';
+              }
+            } else if (mainTitle === 'Passed Validations') {
+              if (data.column.index === 2) {
+                data.cell.styles.textColor = [34, 139, 34];
                 data.cell.styles.fontStyle = 'bold';
               }
             }
