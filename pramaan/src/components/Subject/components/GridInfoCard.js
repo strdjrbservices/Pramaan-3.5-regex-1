@@ -481,6 +481,55 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
       if (zcVal) return renderValue(zcVal);
     }
 
+    if (field === 'Topography' || field === 'TOPOGRAPHY') {
+      const topoVal = data?.['Topography']
+        ?? data?.['TOPOGRAPHY']
+        ?? data?.PROJECT_SITE?.['Topography']
+        ?? data?.['Project Site']?.['Topography']
+        ?? data?.SITE?.['Topography']
+        ?? allData?.['Topography']
+        ?? allData?.PROJECT_SITE?.['Topography']
+        ?? allData?.['Project Site']?.['Topography']
+        ?? allData?.SITE?.['Topography']
+        ?? allData?.clean_data?.['Project Site']?.['Topography']
+        ?? allData?.clean_data?.['Topography'];
+      if (topoVal !== undefined && topoVal !== null && topoVal !== '') return renderValue(topoVal);
+    }
+
+    if (field === 'Size' || field === 'SIZE') {
+      const sizeVal = data?.['Size']
+        ?? data?.['SIZE']
+        ?? data?.PROJECT_SITE?.['Size']
+        ?? data?.['Project Site']?.['Size']
+        ?? data?.SITE?.['Size']
+        ?? allData?.['Size']
+        ?? allData?.PROJECT_SITE?.['Size']
+        ?? allData?.['Project Site']?.['Size']
+        ?? allData?.SITE?.['Size']
+        ?? allData?.clean_data?.['Project Site']?.['Size']
+        ?? allData?.clean_data?.['Size']
+        ?? data?.['Total Site Size']
+        ?? data?.['Site Size']
+        ?? allData?.['Total Site Size']
+        ?? allData?.['Site Size'];
+      if (sizeVal !== undefined && sizeVal !== null && sizeVal !== '') return renderValue(sizeVal);
+    }
+
+    if (field === 'Density' || field === 'DENSITY') {
+      const densVal = data?.['Density']
+        ?? data?.['DENSITY']
+        ?? data?.PROJECT_SITE?.['Density']
+        ?? data?.['Project Site']?.['Density']
+        ?? data?.SITE?.['Density']
+        ?? allData?.['Density']
+        ?? allData?.PROJECT_SITE?.['Density']
+        ?? allData?.['Project Site']?.['Density']
+        ?? allData?.SITE?.['Density']
+        ?? allData?.clean_data?.['Project Site']?.['Density']
+        ?? allData?.clean_data?.['Density'];
+      if (densVal !== undefined && densVal !== null && densVal !== '') return renderValue(densVal);
+    }
+
     if (field === "Appraiser's Fee" || field === "Appraiser Fee" || field === "Appraisal Fee") {
 
       const feeVal = data?.["Appraiser's Fee"]
@@ -2176,10 +2225,1946 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
   };
 
+  // =============================================================
+  // NEIGHBORHOOD SECTION - FANNIE MAE 1004 / 1073 / 1025 GRID
+  // =============================================================
+  if (id === 'neighborhood-section' || title === 'Neighborhood Section' || title === 'Neighborhood') {
+    const nbData = (data && typeof data === 'object' && ('Location' in data || 'Built-Up' in data || 'One-Unit' in data || 'one unit housing price(high,low,pred)' in data))
+      ? data
+      : (data?.NEIGHBORHOOD || allData?.NEIGHBORHOOD || allData?.clean_data?.Neighborhood || allData || {});
 
+    const currentFormType = String(allData?.form_type || allData?.['Form Type'] || allData?.selectedFormType || '').toLowerCase();
+    const isCondo = currentFormType.includes('1073') || Boolean(allData?.clean_data?.['Unit Descriptions'] || allData?.UNIT_DESCRIPTIONS);
+    const isMultiFamily = currentFormType.includes('1025');
+
+    const housingTrendsTitle = isCondo
+      ? "Condominium Unit Housing Trends"
+      : (isMultiFamily ? "2-4 Unit Housing Trends" : "One-Unit Housing Trends");
+
+    const housingTitle = isCondo
+      ? "Condominium Housing"
+      : (isMultiFamily ? "2-4 Unit Housing" : "One-Unit Housing");
+
+    // Helper to get raw string value
+    const getNbRawVal = (key) => {
+      const v = nbData[key] !== undefined ? nbData[key] : (allData?.NEIGHBORHOOD?.[key] ?? allData?.[key] ?? '');
+      return renderValue(v);
+    };
+
+    // Helper to render an EditableField for a narrative or text field
+    const renderNbEditable = (fieldKey, placeholder = '', customStyle = {}, usePre = false) => {
+      const valStr = getNbRawVal(fieldKey);
+      return (
+        <EditableField
+          fieldPath={[fieldKey]}
+          value={valStr}
+          onDataChange={onDataChange}
+          editingField={editingField}
+          setEditingField={setEditingField}
+          usePre={usePre}
+          isEditable={isEditable}
+          allData={allData}
+          manualValidations={manualValidations}
+          handleManualValidation={handleManualValidation}
+          revisionHandlers={revisionHandlers}
+          showBlankValidation={true}
+          inputClassName="form-control form-control-sm field-value-pre"
+          placeholder={placeholder}
+          inputStyle={{
+            width: '100%',
+            border: 'none',
+            background: 'transparent',
+            padding: '2px 4px',
+            fontSize: '0.82rem',
+            color: '#1f2937',
+            height: 'auto',
+            ...customStyle
+          }}
+        />
+      );
+    };
+
+    // Helper to render interactive checkbox
+    const renderNbCheckbox = (fieldKey, optionLabel) => {
+      const currentVal = String(getNbRawVal(fieldKey) || '').trim().toLowerCase();
+      const targetLabel = optionLabel.trim().toLowerCase();
+
+      // Flexible matching (e.g. "Under 3 mos" vs "Under 3 mths", "3-6 mos" vs "3-6 mths", "Over 6 mos" vs "Over 6 mths")
+      const isChecked = currentVal === targetLabel || (
+        (targetLabel.includes('3 m') || targetLabel.includes('3-6')) && (
+          (targetLabel.includes('under 3') && currentVal.includes('under 3')) ||
+          (targetLabel.includes('3-6') && currentVal.includes('3-6')) ||
+          (targetLabel.includes('over 6') && currentVal.includes('over 6'))
+        )
+      ) || (
+        targetLabel.includes('75') && currentVal.includes('75') && (
+          (targetLabel.includes('over') && currentVal.includes('over')) ||
+          (targetLabel.includes('25-75') && currentVal.includes('25-75')) ||
+          (targetLabel.includes('under') && currentVal.includes('under'))
+        )
+      );
+
+      const handleToggle = () => {
+        if (!isEditable) return;
+        const newVal = isChecked ? '' : optionLabel;
+        if (onDataChange) {
+          onDataChange([fieldKey], newVal);
+        }
+      };
+
+      return (
+        <div
+          onClick={handleToggle}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            cursor: isEditable ? 'pointer' : 'default',
+            userSelect: 'none',
+            fontSize: '0.78rem',
+            marginRight: '10px',
+            lineHeight: 1.2
+          }}
+          title={isEditable ? `Toggle ${optionLabel}` : optionLabel}
+        >
+          <div
+            style={{
+              width: '14px',
+              height: '14px',
+              border: '1.5px solid #212529',
+              borderRadius: '2px',
+              backgroundColor: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginRight: '5px',
+              fontWeight: '900',
+              fontSize: '11px',
+              color: '#000',
+              lineHeight: 1,
+              flexShrink: 0
+            }}
+          >
+            {isChecked ? '✕' : ''}
+          </div>
+          <span style={{ color: '#212529', fontWeight: isChecked ? 600 : 400 }}>{optionLabel}</span>
+        </div>
+      );
+    };
+
+    // Parse housing price: High / Low / Pred
+    let rawPrice = String(nbData['one unit housing price(high,low,pred)'] || nbData['ONE UNIT HOUSING PRICE(HIGH,LOW,PRED)'] || '').trim();
+    let priceHigh = String(nbData['Housing Price High'] ?? nbData['Price High'] ?? nbData['High Price'] ?? '').trim();
+    let priceLow = String(nbData['Housing Price Low'] ?? nbData['Price Low'] ?? nbData['Low Price'] ?? '').trim();
+    let pricePred = String(nbData['Housing Price Pred'] ?? nbData['Price Pred'] ?? nbData['Pred Price'] ?? nbData['Predominant Price'] ?? '').trim();
+
+    if (rawPrice && (!priceHigh || !priceLow || !pricePred)) {
+      const pParts = rawPrice.split(/[/,;]+/).map(s => s.trim().replace(/,/g, '')).filter(Boolean);
+      if (pParts.length >= 3) {
+        if (!priceHigh) priceHigh = pParts[0];
+        if (!priceLow) priceLow = pParts[1];
+        if (!pricePred) pricePred = pParts[2];
+      }
+    }
+
+    // Parse housing age: Oldest (High) / Newest (Low) / Pred
+    let rawAge = String(nbData['one unit housing age(high,low,pred)'] || nbData['ONE UNIT HOUSING AGE(HIGH,LOW,PRED)'] || '').trim();
+    let ageHigh = String(nbData['Housing Age High'] ?? nbData['Age High'] ?? nbData['High Age'] ?? '').trim();
+    let ageLow = String(nbData['Housing Age Low'] ?? nbData['Age Low'] ?? nbData['Low Age'] ?? '').trim();
+    let agePred = String(nbData['Housing Age Pred'] ?? nbData['Age Pred'] ?? nbData['Pred Age'] ?? nbData['Predominant Age'] ?? '').trim();
+
+    if (rawAge && (!ageHigh || !ageLow || !agePred)) {
+      const aParts = rawAge.split(/[/,;]+/).map(s => s.trim().replace(/,/g, '')).filter(Boolean);
+      if (aParts.length >= 3) {
+        if (!ageHigh) ageHigh = aParts[0];
+        if (!ageLow) ageLow = aParts[1];
+        if (!agePred) agePred = aParts[2];
+      }
+    }
+
+    const updatePrice = (type, val) => {
+      if (!isEditable || !onDataChange) return;
+      const cleanVal = val.replace(/[^0-9.]/g, '');
+      const newHigh = type === 'high' ? cleanVal : priceHigh;
+      const newLow = type === 'low' ? cleanVal : priceLow;
+      const newPred = type === 'pred' ? cleanVal : pricePred;
+      const combined = `${newHigh || '0'} / ${newLow || '0'} / ${newPred || '0'}`;
+      onDataChange(['one unit housing price(high,low,pred)'], combined);
+      if (type === 'high') onDataChange(['Housing Price High'], cleanVal);
+      if (type === 'low') onDataChange(['Housing Price Low'], cleanVal);
+      if (type === 'pred') onDataChange(['Housing Price Pred'], cleanVal);
+    };
+
+    const updateAge = (type, val) => {
+      if (!isEditable || !onDataChange) return;
+      const cleanVal = val.replace(/[^0-9.]/g, '');
+      const newHigh = type === 'high' ? cleanVal : ageHigh;
+      const newLow = type === 'low' ? cleanVal : ageLow;
+      const newPred = type === 'pred' ? cleanVal : agePred;
+      const combined = `${newHigh || '0'} / ${newLow || '0'} / ${newPred || '0'}`;
+      onDataChange(['one unit housing age(high,low,pred)'], combined);
+      if (type === 'high') onDataChange(['Housing Age High'], cleanVal);
+      if (type === 'low') onDataChange(['Housing Age Low'], cleanVal);
+      if (type === 'pred') onDataChange(['Housing Age Pred'], cleanVal);
+    };
+
+    // Calculate Land Use Total
+    const landUseFields = ["One-Unit", "2-4 Unit", "Multi-Family", "Commercial", "Other"];
+    const landUseValues = landUseFields.map(f => {
+      const raw = String(nbData[f] || '0').replace('%', '').trim();
+      return parseFloat(raw) || 0;
+    });
+    const landUseTotal = landUseValues.reduce((sum, v) => sum + v, 0);
+    const otherValNum = landUseValues[4] || 0;
+
+    return (
+      <Paper id={id} elevation={1} sx={{ mb: 2, borderRadius: 2, overflow: 'hidden', borderTop: '3px solid', borderTopColor: borderColor }}>
+        {/* Card Header */}
+        <Box
+          sx={{
+            p: 1.5,
+            bgcolor: 'grey.50',
+            color: 'text.primary',
+            borderBottom: '1px solid',
+            borderColor: 'grey.200',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}>
+          <Typography variant="h6" component="h5" sx={{ fontSize: '1.05rem', fontWeight: 'bold' }}>
+            {title || "Neighborhood Section"}
+          </Typography>
+          {onRevisionButtonClick && (
+            <Tooltip title="Revision Language">
+              <IconButton onClick={onRevisionButtonClick} size="small" sx={{ color: 'text.secondary', ml: 'auto' }}>
+                <LibraryBooksIcon />
+              </IconButton>
+            </Tooltip>
+          )}
+        </Box>
+
+        {loading && loadingSection === id && (
+          <Box sx={{ width: '100%' }}><LinearProgress /></Box>
+        )}
+
+        <div className="card-body p-2" style={{ backgroundColor: '#fff', fontSize: '0.78rem', overflowX: 'auto' }}>
+          {/* Note above table */}
+          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#212529', marginBottom: '4px', fontStyle: 'italic' }}>
+            Note: Race and the racial composition of the neighborhood are not appraisal factors.
+          </div>
+
+          {/* Fannie Mae Grid Table */}
+          <div style={{ display: 'flex', border: '1.5px solid #212529', borderRadius: '2px', backgroundColor: '#fff', minWidth: '850px' }}>
+            {/* Left Vertical Black Banner */}
+            <div style={{
+              backgroundColor: '#000',
+              color: '#fff',
+              width: '32px',
+              minWidth: '32px',
+              writingMode: 'vertical-rl',
+              transform: 'rotate(180deg)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: 900,
+              fontSize: '0.85rem',
+              letterSpacing: '3px',
+              padding: '8px 0',
+              userSelect: 'none',
+              flexShrink: 0
+            }}>
+              NEIGHBORHOOD
+            </div>
+
+            {/* Main Content Area */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+              {/* Top 4 Columns */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.35fr 1.5fr 1.35fr 1fr', borderBottom: '1.5px solid #212529' }}>
+                {/* COLUMN 1: Neighborhood Characteristics */}
+                <div style={{ display: 'flex', flexDirection: 'column', borderRight: '1px solid #212529' }}>
+                  <div style={{ backgroundColor: '#e9ecef', padding: '4px 8px', fontWeight: 'bold', fontSize: '0.78rem', textAlign: 'center', borderBottom: '1px solid #212529' }}>
+                    Neighborhood Characteristics
+                  </div>
+                  <div style={{ padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: '8px', justifyContent: 'space-around', flex: 1, minHeight: '115px' }}>
+                    {/* Location */}
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 600, width: '65px', flexShrink: 0 }}>Location</span>
+                      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                        {renderNbCheckbox('Location', 'Urban')}
+                        {renderNbCheckbox('Location', 'Suburban')}
+                        {renderNbCheckbox('Location', 'Rural')}
+                      </div>
+                    </div>
+
+                    {/* Built-Up */}
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 600, width: '65px', flexShrink: 0 }}>Built-Up</span>
+                      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                        {renderNbCheckbox('Built-Up', 'Over 75%')}
+                        {renderNbCheckbox('Built-Up', '25-75%')}
+                        {renderNbCheckbox('Built-Up', 'Under 25%')}
+                      </div>
+                    </div>
+
+                    {/* Growth */}
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 600, width: '65px', flexShrink: 0 }}>Growth</span>
+                      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                        {renderNbCheckbox('Growth', 'Rapid')}
+                        {renderNbCheckbox('Growth', 'Stable')}
+                        {renderNbCheckbox('Growth', 'Slow')}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* COLUMN 2: Housing Trends */}
+                <div style={{ display: 'flex', flexDirection: 'column', borderRight: '1px solid #212529' }}>
+                  <div style={{ backgroundColor: '#e9ecef', padding: '4px 8px', fontWeight: 'bold', fontSize: '0.78rem', textAlign: 'center', borderBottom: '1px solid #212529' }}>
+                    {housingTrendsTitle}
+                  </div>
+                  <div style={{ padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: '8px', justifyContent: 'space-around', flex: 1, minHeight: '115px' }}>
+                    {/* Property Values */}
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 600, width: '92px', flexShrink: 0 }}>Property Values</span>
+                      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                        {renderNbCheckbox('Property Values', 'Increasing')}
+                        {renderNbCheckbox('Property Values', 'Stable')}
+                        {renderNbCheckbox('Property Values', 'Declining')}
+                      </div>
+                    </div>
+
+                    {/* Demand/Supply */}
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 600, width: '92px', flexShrink: 0 }}>Demand/Supply</span>
+                      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                        {renderNbCheckbox('Demand/Supply', 'Shortage')}
+                        {renderNbCheckbox('Demand/Supply', 'In Balance')}
+                        {renderNbCheckbox('Demand/Supply', 'Over Supply')}
+                      </div>
+                    </div>
+
+                    {/* Marketing Time */}
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 600, width: '92px', flexShrink: 0 }}>Marketing Time</span>
+                      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                        {renderNbCheckbox('Marketing Time', 'Under 3 mths')}
+                        {renderNbCheckbox('Marketing Time', '3-6 mths')}
+                        {renderNbCheckbox('Marketing Time', 'Over 6 mths')}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* COLUMN 3: Housing Price & Age */}
+                <div style={{ display: 'flex', flexDirection: 'column', borderRight: '1px solid #212529' }}>
+                  <div style={{ backgroundColor: '#e9ecef', padding: '4px 8px', fontWeight: 'bold', fontSize: '0.78rem', textAlign: 'center', borderBottom: '1px solid #212529' }}>
+                    {housingTitle}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 50px 1fr', backgroundColor: '#f8f9fa', borderBottom: '1px solid #212529', fontSize: '0.7rem', fontWeight: 600, textAlign: 'center', padding: '2px 0' }}>
+                    <div>PRICE<br /><span style={{ fontSize: '0.65rem', fontWeight: 400 }}>$ (000)</span></div>
+                    <div style={{ borderLeft: '1px solid #dee2e6', borderRight: '1px solid #dee2e6' }}></div>
+                    <div>AGE<br /><span style={{ fontSize: '0.65rem', fontWeight: 400 }}>(yrs)</span></div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 50px 1fr', flex: 1, minHeight: '90px' }}>
+                    {/* Row 1: Low */}
+                    <div style={{ borderBottom: '1px solid #dee2e6', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2px 4px' }}>
+                      <input
+                        type="text"
+                        value={priceLow}
+                        onChange={(e) => updatePrice('low', e.target.value)}
+                        disabled={!isEditable}
+                        placeholder="Low"
+                        style={{ width: '100%', textAlign: 'center', border: '1px solid #ced4da', borderRadius: '2px', padding: '2px 4px', fontSize: '0.78rem', background: '#fff' }}
+                      />
+                    </div>
+                    <div style={{ borderLeft: '1px solid #dee2e6', borderRight: '1px solid #dee2e6', borderBottom: '1px solid #dee2e6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '0.72rem', backgroundColor: '#f8f9fa' }}>
+                      Low
+                    </div>
+                    <div style={{ borderBottom: '1px solid #dee2e6', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2px 4px' }}>
+                      <input
+                        type="text"
+                        value={ageLow}
+                        onChange={(e) => updateAge('low', e.target.value)}
+                        disabled={!isEditable}
+                        placeholder="Low"
+                        style={{ width: '100%', textAlign: 'center', border: '1px solid #ced4da', borderRadius: '2px', padding: '2px 4px', fontSize: '0.78rem', background: '#fff' }}
+                      />
+                    </div>
+
+                    {/* Row 2: High */}
+                    <div style={{ borderBottom: '1px solid #dee2e6', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2px 4px' }}>
+                      <input
+                        type="text"
+                        value={priceHigh}
+                        onChange={(e) => updatePrice('high', e.target.value)}
+                        disabled={!isEditable}
+                        placeholder="High"
+                        style={{ width: '100%', textAlign: 'center', border: '1px solid #ced4da', borderRadius: '2px', padding: '2px 4px', fontSize: '0.78rem', background: '#fff' }}
+                      />
+                    </div>
+                    <div style={{ borderLeft: '1px solid #dee2e6', borderRight: '1px solid #dee2e6', borderBottom: '1px solid #dee2e6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '0.72rem', backgroundColor: '#f8f9fa' }}>
+                      High
+                    </div>
+                    <div style={{ borderBottom: '1px solid #dee2e6', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2px 4px' }}>
+                      <input
+                        type="text"
+                        value={ageHigh}
+                        onChange={(e) => updateAge('high', e.target.value)}
+                        disabled={!isEditable}
+                        placeholder="High"
+                        style={{ width: '100%', textAlign: 'center', border: '1px solid #ced4da', borderRadius: '2px', padding: '2px 4px', fontSize: '0.78rem', background: '#fff' }}
+                      />
+                    </div>
+
+                    {/* Row 3: Pred. */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2px 4px' }}>
+                      <input
+                        type="text"
+                        value={pricePred}
+                        onChange={(e) => updatePrice('pred', e.target.value)}
+                        disabled={!isEditable}
+                        placeholder="Pred."
+                        style={{ width: '100%', textAlign: 'center', border: '1px solid #ced4da', borderRadius: '2px', padding: '2px 4px', fontSize: '0.78rem', background: '#fff' }}
+                      />
+                    </div>
+                    <div style={{ borderLeft: '1px solid #dee2e6', borderRight: '1px solid #dee2e6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '0.72rem', backgroundColor: '#f8f9fa' }}>
+                      Pred.
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2px 4px' }}>
+                      <input
+                        type="text"
+                        value={agePred}
+                        onChange={(e) => updateAge('pred', e.target.value)}
+                        disabled={!isEditable}
+                        placeholder="Pred."
+                        style={{ width: '100%', textAlign: 'center', border: '1px solid #ced4da', borderRadius: '2px', padding: '2px 4px', fontSize: '0.78rem', background: '#fff' }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* COLUMN 4: Present Land Use % */}
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ backgroundColor: '#e9ecef', padding: '4px 8px', fontWeight: 'bold', fontSize: '0.78rem', textAlign: 'center', borderBottom: '1px solid #212529' }}>
+                    Present Land Use %
+                  </div>
+                  <div style={{ padding: '4px 8px', display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, justifyContent: 'space-between' }}>
+                    {/* One-Unit */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontWeight: 500, fontSize: '0.75rem' }}>One-Unit</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '2px', width: '55px' }}>
+                        <input
+                          type="text"
+                          value={String(nbData['One-Unit'] || '').replace('%', '').trim()}
+                          onChange={(e) => onDataChange && onDataChange(['One-Unit'], `${e.target.value.replace(/[^0-9.]/g, '')}%`)}
+                          disabled={!isEditable}
+                          style={{ width: '38px', textAlign: 'right', border: '1px solid #ced4da', borderRadius: '2px', padding: '1px 3px', fontSize: '0.75rem', background: '#fff' }}
+                        />
+                        <span style={{ fontSize: '0.72rem', color: '#495057' }}>%</span>
+                      </div>
+                    </div>
+
+                    {/* 2-4 Unit */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontWeight: 500, fontSize: '0.75rem' }}>2-4 Unit</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '2px', width: '55px' }}>
+                        <input
+                          type="text"
+                          value={String(nbData['2-4 Unit'] || '').replace('%', '').trim()}
+                          onChange={(e) => onDataChange && onDataChange(['2-4 Unit'], `${e.target.value.replace(/[^0-9.]/g, '')}%`)}
+                          disabled={!isEditable}
+                          style={{ width: '38px', textAlign: 'right', border: '1px solid #ced4da', borderRadius: '2px', padding: '1px 3px', fontSize: '0.75rem', background: '#fff' }}
+                        />
+                        <span style={{ fontSize: '0.72rem', color: '#495057' }}>%</span>
+                      </div>
+                    </div>
+
+                    {/* Multi-Family */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontWeight: 500, fontSize: '0.75rem' }}>Multi-Family</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '2px', width: '55px' }}>
+                        <input
+                          type="text"
+                          value={String(nbData['Multi-Family'] || '').replace('%', '').trim()}
+                          onChange={(e) => onDataChange && onDataChange(['Multi-Family'], `${e.target.value.replace(/[^0-9.]/g, '')}%`)}
+                          disabled={!isEditable}
+                          style={{ width: '38px', textAlign: 'right', border: '1px solid #ced4da', borderRadius: '2px', padding: '1px 3px', fontSize: '0.75rem', background: '#fff' }}
+                        />
+                        <span style={{ fontSize: '0.72rem', color: '#495057' }}>%</span>
+                      </div>
+                    </div>
+
+                    {/* Commercial */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontWeight: 500, fontSize: '0.75rem' }}>Commercial</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '2px', width: '55px' }}>
+                        <input
+                          type="text"
+                          value={String(nbData['Commercial'] || '').replace('%', '').trim()}
+                          onChange={(e) => onDataChange && onDataChange(['Commercial'], `${e.target.value.replace(/[^0-9.]/g, '')}%`)}
+                          disabled={!isEditable}
+                          style={{ width: '38px', textAlign: 'right', border: '1px solid #ced4da', borderRadius: '2px', padding: '1px 3px', fontSize: '0.75rem', background: '#fff' }}
+                        />
+                        <span style={{ fontSize: '0.72rem', color: '#495057' }}>%</span>
+                      </div>
+                    </div>
+
+                    {/* Other */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontWeight: 500, fontSize: '0.75rem' }}>Other</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '2px', width: '55px' }}>
+                        <input
+                          type="text"
+                          value={String(nbData['Other'] || '').replace('%', '').trim()}
+                          onChange={(e) => onDataChange && onDataChange(['Other'], `${e.target.value.replace(/[^0-9.]/g, '')}%`)}
+                          disabled={!isEditable}
+                          style={{ width: '38px', textAlign: 'right', border: '1px solid #ced4da', borderRadius: '2px', padding: '1px 3px', fontSize: '0.75rem', background: '#fff' }}
+                        />
+                        <span style={{ fontSize: '0.72rem', color: '#495057' }}>%</span>
+                      </div>
+                    </div>
+
+                    {/* Present Land Use for other (if other > 0) */}
+                    {otherValNum > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '2px', borderTop: '1px dashed #dee2e6', paddingTop: '2px' }}>
+                        <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#6c757d' }}>Other Description:</span>
+                        {renderNbEditable('Present Land Use for other', 'Describe other land use...', { fontSize: '0.72rem', border: '1px solid #ced4da', borderRadius: '2px', background: '#fff', padding: '1px 4px' })}
+                      </div>
+                    )}
+
+                    {/* Total Land Use Badge */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '2px', paddingTop: '2px', borderTop: '1px solid #dee2e6' }}>
+                      <span style={{
+                        fontWeight: 'bold',
+                        fontSize: '0.72rem',
+                        padding: '1px 6px',
+                        borderRadius: '3px',
+                        color: landUseTotal === 100 ? '#155724' : '#721c24',
+                        backgroundColor: landUseTotal === 100 ? '#d4edda' : '#f8d7da',
+                        border: `1px solid ${landUseTotal === 100 ? '#c3e6cb' : '#f5c6cb'}`
+                      }}>
+                        Total: {landUseTotal}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bottom Narrative Rows */}
+              {/* Row 1: Neighborhood Boundaries */}
+              <div style={{ borderBottom: '1px solid #212529', display: 'flex' }}>
+                <div style={{
+                  width: '160px',
+                  minWidth: '160px',
+                  backgroundColor: '#e9ecef',
+                  padding: '6px 8px',
+                  fontWeight: 'bold',
+                  fontSize: '0.78rem',
+                  borderRight: '1px solid #212529',
+                  display: 'flex',
+                  alignItems: 'flex-start'
+                }}>
+                  Neighborhood Boundaries
+                </div>
+                <div style={{ flex: 1, padding: '4px', backgroundColor: '#fff' }}>
+                  {renderNbEditable('Neighborhood Boundaries', 'Enter neighborhood boundaries (North, South, East, West)...', { minHeight: '52px' }, true)}
+                </div>
+              </div>
+
+              {/* Row 2: Neighborhood Description */}
+              <div style={{ borderBottom: '1px solid #212529', display: 'flex' }}>
+                <div style={{
+                  width: '160px',
+                  minWidth: '160px',
+                  backgroundColor: '#e9ecef',
+                  padding: '6px 8px',
+                  fontWeight: 'bold',
+                  fontSize: '0.78rem',
+                  borderRight: '1px solid #212529',
+                  display: 'flex',
+                  alignItems: 'flex-start'
+                }}>
+                  Neighborhood Description
+                </div>
+                <div style={{ flex: 1, padding: '4px', backgroundColor: '#fff' }}>
+                  {renderNbEditable('Neighborhood Description', 'Enter neighborhood description...', { minHeight: '65px' }, true)}
+                </div>
+              </div>
+
+              {/* Row 3: Market Conditions */}
+              <div style={{ display: 'flex' }}>
+                <div style={{
+                  width: '160px',
+                  minWidth: '160px',
+                  backgroundColor: '#e9ecef',
+                  padding: '6px 8px',
+                  fontWeight: 'bold',
+                  fontSize: '0.78rem',
+                  borderRight: '1px solid #212529',
+                  display: 'flex',
+                  alignItems: 'flex-start'
+                }}>
+                  Market Conditions (including support for the above conclusions)
+                </div>
+                <div style={{ flex: 1, padding: '4px', backgroundColor: '#fff' }}>
+                  {renderNbEditable(
+                    nbData['Market Conditions'] !== undefined ? 'Market Conditions' : 'Market Conditions:',
+                    'Enter market conditions and support for conclusions...',
+                    { minHeight: '65px' },
+                    true
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Paper>
+    );
+  }
+
+  // =============================================================
+  // PROJECT INFORMATION SECTION - FANNIE MAE 1073 GRID
+  // =============================================================
+  if (id === 'project-info-section' || title === 'Project Information') {
+    const piData = (data && typeof data === 'object' && ('# of Stories' in data || 'Project Description' in data || 'Data source(s) for project information' in data))
+      ? data
+      : (data?.PROJECT_INFO || data?.['Project Information'] || allData?.PROJECT_INFO || allData?.['Project Information'] || allData?.clean_data?.['Project Information'] || allData || {});
+
+    // Helper to get raw string value
+    const getPiRawVal = (key, fallbackKey = null) => {
+      let v = piData[key];
+      if (v === undefined && fallbackKey) v = piData[fallbackKey];
+      if (v === undefined) v = allData?.PROJECT_INFO?.[key] ?? allData?.['Project Information']?.[key] ?? allData?.[key];
+      if (v === undefined && fallbackKey) v = allData?.PROJECT_INFO?.[fallbackKey] ?? allData?.['Project Information']?.[fallbackKey] ?? allData?.[fallbackKey];
+      return renderValue(v ?? '');
+    };
+
+    // Helper to render an EditableField
+    const renderPiEditable = (fieldKey, placeholder = '', customStyle = {}, usePre = false, multiline = false) => {
+      const valStr = getPiRawVal(fieldKey);
+      return (
+        <EditableField
+          fieldPath={[fieldKey]}
+          value={valStr}
+          onDataChange={onDataChange}
+          editingField={editingField}
+          setEditingField={setEditingField}
+          usePre={usePre}
+          isEditable={isEditable}
+          allData={allData}
+          manualValidations={manualValidations}
+          handleManualValidation={handleManualValidation}
+          revisionHandlers={revisionHandlers}
+          showBlankValidation={true}
+          inputClassName="form-control form-control-sm field-value-pre"
+          placeholder={placeholder}
+          inputStyle={{
+            width: '100%',
+            border: 'none',
+            background: 'transparent',
+            padding: '2px 4px',
+            fontSize: '0.80rem',
+            color: '#1f2937',
+            height: 'auto',
+            ...(multiline ? { minHeight: '44px' } : {}),
+            ...customStyle
+          }}
+        />
+      );
+    };
+
+    // Helper to render interactive checkbox
+    const renderPiCheckbox = (fieldKey, optionLabel, flexStyle = {}) => {
+      const currentVal = String(getPiRawVal(fieldKey) || '').trim().toLowerCase();
+      const targetLabel = optionLabel.trim().toLowerCase();
+
+      const isChecked = currentVal === targetLabel || (
+        targetLabel === 'yes' && (currentVal === 'y' || currentVal === 'true' || currentVal.startsWith('yes'))
+      ) || (
+        targetLabel === 'no' && (currentVal === 'n' || currentVal === 'false' || currentVal.startsWith('no'))
+      ) || (
+        targetLabel.includes('row') && (currentVal.includes('townhouse') || currentVal.includes('row'))
+      ) || (
+        targetLabel.includes('garden') && currentVal.includes('garden')
+      ) || (
+        targetLabel.includes('detached') && currentVal.includes('detached')
+      ) || (
+        targetLabel.includes('mid-rise') && currentVal.includes('mid')
+      ) || (
+        targetLabel.includes('high-rise') && currentVal.includes('high')
+      ) || (
+        targetLabel.includes('other') && currentVal.includes('other')
+      ) || (
+        targetLabel.includes('existing') && (currentVal === 'existing' || currentVal.startsWith('exist'))
+      ) || (
+        targetLabel.includes('proposed') && currentVal.includes('proposed')
+      ) || (
+        targetLabel.includes('under construction') && currentVal.includes('under const')
+      ) || (
+        targetLabel.includes('principal') && (currentVal.includes('principle') || currentVal.includes('primary') || currentVal.includes('principal'))
+      ) || (
+        targetLabel.includes('second home') && (currentVal.includes('second') || currentVal.includes('recreational'))
+      ) || (
+        targetLabel === 'tenant' && currentVal.includes('tenant')
+      ) || (
+        targetLabel.includes("homeowners") && (currentVal.includes("homeowner") || currentVal.startsWith("hoa"))
+      ) || (
+        targetLabel.includes("developer") && currentVal.includes("developer") && !currentVal.includes("control")
+      ) || (
+        targetLabel.includes("management agent") && (currentVal.includes("agent") || currentVal.includes("management agent") || (!currentVal.includes("homeowner") && !currentVal.includes("developer") && currentVal.length > 0))
+      );
+
+      const handleToggle = () => {
+        if (!isEditable) return;
+        const newVal = isChecked ? '' : optionLabel;
+        if (onDataChange) {
+          onDataChange([fieldKey], newVal);
+        }
+      };
+
+      return (
+        <div
+          onClick={handleToggle}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            cursor: isEditable ? 'pointer' : 'default',
+            userSelect: 'none',
+            fontSize: '0.78rem',
+            marginRight: '10px',
+            lineHeight: 1.2,
+            ...flexStyle
+          }}
+          title={isEditable ? `Toggle ${optionLabel}` : optionLabel}
+        >
+          <div
+            style={{
+              width: '14px',
+              height: '14px',
+              border: '1.5px solid #212529',
+              borderRadius: '2px',
+              backgroundColor: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginRight: '5px',
+              fontWeight: '900',
+              fontSize: '11px',
+              color: '#000',
+              lineHeight: 1,
+              flexShrink: 0
+            }}
+          >
+            {isChecked ? '✕' : ''}
+          </div>
+          <span style={{ color: '#212529', fontWeight: isChecked ? 600 : 400 }}>{optionLabel}</span>
+        </div>
+      );
+    };
+
+    return (
+      <Paper id={id} elevation={1} sx={{ mb: 2, borderRadius: 2, overflow: 'hidden', borderTop: '3px solid', borderTopColor: borderColor }}>
+        {/* Card Header */}
+        <Box
+          sx={{
+            p: 1.5,
+            bgcolor: 'grey.50',
+            color: 'text.primary',
+            borderBottom: '1px solid',
+            borderColor: 'grey.200',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}>
+          <Typography variant="h6" component="h5" sx={{ fontSize: '1.05rem', fontWeight: 'bold' }}>
+            {title || "Project Information"}
+          </Typography>
+          {onRevisionButtonClick && (
+            <Tooltip title="Revision Language">
+              <IconButton onClick={onRevisionButtonClick} size="small" sx={{ color: 'text.secondary', ml: 'auto' }}>
+                <LibraryBooksIcon />
+              </IconButton>
+            </Tooltip>
+          )}
+        </Box>
+
+        {loading && loadingSection === id && (
+          <Box sx={{ width: '100%' }}><LinearProgress /></Box>
+        )}
+
+        <div className="card-body p-2" style={{ backgroundColor: '#fff', fontSize: '0.78rem', overflowX: 'auto' }}>
+          {/* Fannie Mae Grid Table */}
+          <div style={{ display: 'flex', border: '1.5px solid #212529', borderRadius: '2px', backgroundColor: '#fff', minWidth: '920px' }}>
+            {/* Left Vertical Black Banner */}
+            <div style={{
+              backgroundColor: '#000',
+              color: '#fff',
+              width: '32px',
+              minWidth: '32px',
+              writingMode: 'vertical-rl',
+              transform: 'rotate(180deg)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: 900,
+              fontSize: '0.85rem',
+              letterSpacing: '3px',
+              padding: '8px 0',
+              userSelect: 'none',
+              flexShrink: 0
+            }}>
+              PROJECT INFORMATION
+            </div>
+
+            {/* Main Content Area */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+              {/* Row 1: Data source(s) */}
+              <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', borderBottom: '1px solid #212529' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.76rem', marginRight: '10px', whiteSpace: 'nowrap' }}>
+                  Data source(s) for project information
+                </span>
+                <div style={{ flex: 1 }}>
+                  {renderPiEditable("Data source(s) for project information", "Enter data source(s)")}
+                </div>
+              </div>
+
+              {/* Row 2: Project Description */}
+              <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', borderBottom: '1.5px solid #212529', flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.76rem', marginRight: '16px' }}>Project Description</span>
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', flex: 1 }}>
+                  {renderPiCheckbox('Project Description', 'Detached')}
+                  {renderPiCheckbox('Project Description', 'Row or Townhouse')}
+                  {renderPiCheckbox('Project Description', 'Garden')}
+                  {renderPiCheckbox('Project Description', 'Mid-Rise')}
+                  {renderPiCheckbox('Project Description', 'High-Rise')}
+                  {renderPiCheckbox('Project Description', 'Other (describe)')}
+                  {String(getPiRawVal('Project Description') || '').toLowerCase().includes('other') && (
+                    <div style={{ flex: 1, minWidth: '150px' }}>
+                      {renderPiEditable('Project Description Other', 'Describe other')}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 5-Column Table Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.35fr 1fr 1.15fr 1.3fr', borderBottom: '1.5px solid #212529' }}>
+                {/* COLUMN 1: General Description (Building details) */}
+                <div style={{ display: 'flex', flexDirection: 'column', borderRight: '1px solid #212529' }}>
+                  <div style={{ backgroundColor: '#e9ecef', padding: '4px 8px', fontWeight: 'bold', fontSize: '0.76rem', textAlign: 'center', borderBottom: '1px solid #212529' }}>
+                    General Description
+                  </div>
+                  {/* Row 1: # of Stories */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}># of Stories</span>
+                    <div style={{ flex: 1, minWidth: '40px' }}>
+                      {renderPiEditable('# of Stories')}
+                    </div>
+                  </div>
+                  {/* Row 2: # of Elevators */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}># of Elevators</span>
+                    <div style={{ flex: 1, minWidth: '40px' }}>
+                      {renderPiEditable('# of Elevators')}
+                    </div>
+                  </div>
+                  {/* Row 3: Existing / Proposed / Under Construction */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', padding: '3px 6px', borderBottom: '1px solid #212529', minHeight: '44px', justifyContent: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                      {renderPiCheckbox('Existing/Proposed/Under Const.', 'Existing')}
+                      {renderPiCheckbox('Existing/Proposed/Under Const.', 'Proposed')}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                      {renderPiCheckbox('Existing/Proposed/Under Const.', 'Under Construction')}
+                    </div>
+                  </div>
+                  {/* Row 4: Year Built */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}>Year Built</span>
+                    <div style={{ flex: 1, minWidth: '40px' }}>
+                      {renderPiEditable('Year Built')}
+                    </div>
+                  </div>
+                  {/* Row 5: Effective Age */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}>Effective Age</span>
+                    <div style={{ flex: 1, minWidth: '40px' }}>
+                      {renderPiEditable('Effective Age')}
+                    </div>
+                  </div>
+                  {/* Row 6: Spacer */}
+                  <div style={{ minHeight: '26px', backgroundColor: '#fcfcfc', flex: 1 }} />
+                </div>
+
+                {/* COLUMN 2: General Description (Materials & Parking) */}
+                <div style={{ display: 'flex', flexDirection: 'column', borderRight: '1px solid #212529' }}>
+                  <div style={{ backgroundColor: '#e9ecef', padding: '4px 8px', fontWeight: 'bold', fontSize: '0.76rem', textAlign: 'center', borderBottom: '1px solid #212529' }}>
+                    General Description
+                  </div>
+                  {/* Row 1: Exterior Walls */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}>Exterior Walls</span>
+                    <div style={{ flex: 1, minWidth: '50px' }}>
+                      {renderPiEditable('Exterior Walls')}
+                    </div>
+                  </div>
+                  {/* Row 2: Roof Surface */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}>Roof Surface</span>
+                    <div style={{ flex: 1, minWidth: '50px' }}>
+                      {renderPiEditable('Roof Surface')}
+                    </div>
+                  </div>
+                  {/* Row 3: Total # Parking */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '44px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}>Total # Parking</span>
+                    <div style={{ flex: 1, minWidth: '40px' }}>
+                      {renderPiEditable('Total # Parking')}
+                    </div>
+                  </div>
+                  {/* Row 4: Ratio (spaces/units) */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}>Ratio (spaces/units)</span>
+                    <div style={{ flex: 1, minWidth: '40px' }}>
+                      {renderPiEditable('Ratio (spaces/units)')}
+                    </div>
+                  </div>
+                  {/* Row 5: Type */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}>Type</span>
+                    <div style={{ flex: 1, minWidth: '40px' }}>
+                      {renderPiEditable('Type')}
+                    </div>
+                  </div>
+                  {/* Row 6: Guest Parking */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', minHeight: '26px', flex: 1 }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}>Guest Parking</span>
+                    <div style={{ flex: 1, minWidth: '40px' }}>
+                      {renderPiEditable('Guest Parking')}
+                    </div>
+                  </div>
+                </div>
+
+                {/* COLUMN 3: Subject Phase */}
+                <div style={{ display: 'flex', flexDirection: 'column', borderRight: '1px solid #212529' }}>
+                  <div style={{ backgroundColor: '#e9ecef', padding: '4px 8px', fontWeight: 'bold', fontSize: '0.76rem', textAlign: 'center', borderBottom: '1px solid #212529' }}>
+                    Subject Phase
+                  </div>
+                  {/* Row 1: # of Units */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}># of Units</span>
+                    <div style={{ flex: 1, minWidth: '35px' }}>
+                      {renderPiEditable('# of Units')}
+                    </div>
+                  </div>
+                  {/* Row 2: # of Units Completed */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}># of Units Completed</span>
+                    <div style={{ flex: 1, minWidth: '35px' }}>
+                      {renderPiEditable('# of Units Completed')}
+                    </div>
+                  </div>
+                  {/* Row 3: # of Units For Sale */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '44px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}># of Units For Sale</span>
+                    <div style={{ flex: 1, minWidth: '35px' }}>
+                      {renderPiEditable('# of Units For Sale')}
+                    </div>
+                  </div>
+                  {/* Row 4: # of Units Sold */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}># of Units Sold</span>
+                    <div style={{ flex: 1, minWidth: '35px' }}>
+                      {renderPiEditable('# of Units Sold')}
+                    </div>
+                  </div>
+                  {/* Row 5: # of Units Rented */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}># of Units Rented</span>
+                    <div style={{ flex: 1, minWidth: '35px' }}>
+                      {renderPiEditable('# of Units Rented')}
+                    </div>
+                  </div>
+                  {/* Row 6: # of Owner Occupied Units */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', minHeight: '26px', flex: 1 }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}># of Owner Occupied Units</span>
+                    <div style={{ flex: 1, minWidth: '35px' }}>
+                      {renderPiEditable('# of Owner Occupied Units')}
+                    </div>
+                  </div>
+                </div>
+
+                {/* COLUMN 4: If Project Completed */}
+                <div style={{ display: 'flex', flexDirection: 'column', borderRight: '1px solid #212529' }}>
+                  <div style={{ backgroundColor: '#e9ecef', padding: '4px 8px', fontWeight: 'bold', fontSize: '0.76rem', textAlign: 'center', borderBottom: '1px solid #212529' }}>
+                    If Project Completed
+                  </div>
+                  {/* Row 1: # of Phases */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}># of Phases</span>
+                    <div style={{ flex: 1, minWidth: '35px' }}>
+                      {renderPiEditable('# of Phases')}
+                    </div>
+                  </div>
+                  {/* Row 2: # of Units */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}># of Units</span>
+                    <div style={{ flex: 1, minWidth: '35px' }}>
+                      {renderPiEditable('# of Units')}
+                    </div>
+                  </div>
+                  {/* Row 3: # of Units for Sale */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '44px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}># of Units for Sale</span>
+                    <div style={{ flex: 1, minWidth: '35px' }}>
+                      {renderPiEditable('# of Units for Sale')}
+                    </div>
+                  </div>
+                  {/* Row 4: # of Units Sold */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}># of Units Sold</span>
+                    <div style={{ flex: 1, minWidth: '35px' }}>
+                      {renderPiEditable('# of Units Sold')}
+                    </div>
+                  </div>
+                  {/* Row 5: # of Units Rented */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}># of Units Rented</span>
+                    <div style={{ flex: 1, minWidth: '35px' }}>
+                      {renderPiEditable('# of Units Rented')}
+                    </div>
+                  </div>
+                  {/* Row 6: # of Owner Occupied Units */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', minHeight: '26px', flex: 1 }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}># of Owner Occupied Units</span>
+                    <div style={{ flex: 1, minWidth: '35px' }}>
+                      {renderPiEditable('# of Owner Occupied Units')}
+                    </div>
+                  </div>
+                </div>
+
+                {/* COLUMN 5: If Project Incomplete */}
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ backgroundColor: '#e9ecef', padding: '4px 8px', fontWeight: 'bold', fontSize: '0.76rem', textAlign: 'center', borderBottom: '1px solid #212529' }}>
+                    If Project Incomplete
+                  </div>
+                  {/* Row 1: # of Planned Phases */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}># of Planned Phases</span>
+                    <div style={{ flex: 1, minWidth: '35px' }}>
+                      {renderPiEditable('# of Planned Phases')}
+                    </div>
+                  </div>
+                  {/* Row 2: # of Planned Units */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}># of Planned Units</span>
+                    <div style={{ flex: 1, minWidth: '35px' }}>
+                      {renderPiEditable('# of Planned Units')}
+                    </div>
+                  </div>
+                  {/* Row 3: # of Planned Units For Sale */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '44px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}># of Planned Units for Sale</span>
+                    <div style={{ flex: 1, minWidth: '35px' }}>
+                      {renderPiEditable('# of Planned Units for Sale')}
+                    </div>
+                  </div>
+                  {/* Row 4: # of Planned Units Sold */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}># of Planned Units Sold</span>
+                    <div style={{ flex: 1, minWidth: '35px' }}>
+                      {renderPiEditable('# of Planned Units Sold')}
+                    </div>
+                  </div>
+                  {/* Row 5: # of Planned Units Rented */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}># of Planned Units Rented</span>
+                    <div style={{ flex: 1, minWidth: '35px' }}>
+                      {renderPiEditable('# of Planned Units Rented')}
+                    </div>
+                  </div>
+                  {/* Row 6: # of Planned Owner Occupied Units */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', minHeight: '26px', flex: 1 }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}># of Planned Owner Occupied Units</span>
+                    <div style={{ flex: 1, minWidth: '35px' }}>
+                      {renderPiEditable('# of Planned Owner Occupied Units')}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Below-Table Questions */}
+              {/* Question 1: Project Primary Occupancy */}
+              <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', borderBottom: '1px solid #212529', flexWrap: 'wrap', minHeight: '28px' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.76rem', marginRight: '16px' }}>Project Primary Occupancy</span>
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                  {renderPiCheckbox('Project Primary Occupancy', 'Principal Residence')}
+                  {renderPiCheckbox('Project Primary Occupancy', 'Second Home or Recreational')}
+                  {renderPiCheckbox('Project Primary Occupancy', 'Tenant')}
+                </div>
+              </div>
+
+              {/* Question 2: Developer Control */}
+              <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', borderBottom: '1px solid #212529', flexWrap: 'wrap', minHeight: '28px' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.76rem', marginRight: '16px' }}>
+                  Is the developer/builder in control of the Homeowners' Association (HOA)?
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  {renderPiCheckbox("Is the developer/builder in control of the Homeowners' Association (HOA)?", 'Yes')}
+                  {renderPiCheckbox("Is the developer/builder in control of the Homeowners' Association (HOA)?", 'No')}
+                </div>
+              </div>
+
+              {/* Question 3: Management Group */}
+              <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', borderBottom: '1px solid #212529', flexWrap: 'wrap', minHeight: '28px' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.76rem', marginRight: '12px' }}>Management Group -</span>
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '10px', flex: 1 }}>
+                  {renderPiCheckbox('Management Group', "Homeowners' Association")}
+                  {renderPiCheckbox('Management Group', 'Developer')}
+                  {renderPiCheckbox('Management Group', 'Management Agent - Provide name of management company.')}
+                  <div style={{ flex: 1, minWidth: '220px' }}>
+                    {renderPiEditable('Management Group', 'Provide name of management company / contact info')}
+                  </div>
+                </div>
+              </div>
+
+              {/* Question 4: 10% Ownership */}
+              <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', borderBottom: '1px solid #212529', flexWrap: 'wrap', minHeight: '28px' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.76rem', marginRight: '12px', flexShrink: 0 }}>
+                  Does any single entity (the same individual, investor group, corporation, etc.) own more than 10% of the total units in the project?
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '16px' }}>
+                  {renderPiCheckbox("Does any single entity (the same individual, investor group, corporation, etc.) own more than 10% of the total units in the project?", 'Yes')}
+                  {renderPiCheckbox("Does any single entity (the same individual, investor group, corporation, etc.) own more than 10% of the total units in the project?", 'No')}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: '200px' }}>
+                  <span style={{ fontWeight: 600, fontSize: '0.74rem', marginRight: '6px', whiteSpace: 'nowrap' }}>If Yes, Describe</span>
+                  <div style={{ flex: 1 }}>
+                    {renderPiEditable(
+                      "Does any single entity (the same individual, investor group, corporation, etc.) own more than 10% of the total units in the project? If Yes, describe",
+                      "Describe 10% ownership"
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Question 5: Conversion */}
+              <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', borderBottom: '1px solid #212529', flexWrap: 'wrap', minHeight: '28px' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.76rem', marginRight: '12px', flexShrink: 0 }}>
+                  Was the project created by the conversion of existing building(s) into a condominium?
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '16px' }}>
+                  {renderPiCheckbox("Was the project created by the conversion of existing building(s) into a condominium?", 'Yes')}
+                  {renderPiCheckbox("Was the project created by the conversion of existing building(s) into a condominium?", 'No')}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: '200px' }}>
+                  <span style={{ fontWeight: 600, fontSize: '0.74rem', marginRight: '6px', whiteSpace: 'nowrap' }}>If Yes, describe the original use and date of conversion</span>
+                  <div style={{ flex: 1 }}>
+                    {renderPiEditable(
+                      "Was the project created by the conversion of existing building(s) into a condominium? If Yes,describe the original use and date of conversion",
+                      "Describe original use & date"
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Question 6: Facilities complete */}
+              <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', borderBottom: '1px solid #212529', flexWrap: 'wrap', minHeight: '28px' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.76rem', marginRight: '12px', flexShrink: 0 }}>
+                  Are the units, common elements, and recreation facilities complete (including any planned rehabilitation for a condominium conversion)?
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '16px' }}>
+                  {renderPiCheckbox("Are the units, common elements, and recreation facilities complete (including any planned rehabilitation for a condominium conversion)?", 'Yes')}
+                  {renderPiCheckbox("Are the units, common elements, and recreation facilities complete (including any planned rehabilitation for a condominium conversion)?", 'No')}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: '200px' }}>
+                  <span style={{ fontWeight: 600, fontSize: '0.74rem', marginRight: '6px', whiteSpace: 'nowrap' }}>If No, describe</span>
+                  <div style={{ flex: 1 }}>
+                    {renderPiEditable("If No, describe", "Describe incomplete facilities")}
+                  </div>
+                </div>
+              </div>
+
+              {/* Question 7: Commercial space */}
+              <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', borderBottom: '1px solid #212529', flexWrap: 'wrap', minHeight: '28px' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.76rem', marginRight: '12px', flexShrink: 0 }}>
+                  Is there any commercial space in the project?
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '16px' }}>
+                  {renderPiCheckbox("Is there any commercial space in the project?", 'Yes')}
+                  {renderPiCheckbox("Is there any commercial space in the project?", 'No')}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: '200px' }}>
+                  <span style={{ fontWeight: 600, fontSize: '0.74rem', marginRight: '6px', whiteSpace: 'nowrap' }}>If Yes, describe and indicate the overall percentage of the commercial space.</span>
+                  <div style={{ flex: 1 }}>
+                    {renderPiEditable("If Yes, describe and indicate the overall percentage of the commercial space.", "Describe commercial space & %")}
+                  </div>
+                </div>
+              </div>
+
+              {/* Question 8: Condition and quality narrative */}
+              <div style={{ display: 'flex', flexDirection: 'column', padding: '4px 8px', borderBottom: '1px solid #212529' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.76rem', marginBottom: '2px' }}>
+                  Describe the condition of the project and quality of construction.
+                </span>
+                {renderPiEditable("Describe the condition of the project and quality of construction.", "Describe condition & quality...", {}, true, true)}
+              </div>
+
+              {/* Question 9: Common elements narrative */}
+              <div style={{ display: 'flex', flexDirection: 'column', padding: '4px 8px', borderBottom: '1px solid #212529' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.76rem', marginBottom: '2px' }}>
+                  Describe the common elements and recreational facilities.
+                </span>
+                {renderPiEditable("Describe the common elements and recreational facilities.", "Describe common elements & amenities...", {}, true, true)}
+              </div>
+
+              {/* Question 10: Leased common elements */}
+              <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', borderBottom: '1px solid #212529', flexWrap: 'wrap', minHeight: '28px' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.76rem', marginRight: '12px', flexShrink: 0 }}>
+                  Are any common elements leased to or by the Homeowners' Association?
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '16px' }}>
+                  {renderPiCheckbox("Are any common elements leased to or by the Homeowners' Association?", 'Yes')}
+                  {renderPiCheckbox("Are any common elements leased to or by the Homeowners' Association?", 'No')}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: '200px' }}>
+                  <span style={{ fontWeight: 600, fontSize: '0.74rem', marginRight: '6px', whiteSpace: 'nowrap' }}>If Yes, describe the rental terms and options.</span>
+                  <div style={{ flex: 1 }}>
+                    {renderPiEditable("If Yes, describe the rental terms and options.", "Describe rental terms & options")}
+                  </div>
+                </div>
+              </div>
+
+              {/* Question 11: Ground rent */}
+              <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', borderBottom: '1px solid #212529', flexWrap: 'wrap', minHeight: '28px' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.76rem', marginRight: '12px', flexShrink: 0 }}>
+                  Is the project subject to a ground rent?
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '16px' }}>
+                  {renderPiCheckbox("Is the project subject to a ground rent?", 'Yes')}
+                  {renderPiCheckbox("Is the project subject to a ground rent?", 'No')}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: '200px' }}>
+                  <span style={{ fontWeight: 600, fontSize: '0.74rem', marginRight: '6px', whiteSpace: 'nowrap' }}>If Yes, $ per year (describe terms and conditions)</span>
+                  <div style={{ flex: 1 }}>
+                    {renderPiEditable("If Yes, $ per year (describe terms and conditions)", "Enter $ per year and terms")}
+                  </div>
+                </div>
+              </div>
+
+              {/* Question 12: Adequate parking */}
+              <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', flexWrap: 'wrap', minHeight: '28px' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.76rem', marginRight: '12px', flexShrink: 0 }}>
+                  Are the parking facilities adequate for the project size and type?
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '16px' }}>
+                  {renderPiCheckbox("Are the parking facilities adequate for the project size and type?", 'Yes')}
+                  {renderPiCheckbox("Are the parking facilities adequate for the project size and type?", 'No')}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: '200px' }}>
+                  <span style={{ fontWeight: 600, fontSize: '0.74rem', marginRight: '6px', whiteSpace: 'nowrap' }}>If No, describe and comment on the effect on value and marketability.</span>
+                  <div style={{ flex: 1 }}>
+                    {renderPiEditable("If No, describe and comment on the effect on value and marketability.", "Describe effect on value & marketability")}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Paper>
+    );
+  }
+
+  // =============================================================
+  // UNIT DESCRIPTIONS SECTION - FANNIE MAE 1073 GRID
+  // =============================================================
+  if (id === 'unit-descriptions-section' || title === 'Unit Descriptions') {
+    const udData = (data && typeof data === 'object' && ('Floor #' in data || 'Unit Charge$' in data || 'Floors' in data))
+      ? data
+      : (data?.UNIT_DESCRIPTIONS || data?.['Unit Descriptions'] || allData?.UNIT_DESCRIPTIONS || allData?.['Unit Descriptions'] || allData?.clean_data?.['Unit Descriptions'] || allData || {});
+
+    // Helper to get raw string value
+    const getUdRawVal = (key, fallbackKey = null) => {
+      let v = udData[key];
+      if (v === undefined && fallbackKey) v = udData[fallbackKey];
+      if (v === undefined) v = allData?.UNIT_DESCRIPTIONS?.[key] ?? allData?.['Unit Descriptions']?.[key] ?? allData?.[key];
+      if (v === undefined && fallbackKey) v = allData?.UNIT_DESCRIPTIONS?.[fallbackKey] ?? allData?.['Unit Descriptions']?.[fallbackKey] ?? allData?.[fallbackKey];
+      return renderValue(v ?? '');
+    };
+
+    // Helper to render an EditableField
+    const renderUdEditable = (fieldKey, placeholder = '', customStyle = {}, usePre = false, multiline = false) => {
+      const valStr = getUdRawVal(fieldKey);
+      return (
+        <EditableField
+          fieldPath={[fieldKey]}
+          value={valStr}
+          onDataChange={onDataChange}
+          editingField={editingField}
+          setEditingField={setEditingField}
+          usePre={usePre}
+          isEditable={isEditable}
+          allData={allData}
+          manualValidations={manualValidations}
+          handleManualValidation={handleManualValidation}
+          revisionHandlers={revisionHandlers}
+          showBlankValidation={true}
+          inputClassName="form-control form-control-sm field-value-pre"
+          placeholder={placeholder}
+          inputStyle={{
+            width: '100%',
+            border: 'none',
+            background: 'transparent',
+            padding: '2px 4px',
+            fontSize: '0.80rem',
+            color: '#1f2937',
+            height: 'auto',
+            ...(multiline ? { minHeight: '44px' } : {}),
+            ...customStyle
+          }}
+        />
+      );
+    };
+
+    // Helper to render interactive checkbox
+    const renderUdCheckbox = (fieldKey, optionLabel, flexStyle = {}) => {
+      const currentVal = String(getUdRawVal(fieldKey) || '').trim().toLowerCase();
+      const targetLabel = optionLabel.trim().toLowerCase();
+
+      const isChecked = currentVal === targetLabel || (
+        targetLabel === 'yes' && (currentVal === 'y' || currentVal === 'true' || currentVal.startsWith('yes'))
+      ) || (
+        targetLabel === 'no' && (currentVal === 'n' || currentVal === 'false' || currentVal.startsWith('no'))
+      ) || (
+        targetLabel === 'none' && currentVal === 'none'
+      ) || (
+        targetLabel === 'garage' && currentVal.includes('garage')
+      ) || (
+        targetLabel === 'covered' && currentVal.includes('covered')
+      ) || (
+        targetLabel === 'open' && currentVal.includes('open')
+      ) || (
+        targetLabel === 'assigned' && currentVal.includes('assigned')
+      ) || (
+        targetLabel === 'owned' && currentVal.includes('owned')
+      ) || (
+        targetLabel === 'central ac' && (currentVal.includes('central') || currentVal.includes('central ac'))
+      ) || (
+        targetLabel === 'individual ac' && (currentVal.includes('individual') || currentVal.includes('indiv'))
+      ) || (
+        targetLabel.startsWith('other') && currentVal.includes('other')
+      );
+
+      const handleToggle = () => {
+        if (!isEditable) return;
+        let newVal = '';
+        if (fieldKey === 'None/Garage/Covered/Open') {
+          let items = currentVal ? currentVal.split(',').map(s => s.trim()).filter(Boolean) : [];
+          if (targetLabel === 'none') {
+            newVal = isChecked ? '' : 'None';
+          } else {
+            items = items.filter(s => s.toLowerCase() !== 'none');
+            if (isChecked) {
+              items = items.filter(s => !s.toLowerCase().includes(targetLabel));
+            } else {
+              items.push(optionLabel);
+            }
+            newVal = items.join(', ');
+          }
+        } else {
+          newVal = isChecked ? '' : optionLabel;
+        }
+
+        if (onDataChange) {
+          onDataChange([fieldKey], newVal);
+        }
+      };
+
+      return (
+        <div
+          onClick={handleToggle}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            cursor: isEditable ? 'pointer' : 'default',
+            userSelect: 'none',
+            fontSize: '0.78rem',
+            marginRight: '8px',
+            lineHeight: 1.2,
+            ...flexStyle
+          }}
+          title={isEditable ? `Toggle ${optionLabel}` : optionLabel}
+        >
+          <div
+            style={{
+              width: '13px',
+              height: '13px',
+              border: '1.5px solid #212529',
+              borderRadius: '2px',
+              backgroundColor: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginRight: '4px',
+              fontWeight: '900',
+              fontSize: '10px',
+              color: '#000',
+              lineHeight: 1,
+              flexShrink: 0
+            }}
+          >
+            {isChecked ? '✕' : ''}
+          </div>
+          <span style={{ color: '#212529', fontWeight: isChecked ? 600 : 400 }}>{optionLabel}</span>
+        </div>
+      );
+    };
+
+    // Helper for Utilities included checkboxes
+    const renderUtilCheckbox = (optionLabel) => {
+      const utilKey = "Utilities included in the unit monthly assessment [None/Heat/Air/Conditioning/Electricity/Gas/Water/Sewer/Cable/Other (describe)]";
+      const currentVal = String(getUdRawVal(utilKey) || '').trim().toLowerCase();
+      const targetLabel = optionLabel.trim().toLowerCase();
+
+      const isChecked = currentVal === targetLabel || currentVal.includes(targetLabel) || (
+        targetLabel === 'air conditioning' && (currentVal.includes('air') || currentVal.includes('ac'))
+      );
+
+      const handleToggle = () => {
+        if (!isEditable) return;
+        let items = currentVal ? currentVal.split(',').map(s => s.trim()).filter(Boolean) : [];
+        if (targetLabel === 'none') {
+          items = isChecked ? [] : ['None'];
+        } else {
+          items = items.filter(s => s.toLowerCase() !== 'none');
+          if (isChecked) {
+            items = items.filter(s => !s.toLowerCase().includes(targetLabel));
+          } else {
+            items.push(optionLabel);
+          }
+        }
+        if (onDataChange) {
+          onDataChange([utilKey], items.join(', '));
+        }
+      };
+
+      return (
+        <div
+          onClick={handleToggle}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            cursor: isEditable ? 'pointer' : 'default',
+            userSelect: 'none',
+            fontSize: '0.75rem',
+            marginRight: '8px',
+            lineHeight: 1.2
+          }}
+          title={isEditable ? `Toggle ${optionLabel}` : optionLabel}
+        >
+          <div
+            style={{
+              width: '13px',
+              height: '13px',
+              border: '1.5px solid #212529',
+              borderRadius: '2px',
+              backgroundColor: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginRight: '4px',
+              fontWeight: '900',
+              fontSize: '10px',
+              color: '#000',
+              lineHeight: 1,
+              flexShrink: 0
+            }}
+          >
+            {isChecked ? '✕' : ''}
+          </div>
+          <span style={{ color: '#212529', fontWeight: isChecked ? 600 : 400 }}>{optionLabel}</span>
+        </div>
+      );
+    };
+
+    // Helper for Appliances checkboxes
+    const renderApplianceItem = (label, keyword) => {
+      const appKey = "Refrigerator/Range/Oven/Disp Microwave/Dishwasher/Washer/Dryer";
+      const fullVal = String(getUdRawVal(appKey) || '');
+      const isChecked = fullVal.toLowerCase().includes(keyword.toLowerCase());
+
+      const handleToggle = () => {
+        if (!isEditable) return;
+        let items = fullVal ? fullVal.split(',').map(s => s.trim()).filter(Boolean) : [];
+        if (isChecked) {
+          items = items.filter(s => !s.toLowerCase().includes(keyword.toLowerCase()));
+        } else {
+          items.push(label);
+        }
+        if (onDataChange) {
+          onDataChange([appKey], items.join(', '));
+        }
+      };
+
+      return (
+        <div
+          onClick={handleToggle}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            cursor: isEditable ? 'pointer' : 'default',
+            userSelect: 'none',
+            fontSize: '0.73rem',
+            lineHeight: 1.2
+          }}
+          title={isEditable ? `Toggle ${label}` : label}
+        >
+          <div
+            style={{
+              width: '13px',
+              height: '13px',
+              border: '1.5px solid #212529',
+              borderRadius: '2px',
+              backgroundColor: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginRight: '4px',
+              fontWeight: '900',
+              fontSize: '10px',
+              color: '#000',
+              lineHeight: 1,
+              flexShrink: 0
+            }}
+          >
+            {isChecked ? '✕' : ''}
+          </div>
+          <span style={{ color: '#212529', fontWeight: isChecked ? 600 : 400 }}>{label}</span>
+        </div>
+      );
+    };
+
+    // Helper for Amenities rows
+    const renderAmenityRow = (label, keyword, defaultDesc = '') => {
+      const amKey = "Fireplace(s) #/Woodstove(s) #/Deck/Patio/Porch/Balcony/Other";
+      const fullVal = String(getUdRawVal(amKey) || '');
+      const isChecked = fullVal.toLowerCase().includes(keyword.toLowerCase());
+
+      const handleToggle = () => {
+        if (!isEditable) return;
+        let items = fullVal ? fullVal.split(',').map(s => s.trim()).filter(Boolean) : [];
+        if (isChecked) {
+          items = items.filter(s => !s.toLowerCase().includes(keyword.toLowerCase()));
+        } else {
+          items.push(defaultDesc ? `${label} ${defaultDesc}` : label);
+        }
+        if (onDataChange) {
+          onDataChange([amKey], items.join(', '));
+        }
+      };
+
+      // Extract specific detail if present
+      let matchDesc = '';
+      if (isChecked) {
+        const item = fullVal.split(',').map(s => s.trim()).find(s => s.toLowerCase().includes(keyword.toLowerCase()));
+        if (item) {
+          matchDesc = item.replace(new RegExp(`^${label}\\s*`, 'i'), '').trim();
+        }
+      }
+
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 4px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+          <div
+            onClick={handleToggle}
+            style={{ display: 'inline-flex', alignItems: 'center', cursor: isEditable ? 'pointer' : 'default', userSelect: 'none' }}
+            title={isEditable ? `Toggle ${label}` : label}
+          >
+            <div style={{ width: '13px', height: '13px', border: '1.5px solid #212529', borderRadius: '2px', backgroundColor: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: '4px', fontWeight: '900', fontSize: '10px' }}>
+              {isChecked ? '✕' : ''}
+            </div>
+            <span style={{ fontSize: '0.73rem', fontWeight: isChecked ? 600 : 400 }}>{label}</span>
+          </div>
+          {matchDesc && (
+            <span style={{ fontSize: '0.70rem', color: '#4b5563', fontStyle: 'italic', marginLeft: '4px' }}>{matchDesc}</span>
+          )}
+        </div>
+      );
+    };
+
+    return (
+      <Paper id={id} elevation={1} sx={{ mb: 2, borderRadius: 2, overflow: 'hidden', borderTop: '3px solid', borderTopColor: borderColor }}>
+        {/* Card Header */}
+        <Box
+          sx={{
+            p: 1.5,
+            bgcolor: 'grey.50',
+            color: 'text.primary',
+            borderBottom: '1px solid',
+            borderColor: 'grey.200',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}>
+          <Typography variant="h6" component="h5" sx={{ fontSize: '1.05rem', fontWeight: 'bold' }}>
+            {title || "Unit Descriptions"}
+          </Typography>
+          {onRevisionButtonClick && (
+            <Tooltip title="Revision Language">
+              <IconButton onClick={onRevisionButtonClick} size="small" sx={{ color: 'text.secondary', ml: 'auto' }}>
+                <LibraryBooksIcon />
+              </IconButton>
+            </Tooltip>
+          )}
+        </Box>
+
+        {loading && loadingSection === id && (
+          <Box sx={{ width: '100%' }}><LinearProgress /></Box>
+        )}
+
+        <div className="card-body p-2" style={{ backgroundColor: '#fff', fontSize: '0.78rem', overflowX: 'auto' }}>
+          {/* Fannie Mae Grid Table */}
+          <div style={{ display: 'flex', border: '1.5px solid #212529', borderRadius: '2px', backgroundColor: '#fff', minWidth: '920px' }}>
+            {/* Left Vertical Black Banner */}
+            <div style={{
+              backgroundColor: '#000',
+              color: '#fff',
+              width: '32px',
+              minWidth: '32px',
+              writingMode: 'vertical-rl',
+              transform: 'rotate(180deg)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: 900,
+              fontSize: '0.85rem',
+              letterSpacing: '3px',
+              padding: '8px 0',
+              userSelect: 'none',
+              flexShrink: 0
+            }}>
+              UNIT DESCRIPTIONS
+            </div>
+
+            {/* Main Content Area */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+              {/* Row 1: Unit Assessment Charges */}
+              <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', borderBottom: '1px solid #212529', flexWrap: 'wrap', gap: '6px' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.76rem' }}>Unit Charge $</span>
+                <div style={{ width: '70px' }}>
+                  {renderUdEditable('Unit Charge$', '0')}
+                </div>
+                <span style={{ fontSize: '0.74rem', whiteSpace: 'nowrap' }}>per month X 12 = $</span>
+                <div style={{ width: '85px' }}>
+                  {renderUdEditable('per month X 12 = $', '0')}
+                </div>
+                <span style={{ fontSize: '0.74rem', marginRight: '16px' }}>per year</span>
+
+                <span style={{ fontWeight: 600, fontSize: '0.76rem', whiteSpace: 'nowrap' }}>
+                  Annual assessment charge per year per square feet of gross living area = $
+                </span>
+                <div style={{ width: '75px' }}>
+                  {renderUdEditable('Annual assessment charge per year per square feet of gross living area = $', '0.00')}
+                </div>
+              </div>
+
+              {/* Row 2: Utilities Included in Assessment */}
+              <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', borderBottom: '1.5px solid #212529', flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.76rem', marginRight: '12px' }}>
+                  Utilities included in the unit monthly assessment:
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', flex: 1 }}>
+                  {renderUtilCheckbox('None')}
+                  {renderUtilCheckbox('Heat')}
+                  {renderUtilCheckbox('Air Conditioning')}
+                  {renderUtilCheckbox('Electricity')}
+                  {renderUtilCheckbox('Gas')}
+                  {renderUtilCheckbox('Water')}
+                  {renderUtilCheckbox('Sewer')}
+                  {renderUtilCheckbox('Cable')}
+                  {renderUtilCheckbox('Other')}
+                  <div style={{ flex: 1, minWidth: '180px' }}>
+                    {renderUdEditable(
+                      "Utilities included in the unit monthly assessment [None/Heat/Air/Conditioning/Electricity/Gas/Water/Sewer/Cable/Other (describe)]",
+                      "Describe utilities / other maintenance included"
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* 5-Column Table Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 1.2fr 1.1fr 1.25fr 1.15fr', borderBottom: '1.5px solid #212529' }}>
+                {/* COLUMN 1: General Description */}
+                <div style={{ display: 'flex', flexDirection: 'column', borderRight: '1px solid #212529' }}>
+                  <div style={{ backgroundColor: '#e9ecef', padding: '4px 8px', fontWeight: 'bold', fontSize: '0.76rem', textAlign: 'center', borderBottom: '1px solid #212529' }}>
+                    General Description
+                  </div>
+                  {/* Row 1: Floor # */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}>Floor #</span>
+                    <div style={{ flex: 1, minWidth: '40px' }}>
+                      {renderUdEditable('Floor #')}
+                    </div>
+                  </div>
+                  {/* Row 2: # of Levels */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}># of Levels</span>
+                    <div style={{ flex: 1, minWidth: '40px' }}>
+                      {renderUdEditable('# of Levels')}
+                    </div>
+                  </div>
+                  {/* Row 3: Heating Type / Fuel */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.73rem', whiteSpace: 'nowrap', marginRight: '4px' }}>Heating Type / Fuel</span>
+                    <div style={{ flex: 1, minWidth: '50px' }}>
+                      {renderUdEditable('Heating Type/Fuel', 'Type / Fuel')}
+                    </div>
+                  </div>
+                  {/* Row 4: Central AC / Individual AC */}
+                  <div style={{ display: 'flex', alignItems: 'center', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    {renderUdCheckbox('Central AC/Individual AC/Other (describe)', 'Central AC')}
+                    {renderUdCheckbox('Central AC/Individual AC/Other (describe)', 'Individual AC')}
+                  </div>
+                  {/* Row 5: Other (describe) */}
+                  <div style={{ display: 'flex', alignItems: 'center', padding: '2px 6px', minHeight: '26px', flex: 1 }}>
+                    {renderUdCheckbox('Central AC/Individual AC/Other (describe)', 'Other (describe)')}
+                    {String(getUdRawVal('Central AC/Individual AC/Other (describe)') || '').toLowerCase().includes('other') && (
+                      <div style={{ flex: 1, minWidth: '60px' }}>
+                        {renderUdEditable('Central AC/Individual AC/Other (describe)', 'Describe AC')}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* COLUMN 2: Interior materials/condition */}
+                <div style={{ display: 'flex', flexDirection: 'column', borderRight: '1px solid #212529' }}>
+                  <div style={{ backgroundColor: '#e9ecef', padding: '4px 8px', fontWeight: 'bold', fontSize: '0.76rem', textAlign: 'center', borderBottom: '1px solid #212529' }}>
+                    Interior &nbsp;&nbsp;&nbsp;&nbsp; materials/condition
+                  </div>
+                  {/* Row 1: Floors */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}>Floors</span>
+                    <div style={{ flex: 1, minWidth: '50px' }}>
+                      {renderUdEditable('Floors')}
+                    </div>
+                  </div>
+                  {/* Row 2: Walls */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}>Walls</span>
+                    <div style={{ flex: 1, minWidth: '50px' }}>
+                      {renderUdEditable('Walls')}
+                    </div>
+                  </div>
+                  {/* Row 3: Trim/Finish */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}>Trim/Finish</span>
+                    <div style={{ flex: 1, minWidth: '50px' }}>
+                      {renderUdEditable('Trim/Finish')}
+                    </div>
+                  </div>
+                  {/* Row 4: Bath Wainscot */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}>Bath Wainscot</span>
+                    <div style={{ flex: 1, minWidth: '50px' }}>
+                      {renderUdEditable('Bath Wainscot')}
+                    </div>
+                  </div>
+                  {/* Row 5: Doors */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', minHeight: '26px', flex: 1 }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}>Doors</span>
+                    <div style={{ flex: 1, minWidth: '50px' }}>
+                      {renderUdEditable('Doors')}
+                    </div>
+                  </div>
+                </div>
+
+                {/* COLUMN 3: Amenities */}
+                <div style={{ display: 'flex', flexDirection: 'column', borderRight: '1px solid #212529' }}>
+                  <div style={{ backgroundColor: '#e9ecef', padding: '4px 8px', fontWeight: 'bold', fontSize: '0.76rem', textAlign: 'center', borderBottom: '1px solid #212529' }}>
+                    Amenities
+                  </div>
+                  {/* Row 1: Fireplace(s) # */}
+                  {renderAmenityRow('Fireplace(s) #', 'fireplace', '# 0')}
+                  {/* Row 2: WoodStove(s) # */}
+                  {renderAmenityRow('WoodStove(s) #', 'woodstove', '# 0')}
+                  {/* Row 3: Deck/Patio */}
+                  {renderAmenityRow('Deck/Patio', 'deck')}
+                  {/* Row 4: Porch/Balcony */}
+                  {renderAmenityRow('Porch/Balcony', 'porch')}
+                  {/* Row 5: Other */}
+                  <div style={{ flex: 1 }}>
+                    {renderAmenityRow('Other', 'other')}
+                  </div>
+                </div>
+
+                {/* COLUMN 4: Appliances */}
+                <div style={{ display: 'flex', flexDirection: 'column', borderRight: '1px solid #212529' }}>
+                  <div style={{ backgroundColor: '#e9ecef', padding: '4px 8px', fontWeight: 'bold', fontSize: '0.76rem', textAlign: 'center', borderBottom: '1px solid #212529' }}>
+                    Appliances
+                  </div>
+                  {/* Row 1: Refrigerator */}
+                  <div style={{ display: 'flex', alignItems: 'center', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    {renderApplianceItem('Refrigerator', 'refrigerator')}
+                  </div>
+                  {/* Row 2: Range/Oven */}
+                  <div style={{ display: 'flex', alignItems: 'center', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    {renderApplianceItem('Range/Oven', 'range')}
+                  </div>
+                  {/* Row 3: Disp & Microwave */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    {renderApplianceItem('Disp', 'disp')}
+                    {renderApplianceItem('Microwave', 'microwave')}
+                  </div>
+                  {/* Row 4: Dishwasher */}
+                  <div style={{ display: 'flex', alignItems: 'center', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    {renderApplianceItem('Dishwasher', 'dishwasher')}
+                  </div>
+                  {/* Row 5: Washer/Dryer */}
+                  <div style={{ display: 'flex', alignItems: 'center', padding: '2px 6px', minHeight: '26px', flex: 1 }}>
+                    {renderApplianceItem('Washer/Dryer', 'washer')}
+                  </div>
+                </div>
+
+                {/* COLUMN 5: Car Storage */}
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ backgroundColor: '#e9ecef', padding: '4px 8px', fontWeight: 'bold', fontSize: '0.76rem', textAlign: 'center', borderBottom: '1px solid #212529' }}>
+                    Car Storage
+                  </div>
+                  {/* Row 1: None */}
+                  <div style={{ display: 'flex', alignItems: 'center', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    {renderUdCheckbox('None/Garage/Covered/Open', 'None')}
+                  </div>
+                  {/* Row 2: Garage / Covered / Open */}
+                  <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    {renderUdCheckbox('None/Garage/Covered/Open', 'Garage')}
+                    {renderUdCheckbox('None/Garage/Covered/Open', 'Covered')}
+                    {renderUdCheckbox('None/Garage/Covered/Open', 'Open')}
+                  </div>
+                  {/* Row 3: # of Cars */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}># of Cars</span>
+                    <div style={{ flex: 1, minWidth: '40px' }}>
+                      {renderUdEditable('# of Cars')}
+                    </div>
+                  </div>
+                  {/* Row 4: Assigned / Owned */}
+                  <div style={{ display: 'flex', alignItems: 'center', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
+                    {renderUdCheckbox('Assigned/Owned', 'Assigned')}
+                    {renderUdCheckbox('Assigned/Owned', 'Owned')}
+                  </div>
+                  {/* Row 5: Parking Space # */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', minHeight: '26px', flex: 1 }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}>Parking Space #</span>
+                    <div style={{ flex: 1, minWidth: '40px' }}>
+                      {renderUdEditable('Parking Space #')}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Finished Area Above Grade Row */}
+              <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', borderBottom: '1px solid #212529', flexWrap: 'wrap', gap: '6px' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.76rem', marginRight: '6px' }}>
+                  Finished area <b>above grade</b> contains:
+                </span>
+                <div style={{ width: '45px' }}>
+                  {renderUdEditable('Rooms', '0')}
+                </div>
+                <span style={{ fontSize: '0.74rem', marginRight: '10px' }}>Rooms</span>
+
+                <div style={{ width: '45px' }}>
+                  {renderUdEditable('Bedrooms', '0')}
+                </div>
+                <span style={{ fontSize: '0.74rem', marginRight: '10px' }}>Bedrooms</span>
+
+                <div style={{ width: '50px' }}>
+                  {renderUdEditable('Bath(s)', '0.0')}
+                </div>
+                <span style={{ fontSize: '0.74rem', marginRight: '10px' }}>Bath(s)</span>
+
+                <div style={{ width: '70px' }}>
+                  {renderUdEditable('Square Feet of Gross Living Area Above Grade', '0')}
+                </div>
+                <span style={{ fontSize: '0.74rem' }}>Square Feet of Gross Living Area Above Grade</span>
+              </div>
+
+              {/* Separately Metered Heating & Cooling Row */}
+              <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', borderBottom: '1px solid #212529', flexWrap: 'wrap', minHeight: '28px' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.76rem', marginRight: '12px', flexShrink: 0 }}>
+                  Are the heating and cooling for the individual units separately metered?
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '16px' }}>
+                  {renderUdCheckbox("Are the heating and cooling for the individual units separately metered?", 'Yes')}
+                  {renderUdCheckbox("Are the heating and cooling for the individual units separately metered?", 'No')}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: '200px' }}>
+                  <span style={{ fontWeight: 600, fontSize: '0.74rem', marginRight: '6px', whiteSpace: 'nowrap' }}>
+                    If No, describe and comment on compatibility to other projects in the market area.
+                  </span>
+                  <div style={{ flex: 1 }}>
+                    {renderUdEditable(
+                      "If No, describe and comment on compatibility to other projects in the market area.",
+                      "Describe compatibility"
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Additional Features Narrative */}
+              <div style={{ display: 'flex', flexDirection: 'column', padding: '4px 8px', borderBottom: '1px solid #212529' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.76rem', marginBottom: '2px' }}>
+                  Additional features (special energy efficient items, etc.)
+                </span>
+                {renderUdEditable("Additional features (special energy efficient items, etc.)", "Enter additional features...", {}, true, true)}
+              </div>
+
+              {/* Property Condition Narrative */}
+              <div style={{ display: 'flex', flexDirection: 'column', padding: '4px 8px', borderBottom: '1px solid #212529' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.76rem', marginBottom: '2px' }}>
+                  Describe the condition of the property (including needed repairs, deterioration, renovations, remodeling, etc.)
+                </span>
+                {renderUdEditable("Describe the condition of the property (including needed repairs, deterioration, renovations, remodeling, etc.)", "Describe property condition...", {}, true, true)}
+              </div>
+
+              {/* Physical Deficiencies Row */}
+              <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', borderBottom: '1px solid #212529', flexWrap: 'wrap', minHeight: '28px' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.76rem', marginRight: '12px', flexShrink: 0 }}>
+                  Are there any physical deficiencies or adverse conditions that affect the livability, soundness, or structural integrity of the property?
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '16px' }}>
+                  {renderUdCheckbox("Are there any physical deficiencies or adverse conditions that affect the livability, soundness, or structural integrity of the property?", 'Yes')}
+                  {renderUdCheckbox("Are there any physical deficiencies or adverse conditions that affect the livability, soundness, or structural integrity of the property?", 'No')}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: '200px' }}>
+                  <span style={{ fontWeight: 600, fontSize: '0.74rem', marginRight: '6px', whiteSpace: 'nowrap' }}>If Yes, describe</span>
+                  <div style={{ flex: 1 }}>
+                    {renderUdEditable("If Yes, describe", "Describe physical deficiencies")}
+                  </div>
+                </div>
+              </div>
+
+              {/* Neighborhood Conformance Row */}
+              <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', flexWrap: 'wrap', minHeight: '28px' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.76rem', marginRight: '12px', flexShrink: 0 }}>
+                  Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '16px' }}>
+                  {renderUdCheckbox("Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?", 'Yes')}
+                  {renderUdCheckbox("Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?", 'No')}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: '200px' }}>
+                  <span style={{ fontWeight: 600, fontSize: '0.74rem', marginRight: '6px', whiteSpace: 'nowrap' }}>If No, describe</span>
+                  <div style={{ flex: 1 }}>
+                    {renderUdEditable("If No, describe", "Describe non-conformance")}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Paper>
+    );
+  }
 
   if (id === 'improvements-section') {
-
     return (
 
       <Paper id={id} elevation={1} sx={{ mb: 2, borderRadius: 2, overflow: 'hidden', borderTop: '3px solid', borderTopColor: borderColor }}>

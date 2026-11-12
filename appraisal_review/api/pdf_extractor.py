@@ -59,7 +59,7 @@ def sanitize_extracted_data(data):
     return data
 
 SUBJECT_FIELDS = [
-    'ADU File Check','From Type','Exposure comment','Prior service comment','ANSI','FHA Case No.','Full Address','Property Address', 'City', 'County', 'State', 'Zip Code', 'Borrower', 'Owner of Public Record',
+    'ADU File Check','From Type','Exposure comment','Prior service comment','ANSI','FHA Case No.','Full Address','Property Address', 'Unit #', 'Unit Number', 'Unit', 'City', 'County', 'State', 'Zip Code', 'Borrower', 'Owner of Public Record',
     'Legal Description', "Assessor's Parcel #", 'Tax Year', 'R.E. Taxes $', 'Neighborhood Name', 'Map Reference',
     'Census Tract', 'Occupant','Occupant Comment', 'Special Assessments $', 'Special Assessments Comment', 'PUD', 'HOA $', 'HOA(per year)', 'HOA(per month)',
     'Property Rights Appraised', 'Assignment Type', 'Lender/Client', 'Address (Lender/Client)',

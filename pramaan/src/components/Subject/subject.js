@@ -537,6 +537,22 @@ function Subject({ defaultFormType }) {
       'ADDRESS (LENDER/CLIENT)': [subjectValidation.checkSubjectFieldsNotBlank, htmlDataValidation.checkLenderAddressInconsistency, appraiserLenderValidation.checkLenderAddressInconsistency],
       'Lender Address': [htmlDataValidation.checkLenderAddressInconsistency],
       'LENDER ADDRESS': [htmlDataValidation.checkLenderAddressInconsistency],
+      'Report data source(s) used, offering price(s), and date(s)': [
+        subjectValidation.checkReportDataSourceOfferingPriceDate,
+        subjectValidation.checkSubjectFieldsNotBlank
+      ],
+      'Report data source(s) used, offering price(s), and date(s).': [
+        subjectValidation.checkReportDataSourceOfferingPriceDate,
+        subjectValidation.checkSubjectFieldsNotBlank
+      ],
+      'REPORT DATA SOURCE(S) USED, OFFERING PRICE(S), AND DATE(S)': [
+        subjectValidation.checkReportDataSourceOfferingPriceDate,
+        subjectValidation.checkSubjectFieldsNotBlank
+      ],
+      'REPORT DATA SOURCE(S) USED, OFFERING PRICE(S), AND DATE(S).': [
+        subjectValidation.checkReportDataSourceOfferingPriceDate,
+        subjectValidation.checkSubjectFieldsNotBlank
+      ],
       'Assigned to Vendor(s)': [htmlDataValidation.checkAppraiserVendorNameConsistency],
       'ASSIGNED TO VENDOR(S)': [htmlDataValidation.checkAppraiserVendorNameConsistency],
       'Assigned to Vendor': [htmlDataValidation.checkAppraiserVendorNameConsistency],
@@ -2774,6 +2790,25 @@ function Subject({ defaultFormType }) {
   const currentState = data?.State?.toUpperCase();
   const hasAppraiserFee = !!(data?.["Appraiser's Fee"] || data?.["Appraiser Fee"] || data?.Subject?.["Appraiser's Fee"] || data?.Subject?.["Appraiser Fee"] || data?.CERTIFICATION?.["Appraiser's Fee"] || data?.CERTIFICATION?.["Appraiser Fee"]);
   const hasAmcFee = !!(data?.["AMC Fee"] || data?.Subject?.["AMC Fee"] || data?.CERTIFICATION?.["AMC Fee"]);
+  const is1073Or1025 = Boolean(
+    (typeof selectedFormType === 'string' && (selectedFormType.includes('1073') || selectedFormType.includes('1025'))) ||
+    (typeof data?.formType === 'string' && (data.formType.includes('1073') || data.formType.includes('1025'))) ||
+    (typeof data?.['Form Type'] === 'string' && (data['Form Type'].includes('1073') || data['Form Type'].includes('1025'))) ||
+    (typeof data?.clean_data?.formType === 'string' && (data.clean_data.formType.includes('1073') || data.clean_data.formType.includes('1025'))) ||
+    (typeof data?.clean_data?.['Form Type'] === 'string' && (data.clean_data['Form Type'].includes('1073') || data.clean_data['Form Type'].includes('1025'))) ||
+    data?.['Unit #'] || data?.Subject?.['Unit #'] || data?.['Unit Number'] || data?.Subject?.['Unit Number'] ||
+    data?.clean_data?.Subject?.['Unit #'] || data?.clean_data?.['Unit #']
+  );
+
+  if (is1073Or1025 && !subjectFields.includes("Unit #")) {
+    const propAddrIdx = subjectFields.indexOf('Property Address');
+    if (propAddrIdx !== -1) {
+      subjectFields.splice(propAddrIdx + 1, 0, "Unit #");
+    } else {
+      subjectFields.push("Unit #");
+    }
+  }
+
   const has1004mc = !!(
     data?.has_1004mc ||
     data?.['1004MC Addendum'] === 'Present' ||
@@ -3486,6 +3521,41 @@ function Subject({ defaultFormType }) {
 
   const salesGridRows = [
     { label: "Address", valueKey: "Address", subjectValueKey: "Property Address" },
+    { label: "Proximity to Subject", valueKey: "Proximity to Subject" },
+    { label: "Proximity to Subject comment", valueKey: "Proximity to Subject comment" },
+    { label: "Sale Price", valueKey: "Sale Price" },
+    { label: "Sale Price/Gross Liv. Area", valueKey: "Sale Price/Gross Liv. Area" },
+    { label: "Data Source(s)", valueKey: "Data Source(s)" },
+    { label: "Verification Source(s)", valueKey: "Verification Source(s)" },
+    { label: "Sales or Financing Concessions", valueKey: "Sales or Financing Concessions", adjustmentKey: "Sales or Financing Concessions Adjustment" },
+    { label: "Date of Sale/Time", valueKey: "Date of Sale/Time", adjustmentKey: "Date of Sale/Time Adjustment" },
+    { label: "Location", valueKey: "Location", adjustmentKey: "Location Adjustment" },
+    { label: "Leasehold/Fee Simple", valueKey: "Leasehold/Fee Simple", adjustmentKey: "Leasehold/Fee Simple Adjustment" },
+    { label: "Site", valueKey: "Site", adjustmentKey: "Site Adjustment" },
+    { label: "View", valueKey: "View", adjustmentKey: "View Adjustment" },
+    { label: "Design (Style)", valueKey: "Design (Style)", adjustmentKey: "Design (Style) Adjustment" },
+    { label: "Quality of Construction", valueKey: "Quality of Construction", adjustmentKey: "Quality of Construction Adjustment" },
+    { label: "Actual Age", valueKey: "Actual Age", adjustmentKey: "Actual Age Adjustment" },
+    { label: "Condition", valueKey: "Condition", adjustmentKey: "Condition Adjustment" },
+    { label: "Total Rooms", valueKey: "Total Rooms" },
+    { label: "Bedrooms", valueKey: "Bedrooms", adjustmentKey: "Bedrooms Adjustment" },
+    { label: "Baths", valueKey: "Baths", adjustmentKey: "Baths Adjustment" },
+    { label: "Above Grade Room Count", valueKey: "Above Grade Room Count" },
+    { label: "Gross Living Area", valueKey: "Gross Living Area", adjustmentKey: "Gross Living Area Adjustment" },
+    { label: "Basement & Finished Rooms Below Grade", valueKey: "Basement & Finished Rooms Below Grade", adjustmentKey: "Basement & Finished Rooms Below Grade Adjustment" },
+    { label: "Functional Utility", valueKey: "Functional Utility", adjustmentKey: "Functional Utility Adjustment" },
+    { label: "Heating/Cooling", valueKey: "Heating/Cooling", adjustmentKey: "Heating/Cooling Adjustment" },
+    { label: "Energy Efficient Items", valueKey: "Energy Efficient Items", adjustmentKey: "Energy Efficient Items Adjustment" },
+    { label: "Garage/Carport", valueKey: "Garage/Carport", adjustmentKey: "Garage/Carport Adjustment" },
+    { label: "Porch/Patio/Deck", valueKey: "Porch/Patio/Deck", adjustmentKey: "Porch/Patio/Deck Adjustment" },
+    { label: "Net Adjustment (Total)", valueKey: "Net Adjustment (Total)" },
+    { label: "Adjusted Sale Price of Comparable", valueKey: "Adjusted Sale Price of Comparable" },
+  ];
+
+  const salesGridRows1073 = [
+    { label: "Address", valueKey: "Address", subjectValueKey: "Property Address" },
+    { label: "Unit #", valueKey: "Unit #", subjectValueKey: "Unit #" },
+    { label: "Project Name and Phase", valueKey: "Project Name and Phase", subjectValueKey: "Project Name and Phase", usePre: true },
     { label: "Proximity to Subject", valueKey: "Proximity to Subject" },
     { label: "Proximity to Subject comment", valueKey: "Proximity to Subject comment" },
     { label: "Sale Price", valueKey: "Sale Price" },
@@ -4297,6 +4367,30 @@ function Subject({ defaultFormType }) {
       Object.assign(normalizedFields, siteSec);
     }
 
+    // Unpack PROJECT_SITE section
+    const projectSiteSec = result.fields?.PROJECT_SITE || result.fields?.['Project Site'] || result.clean_data?.['Project Site'] || result.clean_data?.PROJECT_SITE;
+    if (projectSiteSec && typeof projectSiteSec === 'object') {
+      normalizedFields["PROJECT_SITE"] = { ...(normalizedFields["PROJECT_SITE"] || {}), ...projectSiteSec };
+      normalizedFields["Project Site"] = normalizedFields["PROJECT_SITE"];
+      Object.assign(normalizedFields, projectSiteSec);
+    }
+
+    const topoVal = result.fields?.Topography || result.fields?.TOPOGRAPHY || result.clean_data?.Topography || result.clean_data?.TOPOGRAPHY || projectSiteSec?.Topography || siteSec?.Topography;
+    if (topoVal) {
+      normalizedFields["Topography"] = topoVal;
+      normalizedFields["TOPOGRAPHY"] = topoVal;
+    }
+    const szVal = result.fields?.Size || result.fields?.SIZE || result.clean_data?.Size || result.clean_data?.SIZE || projectSiteSec?.Size || siteSec?.Size;
+    if (szVal) {
+      normalizedFields["Size"] = szVal;
+      normalizedFields["SIZE"] = szVal;
+    }
+    const densVal = result.fields?.Density || result.fields?.DENSITY || result.clean_data?.Density || result.clean_data?.DENSITY || projectSiteSec?.Density || siteSec?.Density;
+    if (densVal) {
+      normalizedFields["Density"] = densVal;
+      normalizedFields["DENSITY"] = densVal;
+    }
+
     // Unpack IMPROVEMENTS section
     const impSec = result.fields?.IMPROVEMENTS || result.fields?.Improvements || result.clean_data?.Improvements || result.clean_data?.IMPROVEMENTS;
     if (impSec && typeof impSec === 'object') {
@@ -4304,6 +4398,14 @@ function Subject({ defaultFormType }) {
       normalizedFields["Improvements"] = normalizedFields["IMPROVEMENTS"];
       normalizedFields["Dwelling Exterior"] = normalizedFields["IMPROVEMENTS"];
       Object.assign(normalizedFields, impSec);
+    }
+
+    // Unpack UNIT_DESCRIPTIONS section (Form 1073 Condo)
+    const unitDescSec = result.fields?.UNIT_DESCRIPTIONS || result.fields?.['Unit Descriptions'] || result.clean_data?.['Unit Descriptions'] || result.clean_data?.UNIT_DESCRIPTIONS || result['Unit Descriptions'] || result['UNIT_DESCRIPTIONS'];
+    if (unitDescSec && typeof unitDescSec === 'object') {
+      normalizedFields["UNIT_DESCRIPTIONS"] = { ...(normalizedFields["UNIT_DESCRIPTIONS"] || {}), ...unitDescSec };
+      normalizedFields["Unit Descriptions"] = normalizedFields["UNIT_DESCRIPTIONS"];
+      Object.assign(normalizedFields, unitDescSec);
     }
 
     // Unpack NEIGHBORHOOD section
@@ -4418,6 +4520,13 @@ function Subject({ defaultFormType }) {
     }
     if (result.clean_data && typeof result.clean_data === 'object') {
       normalizedFields["clean_data"] = result.clean_data;
+    }
+    const mapExhibits = result.MAP_EXHIBITS_ANALYSIS || result.map_exhibits_analysis ||
+      result.fields?.MAP_EXHIBITS_ANALYSIS || result.fields?.map_exhibits_analysis ||
+      result.clean_data?.MAP_EXHIBITS_ANALYSIS || result.clean_data?.map_exhibits_analysis;
+    if (mapExhibits && typeof mapExhibits === 'object') {
+      normalizedFields["MAP_EXHIBITS_ANALYSIS"] = mapExhibits;
+      normalizedFields["map_exhibits_analysis"] = mapExhibits;
     }
 
     setData(prevData => {
@@ -5198,8 +5307,10 @@ function Subject({ defaultFormType }) {
         });
 
         if (yPos > pageHeight - 60) { doc.addPage(); yPos = margin; }
-        const targetGridRowsPdf = (selectedFormType === 'Form 1025' || selectedFormType === '1025')
+        const targetGridRowsPdf = (selectedFormType === 'Form 1025' || selectedFormType === '1025' || selectedFormType === '1025 + 1007')
           ? (salesGridRows1025 || salesGridRows)
+          : (selectedFormType === '1073' || selectedFormType === '1073 + 1007')
+          ? (salesGridRows1073 || salesGridRows)
           : salesGridRows;
 
         const activeCompsPdf = comparableSales.filter(sale => {
@@ -5613,7 +5724,7 @@ function Subject({ defaultFormType }) {
       selectedFile: activeReportFile,
       xmlFile: xmlFile,
       reportFile: activeReportFile,
-      extractionAttempted, handleDataChange, editingField, setEditingField, isEditable: true, highlightedSubjectFields, highlightedContractFields, highlightedSiteFields, summaryFields, subjectFields, contractFields, neighborhoodFields, siteFields, improvementsFields, salesGridRows, salesGridRows1025, comparableSales, salesComparisonAdditionalInfoFields, salesHistoryFields, priorSaleHistoryFields, reconciliationFields, costApproachFields, incomeApproachFields, pudInformationFields, marketConditionsFields, marketConditionsRows, condoCoopProjectsRows, condoForeclosureFields, appraiserFields, supplementalAddendumFields, uniformResidentialAppraisalReportFields, appraisalAndReportIdentificationFields, projectSiteFields, projectInfoFields, projectAnalysisFields, unitDescriptionsFields, imageAnalysisFields, dataConsistencyFields, ComparableRentAdjustments, comparableRents, RentSchedulesFIELDS2, rentScheduleReconciliationFields, formType: selectedFormType, comparisonData, getComparisonStyle, SalesComparisonSection, EditableField, infoOfSalesFields, loading, stateRequirementFields, handleStateRequirementCheck, stateReqLoading, stateReqResponse, stateReqError, handleUnpaidOkCheck, unpaidOkLoading, unpaidOkResponse, unpaidOkError, handleClientRequirementCheck, clientReqLoading, clientReqResponse, clientReqError, handleFhaCheck, handleADUCheck, fhaLoading, fhaResponse, fhaError, ADULoading, handleEscalationCheck, escalationLoading, escalationResponse, escalationError, onDataChange: handleDataChange, handleExtract, manualValidations, handleManualValidation, SUBJECT_RENT_SCHEDULE, COMPARABLE_RENTAL_DATA, SubjectRentScheduleTable,
+      extractionAttempted, handleDataChange, editingField, setEditingField, isEditable: true, highlightedSubjectFields, highlightedContractFields, highlightedSiteFields, summaryFields, subjectFields, contractFields, neighborhoodFields, siteFields, improvementsFields, salesGridRows, salesGridRows1073, salesGridRows1025, comparableSales, salesComparisonAdditionalInfoFields, salesHistoryFields, priorSaleHistoryFields, reconciliationFields, costApproachFields, incomeApproachFields, pudInformationFields, marketConditionsFields, marketConditionsRows, condoCoopProjectsRows, condoForeclosureFields, appraiserFields, supplementalAddendumFields, uniformResidentialAppraisalReportFields, appraisalAndReportIdentificationFields, projectSiteFields, projectInfoFields, projectAnalysisFields, unitDescriptionsFields, imageAnalysisFields, dataConsistencyFields, ComparableRentAdjustments, comparableRents, RentSchedulesFIELDS2, rentScheduleReconciliationFields, formType: selectedFormType, comparisonData, getComparisonStyle, SalesComparisonSection, EditableField, infoOfSalesFields, loading, stateRequirementFields, handleStateRequirementCheck, stateReqLoading, stateReqResponse, stateReqError, handleUnpaidOkCheck, unpaidOkLoading, unpaidOkResponse, unpaidOkError, handleClientRequirementCheck, clientReqLoading, clientReqResponse, clientReqError, handleFhaCheck, handleADUCheck, fhaLoading, fhaResponse, fhaError, ADULoading, handleEscalationCheck, escalationLoading, escalationResponse, escalationError, onDataChange: handleDataChange, handleExtract, manualValidations, handleManualValidation, SUBJECT_RENT_SCHEDULE, COMPARABLE_RENTAL_DATA, SubjectRentScheduleTable,
       onSubjectRevisionButtonClick: () => setRevisionLangDialogOpen(true),
       onContractRevisionButtonClick: () => setContractRevisionLangDialogOpen(true),
       onNeighborhoodRevisionButtonClick: () => setNeighborhoodRevisionLangDialogOpen(true),

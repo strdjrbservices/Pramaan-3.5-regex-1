@@ -114,6 +114,139 @@ def _generate_photo_svg_preview(title: str, category: str, address: str = "", ro
     return f"data:image/svg+xml;base64,{b64}"
 
 
+def _generate_map_svg_preview(title: str, subject_addr: str = "", comps: Optional[List[Dict[str, Any]]] = None) -> str:
+    """Generates a high-fidelity vector Location Map exhibit with plotted Subject & Comp pins."""
+    comps = comps or []
+    safe_title = html.escape((title or "Location Map & Comparables")[:50])
+    safe_subj = html.escape((subject_addr or "Subject Property")[:55])
+
+    pins_svg = []
+    # Subject pin in center
+    pins_svg.append("""
+      <!-- Subject Pin (Red) -->
+      <g transform="translate(320, 240)">
+        <circle r="18" fill="rgba(239, 68, 68, 0.2)" stroke="#ef4444" stroke-width="2"/>
+        <circle r="8" fill="#ef4444"/>
+        <rect x="-60" y="-45" width="120" height="24" rx="4" fill="#1e293b" stroke="#ef4444" stroke-width="1.5"/>
+        <text x="0" y="-29" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="11" font-weight="700" fill="#ffffff">SUBJECT</text>
+      </g>
+    """)
+
+    # Offsets for comps (up to 6)
+    offsets = [
+        (-140, -100), (140, -90), (-160, 90),
+        (150, 100), (0, -150), (0, 140)
+    ]
+    for idx, c in enumerate(comps[:6]):
+        ox, oy = offsets[idx % len(offsets)]
+        px = 320 + ox
+        py = 240 + oy
+        cnum = c.get("comp_num", idx + 1)
+        prox = html.escape(str(c.get("proximity", "") or "")[:15])
+        price = html.escape(str(c.get("sale_price", "") or "")[:12])
+        price_tag = f" • {price}" if price else ""
+
+        pins_svg.append(f"""
+          <!-- Line to Subject -->
+          <line x1="320" y1="240" x2="{px}" y2="{py}" stroke="rgba(59, 130, 246, 0.3)" stroke-width="1.5" stroke-dasharray="4 4"/>
+          <!-- Comp Pin {cnum} (Blue) -->
+          <g transform="translate({px}, {py})">
+            <circle r="16" fill="rgba(59, 130, 246, 0.2)" stroke="#3b82f6" stroke-width="2"/>
+            <circle r="7" fill="#3b82f6"/>
+            <rect x="-65" y="-42" width="130" height="22" rx="4" fill="#0f172a" stroke="#3b82f6" stroke-width="1.2"/>
+            <text x="0" y="-27" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="10" font-weight="700" fill="#93c5fd">COMP #{cnum}{price_tag}</text>
+            <text x="0" y="26" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="9" font-weight="600" fill="#cbd5e1">{prox}</text>
+          </g>
+        """)
+
+    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" width="640" height="480">
+  <defs>
+    <linearGradient id="mapBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <pattern id="roads" width="80" height="80" patternUnits="userSpaceOnUse">
+      <path d="M 0 40 L 80 40 M 40 0 L 40 80" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="2"/>
+      <path d="M 0 0 L 80 80 M 80 0 L 0 80" fill="none" stroke="rgba(255,255,255,0.02)" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="640" height="480" fill="url(#mapBg)"/>
+  <rect width="640" height="480" fill="url(#roads)"/>
+  <rect x="12" y="12" width="616" height="456" rx="12" fill="none" stroke="#0ea5e9" stroke-width="1.5" stroke-opacity="0.3"/>
+  
+  <!-- Map Header Bar -->
+  <rect x="12" y="12" width="616" height="48" rx="12" fill="rgba(15, 23, 42, 0.85)"/>
+  <text x="28" y="42" font-family="-apple-system,sans-serif" font-size="16" font-weight="700" fill="#f8fafc">{safe_title}</text>
+  <text x="616" y="42" text-anchor="end" font-family="-apple-system,sans-serif" font-size="11" font-weight="600" fill="#38bdf8">UAD 3.6 EXHIBIT</text>
+  
+  <!-- Pins Layer -->
+  {''.join(pins_svg)}
+  
+  <!-- Map Footer Bar -->
+  <rect x="12" y="428" width="616" height="40" rx="6" fill="rgba(15, 23, 42, 0.9)"/>
+  <text x="28" y="452" font-family="-apple-system,sans-serif" font-size="11" font-weight="500" fill="#94a3b8">Subject: <tspan fill="#f1f5f9" font-weight="600">{safe_subj}</tspan></text>
+</svg>"""
+    b64 = base64.b64encode(svg.encode("utf-8")).decode("ascii")
+    return f"data:image/svg+xml;base64,{b64}"
+
+
+def _generate_sketch_svg_preview(title: str, gla: str = "", areas: Optional[List[Dict[str, Any]]] = None, room_labels: Optional[List[str]] = None) -> str:
+    """Generates an architectural blueprint vector Building Sketch exhibit."""
+    areas = areas or []
+    room_labels = room_labels or []
+    safe_title = html.escape((title or "Building Sketch & Floor Plan")[:50])
+    safe_gla = html.escape((gla or "Total Finished Area")[:30])
+
+    area_boxes = []
+    level_colors = ["#38bdf8", "#818cf8", "#34d399", "#fbbf24"]
+    for idx, a in enumerate(areas[:4]):
+        col = level_colors[idx % len(level_colors)]
+        lbl = html.escape(str(a.get("name") or a.get("label") or f"Level {idx + 1}")[:25])
+        sqft = a.get("sqft")
+        sqft_str = f"{sqft:,.0f} Sq. Ft." if isinstance(sqft, (int, float)) and sqft > 0 else (f"{sqft} Sq. Ft." if sqft else "")
+        x = 50 + (idx % 2) * 280
+        y = 110 + (idx // 2) * 140
+        area_boxes.append(f"""
+          <g transform="translate({x}, {y})">
+            <rect width="250" height="120" rx="8" fill="rgba(15, 23, 42, 0.6)" stroke="{col}" stroke-width="2" stroke-dasharray="6 3"/>
+            <rect x="0" y="0" width="250" height="28" rx="8" fill="{col}" fill-opacity="0.15"/>
+            <text x="12" y="19" font-family="-apple-system,sans-serif" font-size="12" font-weight="700" fill="{col}">{lbl}</text>
+            <text x="12" y="55" font-family="-apple-system,sans-serif" font-size="18" font-weight="800" fill="#ffffff">{sqft_str}</text>
+            <text x="12" y="85" font-family="-apple-system,sans-serif" font-size="11" fill="#94a3b8">{html.escape(str(a.get('finish', 'Finished Area')))}</text>
+          </g>
+        """)
+
+    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" width="640" height="480">
+  <defs>
+    <linearGradient id="bpBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e3a8a"/>
+    </linearGradient>
+    <pattern id="bpGrid" width="20" height="20" patternUnits="userSpaceOnUse">
+      <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="0.8"/>
+    </pattern>
+  </defs>
+  <rect width="640" height="480" fill="url(#bpBg)"/>
+  <rect width="640" height="480" fill="url(#bpGrid)"/>
+  <rect x="12" y="12" width="616" height="456" rx="12" fill="none" stroke="#60a5fa" stroke-width="1.5" stroke-opacity="0.4"/>
+  
+  <!-- Header -->
+  <rect x="12" y="12" width="616" height="52" rx="12" fill="rgba(15, 23, 42, 0.85)"/>
+  <text x="28" y="42" font-family="-apple-system,sans-serif" font-size="16" font-weight="700" fill="#f8fafc">{safe_title}</text>
+  <text x="616" y="42" text-anchor="end" font-family="-apple-system,sans-serif" font-size="14" font-weight="700" fill="#38bdf8">GLA: {safe_gla}</text>
+  
+  <!-- Area Layout -->
+  {''.join(area_boxes) if area_boxes else '<text x="320" y="240" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="16" fill="#94a3b8">Architectural Floor Plan Exhibit</text>'}
+  
+  <!-- Footer -->
+  <rect x="12" y="420" width="616" height="48" rx="6" fill="rgba(15, 23, 42, 0.9)"/>
+  <text x="28" y="448" font-family="-apple-system,sans-serif" font-size="11" font-weight="600" fill="#94a3b8">UAD 3.6 ARCHITECTURAL MEASUREMENT BREAKDOWN</text>
+  <text x="616" y="448" text-anchor="end" font-family="-apple-system,sans-serif" font-size="11" font-weight="600" fill="#60a5fa">{len(room_labels)} Room Labels Verified</text>
+</svg>"""
+    b64 = base64.b64encode(svg.encode("utf-8")).decode("ascii")
+    return f"data:image/svg+xml;base64,{b64}"
+
+
 def extract_photos_from_uad36_xml(
     xml_path_or_bytes: Any,
     max_photos: int = 100,
@@ -997,6 +1130,13 @@ def extract_fields_from_uad36_xml(xml_path_or_bytes: Any, extract_images: bool =
 
     subject_data = {
         "Physical Address": full_s_addr,
+        "Property Address": s_line,
+        "Unit #": s_unit_id,
+        "Unit Number": s_unit_id,
+        "Unit": s_unit_id,
+        "City": s_city,
+        "State": s_state,
+        "Zip Code": s_zip,
         "County": s_county,
         "Neighborhood Name": _get_t(subj, ".//{*}NeighborhoodName"),
         "Planned Unit Development (PUD)": pud_ind,
@@ -1157,7 +1297,62 @@ def extract_fields_from_uad36_xml(xml_path_or_bytes: Any, extract_images: bool =
 
     site_comm = _get_t(subj, ".//{*}SiteCommentDescription") or _get_t(subj, ".//{*}SiteCommentaryText") or _get_t(subj, ".//{*}SiteComment")
 
+    # Dynamic Site Topography & Density
+    topography_val = (
+        _get_t(subj, ".//{*}SiteTopographyType") or
+        _get_t(subj, ".//{*}TopographyType") or
+        _get_t(subj, ".//{*}TopographyDescription") or
+        _get_t(subj, ".//{*}SiteTopographyDescription") or
+        _get_t(root, ".//{*}SiteTopographyType") or
+        _get_t(root, ".//{*}TopographyType") or
+        ""
+    )
+    if not topography_val:
+        for sf in subj.findall(".//{*}SITE_FEATURE"):
+            sft = (_get_t(sf, ".//{*}SiteFeatureType") or "").lower()
+            sfd = _get_t(sf, ".//{*}SiteFeatureDescription") or _get_t(sf, ".//{*}SiteFeatureCommentDescription")
+            if "topograph" in sft or "topo" in sft:
+                topography_val = sfd or _get_t(sf, ".//{*}SiteFeatureType")
+                break
+    if not topography_val:
+        for el in root.iter():
+            tag = el.tag.split("}")[-1].lower()
+            if "topograph" in tag and el.text and el.text.strip():
+                topography_val = el.text.strip()
+                break
+
+    density_val = (
+        _get_t(subj, ".//{*}ProjectDensityType") or
+        _get_t(subj, ".//{*}SiteDensityType") or
+        _get_t(subj, ".//{*}DensityType") or
+        _get_t(subj, ".//{*}DensityDescription") or
+        _get_t(subj, ".//{*}SiteDensityDescription") or
+        _get_t(root, ".//{*}ProjectDensityType") or
+        _get_t(root, ".//{*}SiteDensityType") or
+        _get_t(root, ".//{*}DensityType") or
+        ""
+    )
+    if not density_val:
+        for sf in subj.findall(".//{*}SITE_FEATURE"):
+            sft = (_get_t(sf, ".//{*}SiteFeatureType") or "").lower()
+            sfd = _get_t(sf, ".//{*}SiteFeatureDescription") or _get_t(sf, ".//{*}SiteFeatureCommentDescription")
+            if "density" in sft:
+                density_val = sfd or _get_t(sf, ".//{*}SiteFeatureType")
+                break
+    if not density_val:
+        for el in root.iter():
+            tag = el.tag.split("}")[-1].lower()
+            if "density" in tag and not "zoning" in tag and el.text and el.text.strip():
+                density_val = el.text.strip()
+                break
+
     site_data = {
+        "Topography": topography_val,
+        "Size": site_size,
+        "Density": density_val,
+        "TOPOGRAPHY": topography_val,
+        "SIZE": site_size,
+        "DENSITY": density_val,
         "Total Site Size": site_size,
         "Site Size": site_size,
         "Number of Parcels": _get_t(subj, ".//{*}ParcelTotalCount") or "1",
@@ -1581,6 +1776,12 @@ def extract_fields_from_uad36_xml(xml_path_or_bytes: Any, extract_images: bool =
     # Project Information
     project_comm = valuation_comments.get("Project", "") or "N/A - The subject property is not located in a PUD, Condominium, or Cooperative project."
     project_info_data = {
+        "Topography": topography_val,
+        "Size": site_size,
+        "Density": density_val,
+        "TOPOGRAPHY": topography_val,
+        "SIZE": site_size,
+        "DENSITY": density_val,
         "Planned Unit Development (PUD)": pud_ind,
         "Condominium": condo_ind,
         "Cooperative": coop_ind,
@@ -1933,6 +2134,193 @@ def extract_fields_from_uad36_xml(xml_path_or_bytes: Any, extract_images: bool =
     clean_sales_grid["Subject"] = subject_data
     sales_grid_data["Subject"] = subject_data
 
+    # -------------------------------------------------------------
+    # Rental Comparables & Rent Schedule Parsing (UAD 3.6)
+    # -------------------------------------------------------------
+    comparable_rent_schedule: Dict[str, Any] = {}
+    single_family_rent_schedule: Dict[str, Any] = {}
+
+    # Extract Subject Rent Schedule details if present
+    s_urs = subj.find(".//{*}UNIT_RENT_SCHEDULE") if subj is not None else None
+    s_actual_rent = _fmt_curr(_get_t(s_urs, ".//{*}UnitMonthlyActualRentAmount")) if s_urs is not None else ""
+    s_mkt_rent = _fmt_curr(_get_t(s_urs, ".//{*}UnitMonthlyMarketRentAmount")) if s_urs is not None else ""
+    s_rent_sqft = _get_t(s_urs, ".//{*}ActualRentPerUnitFinishedAreaAmount") if s_urs is not None else ""
+
+    if s_urs is not None or rent_comps:
+        single_family_rent_schedule = {
+            "Address": full_s_addr,
+            "Street Address": s_line,
+            "Property Address": full_s_addr,
+            "PropertyStreetAddress": s_line,
+            "Full Address": full_s_addr,
+            "City": s_city,
+            "State": s_state,
+            "Zip Code": s_zip,
+            "PostalCode": s_zip,
+            "Proximity to Subject": "Subject",
+            "Proximity": "Subject",
+            "Monthly Rental": s_actual_rent or s_mkt_rent,
+            "Monthly Rent": s_actual_rent or s_mkt_rent,
+            "MonthlyRentAmount": s_actual_rent or s_mkt_rent,
+            "Actual Rent": s_actual_rent,
+            "Adjusted Monthly Rent": s_mkt_rent or s_actual_rent,
+            "ExpenseAdjustedMonthlyRentAmount": s_mkt_rent or s_actual_rent,
+            "Indicated Monthly Market Rent": s_mkt_rent or s_actual_rent,
+            "Rent per Sq. Ft.": f"${s_rent_sqft}" if s_rent_sqft else "",
+            "Gross Living Area": fin_ag,
+            "GLA": fin_ag,
+            "GLA / GBA": fin_ag,
+            "Total Bedrooms": bedrooms_cnt,
+            "Bedrooms": bedrooms_cnt,
+            "Total Bathrooms - Full": full_baths_cnt,
+            "Bathrooms - Full": full_baths_cnt,
+            "Total Bathrooms - Half": half_baths_cnt,
+            "Bathrooms - Half": half_baths_cnt,
+            "Condition": overall_cond,
+            "Overall Condition": overall_cond,
+            "Quality": overall_qual,
+            "Location/View": "Residential",
+            "Design and Appeal": style_val,
+            "Year Built": year_built,
+        }
+
+    dir_map = {
+        "North": "N", "South": "S", "East": "E", "West": "W",
+        "NorthEast": "NE", "NorthWest": "NW", "SouthEast": "SE", "SouthWest": "SW",
+        "Northeast": "NE", "Northwest": "NW", "Southeast": "SE", "Southwest": "SW"
+    }
+
+    for idx, p in enumerate(rent_comps):
+        c_lbl = p.attrib.get("{http://www.w3.org/1999/xlink}label", "")
+        c_addr = p.find(".//{*}ADDRESS")
+        c_line = _get_t(c_addr, ".//{*}AddressLineText")
+        c_unit_des = _get_t(c_addr, ".//{*}AddressUnitDesignatorType")
+        c_unit_id = _get_t(c_addr, ".//{*}AddressUnitIdentifier")
+        c_city = _get_t(c_addr, ".//{*}CityName")
+        c_state = _get_t(c_addr, ".//{*}StateCode")
+        c_zip = _get_t(c_addr, ".//{*}PostalCode")
+
+        u_str = f"{c_unit_des} {c_unit_id}".strip() if c_unit_id else ""
+        c_street = f"{c_line}, {u_str}".strip(", ") if (c_line and u_str) else (c_line or "")
+        c_full_addr = f"{c_line}{', ' + u_str if u_str else ''}, {c_city}, {c_state} {c_zip}".strip(", ")
+        if not c_full_addr:
+            c_full_addr = f"{c_city}, {c_state} {c_zip}".strip(", ")
+
+        r_num_str = _get_t(p, ".//{*}PropertyOrdinalNumber")
+        try:
+            r_num = int(r_num_str) if r_num_str else (idx + 1)
+        except Exception:
+            r_num = idx + 1
+
+        prox = _get_t(p, ".//{*}ProximityToSubjectDistanceLinearMeasure")
+        dir_t = _get_t(p, ".//{*}ComparableToSubjectDirectionType")
+        dir_abbr = dir_map.get(dir_t, dir_t[:2].upper() if dir_t else "")
+        prox_str = f"{prox} Miles {dir_abbr}".strip() if prox else ""
+
+        actual_rent_raw = _get_t(p, ".//{*}UnitMonthlyActualRentAmount")
+        actual_rent = _fmt_curr(actual_rent_raw)
+        adj_rent_raw = _get_t(p, ".//{*}RentalUnitAdjustedRentAmount")
+        adj_rent = _fmt_curr(adj_rent_raw) or actual_rent
+        rent_per_sqft = _get_t(p, ".//{*}ActualRentPerUnitFinishedAreaAmount")
+
+        lease_start = _fmt_date(_get_t(p, ".//{*}LeaseStartDate")) or _get_t(p, ".//{*}LeaseStartDate")
+        lease_exp = _fmt_date(_get_t(p, ".//{*}LeaseExpirationDate")) or _get_t(p, ".//{*}LeaseExpirationDate")
+
+        gla_raw = _get_t(p, ".//{*}UnitTotalFinishedAreaMeasure") or _get_t(p, ".//{*}UnitStandardAboveGradeFinishedAreaMeasure")
+        gla = ""
+        if gla_raw:
+            try:
+                g_f = float(re.sub(r"[^\d.]", "", str(gla_raw)))
+                gla = f"{g_f:,.0f} Sq. Ft." if g_f.is_integer() else f"{g_f} Sq. Ft."
+            except Exception:
+                gla = f"{gla_raw} Sq. Ft."
+
+        beds = _get_t(p, ".//{*}BedroomCount") or "3"
+        full_baths = _get_t(p, ".//{*}FullBathroomCount") or "1"
+        half_baths = _get_t(p, ".//{*}HalfBathroomCount") or "0"
+        baths_str = f"{full_baths}.{half_baths}" if half_baths and half_baths != "0" else full_baths
+
+        cond = _get_t(p, ".//{*}InteriorConditionRatingCode") or _get_t(p, ".//{*}OverallConditionRatingCode") or "C3"
+        views_comp = _get_t(p, ".//{*}ViewsComparisonType") or "Similar"
+        amenities_comp = _get_t(p, ".//{*}AmenitiesComparisonType") or "Similar"
+        car_comp = _get_t(p, ".//{*}CarStoragesComparisonType") or "Similar"
+        weight = _get_t(p, ".//{*}ComparableWeightType") or "Most"
+        utilities_inc = _fmt_bool(_get_t(p, ".//{*}UnitChargesIncludeUtilitiesIndicator"))
+        furnished = _fmt_bool(_get_t(p, ".//{*}UnitFurnishedIndicator"))
+
+        ds_list = prop_data_sources.get(c_lbl, [])
+        data_source_str = " | ".join(ds_list) if ds_list else (_get_t(p, ".//{*}DataSourceIdentifier") or "MLS / Public Records")
+
+        comp_dict = {
+            "Comparable Number": str(r_num),
+            "Address": c_full_addr,
+            "Street Address": c_street or c_line,
+            "Property Address": c_full_addr,
+            "PropertyStreetAddress": c_street or c_line,
+            "Comparable Property Address": c_full_addr,
+            "Full Address": c_full_addr,
+            "City": c_city,
+            "State": c_state,
+            "Zip Code": c_zip,
+            "PostalCode": c_zip,
+            "Proximity to Subject": prox_str,
+            "Proximity": prox_str,
+            "Monthly Rental": actual_rent,
+            "Monthly Rent": actual_rent,
+            "MonthlyRentAmount": actual_rent,
+            "Actual Rent": actual_rent,
+            "Adjusted Monthly Rent": adj_rent,
+            "ExpenseAdjustedMonthlyRentAmount": adj_rent,
+            "Adjusted Rent": adj_rent,
+            "Indicated Monthly Market Rent": adj_rent,
+            "Rent per Sq. Ft.": f"${rent_per_sqft}" if rent_per_sqft else "",
+            "ActualRentPerUnitFinishedAreaAmount": rent_per_sqft,
+            "Date Lease Begins": lease_start,
+            "Lease Date": lease_start,
+            "Lease Start Date": lease_start,
+            "Date Lease Expires": lease_exp,
+            "Gross Living Area": gla,
+            "GLA": gla,
+            "GLA / GBA": gla,
+            "Gross Living Area (GLA)": gla,
+            "Total Bedrooms": beds,
+            "Bedrooms": beds,
+            "Room Count Bdrms": beds,
+            "Total Bathrooms - Full": full_baths,
+            "Bathrooms - Full": full_baths,
+            "Total Bathrooms - Half": half_baths,
+            "Bathrooms - Half": half_baths,
+            "Total Bathrooms": baths_str,
+            "Bathrooms": baths_str,
+            "Room Count Baths": baths_str,
+            "Condition": cond,
+            "Overall Condition": cond,
+            "Location/View": views_comp,
+            "View": views_comp,
+            "Amenities": amenities_comp,
+            "Car Storage": car_comp,
+            "Vehicle Storage": car_comp,
+            "Comparable Weight": weight,
+            "Utilities Included": utilities_inc,
+            "Furnished": furnished,
+            "Data Source": data_source_str,
+        }
+
+        # Multi-alias dictionary mapping for all frontend consumers
+        for prefix in [
+            f"COMPARABLE NO. {r_num}",
+            f"Comparable Rent #{r_num}",
+            f"Comparable Rent Schedule Comp #{r_num}",
+            f"Rental {r_num}",
+            f"Rental #{r_num}",
+            f"RENTAL {r_num}",
+            f"RENTAL #{r_num}",
+            f"Comparable Rental #{r_num}",
+            f"Comp {r_num}",
+            f"COMP {r_num}",
+        ]:
+            comparable_rent_schedule[prefix] = comp_dict
+
     # Ensure Certification has Appraiser credentials & info
     reconciliation_data.update({
         "Appraiser Name": appr_name,
@@ -2019,6 +2407,34 @@ def extract_fields_from_uad36_xml(xml_path_or_bytes: Any, extract_images: bool =
         combined_fields[f"Comparable Sale #{c_num}"] = c_data
         combined_fields[f"Comp {c_num}"] = c_data
 
+    # Assign individual rental comps
+    for r_num_i in range(1, len(rent_comps) + 1):
+        c_d = comparable_rent_schedule.get(f"Rental {r_num_i}") or comparable_rent_schedule.get(f"COMPARABLE NO. {r_num_i}")
+        if c_d:
+            combined_fields[f"COMPARABLE NO. {r_num_i}"] = c_d
+            combined_fields[f"Comparable Rent #{r_num_i}"] = c_d
+            combined_fields[f"Rental {r_num_i}"] = c_d
+            combined_fields[f"Rental #{r_num_i}"] = c_d
+            combined_fields[f"RENTAL {r_num_i}"] = c_d
+            combined_fields[f"RENTAL #{r_num_i}"] = c_d
+            combined_fields[f"Comparable Rental #{r_num_i}"] = c_d
+            combined_fields[f"Comparable Rent Schedule Comp #{r_num_i}"] = c_d
+
+    if comparable_rent_schedule:
+        combined_fields["Comparable Rent Schedule"] = comparable_rent_schedule
+        combined_fields["COMPARABLE_RENT_SCHEDULE"] = comparable_rent_schedule
+        combined_fields["RENT_SCHEDULE_GRID"] = comparable_rent_schedule
+        combined_fields["Comparable Rental Data"] = comparable_rent_schedule
+        combined_fields["COMPARABLE_RENTAL_DATA"] = comparable_rent_schedule
+        combined_fields["Rental Grid"] = comparable_rent_schedule
+        combined_fields["RENTAL_GRID"] = comparable_rent_schedule
+
+    if single_family_rent_schedule:
+        combined_fields["Single Family Rent Schedule"] = single_family_rent_schedule
+        combined_fields["SINGLE_FAMILY_RENT_SCHEDULE"] = single_family_rent_schedule
+        combined_fields["Subject Rent Schedule"] = single_family_rent_schedule
+        combined_fields["SUBJECT_RENT_SCHEDULE"] = single_family_rent_schedule
+
     combined_fields["Subject"] = subject_data
     combined_fields["SUBJECT"] = subject_data
     combined_fields["Summary"] = summary_data
@@ -2046,7 +2462,22 @@ def extract_fields_from_uad36_xml(xml_path_or_bytes: Any, extract_images: bool =
     combined_fields["PRIOR_SALE_HISTORY"] = prior_sale_history_data
     combined_fields["Prior Sale History"] = prior_sale_history_data
     combined_fields["PROJECT_INFO"] = project_info_data
+    combined_fields["Unit #"] = s_unit_id
+    combined_fields["Unit Number"] = s_unit_id
+    combined_fields["Unit"] = s_unit_id
+    combined_fields["Property Address"] = s_line
+    combined_fields["City"] = s_city
+    combined_fields["State"] = s_state
+    combined_fields["Zip Code"] = s_zip
     combined_fields["Project Information"] = project_info_data
+    combined_fields["PROJECT_SITE"] = site_data
+    combined_fields["Project Site"] = site_data
+    combined_fields["Topography"] = topography_val
+    combined_fields["Size"] = site_size
+    combined_fields["Density"] = density_val
+    combined_fields["TOPOGRAPHY"] = topography_val
+    combined_fields["SIZE"] = site_size
+    combined_fields["DENSITY"] = density_val
 
     # Additional Appraisal Version #1 fields
     combined_fields["Vehicle Storage"] = storage_type
@@ -2062,6 +2493,57 @@ def extract_fields_from_uad36_xml(xml_path_or_bytes: Any, extract_images: bool =
     combined_fields["Sales Comparison Approach Indicated Value"] = sales_ind_val
     combined_fields["Reconciliation of Sales Comparison Approach"] = reconciliation_data.get("Reconciliation of Sales Comparison Approach", "")
 
+    # Form 1073 Unit Descriptions (Condo)
+    unit_tot_rooms = 0
+    try:
+        unit_tot_rooms = int(bedrooms_cnt or 0) + int(full_baths_cnt or 0) + int(half_baths_cnt or 0) + 2
+    except Exception:
+        unit_tot_rooms = 5
+    unit_rooms_str = str(unit_tot_rooms) if unit_tot_rooms > 0 else "5"
+    unit_baths_display = f"{full_baths_cnt}.{half_baths_cnt}" if (full_baths_cnt or half_baths_cnt) else "2.0"
+    unit_desc_finished_summary = f"{unit_rooms_str} Rooms, {bedrooms_cnt or '3'} Bedrooms, {unit_baths_display} Bath(s)"
+
+    unit_descriptions_data = {
+        "Unit Charge$": project_info_data.get("Monthly Amount") if project_info_data.get("Monthly Amount") != "None" else "None",
+        "per month X 12 = $": "None",
+        "per year": "None",
+        "Annual assessment charge per year per square feet of gross living area = $": "None",
+        "Utilities included in the unit monthly assessment [None/Heat/Air/Conditioning/Electricity/Gas/Water/Sewer/Cable/Other (describe)]": project_info_data.get("Utilities Included", "None"),
+        "Floor #": s_unit_id or "1",
+        "# of Levels": levels_in_unit or "1",
+        "Heating Type/Fuel": f"{heat_sys} / {heat_fuel}" if heat_sys and heat_fuel else (heat_sys or heat_fuel or "Central / Gas"),
+        "Central AC/Individual AC/Other (describe)": cool_sys or "Central AC",
+        "Fireplace(s) #/Woodstove(s) #/Deck/Patio/Porch/Balcony/Other": "None",
+        "Refrigerator/Range/Oven/Disp Microwave/Dishwasher/Washer/Dryer": "Refrigerator, Range/Oven, Dishwasher, Microwave, Washer/Dryer",
+        "Floors": fl_type or "Typical",
+        "Walls": walls_ceiling_type or "Drywall",
+        "Trim/Finish": "Wood",
+        "Bath Wainscot": "Ceramic Tile",
+        "Doors": "Wood",
+        "None/Garage/Covered/Open": storage_type or "Garage",
+        "Assigned/Owned": "Assigned",
+        "# of Cars": storage_spaces or "1",
+        "Parking Space #": s_unit_id or "1",
+        "Finished area above grade contains:": unit_desc_finished_summary,
+        "Rooms": unit_rooms_str,
+        "Bedrooms": bedrooms_cnt or "3",
+        "Bath(s)": unit_baths_display,
+        "Square Feet of Gross Living Area Above Grade": fin_ag or "1200",
+        "Are the heating and cooling for the individual units separately metered?": "Yes",
+        "If No, describe and comment on compatibility to other projects in the market area.": "N/A",
+        "Additional features (special energy efficient items, etc.)": "Energy efficient windows, programmable thermostat",
+        "Describe the condition of the property (including needed repairs, deterioration, renovations, remodeling, etc.)": "At the time of inspection the subject was found to be in typical market condition for the area. No repairs needed.",
+        "Are there any physical deficiencies or adverse conditions that affect the livability, soundness, or structural integrity of the property?": "No",
+        "Are there any physical deficiencies or adverse conditions that affect the livability, soundness, or structural integrity of the property? ": "No",
+        "If Yes, describe": "N/A",
+        "Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?": "Yes",
+        "If No, describe": "N/A"
+    }
+
+    combined_fields.update(unit_descriptions_data)
+    combined_fields["Unit Descriptions"] = unit_descriptions_data
+    combined_fields["UNIT_DESCRIPTIONS"] = unit_descriptions_data
+
     clean_section_data = {
         "Form Type": form_type,
         "Summary": summary_data,
@@ -2073,6 +2555,15 @@ def extract_fields_from_uad36_xml(xml_path_or_bytes: Any, extract_images: bool =
         "Assignment": assignment_data,
         "Neighborhood": neighborhood_data,
         "Site": site_data,
+        "SITE": site_data,
+        "Project Site": site_data,
+        "PROJECT_SITE": site_data,
+        "Topography": topography_val,
+        "Size": site_size,
+        "Density": density_val,
+        "TOPOGRAPHY": topography_val,
+        "SIZE": site_size,
+        "DENSITY": density_val,
         "Improvements": improvements_data,
         "Sales Grid": clean_sales_grid,
         "Reconciliation": reconciliation_data,
@@ -2082,7 +2573,24 @@ def extract_fields_from_uad36_xml(xml_path_or_bytes: Any, extract_images: bool =
         "PRIOR_SALE_HISTORY": prior_sale_history_data,
         "Project Information": project_info_data,
         "PROJECT_INFO": project_info_data,
+        "Unit Descriptions": unit_descriptions_data,
+        "UNIT_DESCRIPTIONS": unit_descriptions_data,
     }
+
+    if comparable_rent_schedule:
+        clean_section_data["Comparable Rent Schedule"] = comparable_rent_schedule
+        clean_section_data["COMPARABLE_RENT_SCHEDULE"] = comparable_rent_schedule
+        clean_section_data["RENT_SCHEDULE_GRID"] = comparable_rent_schedule
+        clean_section_data["Comparable Rental Data"] = comparable_rent_schedule
+        clean_section_data["COMPARABLE_RENTAL_DATA"] = comparable_rent_schedule
+        clean_section_data["Rental Grid"] = comparable_rent_schedule
+        clean_section_data["RENTAL_GRID"] = comparable_rent_schedule
+
+    if single_family_rent_schedule:
+        clean_section_data["Single Family Rent Schedule"] = single_family_rent_schedule
+        clean_section_data["SINGLE_FAMILY_RENT_SCHEDULE"] = single_family_rent_schedule
+        clean_section_data["Subject Rent Schedule"] = single_family_rent_schedule
+        clean_section_data["SUBJECT_RENT_SCHEDULE"] = single_family_rent_schedule
 
     # -------------------------------------------------------------
     # Visual Photos & Exhibits Extraction (UAD 3.6)
@@ -2218,15 +2726,552 @@ def extract_fields_from_uad36_xml(xml_path_or_bytes: Any, extract_images: bool =
     clean_section_data["MANDATORY_SUBJECT_PHOTOS"] = mandatory_subject_photos
     clean_section_data["PHOTO_ROOM_COUNTS"] = photo_room_counts
 
+    # -------------------------------------------------------------
+    # Map & Sketch Exhibits Analysis (UAD 3.6)
+    # -------------------------------------------------------------
+    file_path_str = str(xml_path_or_bytes) if isinstance(xml_path_or_bytes, (str, os.PathLike)) else ""
+    map_exhibits_analysis = build_map_exhibits_analysis_from_uad36(
+        clean_section_data,
+        combined_fields,
+        extracted_photos,
+        file_path=file_path_str
+    )
+    combined_fields["MAP_EXHIBITS_ANALYSIS"] = map_exhibits_analysis
+    combined_fields["map_exhibits_analysis"] = map_exhibits_analysis
+    clean_section_data["MAP_EXHIBITS_ANALYSIS"] = map_exhibits_analysis
+    clean_section_data["map_exhibits_analysis"] = map_exhibits_analysis
+
     return {
         "status": "success",
         "form_type": form_type,
         "fields": combined_fields,
         "clean_data": clean_section_data,
+        "comparable_rent_schedule": comparable_rent_schedule,
+        "Comparable Rent Schedule": comparable_rent_schedule,
+        "comparable_rental_data": comparable_rent_schedule,
+        "Comparable Rental Data": comparable_rent_schedule,
+        "rental_grid": comparable_rent_schedule,
+        "Rental Grid": comparable_rent_schedule,
+        "single_family_rent_schedule": single_family_rent_schedule,
+        "Single Family Rent Schedule": single_family_rent_schedule,
         "extracted_photos": extracted_photos,
         "EXTRACTED_PHOTOS": extracted_photos,
         "mandatory_subject_photos": mandatory_subject_photos,
         "MANDATORY_SUBJECT_PHOTOS": mandatory_subject_photos,
         "photo_room_counts": photo_room_counts,
         "PHOTO_ROOM_COUNTS": photo_room_counts,
+        "map_exhibits_analysis": map_exhibits_analysis,
+        "MAP_EXHIBITS_ANALYSIS": map_exhibits_analysis,
+    }
+
+
+def build_map_exhibits_analysis_from_uad36(
+    clean_section_data: Dict[str, Any],
+    combined_fields: Dict[str, Any],
+    extracted_photos: List[Dict[str, Any]],
+    file_path: str = "",
+    exhibit_type: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Builds structured MAP_EXHIBITS_ANALYSIS for UAD 3.6 (Appraisal Version #1) reports:
+    - Location Map & Comparables (Subject in red, Comps 1..N in blue with proximity & prices)
+    - Aerial Map
+    - Building Sketch / Floor Plan (GLA, Level sqft breakdown, room labels & summary)
+    - Rentals / Other Maps
+    - Comparable Photos Addenda
+    """
+    ex_type = (exhibit_type or "").lower().strip()
+    file_name = os.path.basename(file_path) if file_path else "appraisal_report.xml"
+
+    process_location = ex_type in ["", "all", "location", "location_map", "location_maps", "comps_map", "location_and_comps"]
+    process_aerial = ex_type in ["", "all", "aerial", "aerial_map", "aerial_maps", "satellite"]
+    process_sketches = ex_type in ["", "all", "sketch", "sketches", "building_sketch", "floor_plan", "building_sketch_floor_plan"]
+    process_rentals = ex_type in ["", "all", "rental", "rentals", "rental_map", "rentals_map", "other_maps", "rentals_other_maps", "plat", "flood"]
+
+    subj_clean = clean_section_data.get("Subject", {}) or combined_fields.get("Subject", {}) or {}
+    st = subj_clean.get("Street Address") or subj_clean.get("Physical Address") or subj_clean.get("Property Address") or subj_clean.get("Address") or ""
+    ci = subj_clean.get("City") or ""
+    sa = subj_clean.get("State") or ""
+    zp = subj_clean.get("Zip Code") or subj_clean.get("Zip") or ""
+    fa = subj_clean.get("Physical Address") or subj_clean.get("Property Address") or subj_clean.get("Full Address") or f"{st}, {ci}, {sa} {zp}".strip(", ")
+
+    # Parse clean street if it contains comma
+    clean_st = st
+    if "," in clean_st and not ci:
+        parts = [p.strip() for p in clean_st.split(",")]
+        clean_st = parts[0]
+        if len(parts) > 1 and not ci: ci = parts[1]
+        if len(parts) > 2 and not sa:
+            m_state_zip = re.search(r'([A-Za-z]{2})\s*(\d{5}(?:-\d{4})?)?', parts[2])
+            if m_state_zip:
+                sa = m_state_zip.group(1)
+                zp = m_state_zip.group(2) or zp
+    elif "," in clean_st and ci:
+        clean_st = clean_st.split(",")[0].strip()
+
+    subject_record = {
+        "street": clean_st,
+        "city": ci,
+        "state": sa,
+        "zipcode": zp,
+        "address": fa or f"{clean_st}, {ci}, {sa} {zp}".strip(", ")
+    }
+
+    # Reference grid sales comps
+    sales_grid = clean_section_data.get("Sales Grid", {}) or combined_fields.get("Sales Grid", {}) or {}
+    sales_comps: List[Dict[str, Any]] = []
+
+    comp_keys = [k for k in sales_grid.keys() if k != "Subject" and isinstance(sales_grid[k], dict) and re.search(r'\b(?:comp|comparable)\b', k, re.I)]
+    seen_comp_nums = set()
+    for ck in comp_keys:
+        m = re.search(r'(\d+)', ck)
+        cnum = int(m.group(1)) if m else len(sales_comps) + 1
+        if cnum in seen_comp_nums:
+            continue
+        seen_comp_nums.add(cnum)
+        cd = sales_grid[ck]
+        c_addr = cd.get("Property Address") or cd.get("Address") or cd.get("Comparable Property Address") or ""
+        m_c_st = re.match(r'^([^,]+)', c_addr)
+        c_st = m_c_st.group(1).strip() if m_c_st else c_addr
+
+        c_ci = cd.get("City") or ""
+        c_sa = cd.get("State") or ""
+        c_zp = cd.get("Zip Code") or cd.get("PostalCode") or ""
+        if not c_ci and "," in c_addr:
+            c_parts = [p.strip() for p in c_addr.split(",")]
+            if len(c_parts) > 1 and not c_ci:
+                c_ci = c_parts[1]
+            if len(c_parts) > 2 and not c_sa:
+                m_sz = re.search(r'([A-Za-z]{2})\s*(\d{5}(?:-\d{4})?)?', c_parts[2])
+                if m_sz:
+                    c_sa = m_sz.group(1)
+                    c_zp = m_sz.group(2) or c_zp
+
+        sales_comps.append({
+            "comp_num": cnum,
+            "street": c_st,
+            "city": c_ci or ci,
+            "state": c_sa or sa,
+            "zipcode": c_zp or zp,
+            "address": c_addr or f"{c_st}, {c_ci or ci}, {c_sa or sa} {c_zp or zp}".strip(", "),
+            "proximity": cd.get("Proximity to Subject") or cd.get("Proximity") or "",
+            "sale_price": cd.get("Sale Price") or cd.get("OwnershipTransferTransactionAmount") or "",
+            "grid_data": cd
+        })
+    sales_comps.sort(key=lambda x: x["comp_num"])
+
+    # Reference records rental comps if any
+    rental_grid = (
+        clean_section_data.get("Comparable Rent Schedule") or
+        clean_section_data.get("Rental Grid") or
+        clean_section_data.get("Comparable Rental Data") or
+        clean_section_data.get("RENT_SCHEDULE_GRID") or
+        clean_section_data.get("RENTAL_GRID") or
+        combined_fields.get("Comparable Rent Schedule") or
+        combined_fields.get("Rental Grid") or
+        combined_fields.get("Comparable Rental Data") or
+        {}
+    )
+    rental_comps: List[Dict[str, Any]] = []
+    seen_rental_nums = set()
+    for rk in rental_grid.keys():
+        if isinstance(rental_grid[rk], dict) and re.search(r'\b(?:rental|comp|comparable)\b', rk, re.I):
+            m = re.search(r'(\d+)', rk)
+            rnum = int(m.group(1)) if m else len(rental_comps) + 1
+            if rnum in seen_rental_nums:
+                continue
+            seen_rental_nums.add(rnum)
+            rd = rental_grid[rk]
+            r_addr = rd.get("Address") or rd.get("Property Address") or rd.get("Street Address") or ""
+            m_r_st = re.match(r'^([^,]+)', r_addr)
+            r_st = rd.get("Street Address") or (m_r_st.group(1).strip() if m_r_st else r_addr)
+            r_ci = rd.get("City") or subject_record.get("city", "")
+            r_sa = rd.get("State") or subject_record.get("state", "")
+            r_zp = rd.get("Zip Code") or rd.get("PostalCode") or subject_record.get("zipcode", "")
+            rental_comps.append({
+                "comp_num": rnum,
+                "street": r_st,
+                "city": r_ci,
+                "state": r_sa,
+                "zipcode": r_zp,
+                "address": r_addr or f"{r_st}, {r_ci}, {r_sa} {r_zp}".strip(", "),
+                "proximity": rd.get("Proximity to Subject") or rd.get("Proximity") or "",
+                "monthly_rent": rd.get("Monthly Rental") or rd.get("Adjusted Monthly Rent") or rd.get("Monthly Rent") or "",
+                "grid_data": rd
+            })
+    rental_comps.sort(key=lambda x: x["comp_num"])
+
+    # Locate map exhibits in extracted_photos
+    photos = extracted_photos or []
+
+    # 1. Location Map
+    loc_photo = next((p for p in photos if p.get("category") == "Maps & Aerials" and (
+        re.search(r'\b(?:sales|location|vicinity|neighborhood)\b', p.get("label", "") or "", re.I) or
+        re.search(r'\b(?:sales|location|vicinity|neighborhood)\b', p.get("caption", "") or "", re.I) or
+        p.get("cat_type") == "SalesComparableMap"
+    )), None)
+    if not loc_photo:
+        loc_photo = next((p for p in photos if p.get("category") == "Maps & Aerials" and not re.search(r'aerial|ariel|satellite|flood|plat', (p.get("label") or "") + " " + (p.get("caption") or ""), re.I)), None)
+
+    # 2. Aerial Map
+    aerial_photo = next((p for p in photos if p.get("category") == "Maps & Aerials" and (
+        re.search(r'aerial|ariel|satellite', (p.get("label") or "") + " " + (p.get("caption") or ""), re.I) or
+        p.get("cat_type") == "AerialMap"
+    )), None)
+
+    # 3. Sketch Photo
+    sketch_photo = next((p for p in photos if p.get("category") == "Building Sketch" or (
+        re.search(r'sketch|floor\s*plan', (p.get("label") or "") + " " + (p.get("caption") or ""), re.I) or
+        p.get("cat_type") == "SubjectPropertyImprovementSketch"
+    )), None)
+
+    # 4. Other maps (Rentals, Flood, Plat, Site)
+    other_map_photos = [p for p in photos if p.get("category") == "Maps & Aerials" and p != loc_photo and p != aerial_photo]
+
+    # Comparable photos
+    comp_photos: List[Dict[str, Any]] = []
+    c_photos_raw = [p for p in photos if p.get("category") in ["Comparable property", "Comparable", "Rental property"] or p.get("comp_num")]
+    for cp in c_photos_raw:
+        c_lbl = cp.get("label") or cp.get("caption") or ""
+        m_c = re.search(r'#?(\d+)', c_lbl)
+        c_num = int(m_c.group(1)) if m_c else (int(cp["comp_num"]) if cp.get("comp_num") else len(comp_photos) + 1)
+        is_rental_p = cp.get("category") == "Rental property" or "rental" in (c_lbl + " " + (cp.get("category") or "")).lower()
+        if is_rental_p:
+            matched_g = next((rc for rc in rental_comps if rc["comp_num"] == c_num), None)
+            comp_photos.append({
+                "comp_num": c_num,
+                "label": f"Rental Comp #{c_num}",
+                "item_type": "Rental",
+                "street": cp.get("address") or (matched_g.get("street") if matched_g else ""),
+                "address": cp.get("address") or (matched_g.get("address") if matched_g else ""),
+                "proximity": matched_g.get("proximity", "") if matched_g else (cp.get("proximity") or ""),
+                "monthly_rent": matched_g.get("monthly_rent", "") if matched_g else "",
+                "price": matched_g.get("monthly_rent", "") if matched_g else "",
+                "thumbnail": cp.get("base64_preview") or cp.get("image_base64") or "",
+                "base64_preview": cp.get("base64_preview") or cp.get("image_base64") or "",
+                "page": cp.get("page", 1)
+            })
+        else:
+            matched_g = next((sc for sc in sales_comps if sc["comp_num"] == c_num), None)
+            comp_photos.append({
+                "comp_num": c_num,
+                "label": f"Comparable Sale #{c_num}",
+                "item_type": "Comparable",
+                "street": cp.get("address") or (matched_g.get("street") if matched_g else ""),
+                "address": cp.get("address") or (matched_g.get("address") if matched_g else ""),
+                "proximity": matched_g.get("proximity", "") if matched_g else (cp.get("proximity") or ""),
+                "sale_price": matched_g.get("sale_price", "") if matched_g else (cp.get("sale_price") or ""),
+                "thumbnail": cp.get("base64_preview") or cp.get("image_base64") or "",
+                "base64_preview": cp.get("base64_preview") or cp.get("image_base64") or "",
+                "page": cp.get("page", 1)
+            })
+
+    maps_data: List[Dict[str, Any]] = []
+    all_pins: List[Dict[str, Any]] = []
+
+    loc_page = loc_photo.get("page", 1) if loc_photo else 1
+    sub_pin = {
+        "item_type": "Subject",
+        "label": "Subject",
+        "street": subject_record["street"],
+        "city": subject_record["city"],
+        "state": subject_record["state"],
+        "zipcode": subject_record["zipcode"],
+        "address": subject_record["address"],
+        "proximity": "Subject",
+        "map_type": "Location Map",
+        "page_number": loc_page,
+        "source_file": file_name,
+        "status": "Verified Subject Property"
+    }
+
+    comp_pins: List[Dict[str, Any]] = []
+    for sc in sales_comps:
+        c_num = sc["comp_num"]
+        matched_p = next((p for p in comp_photos if p["comp_num"] == c_num), None)
+        pin = {
+            "item_type": "Comparable",
+            "label": f"Comparable #{c_num}",
+            "street": sc["street"],
+            "city": sc["city"],
+            "state": sc["state"],
+            "zipcode": sc["zipcode"],
+            "address": sc["address"],
+            "proximity": sc["proximity"],
+            "price": sc["sale_price"],
+            "map_type": "Location Map",
+            "page_number": loc_page,
+            "source_file": file_name,
+            "grid_data": sc["grid_data"],
+            "photo_data": matched_p,
+            "status": "Verified from UAD 3.6 Sales Grid"
+        }
+        comp_pins.append(pin)
+
+    # Location Map Image Preview
+    loc_b64 = loc_photo.get("base64_preview") or loc_photo.get("image_base64") if loc_photo else ""
+    if not loc_b64:
+        loc_b64 = _generate_map_svg_preview(
+            title="Location Map & Comparables",
+            subject_addr=subject_record["address"],
+            comps=sales_comps
+        )
+
+    if process_location:
+        loc_r_pins = []
+        if rental_comps:
+            for rc in rental_comps:
+                loc_r_pins.append({
+                    "item_type": "Rental",
+                    "label": f"Rental #{rc['comp_num']}",
+                    "street": rc["street"],
+                    "city": rc.get("city") or subject_record["city"],
+                    "state": rc.get("state") or subject_record["state"],
+                    "zipcode": rc.get("zipcode") or subject_record["zipcode"],
+                    "address": rc["address"],
+                    "proximity": rc["proximity"],
+                    "price": rc["monthly_rent"],
+                    "map_type": "Location Map",
+                    "page_number": loc_page,
+                    "source_file": file_name,
+                    "grid_data": rc["grid_data"],
+                    "status": "Verified from Rental Schedule"
+                })
+
+        loc_map_item = {
+            "page_number": loc_page,
+            "map_type": "Location Map",
+            "subject": sub_pin,
+            "comparables": comp_pins,
+            "rentals": loc_r_pins,
+            "comparables_only": comp_pins,
+            "listings": [],
+            "pins": [sub_pin, *comp_pins, *loc_r_pins],
+            "has_rentals": len(loc_r_pins) > 0,
+            "has_comparables": len(comp_pins) > 0,
+            "image_preview": loc_b64
+        }
+        maps_data.append(loc_map_item)
+        all_pins.extend([sub_pin, *comp_pins, *loc_r_pins])
+
+    # Aerial Map
+    if process_aerial:
+        aer_page = aerial_photo.get("page", 2) if aerial_photo else 2
+        aer_b64 = aerial_photo.get("base64_preview") or aerial_photo.get("image_base64") if aerial_photo else ""
+        if not aer_b64:
+            aer_b64 = _generate_photo_svg_preview(
+                title="Aerial Map Exhibit",
+                category="Maps & Aerials",
+                address=subject_record["address"]
+            )
+        aer_sub_pin = {**sub_pin, "map_type": "Aerial Map", "page_number": aer_page}
+        maps_data.append({
+            "page_number": aer_page,
+            "map_type": "Aerial Map",
+            "subject": aer_sub_pin,
+            "comparables": [],
+            "rentals": [],
+            "comparables_only": [],
+            "listings": [],
+            "pins": [aer_sub_pin],
+            "has_rentals": False,
+            "has_comparables": False,
+            "image_preview": aer_b64
+        })
+        all_pins.append(aer_sub_pin)
+
+    # Rentals and Other Maps
+    if process_rentals:
+        for omp in other_map_photos:
+            om_lbl = omp.get("label") or omp.get("caption") or "Exhibits Map"
+            om_page = omp.get("page", 3)
+            om_b64 = omp.get("base64_preview") or omp.get("image_base64") or ""
+            is_rental_map = "rental" in om_lbl.lower() or omp.get("cat_type") == "RentalComparableMap"
+
+            r_pins = []
+            if is_rental_map:
+                for rc in rental_comps:
+                    r_pins.append({
+                        "item_type": "Rental",
+                        "label": f"Rental #{rc['comp_num']}",
+                        "street": rc["street"],
+                        "city": rc.get("city") or subject_record["city"],
+                        "state": rc.get("state") or subject_record["state"],
+                        "zipcode": rc.get("zipcode") or subject_record["zipcode"],
+                        "address": rc["address"],
+                        "proximity": rc["proximity"],
+                        "price": rc["monthly_rent"],
+                        "map_type": om_lbl,
+                        "page_number": om_page,
+                        "source_file": file_name,
+                        "grid_data": rc["grid_data"],
+                        "status": "Verified from Rental Schedule"
+                    })
+
+            om_sub_pin = {**sub_pin, "map_type": om_lbl, "page_number": om_page}
+            maps_data.append({
+                "page_number": om_page,
+                "map_type": om_lbl,
+                "subject": om_sub_pin,
+                "comparables": r_pins if is_rental_map else [],
+                "rentals": r_pins,
+                "comparables_only": [],
+                "listings": [],
+                "pins": [om_sub_pin, *r_pins],
+                "has_rentals": len(r_pins) > 0,
+                "has_comparables": False,
+                "image_preview": om_b64
+            })
+            all_pins.extend([om_sub_pin, *r_pins])
+
+        if len(rental_comps) > 0 and not any(m.get("has_rentals") and m.get("map_type") != "Location Map" for m in maps_data):
+            # Synthesize rental map entry from rental_comps if not already created
+            r_pins = []
+            for rc in rental_comps:
+                r_pins.append({
+                    "item_type": "Rental",
+                    "label": f"Rental #{rc['comp_num']}",
+                    "street": rc["street"],
+                    "city": rc.get("city") or subject_record["city"],
+                    "state": rc.get("state") or subject_record["state"],
+                    "zipcode": rc.get("zipcode") or subject_record["zipcode"],
+                    "address": rc["address"],
+                    "proximity": rc["proximity"],
+                    "price": rc["monthly_rent"],
+                    "map_type": "Rental Comparables Map",
+                    "page_number": 1,
+                    "source_file": file_name,
+                    "grid_data": rc["grid_data"],
+                    "status": "Verified from Rental Schedule"
+                })
+            rent_sub_pin = {**sub_pin, "map_type": "Rental Comparables Map", "page_number": 1}
+            maps_data.append({
+                "page_number": 1,
+                "map_type": "Rental Comparables Map",
+                "subject": rent_sub_pin,
+                "comparables": r_pins,
+                "rentals": r_pins,
+                "comparables_only": [],
+                "listings": [],
+                "pins": [rent_sub_pin, *r_pins],
+                "has_rentals": True,
+                "has_comparables": False,
+                "image_preview": ""
+            })
+            all_pins.extend([rent_sub_pin, *r_pins])
+
+    # Sketches Data
+    sketches_data: List[Dict[str, Any]] = []
+    if process_sketches:
+        imp = clean_section_data.get("Improvements", {}) or combined_fields.get("Improvements", {}) or {}
+        gla_val = imp.get("Above Grade Finished Area") or imp.get("GLA / GBA") or imp.get("Square Feet of Gross Living Area Above Grade") or ""
+
+        # Build areas from level rows
+        areas = []
+        for r_idx in range(1, 10):
+            lvl = imp.get(f"Level in Unit Row {r_idx}")
+            if not lvl:
+                break
+            grd = imp.get(f"Grade Level Detail Row {r_idx}") or ""
+            fin = imp.get(f"Finish Row {r_idx}") or "Finished"
+            area_str = imp.get(f"Area Row {r_idx}") or ""
+            m_sf = re.search(r'([\d,]+)', area_str)
+            sf_num = int(m_sf.group(1).replace(",", "")) if m_sf else 0
+            areas.append({
+                "label": f"{lvl} ({grd}) - {fin}".strip(" -"),
+                "name": lvl,
+                "sqft": sf_num,
+                "factor": "1.0",
+                "grade": grd,
+                "finish": fin
+            })
+
+        # Room summary & room labels
+        tot_beds = 0
+        try: tot_beds = int(imp.get("Total Bedrooms") or imp.get("Bedrooms") or 0)
+        except Exception: pass
+        tot_fbaths = 0
+        try: tot_fbaths = int(imp.get("Total Bathrooms - Full") or imp.get("Bathrooms - Full") or 0)
+        except Exception: pass
+        tot_hbaths = 0
+        try: tot_hbaths = int(imp.get("Total Bathrooms - Half") or imp.get("Bathrooms - Half") or 0)
+        except Exception: pass
+
+        rooms_by_cat = {"bedrooms": [], "bathrooms": [], "living": [], "kitchen_dining": []}
+        rooms_by_lvl = {}
+        all_room_labels = []
+
+        for r_idx in range(1, 10):
+            lvl = imp.get(f"Level in Unit Row {r_idx}")
+            if not lvl:
+                break
+            r_sum = imp.get(f"Room Summary Row {r_idx}") or ""
+            lvl_rooms = []
+            if r_sum:
+                parts = [p.strip() for p in r_sum.split(",") if p.strip()]
+                for pt in parts:
+                    m_cnt = re.match(r'(\d+)\s*-\s*(.*)', pt)
+                    cnt = int(m_cnt.group(1)) if m_cnt else 1
+                    r_name = m_cnt.group(2).strip() if m_cnt else pt
+                    for ci in range(cnt):
+                        label_item = f"{r_name} {ci + 1}" if cnt > 1 else r_name
+                        lvl_rooms.append(label_item)
+                        all_room_labels.append(label_item)
+                        r_lower = r_name.lower()
+                        if "bed" in r_lower: rooms_by_cat["bedrooms"].append(label_item)
+                        elif "bath" in r_lower: rooms_by_cat["bathrooms"].append(label_item)
+                        elif any(w in r_lower for w in ["living", "family", "great", "rec"]): rooms_by_cat["living"].append(label_item)
+                        elif any(w in r_lower for w in ["kitchen", "dining", "nook"]): rooms_by_cat["kitchen_dining"].append(label_item)
+            rooms_by_lvl[lvl] = lvl_rooms
+
+        living_count = len(rooms_by_cat["living"]) or 1
+        has_kitch = len(rooms_by_cat["kitchen_dining"]) > 0 or any("kitchen" in l.lower() for l in all_room_labels)
+        has_din = any("dining" in l.lower() for l in all_room_labels)
+        total_rooms_calc = tot_beds + tot_fbaths + tot_hbaths + living_count + (1 if has_kitch else 0) + (1 if has_din else 0)
+
+        sketch_page = sketch_photo.get("page", 1) if sketch_photo else 1
+        sketch_b64 = sketch_photo.get("base64_preview") or sketch_photo.get("image_base64") if sketch_photo else ""
+        if not sketch_b64:
+            sketch_b64 = _generate_sketch_svg_preview(
+                title="Building Sketch & Floor Plan",
+                gla=gla_val,
+                areas=areas,
+                room_labels=all_room_labels
+            )
+
+        sketches_data.append({
+            "sketch_type": (sketch_photo.get("label") or "Building Sketch") if sketch_photo else "Building Sketch",
+            "page_number": sketch_page,
+            "gla": gla_val,
+            "areas": areas,
+            "room_labels": all_room_labels,
+            "room_summary": {
+                "bedroom_count": tot_beds or len(rooms_by_cat["bedrooms"]),
+                "living_rooms_count": living_count,
+                "has_kitchen": has_kitch,
+                "has_dining": has_din,
+                "total_rooms": total_rooms_calc or len(all_room_labels)
+            },
+            "rooms_by_category": rooms_by_cat,
+            "rooms_by_level": rooms_by_lvl,
+            "dimensions": [],
+            "image_preview": sketch_b64
+        })
+
+    return {
+        "status": "success",
+        "file_name": file_name,
+        "exhibit_type": ex_type or "all",
+        "total_maps": len(maps_data),
+        "total_sketches": len(sketches_data),
+        "total_comparable_photos": len(comp_photos),
+        "maps": maps_data,
+        "sketches": sketches_data,
+        "comparable_photos": comp_photos,
+        "all_pins": all_pins,
+        "reference_records": {
+            "subject": subject_record,
+            "sales_comps": sales_comps,
+            "rental_comps": rental_comps
+        }
     }
