@@ -1,3 +1,5 @@
+import { checkProjectAndPropertyCondition, isPropertyConditionField } from './form1073Validation';
+
 export const UNIT_DESCRIPTIONS_FIELDS_TO_CHECK = [
     "Unit Charge$",
     "per month X 12 = $",
@@ -35,7 +37,7 @@ export const UNIT_DESCRIPTIONS_FIELDS_TO_CHECK = [
     "If No, describe"
 ];
 
-export const checkUnitDescriptionsFieldsNotBlank = (field, text) => {
+export const checkUnitDescriptionsFieldsNotBlank = (field, text, allData) => {
     const cleanField = String(field || '').trim().toLowerCase().replace(/[\s\r\n\t]+/g, ' ');
     const isMatch = UNIT_DESCRIPTIONS_FIELDS_TO_CHECK.some(
         f => f.trim().toLowerCase().replace(/[\s\r\n\t]+/g, ' ') === cleanField
@@ -51,6 +53,10 @@ export const checkUnitDescriptionsFieldsNotBlank = (field, text) => {
             skipBlankFilter: true,
             message: `'${field}' must not be blank.`
         };
+    }
+
+    if (isPropertyConditionField(field)) {
+        return checkProjectAndPropertyCondition(field, text, allData);
     }
 
     return {

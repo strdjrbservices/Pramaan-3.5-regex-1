@@ -56,7 +56,7 @@ export const PROJECT_INFO_FIELDS_TO_CHECK = [
     "If No, describe and comment on the effect on value and marketability."
 ];
 
-export const checkProjectInfoFieldsNotBlank = (field, text) => {
+export const checkProjectInfoFieldsNotBlank = (field, text, allData) => {
     const cleanField = String(field || '').trim().toLowerCase().replace(/[\s\r\n\t]+/g, ' ');
     const isMatch = PROJECT_INFO_FIELDS_TO_CHECK.some(
         f => f.trim().toLowerCase().replace(/[\s\r\n\t]+/g, ' ') === cleanField
@@ -74,9 +74,152 @@ export const checkProjectInfoFieldsNotBlank = (field, text) => {
         };
     }
 
+    if (isProjectConditionField(field)) {
+        return checkProjectAndPropertyCondition(field, text, allData);
+    }
+
     return {
         isMatch: true,
         message: "Validation successful!"
+    };
+};
+
+export const isProjectConditionField = (field) => {
+    const f = String(field || '').trim().toLowerCase();
+    return f.includes('condition of the project');
+};
+
+export const isPropertyConditionField = (field) => {
+    const f = String(field || '').trim().toLowerCase();
+    return f.includes('condition of the property');
+};
+
+export const extractConditionRating = (text) => {
+    if (!text || typeof text !== 'string') return null;
+    const str = text.trim();
+    if (!str) return null;
+
+    // Explicit conclusion/rating pattern first
+    const explicitMatch = str.match(/(?:concluded\s+as|concluded\s+to\s+be|condition\s+(?:is|was|rating)?|quality\s+(?:is|was)?|rating\s*[:\s-]*)\s*[:\s-]*C\s*[-]?\s*([1-9])\b/i);
+    if (explicitMatch) {
+        return {
+            ratingCode: `C${explicitMatch[1]}`,
+            ratingNum: parseInt(explicitMatch[1], 10)
+        };
+    }
+
+    // Match any standalone C[1-9] or C-[1-9] with word boundaries
+    const allMatches = [...str.matchAll(/\bC\s*[-]?\s*([1-9])\b/gi)];
+    if (allMatches.length > 0) {
+        const m = allMatches[allMatches.length - 1];
+        return {
+            ratingCode: `C${m[1]}`,
+            ratingNum: parseInt(m[1], 10)
+        };
+    }
+
+    // Condition [1-9]
+    const condWordMatch = str.match(/\bCondition\s*[:\s-]*([1-9])\b/i);
+    if (condWordMatch) {
+        return {
+            ratingCode: `C${condWordMatch[1]}`,
+            ratingNum: parseInt(condWordMatch[1], 10)
+        };
+    }
+
+    return null;
+};
+
+export const getProjectConditionValue = (allData) => {
+    if (!allData || typeof allData !== 'object') return '';
+    return (
+        allData['Describe the condition of the project and quality of construction.'] ||
+        allData['Describe the condition of the project and quality of construction'] ||
+        allData.PROJECT_INFO?.['Describe the condition of the project and quality of construction.'] ||
+        allData.PROJECT_INFO?.['Describe the condition of the project and quality of construction'] ||
+        allData['Project Information']?.['Describe the condition of the project and quality of construction.'] ||
+        allData['Project Information']?.['Describe the condition of the project and quality of construction'] ||
+        ''
+    );
+};
+
+export const getPropertyConditionValue = (allData) => {
+    if (!allData || typeof allData !== 'object') return '';
+    return (
+        allData['Describe the condition of the property (including needed repairs, deterioration, renovations, remodeling, etc.)'] ||
+        allData['Describe the condition of the property (including needed repairs, deterioration, renovations, remodeling, etc.).'] ||
+        allData['Describe the condition of the property'] ||
+        allData.UNIT_DESCRIPTIONS?.['Describe the condition of the property (including needed repairs, deterioration, renovations, remodeling, etc.)'] ||
+        allData.UNIT_DESCRIPTIONS?.['Describe the condition of the property (including needed repairs, deterioration, renovations, remodeling, etc.).'] ||
+        allData.UNIT_DESCRIPTIONS?.['Describe the condition of the property'] ||
+        allData['Unit Descriptions']?.['Describe the condition of the property (including needed repairs, deterioration, renovations, remodeling, etc.)'] ||
+        allData.IMPROVEMENTS?.['Describe the condition of the property'] ||
+        allData.IMPROVEMENTS?.['Describe the condition of the property (including needed repairs, deterioration, renovations, remodeling, etc.)'] ||
+        allData.Improvements?.['Describe the condition of the property'] ||
+        ''
+    );
+};
+
+export const checkProjectAndPropertyCondition = (field, text, allData) => {
+    const isProject = isProjectConditionField(field);
+    const isProperty = isPropertyConditionField(field);
+
+    if (!isProject && !isProperty) {
+        return null;
+    }
+
+    if (!text || String(text).trim() === '') {
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: `'${field}' must not be blank.`
+        };
+    }
+
+    const curRating = extractConditionRating(text);
+    if (!curRating) {
+        return {
+            isError: true,
+            message: "Condition rating (C1-C5) not found in description."
+        };
+    }
+
+    if (curRating.ratingNum > 5) {
+        return {
+            isError: true,
+            message: `Condition must not be greater than C5. Found '${curRating.ratingCode}'.`
+        };
+    }
+
+    // Cross-field comparison between project and property condition
+    const otherText = isProject ? getPropertyConditionValue(allData) : getProjectConditionValue(allData);
+    if (otherText && String(otherText).trim() !== '') {
+        const otherRating = extractConditionRating(otherText);
+        if (otherRating) {
+            if (otherRating.ratingNum > 5) {
+                return {
+                    isError: true,
+                    message: `Condition must not be greater than C5. Found '${otherRating.ratingCode}' in ${isProject ? "Property condition" : "Project condition"}.`
+                };
+            }
+            if (curRating.ratingCode.toUpperCase() !== otherRating.ratingCode.toUpperCase()) {
+                const currentLabel = isProject ? "Project condition" : "Property condition";
+                const otherLabel = isProject ? "Property condition" : "Project condition";
+                return {
+                    isError: true,
+                    message: `Condition mismatch: ${currentLabel} (${curRating.ratingCode}) and ${otherLabel} (${otherRating.ratingCode}) must contain the same condition (C1 to C5).`
+                };
+            }
+            return {
+                isMatch: true,
+                message: `Condition '${curRating.ratingCode}' validated successfully.`
+            };
+        }
+    }
+
+    return {
+        isMatch: true,
+        message: `Condition '${curRating.ratingCode}' is valid (C1-C5).`
     };
 };
 

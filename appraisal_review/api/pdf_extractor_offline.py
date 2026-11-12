@@ -9,9 +9,11 @@ import base64
 from typing import Dict, Any, List, Optional
 import pdfplumber
 try:
-    import pymupdf as fitz
+    import pymupdf
+    fitz = pymupdf
 except ImportError:
     import fitz
+    pymupdf = fitz
 
 try:
     from .xml_extractor import find_comparable_rent_schedule_pages, extract_rent_schedule_from_pdf_page
@@ -43,7 +45,7 @@ except ImportError:
 
 SUBJECT_FIELDS = [
     'ADU File Check', 'From Type', 'Exposure comment', 'Prior service comment', 'ANSI', 'FHA Case No.',
-    'Full Address', 'Property Address', 'City', 'County', 'State', 'Zip Code', 'Borrower', 'Owner of Public Record',
+    'Full Address', 'Property Address', 'Unit #', 'Unit Number', 'Unit', 'City', 'County', 'State', 'Zip Code', 'Borrower', 'Owner of Public Record',
     'Legal Description', "Assessor's Parcel #", 'Tax Year', 'R.E. Taxes $', 'Neighborhood Name', 'Map Reference',
     'Census Tract', 'Occupant', 'Occupant Comment', 'Special Assessments $', 'Special Assessments Comment', 'PUD',
     'HOA $', 'HOA(per year)', 'HOA(per month)', 'Property Rights Appraised', 'Assignment Type', 'Lender/Client',
@@ -2326,7 +2328,25 @@ def extract_page_1_fields(page, full_doc_text="", fitz_page=None):
 
 
     subject["From Type"] = "Uniform Residential Appraisal Report (Form 1004)"
-    subject["Property Address"] = get_val(70, y_addr - 4, 295, y_addr + 10)
+    unit_val = ""
+    unit_label_word = next((w for w in words if "unit" in w['text'].lower() and abs(w['top'] - y_addr) < 8 and 180 < w['x0'] < 350), None)
+    if unit_label_word:
+        subject["Property Address"] = get_val(70, y_addr - 4, unit_label_word['x0'] - 2, y_addr + 10)
+        city_label_word = next((w for w in words if "city" in w['text'].lower() and abs(w['top'] - y_addr) < 8 and unit_label_word['x1'] < w['x0'] < 420), None)
+        city_x0 = city_label_word['x0'] - 2 if city_label_word else 295
+        unit_val = get_val(unit_label_word['x1'], y_addr - 4, city_x0, y_addr + 10)
+        unit_val = re.sub(r'^[#:\-\s]+', '', unit_val).strip()
+    else:
+        subject["Property Address"] = get_val(70, y_addr - 4, 295, y_addr + 10)
+
+    if not unit_val:
+        m_u = re.search(r'Unit\s*#?\s*[:\-]?\s*([A-Za-z0-9\-]+)\s+(?:City\b|[A-Za-z]+)', txt, re.I)
+        if m_u:
+            unit_val = m_u.group(1).strip()
+
+    subject["Unit #"] = unit_val
+    subject["Unit Number"] = unit_val
+    subject["Unit"] = unit_val
     subject["City"] = get_val(295, y_addr - 4, 450, y_addr + 10)
     subject["State"] = get_val(450, y_addr - 4, 490, y_addr + 10)
     subject["Zip Code"] = get_val(490, y_addr - 4, 580, y_addr + 10)
@@ -6880,10 +6900,14 @@ def detect_form_pages(doc) -> Dict[str, Any]:
                 indices["invoice"] = idx
             indices["invoice_pages"].append(idx)
         
-        # Form 1004 Page 1: Subject, Contract, Neighborhood, Site, Improvements
+        # Form 1004 / 1073 / 1025 Page 1: Subject, Contract, Neighborhood, Site, Improvements
         if indices["form_p1"] is None and (
             ("UNIFORM RESIDENTIAL APPRAISAL REPORT" in txt and ("SUBJECT" in txt and "NEIGHBORHOOD" in txt))
+            or ("INDIVIDUAL CONDOMINIUM UNIT APPRAISAL REPORT" in txt)
+            or ("SMALL RESIDENTIAL INCOME PROPERTY APPRAISAL REPORT" in txt)
+            or (("FORM 1073" in txt or "FORM 1025" in txt) and "PROPERTY ADDRESS" in txt and "SUBJECT" in txt)
             or ("FREDDIE MAC FORM 70" in txt and "FANNIE MAE FORM 1004" in txt and "PAGE 1" in txt)
+            or ("FREDDIE MAC FORM 465" in txt or "FREDDIE MAC FORM 72" in txt)
             or ("APPRAISAL REPORT" in txt and "PROPERTY ADDRESS" in txt and "BORROWER" in txt and "OCCUPANT" in txt)
         ):
             indices["form_p1"] = idx

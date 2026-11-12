@@ -1,3 +1,4 @@
+import React from 'react';
 import { SubjectInfoCard, GridInfoCard, MarketConditionsTable } from '../components/FormComponents';
 import { CondoCoopProjectsTable } from '../components/tables';
 import ActionButtons from '../components/ActionButtons';
@@ -9,7 +10,7 @@ import ComparableRentScheduleSection from '../components/ComparableRentScheduleS
 const Form1073 = ({
   data, allData, extractionAttempted, handleDataChange, editingField, setEditingField, isEditable,
   highlightedSubjectFields, highlightedContractFields, subjectFields, contractFields,
-  neighborhoodFields, salesGridRows, comparableSales, salesHistoryFields, priorSaleHistoryFields,
+  neighborhoodFields, salesGridRows, salesGridRows1073, comparableSales, salesHistoryFields, priorSaleHistoryFields,
   salesComparisonAdditionalInfoFields, marketConditionsRows, marketConditionsFields,
   reconciliationFields, costApproachFields, incomeApproachFields, condoCoopProjectsRows,
   condoForeclosureFields, appraiserFields, appraisalAndReportIdentificationFields, projectSiteFields, projectInfoFields,
@@ -35,6 +36,38 @@ const Form1073 = ({
     allData?.clean_data?.has_1007 === true
   );
 
+  const effectiveSubjectFields = React.useMemo(() => {
+    let f = [...(subjectFields || [])];
+    if (!f.includes('Unit #')) {
+      const idx = f.indexOf('Property Address');
+      if (idx !== -1) {
+        f.splice(idx + 1, 0, 'Unit #');
+      } else {
+        f.push('Unit #');
+      }
+    }
+    return f;
+  }, [subjectFields]);
+
+  const effectiveSalesGridRows = React.useMemo(() => {
+    let rows = (salesGridRows1073 && salesGridRows1073.length > 0) ? [...salesGridRows1073] : [...(salesGridRows || [])];
+    const hasUnit = rows.some(r => r.valueKey === 'Unit #' || r.label === 'Unit #');
+    const hasProj = rows.some(r => r.valueKey === 'Project Name and Phase' || r.label === 'Project Name and Phase');
+    if (!hasUnit || !hasProj) {
+      const addrIdx = rows.findIndex(r => r.valueKey === 'Address' || r.label === 'Address');
+      const insertIdx = addrIdx !== -1 ? addrIdx + 1 : 0;
+      const toInsert = [];
+      if (!hasUnit) {
+        toInsert.push({ label: 'Unit #', valueKey: 'Unit #', subjectValueKey: 'Unit #' });
+      }
+      if (!hasProj) {
+        toInsert.push({ label: 'Project Name and Phase', valueKey: 'Project Name and Phase', subjectValueKey: 'Project Name and Phase', usePre: true });
+      }
+      rows.splice(insertIdx, 0, ...toInsert);
+    }
+    return rows;
+  }, [salesGridRows, salesGridRows1073]);
+
   return (
     <>
       <ActionButtons
@@ -48,7 +81,7 @@ const Form1073 = ({
       <SubjectInfoCard
         id="subject-info"
         title="Subject Information"
-        fields={subjectFields}
+        fields={effectiveSubjectFields}
         data={data}
         extractionAttempted={extractionAttempted}
         onDataChange={handleDataChange}
@@ -232,7 +265,7 @@ const Form1073 = ({
         handleDataChange={handleDataChange}
         editingField={editingField}
         setEditingField={setEditingField}
-        salesGridRows={salesGridRows}
+        salesGridRows={effectiveSalesGridRows}
         comparableSales={comparableSales}
         salesHistoryFields={salesHistoryFields}
         salesComparisonAdditionalInfoFields={salesComparisonAdditionalInfoFields}

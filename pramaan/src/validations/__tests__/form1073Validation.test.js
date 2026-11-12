@@ -1,4 +1,9 @@
-import { checkProjectInfoFieldsNotBlank, PROJECT_INFO_FIELDS_TO_CHECK } from '../form1073Validation';
+import {
+    checkProjectInfoFieldsNotBlank,
+    checkProjectAndPropertyCondition,
+    extractConditionRating,
+    PROJECT_INFO_FIELDS_TO_CHECK
+} from '../form1073Validation';
 
 describe('form1073Validation - checkProjectInfoFieldsNotBlank', () => {
     test('returns error with skipBlankFilter: true when a project info field is empty or blank', () => {
@@ -118,6 +123,146 @@ describe('form1073Validation - checkProjectInfoFieldsNotBlank', () => {
     test('returns null for fields not in Project Information', () => {
         expect(checkProjectInfoFieldsNotBlank('Some Nonexistent Field', '')).toBeNull();
         expect(checkProjectInfoFieldsNotBlank('Some Nonexistent Field', 'Value')).toBeNull();
+    });
+});
+
+describe('form1073Validation - checkProjectAndPropertyCondition', () => {
+    const projectField = "Describe the condition of the project and quality of construction.";
+    const propertyField = "Describe the condition of the property (including needed repairs, deterioration, renovations, remodeling, etc.)";
+
+    test('extractConditionRating accurately extracts condition rating numbers and codes', () => {
+        expect(extractConditionRating("The subject's overall quality construction was concluded as C5.")).toEqual({
+            ratingCode: 'C5',
+            ratingNum: 5
+        });
+        expect(extractConditionRating("Condition is C4.")).toEqual({
+            ratingCode: 'C4',
+            ratingNum: 4
+        });
+        expect(extractConditionRating("C1")).toEqual({
+            ratingCode: 'C1',
+            ratingNum: 1
+        });
+        expect(extractConditionRating("C6 deferred maintenance")).toEqual({
+            ratingCode: 'C6',
+            ratingNum: 6
+        });
+        expect(extractConditionRating("CBS/STUCCO with average finish")).toBeNull();
+        expect(extractConditionRating("")).toBeNull();
+    });
+
+    test('validates condition C1 to C5 as acceptable (isMatch: true)', () => {
+        ['C1', 'C2', 'C3', 'C4', 'C5'].forEach(code => {
+            const res = checkProjectAndPropertyCondition(
+                projectField,
+                `The subject's overall quality construction was concluded as ${code}.`,
+                {}
+            );
+            expect(res).not.toBeNull();
+            expect(res.isMatch).toBe(true);
+            expect(res.isError).toBeUndefined();
+        });
+    });
+
+    test('fails when condition is greater than C5 (e.g. C6)', () => {
+        const res = checkProjectAndPropertyCondition(
+            projectField,
+            "The subject's overall quality construction was concluded as C6.",
+            {}
+        );
+        expect(res).toEqual({
+            isError: true,
+            message: "Condition must not be greater than C5. Found 'C6'."
+        });
+
+        const propRes = checkProjectAndPropertyCondition(
+            propertyField,
+            "Property condition is C6 due to extensive structural damage.",
+            {}
+        );
+        expect(propRes).toEqual({
+            isError: true,
+            message: "Condition must not be greater than C5. Found 'C6'."
+        });
+    });
+
+    test('validates successfully when Project and Property conditions match (e.g. both C5)', () => {
+        const allData = {
+            [projectField]: "The subject's overall quality construction was concluded as C5.",
+            [propertyField]: "The subject property condition is concluded as C5."
+        };
+
+        const projRes = checkProjectAndPropertyCondition(
+            projectField,
+            allData[projectField],
+            allData
+        );
+        expect(projRes).toEqual({
+            isMatch: true,
+            message: "Condition 'C5' validated successfully."
+        });
+
+        const propRes = checkProjectAndPropertyCondition(
+            propertyField,
+            allData[propertyField],
+            allData
+        );
+        expect(propRes).toEqual({
+            isMatch: true,
+            message: "Condition 'C5' validated successfully."
+        });
+    });
+
+    test('fails with mismatch error when Project and Property conditions differ (e.g. C5 vs C4)', () => {
+        const allData = {
+            [projectField]: "The subject's overall quality construction was concluded as C5.",
+            [propertyField]: "The subject property condition is concluded as C4."
+        };
+
+        const projRes = checkProjectAndPropertyCondition(
+            projectField,
+            allData[projectField],
+            allData
+        );
+        expect(projRes).toEqual({
+            isError: true,
+            message: "Condition mismatch: Project condition (C5) and Property condition (C4) must contain the same condition (C1 to C5)."
+        });
+
+        const propRes = checkProjectAndPropertyCondition(
+            propertyField,
+            allData[propertyField],
+            allData
+        );
+        expect(propRes).toEqual({
+            isError: true,
+            message: "Condition mismatch: Property condition (C4) and Project condition (C5) must contain the same condition (C1 to C5)."
+        });
+    });
+
+    test('fails when no C1-C5 rating is found in text', () => {
+        const res = checkProjectAndPropertyCondition(
+            projectField,
+            "Construction is average quality with no specific rating.",
+            {}
+        );
+        expect(res).toEqual({
+            isError: true,
+            message: "Condition rating (C1-C5) not found in description."
+        });
+    });
+
+    test('returns blank error when value is empty', () => {
+        const res = checkProjectAndPropertyCondition(projectField, '', {});
+        expect(res).toEqual({
+            isError: true,
+            skipBlankFilter: true,
+            message: `'${projectField}' must not be blank.`
+        });
+    });
+
+    test('returns null for unrelated fields', () => {
+        expect(checkProjectAndPropertyCondition("Project Description", "Garden", {})).toBeNull();
     });
 });
 

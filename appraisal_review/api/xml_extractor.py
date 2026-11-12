@@ -2885,6 +2885,20 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         else: 
             prop_occupancy = occ_raw
 
+    if not unit_id and property_elem is not None:
+        unit_id = (
+            property_elem.attrib.get("_UnitIdentifier", "") or
+            property_elem.attrib.get("UnitIdentifier", "") or
+            property_elem.attrib.get("_UnitNumber", "") or
+            property_elem.attrib.get("UnitNumber", "") or
+            property_elem.attrib.get("_Unit", "")
+        )
+    if not unit_id and prop_addr:
+        m_u = re.search(r'(?:Unit\s*#?|Apt\s*#?|#|Suite)\s*[:\-]?\s*([A-Za-z0-9\-]+)$', prop_addr, re.I)
+        if m_u:
+            unit_id = m_u.group(1).strip()
+            prop_addr = re.sub(r'[\s,]+(?:Unit\s*#?|Apt\s*#?|#|Suite)\s*[:\-]?\s*[A-Za-z0-9\-]+$', '', prop_addr, flags=re.I).strip()
+
     if unit_id and str(unit_id).lower() not in prop_addr.lower():
         full_addr = f"{prop_addr} Unit {unit_id}, {prop_city}, {prop_state} {prop_zip}".strip(", ")
     else:
@@ -3003,6 +3017,9 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
     hbu = ""
     site_shape = ""
     site_view = ""
+    site_topography = ""
+    site_size = ""
+    site_density = ""
     utilities_list = []
     util_dict = {}
 
@@ -3035,12 +3052,24 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         elif hbu_ind:
             hbu = hbu_ind
 
-        for sf in site_elem.findall("SITE_FEATURE"):
-            stype = sf.attrib.get("_Type", "").lower()
-            scomm = sf.attrib.get("_Comment", "").strip()
-            if stype == "shape":
+        all_sf_elements = list(site_elem.findall("SITE_FEATURE"))
+        for sf in root.findall(".//SITE_FEATURE"):
+            if sf not in all_sf_elements:
+                all_sf_elements.append(sf)
+
+        for sf in all_sf_elements:
+            stype = (sf.attrib.get("_Type", "") or "").strip().lower()
+            scomm = (sf.attrib.get("_Comment", "") or sf.attrib.get("_Description", "") or sf.attrib.get("_OtherDescription") or sf.text or "").strip()
+            stype_norm = re.sub(r'[^a-z]', '', stype)
+            if "topograph" in stype_norm and not site_topography:
+                site_topography = scomm
+            elif stype_norm in ("size", "sitesize", "projectsize", "lotsize") and not site_size:
+                site_size = scomm
+            elif "density" in stype_norm and not site_density:
+                site_density = scomm
+            elif stype_norm == "shape" and not site_shape:
                 site_shape = scomm
-            elif stype == "view":
+            elif stype_norm == "view" and not site_view:
                 site_view = scomm
 
         for util in site_elem.findall("SITE_UTILITY"):
@@ -3084,6 +3113,62 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
                 zoning_comp = zcomp_raw
 
     utilities_str = ", ".join(utilities_list)
+
+    # Dynamic Site Topography, Size & Density fallback extraction
+    if not site_topography and site_elem is not None:
+        site_topography = (
+            site_elem.attrib.get("_TopographyDescription", "") or
+            site_elem.attrib.get("TopographyDescription", "") or
+            site_elem.attrib.get("TopographyType", "") or
+            site_elem.attrib.get("_Topography", "")
+        )
+    if not site_topography:
+        for el in root.iter():
+            for ak, av in el.attrib.items():
+                if "topograph" in ak.lower() and av and isinstance(av, str):
+                    site_topography = av.strip()
+                    break
+            if site_topography:
+                break
+
+    if not site_density and site_elem is not None:
+        site_density = (
+            site_elem.attrib.get("_DensityDescription", "") or
+            site_elem.attrib.get("DensityDescription", "") or
+            site_elem.attrib.get("ProjectDensityType", "") or
+            site_elem.attrib.get("DensityType", "") or
+            site_elem.attrib.get("_Density", "")
+        )
+    if not site_density:
+        p_el = property_elem.find("PROJECT") if property_elem is not None else None
+        if p_el is None:
+            p_el = root.find(".//PROJECT")
+        if p_el is not None:
+            site_density = (
+                p_el.attrib.get("ProjectDensityType", "") or
+                p_el.attrib.get("_DensityDescription", "") or
+                p_el.attrib.get("DensityType", "")
+            )
+    if not site_density:
+        for el in root.iter():
+            for ak, av in el.attrib.items():
+                if "density" in ak.lower() and av and isinstance(av, str) and not "zoning" in ak.lower():
+                    site_density = av.strip()
+                    break
+            if site_density:
+                break
+
+    if not site_size:
+        if site_elem is not None:
+            site_size = (
+                site_elem.attrib.get("_AreaDescription", "") or
+                site_elem.attrib.get("SquareFeetCount", "") or
+                site_elem.attrib.get("_DimensionsDescription", "") or
+                site_elem.attrib.get("SiteAreaSquareFeetNumber", "") or
+                ""
+            )
+        if not site_size:
+            site_size = site_area or site_dim
 
     # Dynamic Off-Site Improvements (Street & Alley)
     street_val = ""
@@ -3193,6 +3278,12 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
 
     housing_price = ""
     housing_age = ""
+    h_low = ""
+    h_high = ""
+    h_pred = ""
+    h_newest = ""
+    h_oldest = ""
+    h_pred_age = ""
 
     nb_elem = property_elem.find("NEIGHBORHOOD") if property_elem is not None else None
     if nb_elem is None:
@@ -3608,6 +3699,10 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
     comps_dict = {}
     sales_grid = {}
     adjustments_subject = {}
+    subj_project_name = ""
+    subj_project_phase = ""
+    subj_project_name_phase = ""
+    subj_unit_id = unit_id
     if val_methods is not None:
         comp_elems = val_methods.findall(".//COMPARABLE_SALE")
         for comp in comp_elems:
@@ -3644,6 +3739,48 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
                     c_city = parts_csz[0]
             c_addr = f"{c_addr_street}, {c_addr_csz}".strip(", ") if (c_addr_street and c_addr_csz) else (c_addr_street or c_addr_csz)
             c_prox = comp_loc.attrib.get("ProximityToSubjectDescription", "") if comp_loc is not None else ""
+
+            # Extract Unit # and Project Name / Phase
+            c_unit = (comp_loc.attrib.get("UnitIdentifier", "") or comp_loc.attrib.get("_UnitIdentifier", "")) if comp_loc is not None else ""
+            if not c_unit and seq == "0":
+                c_unit = unit_id
+            if not c_unit and c_addr_csz:
+                parts_csz = [p.strip() for p in c_addr_csz.split(",") if p.strip()]
+                if parts_csz and len(parts_csz) >= 2:
+                    first_part = parts_csz[0]
+                    if re.match(r"^(?:unit\s*#?|apt\s*#?|ste\s*#?|#)?\s*[a-zA-Z0-9\-]+$", first_part, re.I) and not any(k in first_part.lower() for k in ["phoenix", "street", "ave", "road", "dr", "blvd", "way", "court", "lane", "circle", "trail"]):
+                        if not (c_city and first_part.lower() == c_city.lower()):
+                            c_unit = first_part
+
+            c_proj_name = comp.attrib.get("ProjectName", "") or comp.attrib.get("_ProjectName", "")
+            c_proj_phase = comp.attrib.get("ProjectPhaseIdentifier", "") or comp.attrib.get("_ProjectPhaseIdentifier", "") or comp.attrib.get("Phase", "") or comp.attrib.get("_PhaseIdentifier", "")
+            if seq == "0":
+                if not c_proj_name:
+                    subj_proj = root.find(".//SUBJECT_PROJECT")
+                    if subj_proj is not None:
+                        c_proj_name = subj_proj.attrib.get("ProjectName", "")
+                if not c_proj_name and proj is not None:
+                    c_proj_name = proj.attrib.get("_Name", "") or proj.attrib.get("ProjectName", "")
+                if not c_proj_phase and proj is not None:
+                    c_proj_phase = proj.attrib.get("_PhaseIdentifier", "") or proj.attrib.get("PhaseIdentifier", "") or proj.attrib.get("ProjectPhaseIdentifier", "")
+            if not c_proj_name:
+                comp_proj = comp.find("PROJECT") or comp.find("SUBJECT_PROJECT")
+                if comp_proj is not None:
+                    c_proj_name = comp_proj.attrib.get("ProjectName", "") or comp_proj.attrib.get("_Name", "")
+                    if not c_proj_phase:
+                        c_proj_phase = comp_proj.attrib.get("ProjectPhaseIdentifier", "") or comp_proj.attrib.get("_PhaseIdentifier", "")
+
+            if c_proj_name and c_proj_phase:
+                c_proj_name_phase = f"{c_proj_name}\n{c_proj_phase}".strip()
+            else:
+                c_proj_name_phase = c_proj_name or c_proj_phase or ""
+
+            if seq == "0":
+                subj_project_name = c_proj_name
+                subj_project_phase = c_proj_phase
+                subj_project_name_phase = c_proj_name_phase
+                if c_unit:
+                    subj_unit_id = c_unit
 
             # Extract child adjustments
             adjustments = {}
@@ -3867,6 +4004,13 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
                 "Street Address": c_addr_street or (prop_addr if seq == "0" else ""),
                 "City": c_city or (prop_city if seq == "0" else ""),
                 "City State Zip": c_addr_csz or (f"{prop_city}, {prop_state} {prop_zip}".strip(", ") if seq == "0" else ""),
+                "Unit #": c_unit or (unit_id if seq == "0" else ""),
+                "Unit Number": c_unit or (unit_id if seq == "0" else ""),
+                "Unit": c_unit or (unit_id if seq == "0" else ""),
+                "Project Name": c_proj_name,
+                "Phase": c_proj_phase,
+                "Project Name and Phase": c_proj_name_phase,
+                "Address and Unit #": f"{c_addr_street}\n{c_addr_csz}" if (c_addr_street and c_addr_csz) else (c_addr or (full_addr if seq == "0" else "")),
                 "Proximity to Subject": c_prox,
                 "Proximity to Subject comment": c_prox,
                 "Sale Price": sale_price or (contract_price if seq == "0" else ""),
@@ -3961,6 +4105,8 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
                 sales_grid["Subject"] = comp_data
                 sales_grid["SUBJECT"] = comp_data
                 sales_grid["Subject Address"] = comp_data["Address"]
+                sales_grid["Subject Unit #"] = comp_data["Unit #"]
+                sales_grid["Subject Project Name and Phase"] = comp_data["Project Name and Phase"]
                 sales_grid["Subject Sale Price"] = comp_data["Sale Price"]
             else:
                 comp_aliases = [
@@ -3971,6 +4117,8 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
                     comps_dict[alias] = comp_data
                     sales_grid[alias] = comp_data
                 sales_grid[f"Comparable #{seq} Address"] = comp_data["Address"]
+                sales_grid[f"Comparable #{seq} Unit #"] = comp_data["Unit #"]
+                sales_grid[f"Comparable #{seq} Project Name and Phase"] = comp_data["Project Name and Phase"]
                 sales_grid[f"Comparable #{seq} Proximity to Subject"] = comp_data["Proximity to Subject"]
                 sales_grid[f"Comparable #{seq} Sale Price"] = comp_data["Sale Price"]
                 sales_grid[f"Comparable #{seq} Data Source(s)"] = comp_data["Data Source(s)"]
@@ -4906,9 +5054,12 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "FHA Case Number": fha_case_no,
         "Full Address": full_addr,
         "Property Address": prop_addr,
-        "Unit #": unit_id,
-        "Unit Number": unit_id,
-        "Unit": unit_id,
+        "Unit #": unit_id or subj_unit_id,
+        "Unit Number": unit_id or subj_unit_id,
+        "Unit": unit_id or subj_unit_id,
+        "Project Name": subj_project_name,
+        "Phase": subj_project_phase,
+        "Project Name and Phase": subj_project_name_phase,
         "City": prop_city,
         "County": prop_county,
         "State": prop_state,
@@ -5011,6 +5162,12 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "one unit housing price(high,low,pred)": housing_price,
         "ONE UNIT HOUSING PRICE(HIGH,LOW,PRED)": housing_price,
         "one unit housing age(high,low,pred)": housing_age,
+        "Housing Price High": h_high,
+        "Housing Price Low": h_low,
+        "Housing Price Pred": h_pred,
+        "Housing Age High": h_oldest,
+        "Housing Age Low": h_newest,
+        "Housing Age Pred": h_pred_age,
         "Over/Under-Improvement Comment": over_under_comment,
         "Predominant Price Commentary": over_under_comment,
         "Neighborhood Boundaries": nb_bound,
@@ -5029,6 +5186,12 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         )
 
     site_section = {
+        "Topography": site_topography,
+        "Size": site_size,
+        "Density": site_density,
+        "TOPOGRAPHY": site_topography,
+        "SIZE": site_size,
+        "DENSITY": site_density,
         "Dimensions": site_dim,
         "Area": site_area,
         "Shape": site_shape,
@@ -6763,6 +6926,14 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
     proj_ground_rent_full = f"${proj_ground_rent_amt} {proj_ground_rent_desc}".strip() if proj_ground_rent_amt else proj_ground_rent_desc
 
     project_info_section: Dict[str, Any] = {
+        "Topography": site_topography,
+        "Size": site_size,
+        "Density": site_density,
+        "TOPOGRAPHY": site_topography,
+        "SIZE": site_size,
+        "DENSITY": site_density,
+        "FEMA Special Flood Hazard Area": fema_special,
+        "Zoning Compliance": zoning_comp,
         "Data source(s) for project information": proj_data_source,
         "Project Description": proj_desc,
         "# of Stories": proj_stories,
@@ -6836,6 +7007,259 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "If High or Low, describe": proj_comp_desc,
         "Are there any special or unusual characteristics of the project (based on the condominium documents, HOA meetings, or other information) known to the appraiser?": proj_spec_ind,
         "If Yes, describe and explain the effect on value and marketability.": proj_spec_desc,
+    }
+
+    # -------------------------------------------------------------
+    # Form 1073 (Condominium) Unit Descriptions
+    # -------------------------------------------------------------
+    monthly_unit_charge = ""
+    annual_unit_charge = ""
+    unit_charge_sqft = ""
+
+    for uc in root.findall(".//UNIT_CHARGE"):
+        pt = (uc.attrib.get("_PeriodType") or "").lower()
+        amt = (uc.attrib.get("_Amount") or "").strip()
+        psf = (uc.attrib.get("_PerSquareFootAmount") or "").strip()
+        if pt == "monthly" and amt:
+            monthly_unit_charge = amt
+        elif pt in ["annually", "annual", "yearly", "year"] and amt:
+            annual_unit_charge = amt
+        if psf:
+            unit_charge_sqft = psf
+
+    if not monthly_unit_charge:
+        for puf in root.findall(".//_PER_UNIT_FEE"):
+            if (puf.attrib.get("_PeriodType") or "").lower() == "monthly":
+                monthly_unit_charge = (puf.attrib.get("_Amount") or "").strip()
+                break
+
+    if monthly_unit_charge and not annual_unit_charge:
+        try:
+            m_val = float(str(monthly_unit_charge).replace("$", "").replace(",", "").strip())
+            annual_unit_charge = f"{m_val * 12:.2f}".rstrip("0").rstrip(".")
+        except Exception:
+            pass
+
+    # Utilities included in monthly assessment
+    unit_util_included = []
+    unit_other_util_desc = []
+    for ucu in root.findall(".//UNIT_CHARGE_UTILITY"):
+        inc = (ucu.attrib.get("_IncludedInAssessmentIndicator") or "").strip().upper()
+        ut = (ucu.attrib.get("_Type") or "").strip()
+        ot_desc = (ucu.attrib.get("_TypeOtherDescription") or ucu.attrib.get("_Description") or "").strip()
+        if inc == "Y":
+            if ut.lower() == "other":
+                if ot_desc:
+                    unit_other_util_desc.append(ot_desc)
+                else:
+                    unit_util_included.append("Other")
+            elif ut:
+                unit_util_included.append(ut)
+
+    if not unit_util_included and not unit_other_util_desc:
+        for u in root.findall(".//_UNIT_UTILITY"):
+            inc = (u.attrib.get("_IncludedInAssessmentIndicator") or "").strip().upper()
+            ut = (u.attrib.get("_Type") or "").strip()
+            ot_desc = (u.attrib.get("_TypeOtherDescription") or u.attrib.get("_Description") or "").strip()
+            if inc == "Y":
+                if ut.lower() == "other" and ot_desc:
+                    unit_other_util_desc.append(ot_desc)
+                elif ut:
+                    unit_util_included.append(ut)
+
+    all_unit_utils = list(unit_util_included)
+    if unit_other_util_desc:
+        all_unit_utils.extend(unit_other_util_desc)
+    unit_utilities_str = ", ".join(all_unit_utils) if all_unit_utils else "None"
+
+    # Floor # and # of Levels
+    unit_floor_num = ""
+    unit_levels_num = ""
+    unit_elem = root.find(".//_UNIT")
+    if unit_elem is not None:
+        unit_floor_num = (unit_elem.attrib.get("FloorIdentifier") or "").strip()
+        unit_levels_num = (unit_elem.attrib.get("LevelCount") or "").strip()
+
+    if not unit_levels_num and struct_elem is not None:
+        unit_levels_num = (struct_elem.attrib.get("StoriesCount") or "").strip()
+
+    # Heating Type / Fuel
+    unit_h_type = ""
+    unit_h_fuel = ""
+    h_elem = root.find(".//HEATING")
+    if h_elem is not None:
+        unit_h_type = (h_elem.attrib.get("_UnitDescription") or h_elem.attrib.get("_Type") or "").strip()
+        unit_h_fuel = (h_elem.attrib.get("_FuelDescription") or "").strip()
+    unit_heating_str = f"{unit_h_type}/{unit_h_fuel}" if unit_h_type and unit_h_fuel else (unit_h_type or unit_h_fuel or ht_val or "None")
+
+    # Central AC / Individual AC / Other
+    unit_cooling_str = ""
+    c_elem = root.find(".//COOLING")
+    if c_elem is not None:
+        c_cent = (c_elem.attrib.get("_CentralizedIndicator") or "").strip().upper()
+        c_indiv = (c_elem.attrib.get("_IndividualIndicator") or "").strip().upper()
+        c_oth = (c_elem.attrib.get("_OtherIndicator") or "").strip().upper()
+        c_desc = (c_elem.attrib.get("_TypeOtherDescription") or c_elem.attrib.get("_Description") or "").strip()
+        if c_cent == "Y":
+            unit_cooling_str = "Central AC"
+        elif c_indiv == "Y":
+            unit_cooling_str = "Individual AC"
+        elif c_oth == "Y" or c_desc:
+            unit_cooling_str = f"Other: {c_desc}" if c_desc else "Other"
+        else:
+            unit_cooling_str = (c_elem.attrib.get("_Type") or "").strip()
+    if not unit_cooling_str:
+        unit_cooling_str = cooling_val or "None"
+
+    # Amenities: Fireplace / Woodstove / Deck / Patio / Porch / Balcony / Other
+    unit_amenities = []
+    for am in root.findall(".//AMENITY"):
+        at = (am.attrib.get("_Type") or "").strip()
+        ex = (am.attrib.get("_ExistsIndicator") or "").strip().upper()
+        cnt = (am.attrib.get("_Count") or "").strip()
+        desc = (am.attrib.get("_DetailedDescription") or am.attrib.get("_TypeOtherDescription") or "").strip()
+        if ex == "Y" or (cnt and cnt not in ["0", "None"]) or (desc and desc.lower() not in ["none", "no"]):
+            item_str = at
+            if cnt and cnt not in ["0", "None"]:
+                item_str += f" #{cnt}"
+            if desc and desc.lower() not in ["none", "no", at.lower()]:
+                item_str += f" ({desc})"
+            unit_amenities.append(item_str)
+    unit_amenities_str = ", ".join(unit_amenities) if unit_amenities else "None"
+
+    # Kitchen Appliances
+    unit_appliances = []
+    for ke in root.findall(".//KITCHEN_EQUIPMENT"):
+        kt = (ke.attrib.get("_Type") or "").strip()
+        ex = (ke.attrib.get("_ExistsIndicator") or "").strip().upper()
+        if ex == "Y":
+            name_map = {
+                "Refrigerator": "Refrigerator",
+                "RangeOven": "Range/Oven",
+                "Microwave": "Microwave",
+                "Dishwasher": "Dishwasher",
+                "Disposal": "Disp",
+                "WasherDryer": "Washer/Dryer"
+            }
+            unit_appliances.append(name_map.get(kt, kt))
+    unit_appliances_str = ", ".join(unit_appliances) if unit_appliances else "None"
+
+    # Interior Features
+    unit_interior = {}
+    for ifeat in root.findall(".//INTERIOR_FEATURE"):
+        it = (ifeat.attrib.get("_Type") or "").strip()
+        cd = (ifeat.attrib.get("_ConditionDescription") or ifeat.attrib.get("_Description") or "").strip()
+        unit_interior[it] = cd
+    unit_floors = unit_interior.get("Floors") or floors or "None"
+    unit_walls = unit_interior.get("Walls") or walls or "None"
+    unit_trim = unit_interior.get("TrimAndFinish") or unit_interior.get("Trim/Finish") or unit_interior.get("Trim") or trim or "None"
+    unit_wainscot = unit_interior.get("BathroomWainscot") or unit_interior.get("Bath Wainscot") or bath_wainscot or "None"
+    unit_doors = unit_interior.get("Doors") or "None"
+
+    # Car Storage
+    unit_cs_elem = root.find(".//CAR_STORAGE")
+    unit_cs_type = ""
+    unit_cs_assignment = ""
+    unit_cs_cars = ""
+    unit_cs_space = ""
+    if unit_cs_elem is not None:
+        unit_cs_assignment = (unit_cs_elem.attrib.get("ParkingSpaceAssignmentType") or "").strip()
+        unit_cs_cars = (unit_cs_elem.attrib.get("ParkingSpacesCount") or "").strip()
+        unit_cs_space = (unit_cs_elem.attrib.get("ParkingSpaceIdentifier") or "").strip()
+        loc_types = []
+        for loc in unit_cs_elem.findall(".//CAR_STORAGE_LOCATION"):
+            lt = (loc.attrib.get("_Type") or "").strip()
+            ex = (loc.attrib.get("_ExistsIndicator") or "").strip().upper()
+            if ex == "Y":
+                loc_types.append(lt)
+        if loc_types:
+            unit_cs_type = ", ".join(loc_types)
+        elif (unit_cs_elem.attrib.get("_ExistsIndicator") or "").strip().upper() == "N":
+            unit_cs_type = "None"
+    if not unit_cs_type:
+        unit_cs_type = "None"
+    if not unit_cs_assignment:
+        unit_cs_assignment = "None"
+    if not unit_cs_cars:
+        unit_cs_cars = "0"
+    if not unit_cs_space:
+        unit_cs_space = "None"
+
+    # Finished Area & Room Counts
+    unit_rooms = ""
+    unit_bedrooms = ""
+    unit_baths = ""
+    unit_gla = ""
+    unit_sep_metered = ""
+    unit_sep_metered_desc = ""
+    if struct_elem is not None:
+        unit_rooms = (struct_elem.attrib.get("TotalRoomCount") or "").strip()
+        unit_bedrooms = (struct_elem.attrib.get("TotalBedroomCount") or "").strip()
+        unit_baths = (struct_elem.attrib.get("TotalBathroomCount") or "").strip()
+        unit_gla = (struct_elem.attrib.get("GrossLivingAreaSquareFeetCount") or "").strip()
+        sm_ind = (struct_elem.attrib.get("_HeatingCoolingMeteredSeparatelyIndicator") or "").strip().upper()
+        unit_sep_metered = "Yes" if sm_ind == "Y" else ("No" if sm_ind == "N" else sm_ind)
+        unit_sep_metered_desc = (struct_elem.attrib.get("_HeatingCoolingMeteredSeparatelyDescription") or "").strip()
+
+    if not unit_charge_sqft and annual_unit_charge and unit_gla:
+        try:
+            unit_charge_sqft = f"{float(annual_unit_charge) / float(unit_gla):.2f}"
+        except Exception:
+            pass
+
+    unit_finished_area_summary = f"{unit_rooms} Rooms, {unit_bedrooms} Bedrooms, {unit_baths} Bath(s)" if (unit_rooms or unit_bedrooms or unit_baths) else "None"
+
+    # Property Analysis for Condo
+    unit_pa_elems = {pa.attrib.get("_Type", ""): pa for pa in root.findall(".//PROPERTY_ANALYSIS")}
+
+    unit_add_features = (unit_pa_elems.get("AdditionalFeatures", ET.Element("")).attrib.get("_Comment") or "").strip()
+    unit_prop_cond = (unit_pa_elems.get("PropertyCondition", ET.Element("")).attrib.get("_Comment") or "").strip()
+
+    unit_phys_elem = unit_pa_elems.get("PhysicalDeficiency", ET.Element(""))
+    unit_phys_ind_raw = (unit_phys_elem.attrib.get("_ExistsIndicator") or "").strip().upper()
+    unit_phys_ind = "Yes" if unit_phys_ind_raw == "Y" else ("No" if unit_phys_ind_raw == "N" else (unit_phys_ind_raw or "No"))
+    unit_phys_desc = (unit_phys_elem.attrib.get("_Comment") or "").strip()
+
+    unit_conf_elem = unit_pa_elems.get("ConformsToNeighborhood", ET.Element(""))
+    unit_conf_ind_raw = (unit_conf_elem.attrib.get("_ExistsIndicator") or "").strip().upper()
+    unit_conf_ind = "Yes" if unit_conf_ind_raw == "Y" else ("No" if unit_conf_ind_raw == "N" else (unit_conf_ind_raw or "Yes"))
+    unit_conf_desc = (unit_conf_elem.attrib.get("_Comment") or "").strip()
+
+    unit_descriptions_section: Dict[str, Any] = {
+        "Unit Charge$": monthly_unit_charge,
+        "per month X 12 = $": annual_unit_charge,
+        "per year": annual_unit_charge,
+        "Annual assessment charge per year per square feet of gross living area = $": unit_charge_sqft,
+        "Utilities included in the unit monthly assessment [None/Heat/Air/Conditioning/Electricity/Gas/Water/Sewer/Cable/Other (describe)]": unit_utilities_str,
+        "Floor #": unit_floor_num,
+        "# of Levels": unit_levels_num,
+        "Heating Type/Fuel": unit_heating_str,
+        "Central AC/Individual AC/Other (describe)": unit_cooling_str,
+        "Fireplace(s) #/Woodstove(s) #/Deck/Patio/Porch/Balcony/Other": unit_amenities_str,
+        "Refrigerator/Range/Oven/Disp Microwave/Dishwasher/Washer/Dryer": unit_appliances_str,
+        "Floors": unit_floors,
+        "Walls": unit_walls,
+        "Trim/Finish": unit_trim,
+        "Bath Wainscot": unit_wainscot,
+        "Doors": unit_doors,
+        "None/Garage/Covered/Open": unit_cs_type,
+        "Assigned/Owned": unit_cs_assignment,
+        "# of Cars": unit_cs_cars,
+        "Parking Space #": unit_cs_space,
+        "Finished area above grade contains:": unit_finished_area_summary,
+        "Rooms": unit_rooms,
+        "Bedrooms": unit_bedrooms,
+        "Bath(s)": unit_baths,
+        "Square Feet of Gross Living Area Above Grade": unit_gla,
+        "Are the heating and cooling for the individual units separately metered?": unit_sep_metered,
+        "If No, describe and comment on compatibility to other projects in the market area.": unit_sep_metered_desc or ("N/A" if unit_sep_metered == "Yes" else ""),
+        "Additional features (special energy efficient items, etc.)": unit_add_features,
+        "Describe the condition of the property (including needed repairs, deterioration, renovations, remodeling, etc.)": unit_prop_cond,
+        "Are there any physical deficiencies or adverse conditions that affect the livability, soundness, or structural integrity of the property?": unit_phys_ind,
+        "Are there any physical deficiencies or adverse conditions that affect the livability, soundness, or structural integrity of the property? ": unit_phys_ind,
+        "If Yes, describe": unit_phys_desc or ("N/A" if unit_phys_ind == "No" else ""),
+        "Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?": unit_conf_ind,
+        "If No, describe": unit_conf_desc or ("N/A" if unit_conf_ind == "Yes" else "")
     }
 
     # Prior Sale History Section
@@ -6912,9 +7336,12 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "form_type": form_type,
         "Full Address": full_addr,
         "Property Address": prop_addr,
-        "Unit #": unit_id,
-        "Unit Number": unit_id,
-        "Unit": unit_id,
+        "Unit #": unit_id or subj_unit_id,
+        "Unit Number": unit_id or subj_unit_id,
+        "Unit": unit_id or subj_unit_id,
+        "Project Name": subj_project_name,
+        "Phase": subj_project_phase,
+        "Project Name and Phase": subj_project_name_phase,
         "City": prop_city,
         "County": prop_county,
         "State": prop_state,
@@ -7009,6 +7436,8 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "Project Information": project_info_section,
         "PROJECT_ANALYSIS": project_analysis_section,
         "Project Analysis": project_analysis_section,
+        "UNIT_DESCRIPTIONS": unit_descriptions_section,
+        "Unit Descriptions": unit_descriptions_section,
         "PRIOR_SALE_HISTORY": prior_sale_history_section,
         "Prior Sale History": prior_sale_history_section,
         "prior_sale_history": prior_sale_history_section,
@@ -7055,7 +7484,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         fields["Invoice"] = fields["INVOICE"]
 
     # Flatten category fields into root fields so data[field] is directly available to UI
-    for cat_dict in [clean_subject, contract_section, neighborhood_section, site_section, improvements_section, reconciliation_section, income_approach_section, cost_approach_section, pud_info_section, project_info_section, project_analysis_section, prior_sale_history_section, market_conditions_section, condo_coop_section, condo_foreclosure_section, certification_section, uspap_identification_section, info_of_sales_section]:
+    for cat_dict in [clean_subject, contract_section, neighborhood_section, site_section, improvements_section, reconciliation_section, income_approach_section, cost_approach_section, pud_info_section, project_info_section, project_analysis_section, unit_descriptions_section, prior_sale_history_section, market_conditions_section, condo_coop_section, condo_foreclosure_section, certification_section, uspap_identification_section, info_of_sales_section]:
         for k, v in cat_dict.items():
             if k not in fields:
                 fields[k] = v
@@ -7123,6 +7552,15 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "NEIGHBORHOOD": neighborhood_section,
         "Present Land Use for other": other_land_use_desc,
         "Site": site_section,
+        "SITE": site_section,
+        "Project Site": site_section,
+        "PROJECT_SITE": site_section,
+        "Topography": site_topography,
+        "Size": site_size,
+        "Density": site_density,
+        "TOPOGRAPHY": site_topography,
+        "SIZE": site_size,
+        "DENSITY": site_density,
         "Improvements": improvements_section,
         "Sales Grid": clean_sales_grid,
         "Reconciliation": reconciliation_section,
@@ -7139,6 +7577,9 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         clean_data["Project Information"] = project_info_section
     if project_analysis_section and any(project_analysis_section.values()):
         clean_data["Project Analysis"] = project_analysis_section
+    if unit_descriptions_section and any(unit_descriptions_section.values()):
+        clean_data["Unit Descriptions"] = unit_descriptions_section
+        clean_data["UNIT_DESCRIPTIONS"] = unit_descriptions_section
     if prior_sale_history_section and any(prior_sale_history_section.values()):
         clean_data["Prior Sale History"] = prior_sale_history_section
         clean_data["PRIOR_SALE_HISTORY"] = prior_sale_history_section

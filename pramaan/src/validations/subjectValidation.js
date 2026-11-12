@@ -180,6 +180,112 @@ export const checkOfferedForSale = (field, text, data) => {
     return { isMatch: true };
 };
 
+export const checkReportDataSourceOfferingPriceDate = (field, text, data) => {
+    const cleanField = String(field || '').trim().toLowerCase().replace(/\.+$/, '');
+    if (cleanField !== 'report data source(s) used, offering price(s), and date(s)') {
+        return null;
+    }
+
+    const val = String(text || '').trim();
+    if (!val) {
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: "'Report data source(s) used, offering price(s), and date(s)' must not be blank."
+        };
+    }
+
+    const upperVal = val.toUpperCase();
+
+    // Check if property is NOT currently listed for sale
+    const isNotListed = (
+        upperVal.includes('NOT CURRENTLY LISTED FOR SALE') ||
+        upperVal.includes('NOT CURRENTLY LISTED') ||
+        upperVal.includes('NOT BEEN LISTED FOR SALE') ||
+        upperVal.includes('NOT LISTED FOR SALE') ||
+        upperVal.includes('NOT BEEN LISTED') ||
+        upperVal.includes('NOT OFFERED FOR SALE') ||
+        upperVal.includes('NOT LISTED') ||
+        upperVal.includes('NO LISTINGS') ||
+        upperVal.includes('NO CURRENT LISTING') ||
+        upperVal.includes('NO LISTING HISTORY') ||
+        upperVal.includes('NEVER LISTED')
+    );
+
+    if (isNotListed) {
+        return {
+            isMatch: true,
+            message: "Validation successful: Subject is not currently listed for sale."
+        };
+    }
+
+    // Check if property is LISTED / OFFERED for sale
+    const isListed = (
+        upperVal.includes('LISTED FOR SALE') ||
+        upperVal.includes('OFFERED FOR SALE') ||
+        upperVal.includes('FOR SALE') ||
+        upperVal.includes('WAS LISTED') ||
+        upperVal.includes('WAS OFFERED') ||
+        String(data?.['Offered for Sale in Last 12 Months'] || '').trim().toLowerCase() === 'yes'
+    );
+
+    if (isListed) {
+        // 1. sale on date: offering date e.g. "offered for sale on 10/05/2026" or "sale on 10/05/2026"
+        const hasSaleOnDate = /(?:offered\s+for\s+sale\s+on|listed\s+(?:for\s+sale\s+)?on|sale\s+on|offered\s+on)\s*[:-]?\s*(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})/i.test(val);
+
+        // 2. for: offering price e.g. "for $1,189,900"
+        const hasForPrice = /\bfor\s+\$[\d,]+(?:\.\d+)?/i.test(val) || /\bfor\s+[\d,]{4,}/i.test(val);
+
+        // 3. law / CLAW / MLS data source
+        const hasLawOrMls = (
+            /\b(?:claw|law|mls)\b/i.test(val) ||
+            /#\s*[A-Z0-9]+/i.test(val) ||
+            upperVal.includes('CLAW') ||
+            upperVal.includes('LAW') ||
+            upperVal.includes('MLS') ||
+            upperVal.includes('DATA SOURCE')
+        );
+
+        // 4. list price
+        const hasListPrice = (
+            /\b(?:list\s+price|listing\s+price|offering\s+price)\b/i.test(val) ||
+            upperVal.includes('LIST PRICE') ||
+            upperVal.includes('LISTING PRICE')
+        );
+
+        // 5. mls contract date
+        const hasContractDate = (
+            /(?:mls\s+)?contract\s+date/i.test(val) ||
+            (/\bcontract\b/i.test(val) && /\bdate\b/i.test(val) && /\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}/.test(val))
+        );
+
+        const missing = [];
+        if (!hasSaleOnDate) missing.push("sale on date");
+        if (!hasForPrice) missing.push("for [price]");
+        if (!hasLawOrMls) missing.push("CLAW/MLS data source");
+        if (!hasListPrice) missing.push("list price");
+        if (!hasContractDate) missing.push("MLS contract date");
+
+        if (missing.length > 0) {
+            return {
+                isError: true,
+                message: `Listed for sale missing required items: ${missing.join(', ')}.`
+            };
+        }
+
+        return {
+            isMatch: true,
+            message: "Validation successful: All listing details verified."
+        };
+    }
+
+    // Neither listed nor not listed
+    return {
+        isError: true,
+        message: "Must state whether the property is 'LISTED FOR SALE' (with sale on date, for [price], CLAW/MLS, list price, and MLS contract date) or 'NOT CURRENTLY LISTED FOR SALE'."
+    };
+};
+
 export const checkPropertyRightsInconsistency = (field, text, data) => {
     if (field !== 'Property Rights Appraised' || !data.Subject) return null;
     const subjectPropertyRights = String(text || '').trim();

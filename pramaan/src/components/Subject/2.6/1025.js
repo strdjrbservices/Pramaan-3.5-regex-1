@@ -140,7 +140,18 @@ const Form1025 = ({
 
     const subjectRentalObj = getSubjectRentalData();
 
-
+    const effectiveSubjectFields = React.useMemo(() => {
+        let f = [...(subjectFields || [])];
+        if (!f.includes('Unit #')) {
+            const idx = f.indexOf('Property Address');
+            if (idx !== -1) {
+                f.splice(idx + 1, 0, 'Unit #');
+            } else {
+                f.push('Unit #');
+            }
+        }
+        return f;
+    }, [subjectFields]);
 
     return (
 
@@ -164,7 +175,7 @@ const Form1025 = ({
 
         />
 
-        <SubjectInfoCard id="subject-info" title="Subject Information" fields={subjectFields} data={data} extractionAttempted={extractionAttempted} onDataChange={handleDataChange} isEditable={true} editingField={editingField} setEditingField={setEditingField} highlightedFields={highlightedSubjectFields} allData={allData} comparisonData={comparisonData} getComparisonStyle={getComparisonStyle} loading={loading} loadingSection={loadingSection} manualValidations={manualValidations} handleManualValidation={handleManualValidation} onRevisionButtonClick={onSubjectRevisionButtonClick} revisionHandlers={revisionHandlers} />
+        <SubjectInfoCard id="subject-info" title="Subject Information" fields={effectiveSubjectFields} data={data} extractionAttempted={extractionAttempted} onDataChange={handleDataChange} isEditable={true} editingField={editingField} setEditingField={setEditingField} highlightedFields={highlightedSubjectFields} allData={allData} comparisonData={comparisonData} getComparisonStyle={getComparisonStyle} loading={loading} loadingSection={loadingSection} manualValidations={manualValidations} handleManualValidation={handleManualValidation} onRevisionButtonClick={onSubjectRevisionButtonClick} revisionHandlers={revisionHandlers} />
 
 
 

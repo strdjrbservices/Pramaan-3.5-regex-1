@@ -304,6 +304,12 @@ const cleanPinAddress = (pin, subjectPin = null, compIndex = null) => {
         if (cand.split(/\s+/).length >= 2) street = cand;
       }
     }
+    if (!street && pin.grid_data?.street) {
+      street = String(pin.grid_data.street).trim();
+    }
+    if (!street && pin.grid_data?.address) {
+      street = String(pin.grid_data.address).trim();
+    }
     if (!street && pin.photo_data?.address) {
       street = pin.photo_data.address.trim();
     }
@@ -327,7 +333,11 @@ const cleanPinAddress = (pin, subjectPin = null, compIndex = null) => {
       city = pin.photo_data.city;
       if (!state) state = pin.photo_data.state || '';
       if (!zipcode) zipcode = pin.photo_data.zipcode || '';
-    } else if (subjectPin?.city && !isRental) {
+    } else if (pin.grid_data?.city) {
+      city = pin.grid_data.city;
+      if (!state) state = pin.grid_data.state || '';
+      if (!zipcode) zipcode = pin.grid_data.zipcode || '';
+    } else if (subjectPin?.city) {
       city = subjectPin.city;
       if (!state) state = subjectPin.state || '';
       if (!zipcode) zipcode = subjectPin.zipcode || '';
@@ -1039,8 +1049,11 @@ const getGridComparableData = (compIndex, compLabel, compStreet, data, allData, 
                 root.clean_data?.['Sales Grid'] || root.fields?.['Sales Grid'] ||
                 root.clean_data?.SALES_GRID || root.fields?.SALES_GRID || {};
   const rGrid = root.RENTAL_GRID || root['Rental Grid'] || root.RENTALS || root['Rentals'] ||
+                root['Comparable Rent Schedule'] || root['RENT_SCHEDULE_GRID'] ||
                 root['Comparable Rental Data'] || root['Single Family Rent Schedule'] ||
+                root.clean_data?.['Comparable Rent Schedule'] || root.clean_data?.['RENT_SCHEDULE_GRID'] ||
                 root.clean_data?.['Comparable Rental Data'] || root.clean_data?.['Single Family Rent Schedule'] ||
+                root.fields?.['Comparable Rent Schedule'] || root.fields?.['RENT_SCHEDULE_GRID'] ||
                 root.fields?.['Comparable Rental Data'] || root.fields?.['Single Family Rent Schedule'] || {};
 
   const explicitNum = extractCompNumberFromLabel(compLabel);
@@ -1148,7 +1161,7 @@ const getGridComparableData = (compIndex, compLabel, compStreet, data, allData, 
   const allRentalKeys = new Set([...Object.keys(root || {}), ...Object.keys(rGrid || {})]);
   const rentalCompNums = new Set();
   allRentalKeys.forEach(k => {
-    const m = k.match(/(?:RENTAL(?:_COMPARABLE)?|COMPARABLE\s+NO\.|COMPARABLE\s+RENTAL)[_\s]+(?:NO\s*)?#?([0-9]+)/i);
+    const m = k.match(/(?:RENTAL(?:_COMPARABLE)?|COMPARABLE\s+NO\.|COMPARABLE\s+RENTAL|COMPARABLE\s+RENT)[_\s]+(?:NO\s*)?#?([0-9]+)/i);
     if (m) rentalCompNums.add(parseInt(m[1], 10));
   });
   if (scanResult?.reference_records?.rental_comps) {
@@ -1167,6 +1180,8 @@ const getGridComparableData = (compIndex, compLabel, compStreet, data, allData, 
       `Rental #${i}`,
       `RENTAL #${i}`,
       `RENTAL_${i}`,
+      `Comparable Rent #${i}`,
+      `Comparable Rent Schedule Comp #${i}`,
       `COMPARABLE NO. ${i}`,
       `Comparable Rental #${i}`,
       `COMPARABLE RENTAL #${i}`,
@@ -1365,8 +1380,11 @@ const buildProcessedExhibitsRows = (rawSourceList, mapItem, scanResult, data, al
                 root.clean_data?.['Sales Grid'] || root.fields?.['Sales Grid'] ||
                 root.clean_data?.SALES_GRID || root.fields?.SALES_GRID || {};
   const rGrid = root.RENTAL_GRID || root['Rental Grid'] || root.RENTALS || root['Rentals'] ||
+                root['Comparable Rent Schedule'] || root['RENT_SCHEDULE_GRID'] ||
                 root['Comparable Rental Data'] || root['Single Family Rent Schedule'] ||
+                root.clean_data?.['Comparable Rent Schedule'] || root.clean_data?.['RENT_SCHEDULE_GRID'] ||
                 root.clean_data?.['Comparable Rental Data'] || root.clean_data?.['Single Family Rent Schedule'] ||
+                root.fields?.['Comparable Rent Schedule'] || root.fields?.['RENT_SCHEDULE_GRID'] ||
                 root.fields?.['Comparable Rental Data'] || root.fields?.['Single Family Rent Schedule'] || {};
 
   // Dynamically count max sales comps and rental comps available in grid
@@ -1384,7 +1402,7 @@ const buildProcessedExhibitsRows = (rawSourceList, mapItem, scanResult, data, al
   let maxRentalComps = 0;
   const allRentalKeys = [...Object.keys(root || {}), ...Object.keys(rGrid || {})];
   allRentalKeys.forEach(k => {
-    const m = k.match(/RENTAL(?:_COMPARABLE)?[_\s]+#?([0-9]+)/i);
+    const m = k.match(/(?:RENTAL(?:_COMPARABLE)?|COMPARABLE\s+NO\.|COMPARABLE\s+RENTAL|COMPARABLE\s+RENT)[_\s]+(?:NO\s*)?#?([0-9]+)/i);
     if (m) {
       const n = parseInt(m[1], 10);
       if (n > maxRentalComps) maxRentalComps = n;
@@ -1610,6 +1628,37 @@ const buildProcessedExhibitsRows = (rawSourceList, mapItem, scanResult, data, al
       }
     }
 
+    // For rental comps, ensure all rentals verified in the Rental Grid/Schedule are included
+    if (prefix === 'Rental' && maxAllowedComps < Infinity) {
+      for (let rNum = 1; rNum <= maxAllowedComps; rNum++) {
+        if (!usedNums.has(rNum)) {
+          const gridComp = getGridComparableData(rNum - 1, `Rental #${rNum}`, '', data, allData, scanResult);
+          if (gridComp && gridComp.address && gridComp.address !== '—') {
+            const photoComp = getComparablePhotoData({ gridComp, isRental: true }, rNum - 1, scanResult, allData, data);
+            deduped.push({
+              pinInfo: {
+                street: gridComp.address,
+                address: gridComp.address,
+                proximity: gridComp.proximity,
+                price: gridComp.sale_price,
+                label: `Rental #${rNum}`,
+                item_type: 'Rental',
+                isSynthesized: true
+              },
+              photoComp,
+              gridComp,
+              isRental: true,
+              num: rNum,
+              milesVal: 999.0,
+              displayStreet: gridComp.address,
+              badgeLabel: `Rental #${rNum}`
+            });
+            usedNums.add(rNum);
+          }
+        }
+      }
+    }
+
     deduped.sort((a, b) => {
       const aN = a.num !== null ? a.num : 999;
       const bN = b.num !== null ? b.num : 999;
@@ -1635,6 +1684,254 @@ const buildProcessedExhibitsRows = (rawSourceList, mapItem, scanResult, data, al
     compsCount: finalComps.length,
     rentalsCount: finalRentals.length,
     listingsCount: finalListings.length
+  };
+};
+
+const synthesizeUad36Exhibits = (data, allData) => {
+  const root = { ...(allData || {}), ...(data || {}) };
+  const photos = root.EXTRACTED_PHOTOS || root.extracted_photos || [];
+  if (!Array.isArray(photos) || photos.length === 0) return null;
+
+  const hasExhibits = photos.some(p => 
+    p.category === 'Maps & Aerials' || 
+    p.category === 'Building Sketch' || 
+    p.category === 'Comparable property' ||
+    /map|sketch|aerial|comparable/i.test(p.caption || p.label || '')
+  );
+  if (!hasExhibits) return null;
+
+  const subjData = root.Subject || root.SUBJECT || root.clean_data?.Subject || {};
+  const subjStreet = subjData['Street Address'] || subjData['Physical Address'] || subjData['Property Address'] || subjData['Address'] || '';
+  const subjCity = subjData['City'] || '';
+  const subjState = subjData['State'] || '';
+  const subjZip = subjData['Zip Code'] || subjData['Zip'] || '';
+  const subjFull = subjData['Physical Address'] || subjData['Property Address'] || subjData['Full Address'] || `${subjStreet}, ${subjCity}, ${subjState} ${subjZip}`.trim().replace(/^,\s*|,\s*$/g, '');
+
+  const sGrid = root.SALES_GRID || root['Sales Grid'] || root.sales_grid || root.clean_data?.['Sales Grid'] || {};
+  const compsList = [];
+  const compKeys = Object.keys(sGrid).filter(k => k !== 'Subject' && typeof sGrid[k] === 'object' && /comp|comparable/i.test(k));
+  const seenCompNums = new Set();
+  compKeys.forEach(ck => {
+    const m = ck.match(/(\d+)/);
+    const cnum = m ? parseInt(m[1], 10) : compsList.length + 1;
+    if (seenCompNums.has(cnum)) return;
+    seenCompNums.add(cnum);
+    const cd = sGrid[ck] || {};
+    const cAddr = cd['Property Address'] || cd['Address'] || cd['Comparable Property Address'] || '';
+    const mSt = cAddr.match(/^([^,]+)/);
+    const cSt = mSt ? mSt[1].trim() : cAddr;
+    compsList.push({
+      comp_num: cnum,
+      street: cSt,
+      city: cd['City'] || subjCity,
+      state: cd['State'] || subjState,
+      zipcode: cd['Zip Code'] || cd['PostalCode'] || subjZip,
+      address: cAddr || `${cSt}, ${subjCity}, ${subjState} ${subjZip}`.trim(),
+      proximity: cd['Proximity to Subject'] || cd['Proximity'] || '',
+      price: cd['Sale Price'] || '',
+      grid_data: cd
+    });
+  });
+  compsList.sort((a, b) => a.comp_num - b.comp_num);
+
+  // Maps
+  const locPhoto = photos.find(p => p.category === 'Maps & Aerials' && (/sales|location|vicinity/i.test(p.label || '') || /sales|location/i.test(p.caption || '') || p.cat_type === 'SalesComparableMap')) ||
+                   photos.find(p => p.category === 'Maps & Aerials' && !/aerial|ariel|satellite|flood|plat/i.test((p.label || '') + ' ' + (p.caption || '')));
+  const aerialPhoto = photos.find(p => p.category === 'Maps & Aerials' && (/aerial|ariel|satellite/i.test((p.label || '') + ' ' + (p.caption || '')) || p.cat_type === 'AerialMap'));
+  const sketchPhoto = photos.find(p => p.category === 'Building Sketch' || /sketch|floor\s*plan/i.test((p.label || '') + ' ' + (p.caption || '')) || p.cat_type === 'SubjectPropertyImprovementSketch');
+  const otherMapPhotos = photos.filter(p => p.category === 'Maps & Aerials' && p !== locPhoto && p !== aerialPhoto);
+
+  const locPage = locPhoto?.page || 1;
+  const subPin = {
+    item_type: 'Subject',
+    label: 'Subject',
+    street: subjStreet,
+    city: subjCity,
+    state: subjState,
+    zipcode: subjZip,
+    address: subjFull,
+    proximity: 'Subject',
+    map_type: 'Location Map',
+    page_number: locPage,
+    status: 'Verified Subject Property'
+  };
+
+  const compPins = compsList.map(sc => ({
+    item_type: 'Comparable',
+    label: `Comparable #${sc.comp_num}`,
+    street: sc.street,
+    city: sc.city,
+    state: sc.state,
+    zipcode: sc.zipcode,
+    address: sc.address,
+    proximity: sc.proximity,
+    price: sc.price,
+    map_type: 'Location Map',
+    page_number: locPage,
+    grid_data: sc.grid_data,
+    status: 'Verified from Sales Grid'
+  }));
+
+  const mapsData = [];
+  if (locPhoto || compPins.length > 0) {
+    mapsData.push({
+      page_number: locPage,
+      map_type: 'Location Map',
+      subject: subPin,
+      comparables: compPins,
+      rentals: [],
+      comparables_only: compPins,
+      listings: [],
+      pins: [subPin, ...compPins],
+      has_rentals: false,
+      has_comparables: compPins.length > 0,
+      image_preview: locPhoto?.base64_preview || locPhoto?.image_base64 || ''
+    });
+  }
+
+  if (aerialPhoto) {
+    mapsData.push({
+      page_number: aerialPhoto.page || 2,
+      map_type: 'Aerial Map',
+      subject: { ...subPin, map_type: 'Aerial Map', page_number: aerialPhoto.page || 2 },
+      comparables: [],
+      rentals: [],
+      comparables_only: [],
+      listings: [],
+      pins: [{ ...subPin, map_type: 'Aerial Map', page_number: aerialPhoto.page || 2 }],
+      has_rentals: false,
+      has_comparables: false,
+      image_preview: aerialPhoto.base64_preview || aerialPhoto.image_base64 || ''
+    });
+  }
+
+  otherMapPhotos.forEach((omp, omIdx) => {
+    const omLbl = omp.label || omp.caption || 'Other Map';
+    const omPage = omp.page || (3 + omIdx);
+    mapsData.push({
+      page_number: omPage,
+      map_type: omLbl,
+      subject: { ...subPin, map_type: omLbl, page_number: omPage },
+      comparables: [],
+      rentals: [],
+      comparables_only: [],
+      listings: [],
+      pins: [{ ...subPin, map_type: omLbl, page_number: omPage }],
+      has_rentals: false,
+      has_comparables: false,
+      image_preview: omp.base64_preview || omp.image_base64 || ''
+    });
+  });
+
+  const sketchesData = [];
+  if (sketchPhoto || root.Improvements || root.IMPROVEMENTS) {
+    const imp = root.Improvements || root.IMPROVEMENTS || root.clean_data?.Improvements || {};
+    const glaVal = imp['Above Grade Finished Area'] || imp['GLA / GBA'] || imp['Square Feet of Gross Living Area Above Grade'] || '';
+    const areas = [];
+    for (let rIdx = 1; rIdx <= 8; rIdx++) {
+      const lvl = imp[`Level in Unit Row ${rIdx}`];
+      if (!lvl) break;
+      const grd = imp[`Grade Level Detail Row ${rIdx}`] || '';
+      const fin = imp[`Finish Row ${rIdx}`] || 'Finished';
+      const aStr = imp[`Area Row ${rIdx}`] || '';
+      const mSf = aStr.match(/([\d,]+)/);
+      const sfNum = mSf ? parseInt(mSf[1].replace(/,/g, ''), 10) : 0;
+      areas.push({
+        label: `${lvl} (${grd}) - ${fin}`.replace(/^ -| -$/g, ''),
+        name: lvl,
+        sqft: sfNum,
+        factor: '1.0'
+      });
+    }
+
+    const allRoomLabels = [];
+    const roomsByCat = { bedrooms: [], bathrooms: [], living: [], kitchen_dining: [] };
+    const roomsByLvl = {};
+    for (let rIdx = 1; rIdx <= 8; rIdx++) {
+      const lvl = imp[`Level in Unit Row ${rIdx}`];
+      if (!lvl) break;
+      const rSum = imp[`Room Summary Row ${rIdx}`] || '';
+      const lvlRooms = [];
+      if (rSum) {
+        rSum.split(',').forEach(pt => {
+          const ptTrim = pt.trim();
+          if (!ptTrim) return;
+          const mCnt = ptTrim.match(/(\d+)\s*-\s*(.*)/);
+          const cnt = mCnt ? parseInt(mCnt[1], 10) : 1;
+          const rName = mCnt ? mCnt[2].trim() : ptTrim;
+          for (let ci = 0; ci < cnt; ci++) {
+            const lItem = cnt > 1 ? `${rName} ${ci + 1}` : rName;
+            lvlRooms.push(lItem);
+            allRoomLabels.push(lItem);
+            const rLow = rName.toLowerCase();
+            if (rLow.includes('bed')) roomsByCat.bedrooms.push(lItem);
+            else if (rLow.includes('bath')) roomsByCat.bathrooms.push(lItem);
+            else if (/living|family|great|rec/i.test(rLow)) roomsByCat.living.push(lItem);
+            else if (/kitchen|dining|nook/i.test(rLow)) roomsByCat.kitchen_dining.push(lItem);
+          }
+        });
+      }
+      roomsByLvl[lvl] = lvlRooms;
+    }
+
+    const bedCount = roomsByCat.bedrooms.length || parseInt(imp['Total Bedrooms'] || imp['Bedrooms'] || '0', 10) || 0;
+    const livingCount = roomsByCat.living.length || 1;
+    const hasKitchen = roomsByCat.kitchen_dining.length > 0 || allRoomLabels.some(l => /kitchen/i.test(l));
+    const hasDining = allRoomLabels.some(l => /dining/i.test(l));
+
+    sketchesData.push({
+      sketch_type: sketchPhoto?.label || 'Building Sketch',
+      page_number: sketchPhoto?.page || 1,
+      gla: glaVal,
+      areas: areas,
+      room_labels: allRoomLabels,
+      room_summary: {
+        bedroom_count: bedCount,
+        living_rooms_count: livingCount,
+        has_kitchen: hasKitchen,
+        has_dining: hasDining,
+        total_rooms: allRoomLabels.length || (bedCount + livingCount + (hasKitchen ? 1 : 0))
+      },
+      rooms_by_category: roomsByCat,
+      rooms_by_level: roomsByLvl,
+      dimensions: [],
+      image_preview: sketchPhoto?.base64_preview || sketchPhoto?.image_base64 || ''
+    });
+  }
+
+  // Comparable photos
+  const compPhotos = [];
+  const cPhotosRaw = photos.filter(p => p.category === 'Comparable property' || p.category === 'Comparable' || p.comp_num);
+  cPhotosRaw.forEach(cp => {
+    const cLbl = cp.label || cp.caption || '';
+    const mC = cLbl.match(/#?(\d+)/);
+    const cNum = mC ? parseInt(mC[1], 10) : (cp.comp_num ? parseInt(cp.comp_num, 10) : compPhotos.length + 1);
+    const matchedG = compsList.find(sc => sc.comp_num === cNum);
+    compPhotos.push({
+      comp_num: cNum,
+      label: `Comparable Sale #${cNum}`,
+      street: cp.address || matchedG?.street || '',
+      address: cp.address || matchedG?.address || '',
+      proximity: matchedG?.proximity || cp.proximity || '',
+      sale_price: matchedG?.price || cp.sale_price || '',
+      thumbnail: cp.base64_preview || cp.image_base64 || '',
+      base64_preview: cp.base64_preview || cp.image_base64 || '',
+      page: cp.page || 1
+    });
+  });
+
+  const allPins = [];
+  mapsData.forEach(m => {
+    (m.pins || []).forEach(p => allPins.push(p));
+  });
+
+  return {
+    status: 'success',
+    file_name: root.FILE_NAME || root.FILE_PATH || 'appraisal_report.xml',
+    maps: mapsData,
+    sketches: sketchesData,
+    comparable_photos: compPhotos,
+    all_pins: allPins
   };
 };
 
@@ -1671,6 +1968,19 @@ export const MapAndSketchExhibitsSection = ({
       setScanResult(data.MAP_EXHIBITS_ANALYSIS);
     } else if (allData?.MAP_EXHIBITS_ANALYSIS) {
       setScanResult(allData.MAP_EXHIBITS_ANALYSIS);
+    } else if (data?.map_exhibits_analysis) {
+      setScanResult(data.map_exhibits_analysis);
+    } else if (allData?.map_exhibits_analysis) {
+      setScanResult(allData.map_exhibits_analysis);
+    } else if (allData?.fields?.MAP_EXHIBITS_ANALYSIS) {
+      setScanResult(allData.fields.MAP_EXHIBITS_ANALYSIS);
+    } else if (allData?.clean_data?.MAP_EXHIBITS_ANALYSIS) {
+      setScanResult(allData.clean_data.MAP_EXHIBITS_ANALYSIS);
+    } else {
+      const syn = synthesizeUad36Exhibits(data, allData);
+      if (syn && (syn.maps.length > 0 || syn.sketches.length > 0)) {
+        setScanResult(syn);
+      }
     }
   }, [data, allData]);
 
@@ -1856,6 +2166,15 @@ export const MapAndSketchExhibitsSection = ({
       setLoading(false);
       setExtractingStage(null);
       setExtractProgressText('');
+      setScanResult(prev => {
+        if (!prev || ((prev.maps || []).length === 0 && (prev.sketches || []).length === 0)) {
+          const fallbackSyn = synthesizeUad36Exhibits(data, allData);
+          if (fallbackSyn && (fallbackSyn.maps.length > 0 || fallbackSyn.sketches.length > 0)) {
+            return fallbackSyn;
+          }
+        }
+        return prev;
+      });
     }
   }, [selectedFile, allData, data]);
 

@@ -211,7 +211,8 @@ class MapExtractor:
                 root = tree.getroot()
                 doc_elem = None
                 for elem in root.iter():
-                    if elem.tag.endswith("DOCUMENT") or elem.tag.endswith("EMBEDDED_FILE"):
+                    tag_u = elem.tag.upper()
+                    if tag_u.endswith("DOCUMENT") or tag_u.endswith("EMBEDDED_FILE") or tag_u.endswith("OBJECTDATA"):
                         if elem.text and len(elem.text.strip()) > 1000:
                             doc_elem = elem
                             break
@@ -220,6 +221,16 @@ class MapExtractor:
                     return fitz.open(stream=pdf_bytes, filetype="pdf"), True
             except Exception as e:
                 print(f"Warning: Could not parse XML base64 document from {file_path}: {e}")
+
+            # Check for companion PDF in same directory
+            xml_dir = os.path.dirname(os.path.abspath(file_path))
+            xml_stem = os.path.splitext(os.path.basename(file_path))[0]
+            cand_pdf = os.path.join(xml_dir, f"{xml_stem}.pdf")
+            if os.path.exists(cand_pdf):
+                try:
+                    return fitz.open(cand_pdf), True
+                except Exception:
+                    pass
 
         # If it's a standalone image file (PNG, JPG, JPEG, WEBP, etc.), wrap in a 1-page PDF document
         ext = os.path.splitext(file_path)[1].lower()
@@ -1891,22 +1902,35 @@ class MapExtractor:
                             "proximity": v.get("Proximity to Subject") or "",
                             "sale_price": v.get("Sale Price") or ""
                         })
-                rgrid = clean.get("Comparable Rental Data", {}) or clean.get("Single Family Rent Schedule", {})
+                rgrid = (
+                    clean.get("Comparable Rent Schedule") or
+                    clean.get("RENT_SCHEDULE_GRID") or
+                    clean.get("Rental Grid") or
+                    clean.get("RENTAL_GRID") or
+                    clean.get("Comparable Rental Data") or
+                    clean.get("Single Family Rent Schedule") or
+                    clean.get("Subject Rent Schedule") or
+                    {}
+                )
                 for k, v in rgrid.items():
-                    if isinstance(v, dict) and any(x in k.upper() for x in ["RENTAL", "COMPARABLE NO"]):
+                    if isinstance(v, dict) and any(x in k.upper() for x in ["RENTAL", "COMPARABLE NO", "COMPARABLE RENT", "COMP"]):
                         m = re.search(r'\d+', k)
                         cnum = int(m.group(0)) if m else len(rental_comps) + 1
                         if not any(r["comp_num"] == cnum for r in rental_comps):
-                            addr = v.get("Address") or ""
+                            addr = v.get("Address") or v.get("Property Address") or v.get("Street Address") or ""
                             m_st = re.match(r'^([^,]+)', addr)
-                            st = m_st.group(1).strip() if m_st else addr
+                            st = v.get("Street Address") or (m_st.group(1).strip() if m_st else addr)
                             rent_val = v.get("Adjusted Monthly Rent") if (not v.get("Monthly Rental") or str(v.get("Monthly Rental")).strip() in ("0", "0.00", "$0", "$ 0")) else v.get("Monthly Rental")
                             rental_comps.append({
                                 "comp_num": cnum,
                                 "street": st,
                                 "address": addr,
+                                "city": v.get("City", ""),
+                                "state": v.get("State", ""),
+                                "zipcode": v.get("Zip Code") or v.get("PostalCode", ""),
                                 "proximity": v.get("Proximity to Subject") or v.get("Proximity") or "",
-                                "monthly_rent": rent_val or ""
+                                "monthly_rent": rent_val or "",
+                                "grid_data": v
                             })
             except Exception as e:
                 print(f"Notice: XML reference extraction: {e}")
@@ -2112,6 +2136,71 @@ class MapExtractor:
             "rental_comps": rental_comps
         }
 
+    def is_uad36_xml(self, file_path: str) -> bool:
+        if not file_path or not file_path.lower().endswith(".xml") or not os.path.exists(file_path):
+            return False
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                head = f.read(4096)
+            return (
+                'MISMOReferenceModelIdentifier="3.6' in head
+                or "<AboutVersionIdentifier>1</AboutVersionIdentifier>" in head
+                or "URAR Delivery Specification" in head
+                or "Appraisal Version #1" in head
+                or "Appraisal Version 1" in head
+                or ("<DocumentType>AppraisalReport</DocumentType>" in head and "FNM_FRE" in head)
+                or "<DEAL_SETS" in head
+            )
+        except Exception:
+            return False
+
+    def extract_uad36_exhibits(self, file_path: str, exhibit_type: Optional[str] = None) -> Dict[str, Any]:
+        """Dispatches exhibit extraction for UAD 3.6 / Appraisal Version #1 files."""
+        try:
+            try:
+                from api.uad36_extractor import extract_fields_from_uad36_xml, build_map_exhibits_analysis_from_uad36
+            except ImportError:
+                try:
+                    from appraisal_review.api.uad36_extractor import extract_fields_from_uad36_xml, build_map_exhibits_analysis_from_uad36
+                except ImportError:
+                    curr_dir = os.path.dirname(os.path.abspath(__file__))
+                    for p in [os.path.join(curr_dir, "appraisal_review", "api"), os.path.join(curr_dir, "api"), curr_dir]:
+                        if p not in sys.path:
+                            sys.path.insert(0, p)
+                    from uad36_extractor import extract_fields_from_uad36_xml, build_map_exhibits_analysis_from_uad36
+
+            res = extract_fields_from_uad36_xml(file_path, extract_images=True)
+            ex_type = (exhibit_type or "").lower().strip()
+            if ex_type and ex_type != "all":
+                return build_map_exhibits_analysis_from_uad36(
+                    res.get("clean_data", {}),
+                    res.get("fields", {}),
+                    res.get("extracted_photos", []),
+                    file_path=file_path,
+                    exhibit_type=exhibit_type
+                )
+            mex = res.get("MAP_EXHIBITS_ANALYSIS") or build_map_exhibits_analysis_from_uad36(
+                res.get("clean_data", {}),
+                res.get("fields", {}),
+                res.get("extracted_photos", []),
+                file_path=file_path,
+                exhibit_type=exhibit_type
+            )
+            return mex
+        except Exception as e:
+            print(f"Notice: UAD 3.6 exhibit extraction error: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "status": "error",
+                "message": str(e),
+                "file_name": os.path.basename(file_path),
+                "maps": [],
+                "sketches": [],
+                "comparable_photos": [],
+                "all_pins": []
+            }
+
     def extract_all_exhibits_data(self, file_path: str, exhibit_type: Optional[str] = None) -> Dict[str, Any]:
         """
         Extracts structured data from visual exhibits:
@@ -2125,6 +2214,9 @@ class MapExtractor:
         Supports selective single-exhibit extraction via `exhibit_type`:
         'location_map', 'aerial_map', 'building_sketch', 'rental_map', or None/'all'.
         """
+        if self.is_uad36_xml(file_path):
+            return self.extract_uad36_exhibits(file_path, exhibit_type=exhibit_type)
+
         doc, is_xml_embedded = self.get_pdf_doc(file_path)
         ex_type = (exhibit_type or "").lower().strip()
 
@@ -2323,6 +2415,40 @@ class MapExtractor:
                         comps.append(synth_pin)
                         pins.append(synth_pin)
                         known_comp_nums.add(cnum)
+
+            # Multi-source backfill for Rental Comparables on dedicated Rental Maps and Location Maps
+            if (is_rent or is_loc) and refs.get("rental_comps"):
+                known_rental_nums = set()
+                for c in pins:
+                    if c.get("item_type") == "Rental":
+                        m = re.search(r'#?(\d+)', c.get("label", ""))
+                        if m:
+                            known_rental_nums.add(int(m.group(1)))
+
+                for rc in refs.get("rental_comps", []):
+                    rnum = rc.get("comp_num")
+                    if rnum and rnum not in known_rental_nums:
+                        matched_photo = next((p for p in comp_photos if p.get("comp_num") == rnum and (p.get("is_rental") or "rental" in (p.get("title", "") + p.get("caption", "")).lower())), None)
+                        synth_r_pin = {
+                            "item_type": "Rental",
+                            "label": f"Rental #{rnum}",
+                            "street": rc.get("street") or (matched_photo.get("address") if matched_photo else "") or "",
+                            "address": rc.get("address") or (matched_photo.get("address") if matched_photo else "") or "",
+                            "city": rc.get("city", ""),
+                            "state": rc.get("state", ""),
+                            "zipcode": rc.get("zipcode", ""),
+                            "proximity": rc.get("proximity") or (matched_photo.get("proximity") if matched_photo else "") or "",
+                            "price": rc.get("monthly_rent") or (matched_photo.get("monthly_rent") if matched_photo else "") or "",
+                            "map_type": mp["map_type"],
+                            "page_number": mp["page_number"],
+                            "source_file": os.path.basename(file_path),
+                            "grid_data": rc,
+                            "photo_data": matched_photo,
+                            "status": "Verified from Rental Schedule"
+                        }
+                        comps.append(synth_r_pin)
+                        pins.append(synth_r_pin)
+                        known_rental_nums.add(rnum)
 
             comps_only = [p for p in pins if p.get("item_type") == "Comparable"]
             rentals_only = [p for p in pins if p.get("item_type") == "Rental"]

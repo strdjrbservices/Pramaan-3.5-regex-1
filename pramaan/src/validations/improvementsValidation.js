@@ -1,3 +1,5 @@
+import { checkProjectAndPropertyCondition } from './form1073Validation';
+
 export const checkUnits = (field, text) => {
     if (field !== 'Units') return null;
     const value = String(text || '').trim();
@@ -960,20 +962,8 @@ export const checkAdditionalFeatures = (field, text) => {
     return { isMatch: true };
 };
 
-export const checkPropertyConditionDescription = (field, text) => {
-    if (field !== 'Describe the condition of the property') return null;
-    const value = String(text || '').trim().toUpperCase();
-    if (!value) {
-        return { isError: true, message: "'Describe the condition of the property' cannot be blank." };
-    }
-    if (value.includes('C5') || value.includes('C6')) {
-        return { isError: true, message: `CRITICAL: Property condition is '${value}'. Please review.` };
-    }
-    const validConditions = ['C1', 'C2', 'C3', 'C4'];
-    if (!validConditions.some(c => value.startsWith(c))) {
-        return { isError: true, message: "Property condition must be between C1-C4." };
-    }
-    return { isMatch: true };
+export const checkPropertyConditionDescription = (field, text, allData) => {
+    return checkProjectAndPropertyCondition(field, text, allData);
 };
 
 export const checkPhysicalDeficienciesImprovements = (field, text) => {

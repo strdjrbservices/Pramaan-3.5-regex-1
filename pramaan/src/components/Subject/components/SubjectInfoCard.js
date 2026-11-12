@@ -7,7 +7,9 @@ export const SubjectInfoCard = ({ id, title, fields, data, extractionAttempted, 
 
   const getFieldValue = (field) => {
     const candidateKeys = [field];
-    if (field === 'HOA(per month)' || field === 'HOA (per month)') {
+    if (field === 'Unit #' || field === 'Unit Number' || field === 'Unit') {
+      candidateKeys.push('Unit #', 'Unit Number', 'Unit', 'unit_number', 'unit_id', 'Unit Identifier');
+    } else if (field === 'HOA(per month)' || field === 'HOA (per month)') {
       candidateKeys.push('HOA(per month)', 'HOA (per month)', 'PUD Fees (per month)', 'per month');
     } else if (field === 'HOA(per year)' || field === 'HOA (per year)') {
       candidateKeys.push('HOA(per year)', 'HOA (per year)', 'PUD Fees (per year)', 'per year');

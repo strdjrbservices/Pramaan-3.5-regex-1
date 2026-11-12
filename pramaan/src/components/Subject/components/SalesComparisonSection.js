@@ -177,9 +177,16 @@ const SalesComparisonSection = ({
                     }
                   }
 
-                  const subjectValue = row.label === "Verification Source(s)"
+                  let subjectValue = row.label === "Verification Source(s)"
                     ? (comparableSales.map(sale => getCompData(sale)[row.valueKey]).find(Boolean) || subjectObj[row.valueKey] || '')
                     : (row.subjectValueKey ? (data[row.subjectValueKey] || subjectObj[row.subjectValueKey] || subjectObj[row.valueKey] || '') : (subjectObj[row.valueKey] || data[row.valueKey] || ''));
+
+                  if (!subjectValue && (row.valueKey === 'Unit #' || row.label === 'Unit #')) {
+                    subjectValue = data?.['Unit #'] || subjectObj?.['Unit #'] || data?.['Unit Number'] || subjectObj?.['Unit Number'] || data?.['Unit'] || subjectObj?.['Unit'] || '';
+                  }
+                  if (!subjectValue && (row.valueKey === 'Project Name and Phase' || row.label === 'Project Name and Phase')) {
+                    subjectValue = subjectObj?.['Project Name and Phase'] || data?.['Project Name and Phase'] || (subjectObj?.['Project Name'] ? `${subjectObj['Project Name']}${subjectObj['Phase'] ? `\n${subjectObj['Phase']}` : ''}`.trim() : (data?.['Project Name'] ? `${data['Project Name']}${data['Phase'] ? `\n${data['Phase']}` : ''}`.trim() : '')) || '';
+                  }
 
                   const subjectStyle = {};
                   if (extractionAttempted && !subjectValue) {
@@ -198,6 +205,7 @@ const SalesComparisonSection = ({
                           <EditableField
                             fieldPath={row.subjectValueKey ? [row.subjectValueKey] : ['Subject', row.valueKey]}
                             value={subjectValue}
+                            usePre={row.usePre || (typeof subjectValue === 'string' && subjectValue.includes('\n'))}
                             onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField}
                             isMissing={extractionAttempted && !subjectValue}
                             isEditable={true}
@@ -224,7 +232,13 @@ const SalesComparisonSection = ({
                       </TableCell>
                       {comparableSales.map((sale, cidx) => {
                         const compObj = getCompData(sale);
-                        const compValue = compObj[row.valueKey] ?? compObj[row.valueKey?.replace('of Comparable', 'of Comparables')] ?? compObj[row.valueKey?.replace('of Comparables', 'of Comparable')] ?? '';
+                        let compValue = compObj[row.valueKey] ?? compObj[row.valueKey?.replace('of Comparable', 'of Comparables')] ?? compObj[row.valueKey?.replace('of Comparables', 'of Comparable')] ?? '';
+                        if (!compValue && (row.valueKey === 'Unit #' || row.label === 'Unit #')) {
+                          compValue = compObj['Unit #'] || compObj['Unit Number'] || compObj['UnitIdentifier'] || compObj['Unit'] || '';
+                        }
+                        if (!compValue && (row.valueKey === 'Project Name and Phase' || row.label === 'Project Name and Phase')) {
+                          compValue = compObj['Project Name and Phase'] || (compObj['Project Name'] ? `${compObj['Project Name']}${compObj['Phase'] ? `\n${compObj['Phase']}` : ''}`.trim() : (compObj['Phase'] || ''));
+                        }
                         const rawAdjValue = compObj[row.adjustmentKey] ?? (row.adjustmentKey === 'Baths Adjustment' ? compObj['Bathrooms Adjustment'] : undefined);
                         let adjValue = (rawAdjValue !== undefined && rawAdjValue !== null) ? String(rawAdjValue) : '';
                         if (!adjValue && compObj['Above Grade Room Count Adjustment']) {
@@ -250,6 +264,7 @@ const SalesComparisonSection = ({
                               <EditableField
                                 fieldPath={[sale, row.valueKey]}
                                 value={compValue}
+                                usePre={row.usePre || (typeof compValue === 'string' && compValue.includes('\n'))}
                                 onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField}
                                 isMissing={extractionAttempted && (!compValue || compValue === '')}
                                 isEditable={true}
