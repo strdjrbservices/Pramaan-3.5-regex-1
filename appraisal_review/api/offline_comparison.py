@@ -166,7 +166,20 @@ def _normalize_address(addr: Any) -> str:
 
 
 def _addresses_match(addr1: Any, addr2: Any) -> bool:
-    """Checks if two address strings match under abbreviation-tolerant normalization."""
+    """Checks if two address strings match under abbreviation-tolerant normalization, ignoring spaces, commas, and special characters."""
+    clean1 = re.sub(r"[^a-zA-Z0-9]", "", str(addr1 or "")).lower()
+    clean2 = re.sub(r"[^a-zA-Z0-9]", "", str(addr2 or "")).lower()
+    if clean1 and clean2:
+        if clean1 == clean2:
+            return True
+        nums1 = re.findall(r"\d+", clean1)
+        nums2 = re.findall(r"\d+", clean2)
+        if (clean1 in clean2 or clean2 in clean1) and (not nums1 or not nums2 or nums1[0] == nums2[0]):
+            if nums1 and nums2 and len(nums1[-1]) >= 5 and len(nums2[-1]) >= 5 and nums1[-1] != nums2[-1]:
+                pass
+            else:
+                return True
+
     norm1 = _normalize_address(addr1)
     norm2 = _normalize_address(addr2)
     if not norm1 or not norm2:
@@ -192,7 +205,19 @@ def _addresses_match(addr1: Any, addr2: Any) -> bool:
 
 
 def _names_match(name1: Any, name2: Any) -> bool:
-    """Matches borrower or appraiser names (tolerant of 'First Last' vs 'Last, First', middle initials, I/l OCR typo, and name prefixing)."""
+    """Matches borrower, lender, or appraiser names, ignoring spaces, commas, and special characters."""
+    clean1 = re.sub(r"[^a-zA-Z0-9]", "", str(name1 or "")).lower()
+    clean2 = re.sub(r"[^a-zA-Z0-9]", "", str(name2 or "")).lower()
+    if clean1 and clean2:
+        if clean1 == clean2:
+            return True
+
+        legal_suffix_pat = r"(?:llc|inc|corp|corporation|co|company|ltd|na|fsb|its\s+successors.*|isaoa.*|atima.*)$"
+        base1 = re.sub(r"[^a-zA-Z0-9]", "", re.sub(legal_suffix_pat, "", str(name1 or ""), flags=re.I)).lower()
+        base2 = re.sub(r"[^a-zA-Z0-9]", "", re.sub(legal_suffix_pat, "", str(name2 or ""), flags=re.I)).lower()
+        if base1 and base2 and base1 == base2:
+            return True
+
     norm1 = _normalize_string(name1)
     norm2 = _normalize_string(name2)
     if not norm1 or not norm2:
@@ -803,7 +828,7 @@ def compare_report_to_html_offline(
         elif html_val != "N/A" and rep_val != "N/A":
             if "address" in fn:
                 is_match = _addresses_match(html_val, rep_val)
-            elif "borrower" in fn or "vendor" in fn:
+            elif "borrower" in fn or "vendor" in fn or "client" in fn or "lender" in fn:
                 is_match = _names_match(html_val, rep_val)
             elif "transaction" in fn or "assignment" in fn:
                 norm_h = re.sub(r"[^\w]", "", html_val.lower())

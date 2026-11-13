@@ -19,6 +19,7 @@ import re
 import csv
 import json
 import base64
+import io
 import argparse
 from typing import List, Dict, Any, Optional, Tuple
 import xml.etree.ElementTree as ET
@@ -1968,9 +1969,11 @@ class MapExtractor:
 
                 # Subject
                 p1_idx = p_indices.get("form_p1")
-                if p1_idx is not None and not subject_record and os.path.exists(file_path):
+                can_open_pdf = (is_xml_file and doc) or (not is_xml_file and os.path.exists(file_path))
+                if p1_idx is not None and not subject_record and can_open_pdf:
                     try:
-                        with pdfplumber.open(file_path) as pdoc:
+                        p_source = io.BytesIO(doc.tobytes()) if (is_xml_file and doc) else file_path
+                        with pdfplumber.open(p_source) as pdoc:
                             p1_res = extract_page_1_fields(pdoc.pages[p1_idx], fitz_page=doc[p1_idx])
                             sub = p1_res.get("SUBJECT", {})
                             sub_st = sub.get("Property Address") or ""
@@ -1991,9 +1994,10 @@ class MapExtractor:
                 # Sales Comps (Comps 1..N)
                 p2_idx = p_indices.get("form_p2")
                 extra_indices = p_indices.get("extra_comp_pages") or []
-                if p2_idx is not None and os.path.exists(file_path):
+                if p2_idx is not None and can_open_pdf:
                     try:
-                        with pdfplumber.open(file_path) as pdoc:
+                        p_source = io.BytesIO(doc.tobytes()) if (is_xml_file and doc) else file_path
+                        with pdfplumber.open(p_source) as pdoc:
                             extra_plumbs = [pdoc.pages[i] for i in extra_indices if i < len(pdoc.pages)]
                             extra_fitz = [doc[i] for i in extra_indices if i < len(doc)]
                             sg_res, _ = extract_page_2_sales_grid_and_reconciliation(

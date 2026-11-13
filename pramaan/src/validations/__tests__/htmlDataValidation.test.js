@@ -185,6 +185,15 @@ describe('HTML Transaction Type vs Report Assignment Type Validation', () => {
                 expect(areLenderNamesMatching('BPL Mortgage, LLC', 'BPL Mortgage')).toBe(true);
             });
 
+            test('ignores spaces, commas, and any special characters in lender name', () => {
+                expect(areLenderNamesMatching("Lender's Choice Mortgage, LLC", 'Lenders Choice Mortgage LLC')).toBe(true);
+                expect(areLenderNamesMatching('Paramount Residential Mortgage Group, Inc.', 'Paramount-Residential Mortgage Group Inc.')).toBe(true);
+                expect(areLenderNamesMatching('LoanDepot.com, LLC', 'loandepot com llc')).toBe(true);
+                expect(areLenderNamesMatching('Fifth Third Bank, N.A.', 'Fifth Third Bank NA')).toBe(true);
+                expect(areLenderNamesMatching('Movement Mortgage, LLC (PRMG)', 'Movement Mortgage, LLC')).toBe(true);
+                expect(areLenderNamesMatching('ABC & 123 Lending / Co.', 'ABC and 123 Lending Co')).toBe(true);
+            });
+
             test('returns false for mismatched lenders', () => {
                 expect(areLenderNamesMatching('BPL Mortgage, LLC', 'Plaza Home Mortgage, Inc.')).toBe(false);
                 expect(areLenderNamesMatching('BPL Mortgage, LLC', 'Chase Bank')).toBe(false);
@@ -364,6 +373,21 @@ describe('HTML Transaction Type vs Report Assignment Type Validation', () => {
                     '1801 S. Meyers Road Suite 400 Oakbrook Terrace IL 60181',
                     '1801 S. Meyers Road, Suite 400, Oakbrook Terrace, IL 601811'
                 )).toBe(false);
+            });
+
+            test('ignores spaces, commas, and any special characters in lender address', () => {
+                expect(areLenderAddressesMatching(
+                    '1801 S. Meyers Road, #Suite-400, Oakbrook Terrace, IL 60181',
+                    '1801 S Meyers Road Suite 400 Oakbrook Terrace IL 60181'
+                )).toBe(true);
+                expect(areLenderAddressesMatching(
+                    '100 Main St., Ste. 200',
+                    '100 Main Street Suite 200'
+                )).toBe(true);
+                expect(areLenderAddressesMatching(
+                    '500 West 5th Ave, #12-A, New York, NY 10001',
+                    '500 W. 5th Ave., Apt. 12A, New York, NY 10001'
+                )).toBe(true);
             });
         });
 
@@ -844,6 +868,20 @@ describe('HTML Transaction Type vs Report Assignment Type Validation', () => {
                     constructed: '863 Halesworth Dr'
                 };
                 expect(arePropertyAddressesMatching('863 Halesworth Dr Cincinnati OH 45240MapZillow', subjectInfo)).toBe(true);
+            });
+
+            test('ignores spaces, commas, and any special characters in property address', () => {
+                const subjectInfo = {
+                    street: '123 N. Main St., #Apt-4B',
+                    city: 'Austin',
+                    state: 'TX',
+                    zip: '78701',
+                    full: '123 N. Main St., #Apt-4B, Austin, TX 78701',
+                    constructed: '123 N. Main St., #Apt-4B, Austin, TX 78701'
+                };
+                expect(arePropertyAddressesMatching('123 N Main St Apt 4B Austin TX 78701', subjectInfo)).toBe(true);
+                expect(arePropertyAddressesMatching('123 N. Main St., #Apt-4B, Austin, TX 78701', '123 N Main St Apt 4B Austin TX 78701')).toBe(true);
+                expect(arePropertyAddressesMatching('863 Halesworth Dr., Cincinnati, OH, 45240 MapZillow', '863 Halesworth Dr Cincinnati OH 45240')).toBe(true);
             });
 
             test('mismatches when house number is different', () => {

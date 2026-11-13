@@ -2840,8 +2840,8 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
     };
 
     // Helper to render an EditableField
-    const renderPiEditable = (fieldKey, placeholder = '', customStyle = {}, usePre = false, multiline = false) => {
-      const valStr = getPiRawVal(fieldKey);
+    const renderPiEditable = (fieldKey, placeholder = '', customStyle = {}, usePre = false, multiline = false, fallbackKey = null) => {
+      const valStr = getPiRawVal(fieldKey, fallbackKey);
       return (
         <EditableField
           fieldPath={[fieldKey]}
@@ -3209,7 +3209,7 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
                     <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}># of Units</span>
                     <div style={{ flex: 1, minWidth: '35px' }}>
-                      {renderPiEditable('# of Units')}
+                      {renderPiEditable('# of Units (Project Completed)', '', {}, false, false, '# of Units')}
                     </div>
                   </div>
                   {/* Row 3: # of Units for Sale */}
@@ -4155,6 +4155,527 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
                   <div style={{ flex: 1 }}>
                     {renderUdEditable("If No, describe", "Describe non-conformance")}
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Paper>
+    );
+  }
+
+  // =============================================================
+  // PRIOR SALE HISTORY SECTION - FANNIE MAE 1073 / 1004 GRID
+  // =============================================================
+  if (id === 'prior-sale-history-section' || title === 'Prior Sale History') {
+    const pshData = (data && typeof data === 'object' && (
+      'Prior Sale History: Date of Prior Sale/Transfer' in data ||
+      'Date of Prior Sale/Transfer' in data ||
+      'My research did did not reveal any prior sales or transfers of the subject property for the three years prior to the effective date of this appraisal.' in data
+    ))
+      ? data
+      : (data?.PRIOR_SALE_HISTORY || data?.['Prior Sale History'] || allData?.PRIOR_SALE_HISTORY || allData?.['Prior Sale History'] || allData?.clean_data?.['Prior Sale History'] || allData?.clean_data?.PRIOR_SALE_HISTORY || allData?.SALES_TRANSFER || allData || {});
+
+    // Helper to get raw value from prior sale data or fallbacks
+    const getPshRawVal = (fieldKey, fallbackKeys = []) => {
+      const keys = [fieldKey, ...(Array.isArray(fallbackKeys) ? fallbackKeys : [fallbackKeys])];
+      const sources = [
+        pshData,
+        data?.PRIOR_SALE_HISTORY,
+        data?.['Prior Sale History'],
+        data?.clean_data?.['Prior Sale History'],
+        data?.clean_data?.PRIOR_SALE_HISTORY,
+        data?.SALES_TRANSFER,
+        data?.SALES_GRID,
+        data?.RECONCILIATION,
+        data,
+        allData?.PRIOR_SALE_HISTORY,
+        allData?.['Prior Sale History'],
+        allData?.clean_data?.['Prior Sale History'],
+        allData?.clean_data?.PRIOR_SALE_HISTORY,
+        allData?.SALES_TRANSFER,
+        allData?.SALES_GRID,
+        allData?.RECONCILIATION,
+        allData?.Subject,
+        allData?.SUBJECT,
+        allData
+      ];
+      for (const src of sources) {
+        if (src && typeof src === 'object') {
+          for (const k of keys) {
+            if (src[k] !== undefined && src[k] !== null && String(src[k]).trim() !== '') {
+              return renderValue(src[k]);
+            }
+          }
+          const srcKeys = Object.keys(src);
+          for (const k of keys) {
+            const normK = k.toLowerCase().replace(/[\s\r\n\t]+/g, ' ').trim();
+            const matchedKey = srcKeys.find(sk => sk.toLowerCase().replace(/[\s\r\n\t]+/g, ' ').trim() === normK);
+            if (matchedKey && src[matchedKey] !== undefined && src[matchedKey] !== null && String(src[matchedKey]).trim() !== '') {
+              return renderValue(src[matchedKey]);
+            }
+          }
+        }
+      }
+      return '';
+    };
+
+    // Helper for EditableField in top/bottom areas
+    const renderPshEditable = (fieldKey, placeholder = '', customStyle = {}, usePre = false, multiline = false, fallbackKeys = []) => {
+      const valStr = getPshRawVal(fieldKey, fallbackKeys);
+      return (
+        <EditableField
+          fieldPath={[fieldKey]}
+          value={valStr}
+          onDataChange={onDataChange}
+          editingField={editingField}
+          setEditingField={setEditingField}
+          usePre={usePre}
+          isEditable={isEditable}
+          allData={allData}
+          manualValidations={manualValidations}
+          handleManualValidation={handleManualValidation}
+          revisionHandlers={revisionHandlers}
+          showBlankValidation={true}
+          inputClassName="form-control form-control-sm field-value-pre"
+          placeholder={placeholder}
+          inputStyle={{
+            width: '100%',
+            border: 'none',
+            background: 'transparent',
+            padding: '2px 4px',
+            fontSize: '0.80rem',
+            color: '#1f2937',
+            height: 'auto',
+            ...(multiline ? { minHeight: '44px' } : {}),
+            ...customStyle
+          }}
+        />
+      );
+    };
+
+    // Helper for interactive Did / Did Not checkbox
+    const renderPshCheckbox = (fieldKey, optionLabel) => {
+      const currentVal = String(getPshRawVal(fieldKey) || '').trim().toLowerCase();
+      const isDidNot = optionLabel.toLowerCase() === 'did not';
+      let isChecked = false;
+
+      if (isDidNot) {
+        isChecked = currentVal.includes('did not') || currentVal === 'n' || currentVal === 'false' || currentVal === 'no';
+      } else {
+        isChecked = (currentVal.includes('did') && !currentVal.includes('did not')) || currentVal === 'y' || currentVal === 'true' || currentVal === 'yes';
+      }
+
+      const handleToggle = () => {
+        if (!isEditable) return;
+        const newVal = isChecked ? '' : optionLabel;
+        if (onDataChange) {
+          onDataChange([fieldKey], newVal);
+        }
+      };
+
+      return (
+        <div
+          onClick={handleToggle}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            cursor: isEditable ? 'pointer' : 'default',
+            userSelect: 'none',
+            fontSize: '0.78rem',
+            marginRight: '12px',
+            lineHeight: 1.2
+          }}
+          title={isEditable ? `Toggle ${optionLabel}` : optionLabel}
+        >
+          <div
+            style={{
+              width: '14px',
+              height: '14px',
+              border: '1.5px solid #212529',
+              borderRadius: '2px',
+              backgroundColor: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginRight: '5px',
+              fontWeight: '900',
+              fontSize: '11px',
+              color: '#000',
+              lineHeight: 1,
+              flexShrink: 0
+            }}
+          >
+            {isChecked ? '✕' : ''}
+          </div>
+          <span style={{ color: '#212529', fontWeight: isChecked ? 600 : 400 }}>{optionLabel}</span>
+        </div>
+      );
+    };
+
+    // Helper to get comps list (first 3 comps for Fannie Mae grid)
+    const compsList = (Array.isArray(allData?.comparableSales) && allData.comparableSales.length > 0)
+      ? allData.comparableSales.slice(0, 3)
+      : (Array.isArray(data?.comparableSales) && data.comparableSales.length > 0)
+      ? data.comparableSales.slice(0, 3)
+      : ['COMPARABLE SALE #1', 'COMPARABLE SALE #2', 'COMPARABLE SALE #3'];
+
+    // Helper to get Subject values for table rows
+    const getSubjectRowVal = (feature, fallbackKeys = []) => {
+      const keys = [feature, ...(Array.isArray(fallbackKeys) ? fallbackKeys : [fallbackKeys])];
+      const sources = [
+        data?.Subject,
+        data?.SUBJECT,
+        allData?.Subject,
+        allData?.SUBJECT,
+        data?.SALES_GRID?.Subject,
+        allData?.SALES_GRID?.Subject,
+        allData?.['Sales Grid']?.Subject,
+        data?.PRIOR_SALE_HISTORY,
+        data?.['Prior Sale History'],
+        data,
+        allData
+      ];
+      for (const src of sources) {
+        if (src && typeof src === 'object') {
+          for (const k of keys) {
+            if (src[k] !== undefined && src[k] !== null && String(src[k]).trim() !== '') {
+              return renderValue(src[k]);
+            }
+          }
+        }
+      }
+      return '';
+    };
+
+    // Helper to get Comp values for table rows
+    const getCompRowVal = (compKey, feature, fallbackKeys = []) => {
+      const keys = [feature, ...(Array.isArray(fallbackKeys) ? fallbackKeys : [fallbackKeys])];
+      const compSources = [
+        data?.[compKey],
+        allData?.[compKey],
+        allData?.SALES_GRID?.[compKey],
+        allData?.['Sales Grid']?.[compKey],
+        data?.SALES_GRID?.[compKey],
+        allData?.clean_data?.[compKey],
+        allData?.clean_data?.SALES_GRID?.[compKey]
+      ];
+      for (const src of compSources) {
+        if (src && typeof src === 'object') {
+          for (const k of keys) {
+            if (src[k] !== undefined && src[k] !== null && String(src[k]).trim() !== '') {
+              return renderValue(src[k]);
+            }
+          }
+        }
+      }
+      const compNumMatch = String(compKey).match(/(\d+)/);
+      if (compNumMatch) {
+        const num = compNumMatch[1];
+        for (const k of keys) {
+          const direct = data?.[`Comp ${num} ${k}`] ?? allData?.[`Comp ${num} ${k}`] ?? data?.[`Comparable Sale #${num} ${k}`] ?? allData?.[`Comparable Sale #${num} ${k}`];
+          if (direct !== undefined && direct !== null && String(direct).trim() !== '') {
+            return renderValue(direct);
+          }
+        }
+      }
+      return '';
+    };
+
+    const tableRows = [
+      {
+        label: 'Date of Prior Sale/Transfer',
+        key: 'Date of Prior Sale/Transfer',
+        fallbacks: ['Prior Sale History: Date of Prior Sale/Transfer'],
+        placeholder: 'MM/DD/YYYY'
+      },
+      {
+        label: 'Price of Prior Sale/Transfer',
+        key: 'Price of Prior Sale/Transfer',
+        fallbacks: ['Prior Sale History: Price of Prior Sale/Transfer'],
+        placeholder: '$'
+      },
+      {
+        label: 'Data Source(s)',
+        key: 'Data Source(s)',
+        fallbacks: ['Data source(s)', 'Data Source(s) for prior sale/transfer', 'Prior Sale History: Data Source(s) for prior sale/transfer', 'Data Source', 'Data source'],
+        placeholder: 'e.g. Realist, MLS'
+      },
+      {
+        label: 'Effective Date of Data Source(s)',
+        key: 'Effective Date of Data Source(s)',
+        fallbacks: ['Effective date of data source(s)', 'Prior Sale History: Effective Date of Data Source(s)', 'Effective Date of Data Source(s) for prior sale'],
+        placeholder: 'MM/DD/YYYY'
+      }
+    ];
+
+    return (
+      <Paper id={id} elevation={1} sx={{ mb: 2, borderRadius: 2, overflow: 'hidden', borderTop: '3px solid', borderTopColor: borderColor }}>
+        {/* Card Header */}
+        <Box
+          sx={{
+            p: 1.5,
+            bgcolor: 'grey.50',
+            color: 'text.primary',
+            borderBottom: '1px solid',
+            borderColor: 'grey.200',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}>
+          <Typography variant="h6" component="h5" sx={{ fontSize: '1.05rem', fontWeight: 'bold' }}>
+            {title || "Prior Sale History"}
+          </Typography>
+          {onRevisionButtonClick && (
+            <Tooltip title="Revision Language">
+              <IconButton onClick={onRevisionButtonClick} size="small" sx={{ color: 'text.secondary', ml: 'auto' }}>
+                <LibraryBooksIcon />
+              </IconButton>
+            </Tooltip>
+          )}
+        </Box>
+
+        {loading && loadingSection === id && (
+          <Box sx={{ width: '100%' }}><LinearProgress /></Box>
+        )}
+
+        <div className="card-body p-2" style={{ backgroundColor: '#fff', fontSize: '0.78rem', overflowX: 'auto' }}>
+          {/* Fannie Mae Grid Table */}
+          <div style={{ display: 'flex', border: '1.5px solid #212529', borderRadius: '2px', backgroundColor: '#fff', minWidth: '920px' }}>
+            {/* Left Vertical Black Banner */}
+            <div style={{
+              backgroundColor: '#000',
+              color: '#fff',
+              width: '32px',
+              minWidth: '32px',
+              writingMode: 'vertical-rl',
+              transform: 'rotate(180deg)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: 900,
+              fontSize: '0.85rem',
+              letterSpacing: '2px',
+              padding: '8px 0',
+              borderRight: '1px solid #212529'
+            }}>
+              PRIOR SALE HISTORY
+            </div>
+
+            {/* Right Main Grid */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+              {/* Row 1: Research statement & explain */}
+              <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', borderBottom: '1px solid #212529', flexWrap: 'wrap', minHeight: '28px' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.78rem', marginRight: '6px' }}>I</span>
+                {renderPshCheckbox(
+                  "I did did not research the sale or transfer history of the subject property and comparable sales. If not, explain",
+                  "did"
+                )}
+                {renderPshCheckbox(
+                  "I did did not research the sale or transfer history of the subject property and comparable sales. If not, explain",
+                  "did not"
+                )}
+                <span style={{ fontWeight: 600, fontSize: '0.76rem', marginRight: '8px' }}>
+                  research the sale or transfer history of the subject property and comparable sales. If not, explain
+                </span>
+                <div style={{ flex: 1, minWidth: '200px' }}>
+                  {renderPshEditable(
+                    "If not, explain",
+                    "Explain if not researched",
+                    {},
+                    false,
+                    false,
+                    [
+                      "I did did not research the sale or transfer history of the subject property and comparable sales. If not, explain",
+                      "Prior Sale History: If not, explain",
+                      "Prior Sale History: I did did not research the sale or transfer history of the subject property and comparable sales"
+                    ]
+                  )}
+                </div>
+              </div>
+
+              {/* Row 2: Subject research & data source */}
+              <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', borderBottom: '1px solid #212529', flexWrap: 'wrap', minHeight: '28px' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.78rem', marginRight: '6px' }}>My research</span>
+                {renderPshCheckbox(
+                  "My research did did not reveal any prior sales or transfers of the subject property for the three years prior to the effective date of this appraisal.",
+                  "did"
+                )}
+                {renderPshCheckbox(
+                  "My research did did not reveal any prior sales or transfers of the subject property for the three years prior to the effective date of this appraisal.",
+                  "did not"
+                )}
+                <span style={{ fontWeight: 600, fontSize: '0.76rem', marginRight: '16px' }}>
+                  reveal any prior sales or transfers of the subject property for the three years prior to the effective date of this appraisal.
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', marginLeft: 'auto', minWidth: '240px' }}>
+                  <span style={{ fontWeight: 600, fontSize: '0.76rem', marginRight: '6px', whiteSpace: 'nowrap' }}>Data source(s)</span>
+                  <div style={{ flex: 1 }}>
+                    {renderPshEditable(
+                      "Data Source(s) for subject property research",
+                      "e.g. Realist, Public Records",
+                      {},
+                      false,
+                      false,
+                      [
+                        "Data source(s) for subject",
+                        "Prior Sale History: Data source(s) for subject",
+                        "Subject Transfer History Data Source",
+                        "Data source(s) for subject property research"
+                      ]
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Row 3: Comparables research & data source */}
+              <div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', borderBottom: '1px solid #212529', flexWrap: 'wrap', minHeight: '28px' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.78rem', marginRight: '6px' }}>My research</span>
+                {renderPshCheckbox(
+                  "My research did did not reveal any prior sales or transfers of the comparable sales for the year prior to the date of sale of the comparable sale.",
+                  "did"
+                )}
+                {renderPshCheckbox(
+                  "My research did did not reveal any prior sales or transfers of the comparable sales for the year prior to the date of sale of the comparable sale.",
+                  "did not"
+                )}
+                <span style={{ fontWeight: 600, fontSize: '0.76rem', marginRight: '16px' }}>
+                  reveal any prior sales or transfers of the comparable sales for the year prior to the date of sale of the comparable sale.
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', marginLeft: 'auto', minWidth: '240px' }}>
+                  <span style={{ fontWeight: 600, fontSize: '0.76rem', marginRight: '6px', whiteSpace: 'nowrap' }}>Data source(s)</span>
+                  <div style={{ flex: 1 }}>
+                    {renderPshEditable(
+                      "Data Source(s) for comparable sales research",
+                      "e.g. Realist, MLS",
+                      {},
+                      false,
+                      false,
+                      [
+                        "Data source(s) for comparables",
+                        "Prior Sale History: Data source(s) for comparables",
+                        "Data Source(s) for comparable sales research"
+                      ]
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Row 4: Subtitle instruction banner */}
+              <div style={{ padding: '3px 8px', borderBottom: '1px solid #212529', backgroundColor: '#f8f9fa', fontSize: '0.74rem', fontWeight: 600, color: '#333' }}>
+                Report the results of the research and analysis of the prior sale or transfer history of the subject property and comparable sales (report additional prior sales on page 3).
+              </div>
+
+              {/* Table Header */}
+              <div style={{ display: 'flex', borderBottom: '1px solid #212529', backgroundColor: '#e9ecef', fontWeight: 700, fontSize: '0.76rem', textAlign: 'center' }}>
+                <div style={{ width: '220px', minWidth: '220px', padding: '4px 8px', borderRight: '1px solid #212529', textAlign: 'left' }}>
+                  ITEM
+                </div>
+                <div style={{ flex: 1, minWidth: '160px', padding: '4px 8px', borderRight: '1px solid #212529' }}>
+                  SUBJECT
+                </div>
+                {compsList.map((compKey, idx) => (
+                  <div key={idx} style={{ flex: 1, minWidth: '160px', padding: '4px 8px', borderRight: idx === compsList.length - 1 ? 'none' : '1px solid #212529' }}>
+                    {compKey.toUpperCase()}
+                  </div>
+                ))}
+              </div>
+
+              {/* Table Data Rows */}
+              {tableRows.map((rowItem, rIdx) => (
+                <div key={rIdx} style={{ display: 'flex', borderBottom: '1px solid #212529', alignItems: 'center', minHeight: '26px' }}>
+                  <div style={{ width: '220px', minWidth: '220px', padding: '3px 8px', fontWeight: 600, fontSize: '0.76rem', borderRight: '1px solid #212529', backgroundColor: '#fcfcfc' }}>
+                    {rowItem.label}
+                  </div>
+                  <div style={{ flex: 1, minWidth: '160px', padding: '2px 4px', borderRight: '1px solid #212529' }}>
+                    <EditableField
+                      fieldPath={['Subject', rowItem.key]}
+                      value={getSubjectRowVal(rowItem.key, rowItem.fallbacks)}
+                      onDataChange={onDataChange}
+                      editingField={editingField}
+                      setEditingField={setEditingField}
+                      isEditable={isEditable}
+                      allData={allData}
+                      saleName="Subject"
+                      manualValidations={manualValidations}
+                      handleManualValidation={handleManualValidation}
+                      revisionHandlers={revisionHandlers}
+                      showBlankValidation={true}
+                      inputClassName="form-control form-control-sm field-value-pre"
+                      placeholder={rowItem.placeholder}
+                      inputStyle={{ width: '100%', border: 'none', background: 'transparent', padding: '2px 4px', fontSize: '0.80rem', color: '#1f2937' }}
+                    />
+                  </div>
+                  {compsList.map((compKey, cIdx) => (
+                    <div key={cIdx} style={{ flex: 1, minWidth: '160px', padding: '2px 4px', borderRight: cIdx === compsList.length - 1 ? 'none' : '1px solid #212529' }}>
+                      <EditableField
+                        fieldPath={[compKey, rowItem.key]}
+                        value={getCompRowVal(compKey, rowItem.key, rowItem.fallbacks)}
+                        onDataChange={onDataChange}
+                        editingField={editingField}
+                        setEditingField={setEditingField}
+                        isEditable={isEditable}
+                        allData={allData}
+                        saleName={compKey}
+                        manualValidations={manualValidations}
+                        handleManualValidation={handleManualValidation}
+                        revisionHandlers={revisionHandlers}
+                        showBlankValidation={true}
+                        inputClassName="form-control form-control-sm field-value-pre"
+                        placeholder={rowItem.placeholder}
+                        inputStyle={{ width: '100%', border: 'none', background: 'transparent', padding: '2px 4px', fontSize: '0.80rem', color: '#1f2937' }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              ))}
+
+              {/* Bottom Row: Analysis narrative */}
+              <div style={{ display: 'flex', flexDirection: 'column', padding: '6px 8px' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.76rem', marginBottom: '2px' }}>
+                  Analysis of prior sale or transfer history of the subject property and comparable sales.
+                </span>
+                {renderPshEditable(
+                  "Analysis of prior sale or transfer history of the subject property and comparable sales",
+                  "e.g. Please refer to Property History Page.",
+                  {},
+                  false,
+                  true,
+                  [
+                    "Prior Sale History: Analysis of prior sale or transfer history of the subject property and comparable sales",
+                    "Analysis of prior sale or transfer history of the subject property and comparable sales."
+                  ]
+                )}
+              </div>
+
+              {/* Bottom Row: Indicated Value by Sales Comparison Approach $ */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '6px 8px',
+                borderTop: '1px solid #ced4da',
+                backgroundColor: '#fff'
+              }}>
+                <span style={{ fontWeight: 600, fontSize: '0.78rem', color: '#212529' }}>
+                  Indicated Value by Sales Comparison Approach $
+                </span>
+                <div style={{ width: '220px', minWidth: '180px' }}>
+                  {renderPshEditable(
+                    "Indicated Value by Sales Comparison Approach $",
+                    "e.g. 1,200,000",
+                    { textAlign: 'right' },
+                    false,
+                    false,
+                    [
+                      "Indicated Value by Sales Comparison Approach",
+                      "Sales Comparison Approach Indicated Value",
+                      "Indicated Value by: Sales Comparison Approach $",
+                      "Indicated Value by Sales Comparison Approach Indicated",
+                      "Final Value $",
+                      "Final Value"
+                    ]
+                  )}
                 </div>
               </div>
             </div>

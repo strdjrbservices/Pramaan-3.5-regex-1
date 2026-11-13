@@ -1,28 +1,77 @@
 export const normalizeLenderAddress = (str) => {
+    if (!str || str === 'N/A') return '';
     let s = String(str || '').toLowerCase();
-    s = s.replace(/\bstreet\b/g, 'st')
-        .replace(/\bavenue\b/g, 'ave')
-        .replace(/\broad\b/g, 'rd')
-        .replace(/\bdrive\b/g, 'dr')
-        .replace(/\bboulevard\b/g, 'blvd')
-        .replace(/\blane\b/g, 'ln')
-        .replace(/\bplace\b/g, 'pl')
-        .replace(/\bcircle\b/g, 'cir')
-        .replace(/\bcourt\b/g, 'ct')
-        .replace(/\bsuite\b/g, 'ste')
+    s = s.replace(/#\s*([0-9a-z]+)/g, 'apt$1')
+        .replace(/\bstreet\b|\bst\./g, 'st')
+        .replace(/\bavenue\b|\bave\./g, 'ave')
+        .replace(/\broad\b|\brd\./g, 'rd')
+        .replace(/\bdrive\b|\bdr\./g, 'dr')
+        .replace(/\bboulevard\b|\bblvd\./g, 'blvd')
+        .replace(/\blane\b|\bln\./g, 'ln')
+        .replace(/\bplace\b|\bpl\./g, 'pl')
+        .replace(/\bcircle\b|\bcir\./g, 'cir')
+        .replace(/\bcourt\b|\bct\./g, 'ct')
+        .replace(/\bsuite\b|\bste\./g, 'ste')
         .replace(/\bste\b/g, 'ste')
-        .replace(/\bapt\b/g, 'apt')
+        .replace(/\bapt\b|\bapt\./g, 'apt')
         .replace(/\bapartment\b/g, 'apt')
-        .replace(/\bunit\b/g, 'unit');
+        .replace(/\bunit\b/g, 'unit')
+        .replace(/\bnorth\b|\bn\./g, 'n')
+        .replace(/\bsouth\b|\bs\./g, 's')
+        .replace(/\beast\b|\be\./g, 'e')
+        .replace(/\bwest\b|\bw\./g, 'w');
+    // Remove all spaces, commas, and any special characters
     return s.replace(/[^a-z0-9]/g, '');
 };
 
 export const areLenderAddressesMatching = (addr1, addr2) => {
     if (!addr1 || !addr2) return false;
-    const n1 = normalizeLenderAddress(addr1);
-    const n2 = normalizeLenderAddress(addr2);
-    if (!n1 || !n2) return false;
-    return n1 === n2;
+    const s1 = String(addr1).trim();
+    const s2 = String(addr2).trim();
+    if (s1 === 'N/A' || s2 === 'N/A' || !s1 || !s2) return false;
+
+    // Helper: strip all spaces, commas, and any special characters
+    const stripAll = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    const clean1 = stripAll(s1);
+    const clean2 = stripAll(s2);
+    if (!clean1 || !clean2) return false;
+
+    // 1. Direct match ignoring spaces, commas, and all special characters
+    if (clean1 === clean2) return true;
+
+    // 2. Normalized road and suite abbreviations comparison
+    const n1 = normalizeLenderAddress(s1);
+    const n2 = normalizeLenderAddress(s2);
+    if (n1 && n2 && n1 === n2) return true;
+
+    // 3. Direct match with unit/apt/suite keywords stripped
+    const stripUnitWords = (s) => String(s || '').toLowerCase()
+        .replace(/\b(suite|ste|unit|apartment|apt)\b/g, '')
+        .replace(/[^a-z0-9]/g, '');
+    const noUnit1 = stripUnitWords(n1);
+    const noUnit2 = stripUnitWords(n2);
+    if (noUnit1 && noUnit2 && noUnit1 === noUnit2) return true;
+
+    // 4. Inclusion check (e.g. suite number or zip code differences) if house/street numbers match
+    const nums1 = (n1.match(/\d+/g) || clean1.match(/\d+/g)) || [];
+    const nums2 = (n2.match(/\d+/g) || clean2.match(/\d+/g)) || [];
+
+    // If zip codes exist at the end and they are of equal length but different (e.g. 60181 vs 60182) or extra digit (601811 vs 60181), do not match
+    if (nums1.length > 0 && nums2.length > 0) {
+        const last1 = nums1[nums1.length - 1];
+        const last2 = nums2[nums2.length - 1];
+        if (last1.length >= 5 && last2.length >= 5 && last1 !== last2) {
+            return false;
+        }
+    }
+
+    if ((clean1.includes(clean2) || clean2.includes(clean1) || (n1 && n2 && (n1.includes(n2) || n2.includes(n1)))) &&
+        (nums1.length === 0 || nums2.length === 0 || nums1[0] === nums2[0])) {
+        return true;
+    }
+
+    return false;
 };
 
 export const checkLenderAddressHtmlConsistency = (field, text, allData) => {
@@ -115,38 +164,66 @@ export const normalizeLenderName = (val) => {
     if (!val || val === 'N/A') return '';
     return String(val)
         .toLowerCase()
-        .replace(/&/g, 'and')
-        .replace(/[\s.,#\-_/\\()]/g, ' ')
+        .replace(/&/g, ' and ')
+        .replace(/[^a-z0-9]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
 };
 
 const stripTrailingLegalSuffix = (s) => {
-    return String(s || '')
-        .replace(/\b(llc|inc|corp|corporation|co|company|ltd|na|n a|fsb)\b$/i, '')
-        .trim();
+    let cur = String(s || '').trim();
+    cur = cur.replace(/,?\s*(?:its\s+successors.*|isaoa.*|atima.*)$/i, '').trim();
+    let prev = '';
+    while (cur !== prev) {
+        prev = cur;
+        cur = cur.replace(/\b(llc|inc|corp|corporation|co|company|ltd|na|n a|fsb)\b$/i, '').trim();
+    }
+    return cur;
 };
 
 export const areLenderNamesMatching = (name1, name2) => {
     if (!name1 || !name2) return false;
-    const n1 = normalizeLenderName(name1);
-    const n2 = normalizeLenderName(name2);
-    if (!n1 || !n2) return false;
+    const s1 = String(name1).trim();
+    const s2 = String(name2).trim();
+    if (!s1 || !s2 || s1 === 'N/A' || s2 === 'N/A') return false;
 
-    // 1. Exact match after whitespace and punctuation normalization
+    // Helper: strip all spaces, commas, and any special characters
+    const stripAll = (s) => String(s || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]/g, '');
+
+    const clean1 = stripAll(s1);
+    const clean2 = stripAll(s2);
+    if (!clean1 || !clean2) return false;
+
+    // 1. Direct equality ignoring spaces, commas, and all special characters
+    if (clean1 === clean2) return true;
+
+    // 2. Normalized word equality
+    const n1 = normalizeLenderName(s1);
+    const n2 = normalizeLenderName(s2);
     if (n1 === n2) return true;
 
-    // 2. Direct equality ignoring spaces
-    const noSpace1 = n1.replace(/\s/g, '');
-    const noSpace2 = n2.replace(/\s/g, '');
+    // 3. Direct equality ignoring spaces from normalized form
+    const noSpace1 = n1.replace(/[^a-z0-9]/g, '');
+    const noSpace2 = n2.replace(/[^a-z0-9]/g, '');
     if (noSpace1 === noSpace2) return true;
 
-    // 3. Match with trailing legal suffix stripped (e.g. "BPL Mortgage, LLC" vs "BPL Mortgage")
+    // Also check with parentheses content stripped (e.g. "(PRMG)")
+    const noParen1 = stripAll(s1.replace(/\([^)]*\)/g, ' '));
+    const noParen2 = stripAll(s2.replace(/\([^)]*\)/g, ' '));
+    if (noParen1 && noParen2 && noParen1 === noParen2) return true;
+
+    // 4. Match with trailing legal suffix stripped (e.g. "BPL Mortgage, LLC" vs "BPL Mortgage")
     const base1 = stripTrailingLegalSuffix(n1);
     const base2 = stripTrailingLegalSuffix(n2);
     if (base1 && base2) {
         if (base1 === base2) return true;
-        if (base1.replace(/\s/g, '') === base2.replace(/\s/g, '')) return true;
+        if (stripAll(base1) === stripAll(base2)) return true;
+    }
+
+    const rawBase1 = stripTrailingLegalSuffix(s1);
+    const rawBase2 = stripTrailingLegalSuffix(s2);
+    if (rawBase1 && rawBase2) {
+        if (stripAll(rawBase1) === stripAll(rawBase2)) return true;
     }
 
     return false;
@@ -646,7 +723,8 @@ export const cleanHtmlAddress = (addr) => {
     if (!addr || addr === 'N/A') return '';
     let s = String(addr).trim();
     // Strip trailing Map, Zillow, View Map, Google Map, Directions, etc.
-    s = s.replace(/(?:map\s*zillow|zillow\s*map|view\s*map|google\s*map|map|zillow|directions)\s*$/gi, '').trim();
+    s = s.replace(/[\s,.-]*(?:map\s*zillow|zillow\s*map|view\s*map|google\s*map|map|zillow|directions)\s*$/gi, '').trim();
+    s = s.replace(/[\s,.-]+$/, '').trim();
     return s;
 };
 
@@ -655,30 +733,30 @@ export const normalizeAddress = (addr) => {
     let s = cleanHtmlAddress(addr).toLowerCase();
 
     // Standard road and direction abbreviations
-    s = s.replace(/\bstreet\b/g, 'st')
-        .replace(/\bavenue\b/g, 'ave')
-        .replace(/\broad\b/g, 'rd')
-        .replace(/\bdrive\b/g, 'dr')
-        .replace(/\bboulevard\b/g, 'blvd')
-        .replace(/\blane\b/g, 'ln')
-        .replace(/\bplace\b/g, 'pl')
-        .replace(/\bcircle\b/g, 'cir')
-        .replace(/\bcourt\b/g, 'ct')
-        .replace(/\bparkway\b/g, 'pkwy')
-        .replace(/\bterrace\b/g, 'ter')
-        .replace(/\bhighway\b/g, 'hwy')
+    s = s.replace(/\bstreet\b|\bst\./g, 'st')
+        .replace(/\bavenue\b|\bave\./g, 'ave')
+        .replace(/\broad\b|\brd\./g, 'rd')
+        .replace(/\bdrive\b|\bdr\./g, 'dr')
+        .replace(/\bboulevard\b|\bblvd\./g, 'blvd')
+        .replace(/\blane\b|\bln\./g, 'ln')
+        .replace(/\bplace\b|\bpl\./g, 'pl')
+        .replace(/\bcircle\b|\bcir\./g, 'cir')
+        .replace(/\bcourt\b|\bct\./g, 'ct')
+        .replace(/\bparkway\b|\bpkwy\./g, 'pkwy')
+        .replace(/\bterrace\b|\bter\./g, 'ter')
+        .replace(/\bhighway\b|\bhwy\./g, 'hwy')
         .replace(/\bway\b/g, 'way')
-        .replace(/\btrail\b/g, 'trl')
-        .replace(/\bsuite\b/g, 'ste')
-        .replace(/\bapt\b/g, 'apt')
+        .replace(/\btrail\b|\btrl\./g, 'trl')
+        .replace(/\bsuite\b|\bste\./g, 'ste')
+        .replace(/\bapt\b|\bapt\./g, 'apt')
         .replace(/\bapartment\b/g, 'apt')
         .replace(/\bunit\b/g, 'unit')
-        .replace(/\bnorth\b/g, 'n')
-        .replace(/\bsouth\b/g, 's')
-        .replace(/\beast\b/g, 'e')
-        .replace(/\bwest\b/g, 'w');
+        .replace(/\bnorth\b|\bn\./g, 'n')
+        .replace(/\bsouth\b|\bs\./g, 's')
+        .replace(/\beast\b|\be\./g, 'e')
+        .replace(/\bwest\b|\bw\./g, 'w');
 
-    // Remove punctuation
+    // Remove all spaces, commas, and any special characters
     return s.replace(/[^a-z0-9]/g, '');
 };
 
@@ -777,18 +855,28 @@ export const arePropertyAddressesMatching = (htmlAddr, subjectInput) => {
     const cleanHtml = cleanHtmlAddress(htmlAddr);
     if (!cleanHtml) return false;
 
+    // Helper: strip all spaces, commas, and any special characters
+    const stripAll = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const cleanRawHtml = stripAll(cleanHtml);
+    if (!cleanRawHtml) return false;
+
     const normHtml = normalizeAddress(cleanHtml);
-    if (!normHtml) return false;
 
     if (typeof subjectInput === 'string') {
+        const cleanRawSubj = stripAll(subjectInput);
+        if (!cleanRawSubj) return false;
+
+        // 1. Direct equality ignoring spaces, commas, and any special characters
+        if (cleanRawHtml === cleanRawSubj) return true;
+
         const normSubj = normalizeAddress(subjectInput);
-        if (!normSubj) return false;
+        if (normSubj && normHtml && normHtml === normSubj) return true;
 
-        if (normHtml === normSubj) return true;
+        const htmlNums = (normHtml ? normHtml.match(/\d+/g) : null) || cleanRawHtml.match(/\d+/g) || [];
+        const subjNums = (normSubj ? normSubj.match(/\d+/g) : null) || cleanRawSubj.match(/\d+/g) || [];
 
-        if (normHtml.includes(normSubj) || normSubj.includes(normHtml)) {
-            const htmlNums = normHtml.match(/\d+/g) || [];
-            const subjNums = normSubj.match(/\d+/g) || [];
+        if ((normSubj && normHtml && (normHtml.includes(normSubj) || normSubj.includes(normHtml))) ||
+            cleanRawHtml.includes(cleanRawSubj) || cleanRawSubj.includes(cleanRawHtml)) {
             if (htmlNums.length > 0 && subjNums.length > 0) {
                 if (htmlNums[0] !== subjNums[0]) return false;
             }
@@ -800,12 +888,22 @@ export const arePropertyAddressesMatching = (htmlAddr, subjectInput) => {
     const info = subjectInput;
     if (!info) return false;
 
+    const cleanRawFull = stripAll(info.full);
+    const cleanRawConstructed = stripAll(info.constructed);
+    const cleanRawStreet = stripAll(info.street);
+
+    // Direct equality ignoring all spaces, commas, and special characters
+    if (cleanRawFull && cleanRawHtml === cleanRawFull) return true;
+    if (cleanRawConstructed && cleanRawHtml === cleanRawConstructed) return true;
+    if (cleanRawStreet && cleanRawHtml === cleanRawStreet) return true;
+
     // 1. Check Full Address
     if (info.full) {
         const normFull = normalizeAddress(info.full);
-        if (normFull && (normHtml === normFull || normHtml.includes(normFull) || normFull.includes(normHtml))) {
-            const htmlNums = normHtml.match(/\d+/g) || [];
-            const fullNums = normFull.match(/\d+/g) || [];
+        if ((normFull && normHtml && (normHtml === normFull || normHtml.includes(normFull) || normFull.includes(normHtml))) ||
+            (cleanRawFull && (cleanRawHtml === cleanRawFull || cleanRawHtml.includes(cleanRawFull) || cleanRawFull.includes(cleanRawHtml)))) {
+            const htmlNums = (normHtml ? normHtml.match(/\d+/g) : null) || cleanRawHtml.match(/\d+/g) || [];
+            const fullNums = (normFull ? normFull.match(/\d+/g) : null) || cleanRawFull.match(/\d+/g) || [];
             if (htmlNums.length === 0 || fullNums.length === 0 || htmlNums[0] === fullNums[0]) {
                 return true;
             }
@@ -815,9 +913,10 @@ export const arePropertyAddressesMatching = (htmlAddr, subjectInput) => {
     // 2. Check Constructed Address (street + city + state + zip)
     if (info.constructed) {
         const normConstructed = normalizeAddress(info.constructed);
-        if (normConstructed && (normHtml === normConstructed || normHtml.includes(normConstructed) || normConstructed.includes(normHtml))) {
-            const htmlNums = normHtml.match(/\d+/g) || [];
-            const constNums = normConstructed.match(/\d+/g) || [];
+        if ((normConstructed && normHtml && (normHtml === normConstructed || normHtml.includes(normConstructed) || normConstructed.includes(normHtml))) ||
+            (cleanRawConstructed && (cleanRawHtml === cleanRawConstructed || cleanRawHtml.includes(cleanRawConstructed) || cleanRawConstructed.includes(cleanRawHtml)))) {
+            const htmlNums = (normHtml ? normHtml.match(/\d+/g) : null) || cleanRawHtml.match(/\d+/g) || [];
+            const constNums = (normConstructed ? normConstructed.match(/\d+/g) : null) || cleanRawConstructed.match(/\d+/g) || [];
             if (htmlNums.length === 0 || constNums.length === 0 || htmlNums[0] === constNums[0]) {
                 return true;
             }
@@ -827,20 +926,21 @@ export const arePropertyAddressesMatching = (htmlAddr, subjectInput) => {
     // 3. Check Street component against HTML address
     if (info.street) {
         const normStreet = normalizeAddress(info.street);
-        if (normStreet && normHtml.includes(normStreet)) {
-            const htmlNums = normHtml.match(/\d+/g) || [];
-            const streetNums = normStreet.match(/\d+/g) || [];
+        const streetMatch = (normStreet && normHtml && normHtml.includes(normStreet)) || (cleanRawStreet && cleanRawHtml.includes(cleanRawStreet));
+        if (streetMatch) {
+            const htmlNums = (normHtml ? normHtml.match(/\d+/g) : null) || cleanRawHtml.match(/\d+/g) || [];
+            const streetNums = (normStreet ? normStreet.match(/\d+/g) : null) || cleanRawStreet.match(/\d+/g) || [];
             if (htmlNums.length > 0 && streetNums.length > 0 && htmlNums[0] !== streetNums[0]) {
                 return false;
             }
             let conflict = false;
-            if (info.city && !normHtml.includes(normalizeAddress(info.city))) {
+            if (info.city && (!normHtml || !normHtml.includes(normalizeAddress(info.city))) && !cleanRawHtml.includes(stripAll(info.city))) {
                 conflict = true;
             }
-            if (info.state && !normHtml.includes(normalizeAddress(info.state))) {
+            if (info.state && (!normHtml || !normHtml.includes(normalizeAddress(info.state))) && !cleanRawHtml.includes(stripAll(info.state))) {
                 conflict = true;
             }
-            if (info.zip && !normHtml.includes(normalizeAddress(info.zip))) {
+            if (info.zip && (!normHtml || !normHtml.includes(normalizeAddress(info.zip))) && !cleanRawHtml.includes(stripAll(info.zip))) {
                 conflict = true;
             }
             if (!conflict) {
@@ -859,10 +959,12 @@ export const checkPropertyAddressHtmlConsistency = (field, text, allData, fieldP
     const htmlRaw = getHtmlPropertyAddress(allData);
     const subjectInfo = getSubjectAddressInfo(allData);
 
+    const stripAll = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
     const fieldLower = String(field || '').trim().toLowerCase();
     const isHtmlField = (
         (fieldPath && fieldPath[0] === 'comparisonData') ||
-        (text !== undefined && text !== null && cleanHtmlAddress(text) === cleanHtmlAddress(htmlRaw) && cleanHtmlAddress(htmlRaw) !== '') ||
+        (text !== undefined && text !== null && stripAll(cleanHtmlAddress(text)) === stripAll(cleanHtmlAddress(htmlRaw)) && stripAll(cleanHtmlAddress(htmlRaw)) !== '') ||
         (fieldPath && fieldPath.length === 1 && (fieldPath[0] === 'PROPERTY ADDRESS' || fieldPath[0] === 'Property Address') && compData[fieldPath[0]] !== undefined)
     );
 

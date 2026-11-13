@@ -41,9 +41,9 @@ import {
 import { checkIncomeApproachFieldsNotBlank, checkIncomeApproach1007Required, INCOME_APPROACH_1007_REQUIRED_FIELDS } from '../../../validations/incomeApproachValidation';
 import { checkPudInformationFieldsNotBlank, checkPudControlAndFees } from '../../../validations/pudInformationValidation';
 import { checkMarketConditionsFieldsNotBlank } from '../../../validations/marketConditionsValidation';
-import { checkProjectInfoFieldsNotBlank, checkCondoForeclosureFieldsNotBlank, checkProjectAndPropertyCondition, PROJECT_INFO_FIELDS_TO_CHECK } from '../../../validations/form1073Validation';
-import { checkProjectAnalysisFieldsNotBlank, PROJECT_ANALYSIS_FIELDS_TO_CHECK } from '../../../validations/projectAnalysisValidation';
-import { checkUnitDescriptionsFieldsNotBlank, UNIT_DESCRIPTIONS_FIELDS_TO_CHECK } from '../../../validations/unitDescriptionsValidation';
+import { checkProjectInfoFieldsNotBlank, checkCondoForeclosureFieldsNotBlank, checkProjectAndPropertyCondition, checkProjectUnitsConsistency, checkProjectUnitsBreakdownSum, findCondoConditionalConfig, PROJECT_INFO_FIELDS_TO_CHECK } from '../../../validations/form1073Validation';
+import { checkProjectAnalysisFieldsNotBlank, findProjectAnalysisConditionalConfig, PROJECT_ANALYSIS_FIELDS_TO_CHECK } from '../../../validations/projectAnalysisValidation';
+import { checkUnitDescriptionsFieldsNotBlank, checkUnitChargeCalculation, UNIT_DESCRIPTIONS_FIELDS_TO_CHECK } from '../../../validations/unitDescriptionsValidation';
 import { checkProjectSiteFieldsNotBlank } from '../../../validations/projectSiteValidation';
 import { checkPriorSaleHistoryFieldsNotBlank, PRIOR_SALE_HISTORY_FIELDS_TO_CHECK } from '../../../validations/priorSaleHistoryValidation';
 import { checkInfoOfSalesFieldsNotBlank } from '../../../validations/infoOfSalesValidation';
@@ -546,9 +546,12 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
   validationRegistry['opinion of the market value, as defined, of the real property that is the subject of this report is $'] = [checkFinalValueConsistency, checkFinalValueBracketing];
   validationRegistry['OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $'] = [checkFinalValueConsistency, checkFinalValueBracketing];
   validationRegistry['Opinion of Market Value'] = [checkFinalValueConsistency, checkFinalValueBracketing];
-  validationRegistry['Indicated Value by Sales Comparison Approach $'] = [checkFinalValueConsistency, checkFinalValueBracketing, checkPredominantPriceVsIndicatedValue];
-  validationRegistry['Indicated Value by Sales Comparison Approach'] = [checkFinalValueConsistency, checkFinalValueBracketing, checkPredominantPriceVsIndicatedValue];
-  validationRegistry['Indicated Value by: Sales Comparison Approach $'] = [checkFinalValueConsistency, checkFinalValueBracketing, checkPredominantPriceVsIndicatedValue];
+  const indicatedValValidators = [checkFinalValueConsistency, checkFinalValueBracketing, checkPredominantPriceVsIndicatedValue, checkPriorSaleHistoryFieldsNotBlank];
+  validationRegistry['Indicated Value by Sales Comparison Approach $'] = indicatedValValidators;
+  validationRegistry['Indicated Value by Sales Comparison Approach'] = indicatedValValidators;
+  validationRegistry['Indicated Value by: Sales Comparison Approach $'] = indicatedValValidators;
+  validationRegistry['Prior Sale History: Indicated Value by Sales Comparison Approach $'] = indicatedValValidators;
+  validationRegistry['Prior Sale History: Indicated Value by Sales Comparison Approach'] = indicatedValValidators;
 
   const reconciliationFieldsToValidate = [
     'Indicated Value by: Sales Comparison Approach $',
@@ -713,14 +716,67 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
   });
 
 
-  validationRegistry["I did did not research the sale or transfer history of the subject property and comparable sales. If not, explain"] = [checkResearchHistory];
-  validationRegistry["My research did did not reveal any prior sales or transfers of the subject property for the three years prior to the effective date of this appraisal."] = [checkSubjectPriorSales];
-  validationRegistry["My research did did not reveal any prior sales or transfers of the comparable sales for the year prior to the date of sale of the comparable sale."] = [checkComparablePriorSales];
-  validationRegistry["Data Source(s) for subject property research"] = [checkDataSourceNotBlank];
-  validationRegistry["Data Source(s) for comparable sales research"] = [checkDataSourceNotBlank];
-  validationRegistry["Summary of Sales Comparison Approach"] = [checkDataSourceNotBlank];
-  validationRegistry["Effective Date of Data Source(s) for prior sale"] = [checkEffectiveDateIsCurrentYear];
-  validationRegistry["Date of Prior Sale/Transfer"] = [checkSubjectPriorSaleDate, checkCompPriorSaleDate];
+  [
+    "I did did not research the sale or transfer history of the subject property and comparable sales. If not, explain",
+    "I did did not research the sale or transfer history of the subject property and comparable sales",
+    "Prior Sale History: I did did not research the sale or transfer history of the subject property and comparable sales"
+  ].forEach(f => {
+    if (!validationRegistry[f]) validationRegistry[f] = [];
+    if (!validationRegistry[f].includes(checkResearchHistory)) validationRegistry[f].push(checkResearchHistory);
+  });
+
+  [
+    "My research did did not reveal any prior sales or transfers of the subject property for the three years prior to the effective date of this appraisal.",
+    "My research did did not reveal any prior sales or transfers of the subject property for the three years prior to the effective date of this appraisal",
+    "Prior Sale History: My research did did not reveal any prior sales or transfers of the subject property for the three years prior to the effective date of this appraisal"
+  ].forEach(f => {
+    if (!validationRegistry[f]) validationRegistry[f] = [];
+    if (!validationRegistry[f].includes(checkSubjectPriorSales)) validationRegistry[f].push(checkSubjectPriorSales);
+  });
+
+  [
+    "My research did did not reveal any prior sales or transfers of the comparable sales for the year prior to the date of sale of the comparable sale.",
+    "My research did did not reveal any prior sales or transfers of the comparable sales for the year prior to the date of sale of the comparable sale",
+    "Prior Sale History: My research did did not reveal any prior sales or transfers of the comparable sales for the year prior to the date of sale of the comparable sale"
+  ].forEach(f => {
+    if (!validationRegistry[f]) validationRegistry[f] = [];
+    if (!validationRegistry[f].includes(checkComparablePriorSales)) validationRegistry[f].push(checkComparablePriorSales);
+  });
+
+  [
+    "Data Source(s) for subject property research",
+    "Data source(s) for subject property research",
+    "Data source(s) for subject",
+    "Prior Sale History: Data source(s) for subject",
+    "Subject Transfer History Data Source",
+    "Data Source(s) for comparable sales research",
+    "Data source(s) for comparable sales research",
+    "Data source(s) for comparables",
+    "Prior Sale History: Data source(s) for comparables",
+    "Summary of Sales Comparison Approach"
+  ].forEach(f => {
+    if (!validationRegistry[f]) validationRegistry[f] = [];
+    if (!validationRegistry[f].includes(checkDataSourceNotBlank)) validationRegistry[f].push(checkDataSourceNotBlank);
+  });
+
+  [
+    "Effective Date of Data Source(s) for prior sale",
+    "Effective Date of Data Source(s)",
+    "Effective date of data source(s)",
+    "Prior Sale History: Effective Date of Data Source(s)",
+    "Prior Sale History: Effective date of data source(s)"
+  ].forEach(f => {
+    if (!validationRegistry[f]) validationRegistry[f] = [];
+    if (!validationRegistry[f].includes(checkEffectiveDateIsCurrentYear)) validationRegistry[f].push(checkEffectiveDateIsCurrentYear);
+  });
+
+  [
+    "Date of Prior Sale/Transfer",
+    "Prior Sale History: Date of Prior Sale/Transfer"
+  ].forEach(f => {
+    if (!validationRegistry[f]) validationRegistry[f] = [];
+    if (!validationRegistry[f].includes(checkSubjectPriorSaleDate)) validationRegistry[f].push(checkSubjectPriorSaleDate, checkCompPriorSaleDate);
+  });
 
   const incomeApproachFieldsToValidate = [
     "Estimated Monthly Market Rent $", "X Gross Rent Multiplier  = $",
@@ -792,6 +848,27 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     }
   });
 
+  if (!validationRegistry['# of Units']) validationRegistry['# of Units'] = [];
+  validationRegistry['# of Units'].push(checkProjectUnitsConsistency, checkProjectUnitsBreakdownSum);
+
+  if (!validationRegistry['# of Units Completed']) validationRegistry['# of Units Completed'] = [];
+  validationRegistry['# of Units Completed'].push(checkProjectUnitsConsistency);
+
+  if (!validationRegistry['# of Units (Project Completed)']) validationRegistry['# of Units (Project Completed)'] = [];
+  validationRegistry['# of Units (Project Completed)'].push(checkProjectUnitsConsistency);
+
+  if (!validationRegistry['# of Units For Sale']) validationRegistry['# of Units For Sale'] = [];
+  validationRegistry['# of Units For Sale'].push(checkProjectUnitsBreakdownSum);
+
+  if (!validationRegistry['# of Units for Sale']) validationRegistry['# of Units for Sale'] = [];
+  validationRegistry['# of Units for Sale'].push(checkProjectUnitsBreakdownSum);
+
+  if (!validationRegistry['# of Units Rented']) validationRegistry['# of Units Rented'] = [];
+  validationRegistry['# of Units Rented'].push(checkProjectUnitsBreakdownSum);
+
+  if (!validationRegistry['# of Owner Occupied Units']) validationRegistry['# of Owner Occupied Units'] = [];
+  validationRegistry['# of Owner Occupied Units'].push(checkProjectUnitsBreakdownSum);
+
   PROJECT_ANALYSIS_FIELDS_TO_CHECK.forEach(field => {
     if (!validationRegistry[field]) validationRegistry[field] = [];
     if (!validationRegistry[field].includes(checkProjectAnalysisFieldsNotBlank)) {
@@ -805,6 +882,15 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     }
     if (!validationRegistry[field].includes(checkUnitDescriptionsFieldsNotBlank)) {
       validationRegistry[field].push(checkUnitDescriptionsFieldsNotBlank);
+    }
+  });
+
+  ['Unit Charge$', 'Unit Charge $', 'per month X 12 = $', ' per month X 12 = $'].forEach(field => {
+    if (!validationRegistry[field]) {
+      validationRegistry[field] = [];
+    }
+    if (!validationRegistry[field].includes(checkUnitChargeCalculation)) {
+      validationRegistry[field].unshift(checkUnitChargeCalculation);
     }
   });
 
@@ -974,9 +1060,15 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
           checksToRun = [checkReportDataSourceOfferingPriceDate, checkSubjectFieldsNotBlank];
         } else if (lowerLookup.includes('condition of the project') || lowerLookup.includes('condition of the property')) {
           checksToRun = [checkProjectAndPropertyCondition];
-        } else if (PROJECT_INFO_FIELDS_TO_CHECK.some(f => f.trim().toLowerCase() === lowerLookup.trim())) {
+        } else if (lowerLookup === '# of units') {
+          checksToRun = [checkProjectInfoFieldsNotBlank, checkProjectUnitsConsistency, checkProjectUnitsBreakdownSum];
+        } else if (lowerLookup === '# of units completed' || lowerLookup === '# of units (project completed)' || lowerLookup === '# of units (if project completed)') {
+          checksToRun = [checkProjectInfoFieldsNotBlank, checkProjectUnitsConsistency];
+        } else if (lowerLookup === '# of units for sale' || lowerLookup === '# of units rented' || lowerLookup === '# of owner occupied units') {
+          checksToRun = [checkProjectInfoFieldsNotBlank, checkProjectUnitsBreakdownSum];
+        } else if (PROJECT_INFO_FIELDS_TO_CHECK.some(f => f.trim().toLowerCase() === lowerLookup.trim()) || (findCondoConditionalConfig && findCondoConditionalConfig(lookupField))) {
           checksToRun = [checkProjectInfoFieldsNotBlank];
-        } else if (PROJECT_ANALYSIS_FIELDS_TO_CHECK.some(f => f.trim().toLowerCase() === lowerLookup.trim())) {
+        } else if (PROJECT_ANALYSIS_FIELDS_TO_CHECK.some(f => f.trim().toLowerCase() === lowerLookup.trim()) || (findProjectAnalysisConditionalConfig && findProjectAnalysisConditionalConfig(lookupField))) {
           checksToRun = [checkProjectAnalysisFieldsNotBlank];
         } else if (UNIT_DESCRIPTIONS_FIELDS_TO_CHECK.some(f => f.trim().toLowerCase() === lowerLookup.trim())) {
           checksToRun = [checkUnitDescriptionsFieldsNotBlank];

@@ -26,6 +26,15 @@ const SalesComparisonSection = ({
 }) => {
   extractionAttempted = false;
 
+  const is1073Form = Boolean(
+    formType === '1073' ||
+    formType === '1073 + 1007' ||
+    (typeof formType === 'string' && formType.includes('1073')) ||
+    (typeof allData?.formType === 'string' && allData?.formType.includes('1073')) ||
+    (typeof data?.['Form Type'] === 'string' && data['Form Type'].includes('1073')) ||
+    (typeof allData?.['Form Type'] === 'string' && allData['Form Type'].includes('1073'))
+  );
+
   const getCompData = (sale) => {
     if (!data || typeof data !== 'object') return {};
     if (data[sale] && typeof data[sale] === 'object') return data[sale];
@@ -451,7 +460,7 @@ const SalesComparisonSection = ({
         </TableContainer>
       </Paper>
 
-      {formType !== 'Appraisal Version #1' && (
+      {formType !== 'Appraisal Version #1' && !is1073Form && (
         <Paper elevation={3} sx={{ mb: 4, borderRadius: 2, overflow: 'hidden' }}>
           <Box sx={{ bgcolor: 'info.main', color: 'white', px: 2, py: 1.5, position: 'sticky', top: 0, zIndex: 10 }}>
             <Typography variant="subtitle1" fontWeight="bold">Sales or Transfer History</Typography>
@@ -484,7 +493,7 @@ const SalesComparisonSection = ({
         </Paper>
       )}
 
-      {formType !== 'Appraisal Version #1' && (
+      {formType !== 'Appraisal Version #1' && !is1073Form && (
         <Paper id="prior-sale-history-grid" elevation={3} sx={{ mb: 4, mt: 4, borderRadius: 2, overflow: 'hidden' }}>
           <Box sx={{ bgcolor: 'grey.900', color: 'white', px: 2, py: 1.5, position: 'sticky', top: 0, zIndex: 10 }}>
           </Box>

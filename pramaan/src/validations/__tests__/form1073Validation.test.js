@@ -1,6 +1,12 @@
 import {
     checkProjectInfoFieldsNotBlank,
     checkProjectAndPropertyCondition,
+    checkProjectUnitsConsistency,
+    checkProjectUnitsBreakdownSum,
+    checkCondoConditionalQuestionPair,
+    findCondoConditionalConfig,
+    isAnswerAffirmative,
+    isAnswerNegative,
     extractConditionRating,
     PROJECT_INFO_FIELDS_TO_CHECK
 } from '../form1073Validation';
@@ -263,6 +269,278 @@ describe('form1073Validation - checkProjectAndPropertyCondition', () => {
 
     test('returns null for unrelated fields', () => {
         expect(checkProjectAndPropertyCondition("Project Description", "Garden", {})).toBeNull();
+    });
+});
+
+describe('form1073Validation - checkProjectUnitsConsistency', () => {
+    test('passes when # of Units matches # of Units Completed and If Project Completed', () => {
+        const allData = {
+            '# of Units': '118',
+            '# of Units Completed': '118',
+            '# of Units (Project Completed)': '118'
+        };
+
+        const res1 = checkProjectUnitsConsistency('# of Units', '118', allData);
+        expect(res1.isMatch).toBe(true);
+        expect(res1.message).toContain("matches '# of Units Completed'");
+
+        const res2 = checkProjectUnitsConsistency('# of Units Completed', '118', allData);
+        expect(res2.isMatch).toBe(true);
+    });
+
+    test('fails when # of Units does not match # of Units Completed', () => {
+        const allData = {
+            '# of Units': '118',
+            '# of Units Completed': '110'
+        };
+
+        const res = checkProjectUnitsConsistency('# of Units', '118', allData);
+        expect(res.isError).toBe(true);
+        expect(res.message).toBe("'# of Units' (118) does not match '# of Units Completed' (110).");
+    });
+
+    test('fails when # of Units does not match # of Units in If Project Completed', () => {
+        const allData = {
+            '# of Units': '118',
+            '# of Units Completed': '118',
+            '# of Units (Project Completed)': '125'
+        };
+
+        const res = checkProjectUnitsConsistency('# of Units', '118', allData);
+        expect(res.isError).toBe(true);
+        expect(res.message).toBe("'# of Units' (118) does not match '# of Units' in If Project Completed (125).");
+    });
+});
+
+describe('form1073Validation - checkProjectUnitsBreakdownSum', () => {
+    test('passes when # of Units For Sale + # of Units Rented + # of Owner Occupied Units === # of Units', () => {
+        const allData = {
+            '# of Units': '118',
+            '# of Units For Sale': '2',
+            '# of Units Rented': '8',
+            '# of Owner Occupied Units': '108'
+        };
+
+        const res = checkProjectUnitsBreakdownSum('# of Units', '118', allData);
+        expect(res.isMatch).toBe(true);
+        expect(res.message).toContain("= 118 ('# of Units')");
+
+        const resForSale = checkProjectUnitsBreakdownSum('# of Units For Sale', '2', allData);
+        expect(resForSale.isMatch).toBe(true);
+    });
+
+    test('fails when the sum does not equal # of Units', () => {
+        const allData = {
+            '# of Units': '118',
+            '# of Units For Sale': '5',
+            '# of Units Rented': '8',
+            '# of Owner Occupied Units': '108'
+        };
+
+        const res = checkProjectUnitsBreakdownSum('# of Units', '118', allData);
+        expect(res.isError).toBe(true);
+        expect(res.message).toBe("Units sum mismatch: '# of Units For Sale' (5) + '# of Units Rented' (8) + '# of Owner Occupied Units' (108) = 121, which must equal '# of Units' (118).");
+    });
+
+    test('works with lowercase # of Units for Sale in project completed context', () => {
+        const allData = {
+            '# of Units (Project Completed)': '118',
+            '# of Units for Sale': '2',
+            '# of Units Rented': '8',
+            '# of Owner Occupied Units': '108'
+        };
+
+        const res = checkProjectUnitsBreakdownSum('# of Units for Sale', '2', allData);
+        expect(res.isMatch).toBe(true);
+    });
+});
+
+describe('form1073Validation - checkProjectInfoFieldsNotBlank integration', () => {
+    test('validates units consistency and breakdown sum on # of Units', () => {
+        const validData = {
+            '# of Units': '118',
+            '# of Units Completed': '118',
+            '# of Units (Project Completed)': '118',
+            '# of Units For Sale': '2',
+            '# of Units Rented': '8',
+            '# of Owner Occupied Units': '108'
+        };
+        const res = checkProjectInfoFieldsNotBlank('# of Units', '118', validData);
+        expect(res.isMatch).toBe(true);
+
+        const invalidSumData = {
+            ...validData,
+            '# of Units For Sale': '10'
+        };
+        const sumErr = checkProjectInfoFieldsNotBlank('# of Units', '118', invalidSumData);
+        expect(sumErr.isError).toBe(true);
+        expect(sumErr.message).toContain('Units sum mismatch');
+    });
+});
+
+describe('form1073Validation - Condo Project Information Conditional Question Validations', () => {
+    test('1. 10% Ownership: if Yes, comment required; if No, comment optional', () => {
+        const qField = "Does any single entity (the same individual, investor group, corporation, etc.) own more than 10% of the total units in the project?";
+        const cField = "Does any single entity (the same individual, investor group, corporation, etc.) own more than 10% of the total units in the project? If Yes, describe";
+
+        // When question is Yes and comment is empty -> error
+        const dataYes = { [qField]: 'Yes' };
+        const errRes = checkProjectInfoFieldsNotBlank(cField, '', dataYes);
+        expect(errRes.isError).toBe(true);
+        expect(errRes.skipBlankFilter).toBe(true);
+        expect(errRes.message).toContain('is required when');
+
+        // When question is Yes and comment is filled -> valid
+        const validRes = checkProjectInfoFieldsNotBlank(cField, 'ABC Holdings LLC owns 15 units', dataYes);
+        expect(validRes.isMatch).toBe(true);
+
+        // When question is No and comment is empty -> null (clean/optional)
+        const dataNo = { [qField]: 'No' };
+        const optionalRes = checkProjectInfoFieldsNotBlank(cField, '', dataNo);
+        expect(optionalRes).toBeNull();
+
+        // When question is No and comment is filled -> valid
+        const filledNoRes = checkProjectInfoFieldsNotBlank(cField, 'N/A', dataNo);
+        expect(filledNoRes.isMatch).toBe(true);
+    });
+
+    test('2. Condo Conversion: if Yes, description required; if No, optional', () => {
+        const qField = "Was the project created by the conversion of existing building(s) into a condominium?";
+        const cField = "Was the project created by the conversion of existing building(s) into a condominium? If Yes,describe the original use and date of conversion";
+
+        // If Yes and blank -> error
+        const dataYes = { [qField]: 'Yes' };
+        const errRes = checkProjectInfoFieldsNotBlank(cField, '', dataYes);
+        expect(errRes.isError).toBe(true);
+        expect(errRes.skipBlankFilter).toBe(true);
+
+        // If Yes and filled -> valid
+        const validRes = checkProjectInfoFieldsNotBlank(cField, 'Converted from commercial lofts in 2015', dataYes);
+        expect(validRes.isMatch).toBe(true);
+
+        // If No and blank -> null (optional)
+        const dataNo = { [qField]: 'No' };
+        expect(checkProjectInfoFieldsNotBlank(cField, '', dataNo)).toBeNull();
+    });
+
+    test('3. Facilities Complete: if No, description required; if Yes, optional', () => {
+        const qField = "Are the units, common elements, and recreation facilities complete (including any planned rehabilitation for a condominium conversion)?";
+        const cField = "If No, describe";
+
+        // If No and blank -> error
+        const dataNo = { [qField]: 'No' };
+        const errRes = checkProjectInfoFieldsNotBlank(cField, '', dataNo);
+        expect(errRes.isError).toBe(true);
+        expect(errRes.skipBlankFilter).toBe(true);
+        expect(errRes.message).toContain('is required when');
+
+        // If No and filled -> valid
+        const validRes = checkProjectInfoFieldsNotBlank(cField, 'Swimming pool under renovation until July', dataNo);
+        expect(validRes.isMatch).toBe(true);
+
+        // If Yes and blank -> null (optional)
+        const dataYes = { [qField]: 'Yes' };
+        expect(checkProjectInfoFieldsNotBlank(cField, '', dataYes)).toBeNull();
+
+        // If Yes and filled (e.g. N/A in screenshot) -> valid
+        expect(checkProjectInfoFieldsNotBlank(cField, 'N/A', dataYes).isMatch).toBe(true);
+    });
+
+    test('4. Commercial Space: if Yes, description & % required; if No, optional', () => {
+        const qField = "Is there any commercial space in the project?";
+        const cField = "If Yes, describe and indicate the overall percentage of the commercial space.";
+
+        // If Yes and blank -> error
+        const dataYes = { [qField]: 'Yes' };
+        const errRes = checkProjectInfoFieldsNotBlank(cField, '', dataYes);
+        expect(errRes.isError).toBe(true);
+        expect(errRes.skipBlankFilter).toBe(true);
+
+        // If Yes and filled -> valid
+        const validRes = checkProjectInfoFieldsNotBlank(cField, 'Retail grocery on ground floor, 8%', dataYes);
+        expect(validRes.isMatch).toBe(true);
+
+        // If No and blank -> null (optional)
+        const dataNo = { [qField]: 'No' };
+        expect(checkProjectInfoFieldsNotBlank(cField, '', dataNo)).toBeNull();
+    });
+
+    test('5. Leased Common Elements: if Yes, description of terms required; if No, optional', () => {
+        const qField = "Are any common elements leased to or by the Homeowners' Association?";
+        const cField = "If Yes, describe the rental terms and options.";
+
+        // If Yes and blank -> error
+        const dataYes = { [qField]: 'Yes' };
+        const errRes = checkProjectInfoFieldsNotBlank(cField, '', dataYes);
+        expect(errRes.isError).toBe(true);
+        expect(errRes.skipBlankFilter).toBe(true);
+
+        // If Yes and filled -> valid
+        const validRes = checkProjectInfoFieldsNotBlank(cField, 'Antenna lease 10 years at $2,000/mo', dataYes);
+        expect(validRes.isMatch).toBe(true);
+
+        // If No and blank -> null (optional)
+        const dataNo = { [qField]: 'No' };
+        expect(checkProjectInfoFieldsNotBlank(cField, '', dataNo)).toBeNull();
+    });
+
+    test('6. Ground Rent: if Yes, $ per year & terms required; if No, optional', () => {
+        const qField = "Is the project subject to a ground rent?";
+        const cField = "If Yes, $ per year (describe terms and conditions)";
+
+        // If Yes and blank -> error
+        const dataYes = { [qField]: 'Yes' };
+        const errRes = checkProjectInfoFieldsNotBlank(cField, '', dataYes);
+        expect(errRes.isError).toBe(true);
+        expect(errRes.skipBlankFilter).toBe(true);
+
+        // If Yes and filled -> valid
+        const validRes = checkProjectInfoFieldsNotBlank(cField, '$450/year 99-year ground lease expires 2085', dataYes);
+        expect(validRes.isMatch).toBe(true);
+
+        // If No and blank -> null (optional)
+        const dataNo = { [qField]: 'No' };
+        expect(checkProjectInfoFieldsNotBlank(cField, '', dataNo)).toBeNull();
+    });
+
+    test('7. Adequate Parking: if No, description & effect required; if Yes, optional', () => {
+        const qField = "Are the parking facilities adequate for the project size and type?";
+        const cField = "If No, describe and comment on the effect on value and marketability.";
+
+        // If No and blank -> error
+        const dataNo = { [qField]: 'No' };
+        const errRes = checkProjectInfoFieldsNotBlank(cField, '', dataNo);
+        expect(errRes.isError).toBe(true);
+        expect(errRes.skipBlankFilter).toBe(true);
+
+        // If No and filled -> valid
+        const validRes = checkProjectInfoFieldsNotBlank(cField, '0.5 space/unit causes parking congestion, negatively impacting value', dataNo);
+        expect(validRes.isMatch).toBe(true);
+
+        // If Yes and blank -> null (optional)
+        const dataYes = { [qField]: 'Yes' };
+        expect(checkProjectInfoFieldsNotBlank(cField, '', dataYes)).toBeNull();
+    });
+
+    test('Question field validation checks that comment is filled when answered with trigger answer', () => {
+        const qField = "Does any single entity (the same individual, investor group, corporation, etc.) own more than 10% of the total units in the project?";
+        const cField = "Does any single entity (the same individual, investor group, corporation, etc.) own more than 10% of the total units in the project? If Yes, describe";
+
+        // Question is Yes, but comment is missing from allData -> error on question
+        const dataMissingComment = { [qField]: 'Yes', [cField]: '' };
+        const res = checkProjectInfoFieldsNotBlank(qField, 'Yes', dataMissingComment);
+        expect(res.isError).toBe(true);
+        expect(res.message).toContain('required when');
+
+        // Question is Yes, and comment is provided in allData -> valid
+        const dataWithComment = { [qField]: 'Yes', [cField]: 'Owns 12 units' };
+        const resValid = checkProjectInfoFieldsNotBlank(qField, 'Yes', dataWithComment);
+        expect(resValid.isMatch).toBe(true);
+
+        // Question is No -> valid without comment
+        const dataNo = { [qField]: 'No', [cField]: '' };
+        const resNo = checkProjectInfoFieldsNotBlank(qField, 'No', dataNo);
+        expect(resNo.isMatch).toBe(true);
     });
 });
 

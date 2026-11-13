@@ -856,6 +856,9 @@ function Subject({ defaultFormType }) {
     allUnitDescriptionsFields.forEach(field => {
       registry[field] = [unitDescriptionsValidation.checkUnitDescriptionsFieldsNotBlank];
     });
+    ['Unit Charge$', 'Unit Charge $', 'per month X 12 = $', ' per month X 12 = $'].forEach(field => {
+      registry[field] = [unitDescriptionsValidation.checkUnitChargeCalculation, unitDescriptionsValidation.checkUnitDescriptionsFieldsNotBlank];
+    });
 
     const allProjectAnalysisFields = Array.from(new Set([...projectAnalysisFields, ...(projectAnalysisValidation.PROJECT_ANALYSIS_FIELDS_TO_CHECK || [])]));
     allProjectAnalysisFields.forEach(field => {
@@ -902,6 +905,27 @@ function Subject({ defaultFormType }) {
     allProjectInfoFields.forEach(field => {
       registry[field] = [form1073Validation.checkProjectInfoFieldsNotBlank];
     });
+
+    if (!registry['# of Units']) registry['# of Units'] = [];
+    registry['# of Units'].push(form1073Validation.checkProjectUnitsConsistency, form1073Validation.checkProjectUnitsBreakdownSum);
+
+    if (!registry['# of Units Completed']) registry['# of Units Completed'] = [];
+    registry['# of Units Completed'].push(form1073Validation.checkProjectUnitsConsistency);
+
+    if (!registry['# of Units (Project Completed)']) registry['# of Units (Project Completed)'] = [];
+    registry['# of Units (Project Completed)'].push(form1073Validation.checkProjectUnitsConsistency);
+
+    if (!registry['# of Units For Sale']) registry['# of Units For Sale'] = [];
+    registry['# of Units For Sale'].push(form1073Validation.checkProjectUnitsBreakdownSum);
+
+    if (!registry['# of Units for Sale']) registry['# of Units for Sale'] = [];
+    registry['# of Units for Sale'].push(form1073Validation.checkProjectUnitsBreakdownSum);
+
+    if (!registry['# of Units Rented']) registry['# of Units Rented'] = [];
+    registry['# of Units Rented'].push(form1073Validation.checkProjectUnitsBreakdownSum);
+
+    if (!registry['# of Owner Occupied Units']) registry['# of Owner Occupied Units'] = [];
+    registry['# of Owner Occupied Units'].push(form1073Validation.checkProjectUnitsBreakdownSum);
 
     reconciliationFields.forEach(field => {
       if (!registry[field]) registry[field] = [];
@@ -2059,6 +2083,14 @@ function Subject({ defaultFormType }) {
       if (flatPath.length === 1) {
         if (!newData.Subject) newData.Subject = {};
         newData.Subject = { ...newData.Subject, [fieldKey]: value };
+        if (fieldKey.includes('Indicated Value by Sales Comparison') || fieldKey === 'Indicated Value by Sales Comparison Approach $') {
+          if (!newData.SALES_TRANSFER) newData.SALES_TRANSFER = {};
+          newData.SALES_TRANSFER = { ...newData.SALES_TRANSFER, [fieldKey]: value };
+          if (!newData.PRIOR_SALE_HISTORY) newData.PRIOR_SALE_HISTORY = {};
+          newData.PRIOR_SALE_HISTORY = { ...newData.PRIOR_SALE_HISTORY, [fieldKey]: value };
+          if (!newData.SALES_GRID) newData.SALES_GRID = {};
+          newData.SALES_GRID = { ...newData.SALES_GRID, [fieldKey]: value };
+        }
       } else if (flatPath.length === 2 && flatPath[0] === 'Subject') {
         newData[fieldKey] = value;
         if (newData['Single Family Rent Schedule']) {
@@ -3460,6 +3492,8 @@ function Subject({ defaultFormType }) {
     "Prior Sale History: Data Source(s) for prior sale/transfer",
     "Prior Sale History: Effective Date of Data Source(s)",
     "Prior Sale History: Analysis of prior sale or transfer history of the subject property and comparable sales",
+    "Indicated Value by Sales Comparison Approach $",
+    "Prior Sale History: Indicated Value by Sales Comparison Approach $",
     "Prior Sales or Transfers",
     "Subject Transfer History Data Source",
     "Comparable Number",
@@ -5633,10 +5667,10 @@ function Subject({ defaultFormType }) {
         visibleSectionIds = baseSections.filter(id => !['project-site-section', 'project-info-section', 'project-analysis-section', 'unit-descriptions-section'].includes(id));
         break;
       case '1073':
-        visibleSectionIds = baseSections.filter(id => !['comparable-rental-data', 'subject-rent-schedule', 'rent-schedule-section', 'improvements-section', 'site-section', 'rent-schedule-reconciliation-section', 'pud-info-section'].includes(id));
+        visibleSectionIds = baseSections.filter(id => !['comparable-rental-data', 'subject-rent-schedule', 'rent-schedule-section', 'improvements-section', 'site-section', 'rent-schedule-reconciliation-section', 'pud-info-section', 'sales-history-section'].includes(id));
         break;
       case '1073 + 1007':
-        visibleSectionIds = baseSections.filter(id => !['comparable-rental-data', 'subject-rent-schedule', 'improvements-section', 'site-section', 'pud-info-section'].includes(id));
+        visibleSectionIds = baseSections.filter(id => !['comparable-rental-data', 'subject-rent-schedule', 'improvements-section', 'site-section', 'pud-info-section', 'sales-history-section'].includes(id));
         break;
       case '1007':
         visibleSectionIds = ['subject-info', 'rent-schedule-section', 'rent-schedule-reconciliation-section', 'appraiser-section', 'map-sketch-exhibits-section', 'photos-exhibits-section', 'raw-output'];

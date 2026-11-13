@@ -17,17 +17,17 @@ export const checkLenderAddressInconsistency = (field, text, data) => {
 
     const normalize = (str) => {
         let s = String(str || '').toLowerCase();
-        s = s.replace(/\bstreet\b/g, 'st')
-            .replace(/\bavenue\b/g, 'ave')
-            .replace(/\broad\b/g, 'rd')
-            .replace(/\bdrive\b/g, 'dr')
-            .replace(/\bboulevard\b/g, 'blvd')
-            .replace(/\blane\b/g, 'ln')
-            .replace(/\bplace\b/g, 'pl')
-            .replace(/\bcircle\b/g, 'cir')
-            .replace(/\bcourt\b/g, 'ct')
-            .replace(/\bsuite\b/g, 'ste');
-        return s.replace(/[\s.,#\-']/g, '');
+        s = s.replace(/\bstreet\b|\bst\./g, 'st')
+            .replace(/\bavenue\b|\bave\./g, 'ave')
+            .replace(/\broad\b|\brd\./g, 'rd')
+            .replace(/\bdrive\b|\bdr\./g, 'dr')
+            .replace(/\bboulevard\b|\bblvd\./g, 'blvd')
+            .replace(/\blane\b|\bln\./g, 'ln')
+            .replace(/\bplace\b|\bpl\./g, 'pl')
+            .replace(/\bcircle\b|\bcir\./g, 'cir')
+            .replace(/\bcourt\b|\bct\./g, 'ct')
+            .replace(/\bsuite\b|\bste\./g, 'ste');
+        return s.replace(/[^a-z0-9]/g, '');
     };
 
     const subjectLenderAddress = String(data.Subject?.['Address (Lender/Client)'] || '').trim();
@@ -57,8 +57,7 @@ export const checkBorrowerHtmlConsistency = (field, text, allData) => {
         String(str || '')
             .toLowerCase()
             .replace(/&/g, 'and')
-            .replace(/[.,]/g, '')
-            .replace(/\s+/g, ' ')
+            .replace(/[^a-z0-9]/g, '')
             .trim();
 
     if (field === 'Borrower') {
