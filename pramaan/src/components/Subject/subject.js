@@ -572,6 +572,19 @@ function Subject({ defaultFormType }) {
         neighborhoodValidation.checkNeighborhoodFieldsNotBlank
       ],
       'one unit housing age(high,low,pred)': [neighborhoodValidation.checkHousingPriceAndAge, neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
+      'ONE UNIT HOUSING AGE(HIGH,LOW,PRED)': [neighborhoodValidation.checkHousingPriceAndAge, neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
+      'condominium housing price(high,low,pred)': [
+        neighborhoodValidation.checkHousingPriceAndAge,
+        neighborhoodValidation.checkPredominantPriceVsIndicatedValue,
+        neighborhoodValidation.checkNeighborhoodFieldsNotBlank
+      ],
+      'CONDOMINIUM HOUSING PRICE(HIGH,LOW,PRED)': [
+        neighborhoodValidation.checkHousingPriceAndAge,
+        neighborhoodValidation.checkPredominantPriceVsIndicatedValue,
+        neighborhoodValidation.checkNeighborhoodFieldsNotBlank
+      ],
+      'condominium housing age(high,low,pred)': [neighborhoodValidation.checkHousingPriceAndAge, neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
+      'CONDOMINIUM HOUSING AGE(HIGH,LOW,PRED)': [neighborhoodValidation.checkHousingPriceAndAge, neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
       "One-Unit": [neighborhoodValidation.checkNeighborhoodUsageConsistency, neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
       "2-4 Unit": [neighborhoodValidation.checkNeighborhoodUsageConsistency, neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
       "Multi-Family": [neighborhoodValidation.checkNeighborhoodUsageConsistency, neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
@@ -580,9 +593,10 @@ function Subject({ defaultFormType }) {
       "Other": [neighborhoodValidation.checkOtherLandUseComment, neighborhoodValidation.checkNeighborhoodUsageConsistency, neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
       "Present Land Use for other": [neighborhoodValidation.checkOtherLandUse],
       "Neighborhood Boundaries": [neighborhoodValidation.checkNeighborhoodBoundaries, neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
-      "Built-Up": [neighborhoodValidation.checkSingleChoiceFields, neighborhoodValidation.checkNeighborhoodFieldsNotBlank], "Growth": [neighborhoodValidation.checkSingleChoiceFields, neighborhoodValidation.checkNeighborhoodFieldsNotBlank], "Property Values": [neighborhoodValidation.checkSingleChoiceFields, neighborhoodValidation.checkNeighborhoodFieldsNotBlank], "Demand/Supply": [neighborhoodValidation.checkSingleChoiceFields, neighborhoodValidation.checkNeighborhoodFieldsNotBlank], "Marketing Time": [neighborhoodValidation.checkSingleChoiceFields, neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
+      "Built-Up": [neighborhoodValidation.checkBuiltUp, neighborhoodValidation.checkSingleChoiceFields, neighborhoodValidation.checkNeighborhoodFieldsNotBlank], "Growth": [neighborhoodValidation.checkGrowth, neighborhoodValidation.checkSingleChoiceFields, neighborhoodValidation.checkNeighborhoodFieldsNotBlank], "Property Values": [neighborhoodValidation.checkPropertyValues, neighborhoodValidation.checkSingleChoiceFields, neighborhoodValidation.checkNeighborhoodFieldsNotBlank], "Demand/Supply": [neighborhoodValidation.checkDemandSupply, neighborhoodValidation.checkSingleChoiceFields, neighborhoodValidation.checkNeighborhoodFieldsNotBlank], "Marketing Time": [neighborhoodValidation.checkMarketingTime, neighborhoodValidation.checkSingleChoiceFields, neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
       "Neighborhood Description": [neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
       "Market Conditions:": [neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
+      "Market Conditions": [neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
       'Legally Permissible': [neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
       'Physically Possible': [neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
       'Financially Feasible': [neighborhoodValidation.checkNeighborhoodFieldsNotBlank],

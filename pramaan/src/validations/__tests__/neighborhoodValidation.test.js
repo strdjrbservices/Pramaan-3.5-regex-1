@@ -2,7 +2,17 @@ import {
     checkPredominantPriceVsIndicatedValue,
     getPredominantPriceValue,
     getIndicatedSalesComparisonValue,
-    getImprovementsComments
+    getImprovementsComments,
+    checkHousingPriceAndAge,
+    checkNeighborhoodBoundaries,
+    checkNeighborhoodUsageConsistency,
+    checkBuiltUp,
+    checkGrowth,
+    checkPropertyValues,
+    checkDemandSupply,
+    checkMarketingTime,
+    checkLocation,
+    checkOtherLandUse
 } from '../neighborhoodValidation';
 
 describe('Predominant Price vs Indicated Value Validation', () => {
@@ -228,6 +238,96 @@ describe('Predominant Price vs Indicated Value Validation', () => {
         test('returns null if either pred or indicated value is missing', () => {
             expect(checkPredominantPriceVsIndicatedValue('one unit housing price(high,low,pred)', '', {})).toBeNull();
             expect(checkPredominantPriceVsIndicatedValue('Indicated Value by Sales Comparison Approach $', '100000', {})).toBeNull();
+        });
+    });
+
+    describe('Form 1004 Neighborhood Validation (Image 5)', () => {
+        const form1004Data = {
+            Location: 'Suburban',
+            'Built-Up': 'Over 75%',
+            Growth: 'Stable',
+            'Property Values': 'Stable',
+            'Demand/Supply': 'In Balance',
+            'Marketing Time': 'Under 3 mths',
+            'One-Unit': '75%',
+            '2-4 Unit': '5%',
+            'Multi-Family': '10%',
+            'Commercial': '5%',
+            'Other': '5%',
+            'Present Land Use for other': 'vacant land such as public parks, vacant building sites',
+            'one unit housing price(high,low,pred)': '1015 / 120 / 429',
+            'one unit housing age(high,low,pred)': '116 / 0 / 1',
+            'Neighborhood Boundaries': 'NC-16 to the north; Beatties Ford Rd to the east; Cox Ave to the south; Stewart Creek to the west.'
+        };
+
+        test('validates location, built-up, growth, property values, demand/supply, marketing time', () => {
+            expect(checkLocation('Location', form1004Data.Location).isMatch).toBe(true);
+            expect(checkBuiltUp('Built-Up', form1004Data['Built-Up']).isMatch).toBe(true);
+            expect(checkGrowth('Growth', form1004Data.Growth).isMatch).toBe(true);
+            expect(checkPropertyValues('Property Values', form1004Data['Property Values']).isMatch).toBe(true);
+            expect(checkDemandSupply('Demand/Supply', form1004Data['Demand/Supply']).isMatch).toBe(true);
+            expect(checkMarketingTime('Marketing Time', form1004Data['Marketing Time']).isMatch).toBe(true);
+        });
+
+        test('validates housing price and age (High >= Low, Low <= Pred <= High)', () => {
+            const priceRes = checkHousingPriceAndAge('one unit housing price(high,low,pred)', form1004Data['one unit housing price(high,low,pred)']);
+            expect(priceRes.isMatch).toBe(true);
+
+            const ageRes = checkHousingPriceAndAge('one unit housing age(high,low,pred)', form1004Data['one unit housing age(high,low,pred)']);
+            expect(ageRes.isMatch).toBe(true);
+        });
+
+        test('validates boundaries contain North, South, East, West', () => {
+            const boundRes = checkNeighborhoodBoundaries('Neighborhood Boundaries', form1004Data['Neighborhood Boundaries']);
+            expect(boundRes.isMatch).toBe(true);
+        });
+
+        test('validates land use percentages and other description', () => {
+            expect(checkNeighborhoodUsageConsistency('One-Unit', form1004Data['One-Unit']).isMatch).toBe(true);
+            expect(checkNeighborhoodUsageConsistency('Other', form1004Data['Other']).isMatch).toBe(true);
+            const otherRes = checkOtherLandUse('Other', form1004Data['Other'], { NEIGHBORHOOD: form1004Data });
+            expect(otherRes.isMatch).toBe(true);
+        });
+    });
+
+    describe('Form 1073 Condominium Neighborhood Validation (Image 6)', () => {
+        const form1073Data = {
+            Location: 'Suburban',
+            'Built-Up': 'Over 75%',
+            Growth: 'Stable',
+            'Property Values': 'Stable',
+            'Demand/Supply': 'Shortage',
+            'Marketing Time': 'Under 3 mths',
+            'One-Unit': '65%',
+            '2-4 Unit': '5%',
+            'Multi-Family': '25%',
+            'Commercial': '5%',
+            'Other': '0%',
+            'condominium housing price(high,low,pred)': '6100 / 867 / 1589',
+            'condominium housing age(high,low,pred)': '53 / 8 / 24',
+            'Neighborhood Boundaries': 'Las Flores to the North, Los Patrones Parkway to the East, Rancho Mission Viejo to the South & Mission Viejo to the West.'
+        };
+
+        test('validates condo single choice characteristics and trends', () => {
+            expect(checkLocation('Location', form1073Data.Location).isMatch).toBe(true);
+            expect(checkBuiltUp('Built-Up', form1073Data['Built-Up']).isMatch).toBe(true);
+            expect(checkGrowth('Growth', form1073Data.Growth).isMatch).toBe(true);
+            expect(checkPropertyValues('Property Values', form1073Data['Property Values']).isMatch).toBe(true);
+            expect(checkDemandSupply('Demand/Supply', form1073Data['Demand/Supply']).isMatch).toBe(true);
+            expect(checkMarketingTime('Marketing Time', form1073Data['Marketing Time']).isMatch).toBe(true);
+        });
+
+        test('validates condominium housing price and age', () => {
+            const priceRes = checkHousingPriceAndAge('condominium housing price(high,low,pred)', form1073Data['condominium housing price(high,low,pred)']);
+            expect(priceRes.isMatch).toBe(true);
+
+            const ageRes = checkHousingPriceAndAge('condominium housing age(high,low,pred)', form1073Data['condominium housing age(high,low,pred)']);
+            expect(ageRes.isMatch).toBe(true);
+        });
+
+        test('validates condo boundaries contain North, South, East, West', () => {
+            const boundRes = checkNeighborhoodBoundaries('Neighborhood Boundaries', form1073Data['Neighborhood Boundaries']);
+            expect(boundRes.isMatch).toBe(true);
         });
     });
 });

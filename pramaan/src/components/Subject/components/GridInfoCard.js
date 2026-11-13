@@ -2233,8 +2233,8 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
       ? data
       : (data?.NEIGHBORHOOD || allData?.NEIGHBORHOOD || allData?.clean_data?.Neighborhood || allData || {});
 
-    const currentFormType = String(allData?.form_type || allData?.['Form Type'] || allData?.selectedFormType || '').toLowerCase();
-    const isCondo = currentFormType.includes('1073') || Boolean(allData?.clean_data?.['Unit Descriptions'] || allData?.UNIT_DESCRIPTIONS);
+    const currentFormType = String(allData?.form_type || allData?.['Form Type'] || allData?.selectedFormType || allData?.['From Type'] || allData?.formType || '').toLowerCase();
+    const isCondo = currentFormType.includes('1073') || Boolean(allData?.clean_data?.['Unit Descriptions'] || allData?.UNIT_DESCRIPTIONS || allData?.clean_data?.['Project Information'] || allData?.PROJECT_INFO || nbData['condominium housing price(high,low,pred)']);
     const isMultiFamily = currentFormType.includes('1025');
 
     const housingTrendsTitle = isCondo
@@ -2291,10 +2291,10 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
       // Flexible matching (e.g. "Under 3 mos" vs "Under 3 mths", "3-6 mos" vs "3-6 mths", "Over 6 mos" vs "Over 6 mths")
       const isChecked = currentVal === targetLabel || (
-        (targetLabel.includes('3 m') || targetLabel.includes('3-6')) && (
-          (targetLabel.includes('under 3') && currentVal.includes('under 3')) ||
-          (targetLabel.includes('3-6') && currentVal.includes('3-6')) ||
-          (targetLabel.includes('over 6') && currentVal.includes('over 6'))
+        (targetLabel.includes('3 m') || targetLabel.includes('3-6') || targetLabel.includes('over 6')) && (
+          (targetLabel.includes('under 3') && (currentVal.includes('under 3') || currentVal.includes('under3') || currentVal.includes('underthree'))) ||
+          (targetLabel.includes('3-6') && (currentVal.includes('3-6') || currentVal.includes('threetosix'))) ||
+          (targetLabel.includes('over 6') && (currentVal.includes('over 6') || currentVal.includes('oversix')))
         )
       ) || (
         targetLabel.includes('75') && currentVal.includes('75') && (
@@ -2302,6 +2302,10 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
           (targetLabel.includes('25-75') && currentVal.includes('25-75')) ||
           (targetLabel.includes('under') && currentVal.includes('under'))
         )
+      ) || (
+        targetLabel === 'in balance' && (currentVal === 'in balance' || currentVal === 'inbalance')
+      ) || (
+        targetLabel === 'over supply' && (currentVal === 'over supply' || currentVal === 'oversupply')
       );
 
       const handleToggle = () => {
@@ -2352,10 +2356,17 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
     };
 
     // Parse housing price: High / Low / Pred
-    let rawPrice = String(nbData['one unit housing price(high,low,pred)'] || nbData['ONE UNIT HOUSING PRICE(HIGH,LOW,PRED)'] || '').trim();
-    let priceHigh = String(nbData['Housing Price High'] ?? nbData['Price High'] ?? nbData['High Price'] ?? '').trim();
-    let priceLow = String(nbData['Housing Price Low'] ?? nbData['Price Low'] ?? nbData['Low Price'] ?? '').trim();
-    let pricePred = String(nbData['Housing Price Pred'] ?? nbData['Price Pred'] ?? nbData['Pred Price'] ?? nbData['Predominant Price'] ?? '').trim();
+    let rawPrice = String(
+      (isCondo ? (nbData['condominium housing price(high,low,pred)'] || nbData['CONDOMINIUM HOUSING PRICE(HIGH,LOW,PRED)']) : '') ||
+      nbData['one unit housing price(high,low,pred)'] ||
+      nbData['ONE UNIT HOUSING PRICE(HIGH,LOW,PRED)'] ||
+      nbData['condominium housing price(high,low,pred)'] ||
+      nbData['CONDOMINIUM HOUSING PRICE(HIGH,LOW,PRED)'] ||
+      ''
+    ).trim();
+    let priceHigh = String(nbData['Housing Price High'] ?? nbData['Condominium Housing Price High'] ?? nbData['Price High'] ?? nbData['High Price'] ?? '').trim();
+    let priceLow = String(nbData['Housing Price Low'] ?? nbData['Condominium Housing Price Low'] ?? nbData['Price Low'] ?? nbData['Low Price'] ?? '').trim();
+    let pricePred = String(nbData['Housing Price Pred'] ?? nbData['Condominium Housing Price Pred'] ?? nbData['Price Pred'] ?? nbData['Pred Price'] ?? nbData['Predominant Price'] ?? '').trim();
 
     if (rawPrice && (!priceHigh || !priceLow || !pricePred)) {
       const pParts = rawPrice.split(/[/,;]+/).map(s => s.trim().replace(/,/g, '')).filter(Boolean);
@@ -2367,10 +2378,17 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
     }
 
     // Parse housing age: Oldest (High) / Newest (Low) / Pred
-    let rawAge = String(nbData['one unit housing age(high,low,pred)'] || nbData['ONE UNIT HOUSING AGE(HIGH,LOW,PRED)'] || '').trim();
-    let ageHigh = String(nbData['Housing Age High'] ?? nbData['Age High'] ?? nbData['High Age'] ?? '').trim();
-    let ageLow = String(nbData['Housing Age Low'] ?? nbData['Age Low'] ?? nbData['Low Age'] ?? '').trim();
-    let agePred = String(nbData['Housing Age Pred'] ?? nbData['Age Pred'] ?? nbData['Pred Age'] ?? nbData['Predominant Age'] ?? '').trim();
+    let rawAge = String(
+      (isCondo ? (nbData['condominium housing age(high,low,pred)'] || nbData['CONDOMINIUM HOUSING AGE(HIGH,LOW,PRED)']) : '') ||
+      nbData['one unit housing age(high,low,pred)'] ||
+      nbData['ONE UNIT HOUSING AGE(HIGH,LOW,PRED)'] ||
+      nbData['condominium housing age(high,low,pred)'] ||
+      nbData['CONDOMINIUM HOUSING AGE(HIGH,LOW,PRED)'] ||
+      ''
+    ).trim();
+    let ageHigh = String(nbData['Housing Age High'] ?? nbData['Condominium Housing Age High'] ?? nbData['Age High'] ?? nbData['High Age'] ?? '').trim();
+    let ageLow = String(nbData['Housing Age Low'] ?? nbData['Condominium Housing Age Low'] ?? nbData['Age Low'] ?? nbData['Low Age'] ?? '').trim();
+    let agePred = String(nbData['Housing Age Pred'] ?? nbData['Condominium Housing Age Pred'] ?? nbData['Age Pred'] ?? nbData['Pred Age'] ?? nbData['Predominant Age'] ?? '').trim();
 
     if (rawAge && (!ageHigh || !ageLow || !agePred)) {
       const aParts = rawAge.split(/[/,;]+/).map(s => s.trim().replace(/,/g, '')).filter(Boolean);
@@ -2389,6 +2407,12 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
       const newPred = type === 'pred' ? cleanVal : pricePred;
       const combined = `${newHigh || '0'} / ${newLow || '0'} / ${newPred || '0'}`;
       onDataChange(['one unit housing price(high,low,pred)'], combined);
+      if (isCondo) {
+        onDataChange(['condominium housing price(high,low,pred)'], combined);
+        if (type === 'high') onDataChange(['Condominium Housing Price High'], cleanVal);
+        if (type === 'low') onDataChange(['Condominium Housing Price Low'], cleanVal);
+        if (type === 'pred') onDataChange(['Condominium Housing Price Pred'], cleanVal);
+      }
       if (type === 'high') onDataChange(['Housing Price High'], cleanVal);
       if (type === 'low') onDataChange(['Housing Price Low'], cleanVal);
       if (type === 'pred') onDataChange(['Housing Price Pred'], cleanVal);
@@ -2402,6 +2426,12 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
       const newPred = type === 'pred' ? cleanVal : agePred;
       const combined = `${newHigh || '0'} / ${newLow || '0'} / ${newPred || '0'}`;
       onDataChange(['one unit housing age(high,low,pred)'], combined);
+      if (isCondo) {
+        onDataChange(['condominium housing age(high,low,pred)'], combined);
+        if (type === 'high') onDataChange(['Condominium Housing Age High'], cleanVal);
+        if (type === 'low') onDataChange(['Condominium Housing Age Low'], cleanVal);
+        if (type === 'pred') onDataChange(['Condominium Housing Age Pred'], cleanVal);
+      }
       if (type === 'high') onDataChange(['Housing Age High'], cleanVal);
       if (type === 'low') onDataChange(['Housing Age Low'], cleanVal);
       if (type === 'pred') onDataChange(['Housing Age Pred'], cleanVal);
@@ -2638,6 +2668,45 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
                         disabled={!isEditable}
                         placeholder="Pred."
                         style={{ width: '100%', textAlign: 'center', border: '1px solid #ced4da', borderRadius: '2px', padding: '2px 4px', fontSize: '0.78rem', background: '#fff' }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Status row for Housing Price & Age */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 50px 1fr', borderTop: '1px solid #dee2e6', backgroundColor: '#f8f9fa', padding: '2px 4px', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                      <EditableField
+                        fieldPath={[isCondo ? 'condominium housing price(high,low,pred)' : 'one unit housing price(high,low,pred)']}
+                        value={rawPrice}
+                        onDataChange={onDataChange}
+                        editingField={editingField}
+                        setEditingField={setEditingField}
+                        isEditable={false}
+                        allData={allData}
+                        manualValidations={manualValidations}
+                        handleManualValidation={handleManualValidation}
+                        revisionHandlers={revisionHandlers}
+                        showBlankValidation={true}
+                        inputStyle={{ display: 'none' }}
+                        valueStyle={{ fontSize: '0.68rem', fontWeight: 600 }}
+                      />
+                    </div>
+                    <div style={{ textAlign: 'center', fontSize: '0.65rem', color: '#6c757d', fontWeight: 600 }}>Status</div>
+                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                      <EditableField
+                        fieldPath={[isCondo ? 'condominium housing age(high,low,pred)' : 'one unit housing age(high,low,pred)']}
+                        value={rawAge}
+                        onDataChange={onDataChange}
+                        editingField={editingField}
+                        setEditingField={setEditingField}
+                        isEditable={false}
+                        allData={allData}
+                        manualValidations={manualValidations}
+                        handleManualValidation={handleManualValidation}
+                        revisionHandlers={revisionHandlers}
+                        showBlankValidation={true}
+                        inputStyle={{ display: 'none' }}
+                        valueStyle={{ fontSize: '0.68rem', fontWeight: 600 }}
                       />
                     </div>
                   </div>
