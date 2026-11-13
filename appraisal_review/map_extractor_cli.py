@@ -1967,27 +1967,60 @@ class MapExtractor:
                 import pdfplumber
                 p_indices = detect_form_pages(doc)
 
+                # Determine the best pdfplumber-compatible source for XML files
+                # Prefer companion PDF (same stem) over doc.tobytes() to avoid pdfplumber parse errors
+                _xml_companion_pdf = None
+                if is_xml_file:
+                    _xml_dir = os.path.dirname(os.path.abspath(file_path))
+                    _xml_stem = os.path.splitext(os.path.basename(file_path))[0]
+                    _cand = os.path.join(_xml_dir, f"{_xml_stem}.pdf")
+                    if os.path.exists(_cand):
+                        _xml_companion_pdf = _cand
+                    else:
+                        # Also search in Downloads/Full File
+                        for _search_dir in [
+                            os.path.join(_xml_dir, "..", "Downloads", "Full File"),
+                            os.path.join(_xml_dir, "..", "Full File"),
+                            os.path.join(_xml_dir, ".."),
+                        ]:
+                            _cand2 = os.path.join(_search_dir, f"{_xml_stem}.pdf")
+                            if os.path.exists(_cand2):
+                                _xml_companion_pdf = os.path.abspath(_cand2)
+                                break
+
+                def _get_plumber_source():
+                    """Return (source, should_close_bytesio) for pdfplumber.open()"""
+                    if is_xml_file:
+                        if _xml_companion_pdf:
+                            return _xml_companion_pdf, False
+                        # Fall back to serializing the fitz doc
+                        return io.BytesIO(doc.tobytes()), True
+                    return file_path, False
+
                 # Subject
                 p1_idx = p_indices.get("form_p1")
                 can_open_pdf = (is_xml_file and doc) or (not is_xml_file and os.path.exists(file_path))
                 if p1_idx is not None and not subject_record and can_open_pdf:
                     try:
-                        p_source = io.BytesIO(doc.tobytes()) if (is_xml_file and doc) else file_path
-                        with pdfplumber.open(p_source) as pdoc:
-                            p1_res = extract_page_1_fields(pdoc.pages[p1_idx], fitz_page=doc[p1_idx])
-                            sub = p1_res.get("SUBJECT", {})
-                            sub_st = sub.get("Property Address") or ""
-                            sub_city = re.sub(r'^(?:City|City:)\s*', '', sub.get("City") or "", flags=re.I).strip()
-                            sub_state = re.sub(r'^(?:State|State:)\s*', '', sub.get("State") or "", flags=re.I).strip()
-                            sub_zip = re.sub(r'^(?:Zip|Zip\s*Code|Code|Zip:)\s*', '', sub.get("Zip Code") or "", flags=re.I).strip()
-                            if sub_st:
-                                subject_record = {
-                                    "street": sub_st,
-                                    "city": sub_city,
-                                    "state": sub_state,
-                                    "zipcode": sub_zip,
-                                    "address": f"{sub_st}, {sub_city}, {sub_state} {sub_zip}".strip(", ") if (sub_city and sub_state) else sub_st
-                                }
+                        p_source, _ = _get_plumber_source()
+                        import warnings
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore")
+                            with pdfplumber.open(p_source) as pdoc:
+                                p1_res = extract_page_1_fields(pdoc.pages[p1_idx], fitz_page=doc[p1_idx])
+                                sub = p1_res.get("SUBJECT", {})
+                                sub_st = sub.get("Property Address") or ""
+                                sub_city = re.sub(r'^(?:City|City:)\s*', '', sub.get("City") or "", flags=re.I).strip()
+                                sub_state = re.sub(r'^(?:State|State:)\s*', '', sub.get("State") or "", flags=re.I).strip()
+                                sub_zip = re.sub(r'^(?:Zip|Zip\s*Code|Code|Zip:)\s*', '', sub.get("Zip Code") or "", flags=re.I).strip()
+                                if sub_st:
+                                    subject_record = {
+                                        "street": sub_st,
+                                        "city": sub_city,
+                                        "state": sub_state,
+                                        "zipcode": sub_zip,
+                                        "address": f"{sub_st}, {sub_city}, {sub_state} {sub_zip}".strip(", ") if (sub_city and sub_state) else sub_st
+                                    }
                     except Exception as e_p1:
                         print(f"Notice: Page 1 Subject extraction: {e_p1}")
 
@@ -1996,39 +2029,42 @@ class MapExtractor:
                 extra_indices = p_indices.get("extra_comp_pages") or []
                 if p2_idx is not None and can_open_pdf:
                     try:
-                        p_source = io.BytesIO(doc.tobytes()) if (is_xml_file and doc) else file_path
-                        with pdfplumber.open(p_source) as pdoc:
-                            extra_plumbs = [pdoc.pages[i] for i in extra_indices if i < len(pdoc.pages)]
-                            extra_fitz = [doc[i] for i in extra_indices if i < len(doc)]
-                            sg_res, _ = extract_page_2_sales_grid_and_reconciliation(
-                                pdoc.pages[p2_idx],
-                                page_extra_comps=extra_plumbs if extra_plumbs else None,
-                                fitz_page=doc[p2_idx],
-                                fitz_extra_pages=extra_fitz if extra_fitz else None
-                            )
-                            for i in range(1, 13):
-                                k = f"COMPARABLE SALE #{i}"
-                                c_dict = sg_res.get(k) or sg_res.get(f"COMPARABLE SALE # {i}") or sg_res.get(f"Comparable {i}") or sg_res.get(f"Comparable Sale {i}")
-                                if c_dict and isinstance(c_dict, dict):
-                                    c_addr = c_dict.get("Address") or ""
-                                    c_prox = c_dict.get("Proximity to Subject") or ""
-                                    c_price = c_dict.get("Sale Price") or ""
-                                    full_c_addr = c_addr
-                                    if c_addr and not re.search(r'[A-Za-z]{2}\s+[0-9]{5}', c_addr) and sub_city and sub_state:
-                                        full_c_addr = f"{c_addr}, {sub_city}, {sub_state} {sub_zip}".strip(", ")
-                                    m_st = re.match(r'^([^,]+)', c_addr)
-                                    st = m_st.group(1).strip() if m_st else c_addr
-                                    if not any(sc["comp_num"] == i for sc in sales_comps):
-                                        sales_comps.append({
-                                            "comp_num": i,
-                                            "street": st,
-                                            "address": full_c_addr or st,
-                                            "city": sub_city,
-                                            "state": sub_state,
-                                            "zipcode": sub_zip,
-                                            "proximity": c_prox,
-                                            "sale_price": c_price
-                                        })
+                        p_source, _ = _get_plumber_source()
+                        import warnings
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore")
+                            with pdfplumber.open(p_source) as pdoc:
+                                extra_plumbs = [pdoc.pages[i] for i in extra_indices if i < len(pdoc.pages)]
+                                extra_fitz = [doc[i] for i in extra_indices if i < len(doc)]
+                                sg_res, _ = extract_page_2_sales_grid_and_reconciliation(
+                                    pdoc.pages[p2_idx],
+                                    page_extra_comps=extra_plumbs if extra_plumbs else None,
+                                    fitz_page=doc[p2_idx],
+                                    fitz_extra_pages=extra_fitz if extra_fitz else None
+                                )
+                                for i in range(1, 13):
+                                    k = f"COMPARABLE SALE #{i}"
+                                    c_dict = sg_res.get(k) or sg_res.get(f"COMPARABLE SALE # {i}") or sg_res.get(f"Comparable {i}") or sg_res.get(f"Comparable Sale {i}")
+                                    if c_dict and isinstance(c_dict, dict):
+                                        c_addr = c_dict.get("Address") or ""
+                                        c_prox = c_dict.get("Proximity to Subject") or ""
+                                        c_price = c_dict.get("Sale Price") or ""
+                                        full_c_addr = c_addr
+                                        if c_addr and not re.search(r'[A-Za-z]{2}\s+[0-9]{5}', c_addr) and sub_city and sub_state:
+                                            full_c_addr = f"{c_addr}, {sub_city}, {sub_state} {sub_zip}".strip(", ")
+                                        m_st = re.match(r'^([^,]+)', c_addr)
+                                        st = m_st.group(1).strip() if m_st else c_addr
+                                        if not any(sc["comp_num"] == i for sc in sales_comps):
+                                            sales_comps.append({
+                                                "comp_num": i,
+                                                "street": st,
+                                                "address": full_c_addr or st,
+                                                "city": sub_city,
+                                                "state": sub_state,
+                                                "zipcode": sub_zip,
+                                                "proximity": c_prox,
+                                                "sale_price": c_price
+                                            })
                     except Exception as e_p2:
                         print(f"Notice: Page 2 Sales Grid extraction: {e_p2}")
 

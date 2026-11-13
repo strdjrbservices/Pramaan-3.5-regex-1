@@ -2896,6 +2896,9 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
             property_elem.attrib.get("UnitNumber", "") or
             property_elem.attrib.get("_Unit", "")
         )
+    # Ignore dash-only unit identifiers (e.g. XML stores "-" for no unit)
+    if unit_id and re.match(r'^[-\s]+$', str(unit_id)):
+        unit_id = ""
     if not unit_id and prop_addr:
         m_u = re.search(r'(?:Unit\s*#?|Apt\s*#?|#|Suite)\s*[:\-]?\s*([A-Za-z0-9\-]+)$', prop_addr, re.I)
         if m_u:
@@ -3735,16 +3738,25 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
             comp_loc = comp.find("LOCATION")
             c_addr_street = comp_loc.attrib.get("PropertyStreetAddress", "") if comp_loc is not None else ""
             c_addr_csz = comp_loc.attrib.get("PropertyStreetAddress2", "") if comp_loc is not None else ""
+            # Strip leading dash-only unit placeholders from PropertyStreetAddress2 (e.g. "-, Ladera Ranch, CA 92694" -> "Ladera Ranch, CA 92694")
+            if c_addr_csz:
+                c_addr_csz = re.sub(r'^-\s*,\s*', '', c_addr_csz).strip()
+                c_addr_csz = re.sub(r'^,\s*', '', c_addr_csz).strip()
             c_city = comp_loc.attrib.get("PropertyCity", "") or comp_loc.attrib.get("_City", "") if comp_loc is not None else ""
             if not c_city and c_addr_csz:
                 parts_csz = [p.strip() for p in c_addr_csz.split(",") if p.strip()]
                 if parts_csz:
                     c_city = parts_csz[0]
             c_addr = f"{c_addr_street}, {c_addr_csz}".strip(", ") if (c_addr_street and c_addr_csz) else (c_addr_street or c_addr_csz)
+            # Remove double-comma artifacts (e.g. "4 Potters Bnd, , Ladera Ranch")
+            c_addr = re.sub(r',\s*,', ',', c_addr).strip(", ")
             c_prox = comp_loc.attrib.get("ProximityToSubjectDescription", "") if comp_loc is not None else ""
 
             # Extract Unit # and Project Name / Phase
             c_unit = (comp_loc.attrib.get("UnitIdentifier", "") or comp_loc.attrib.get("_UnitIdentifier", "")) if comp_loc is not None else ""
+            # Ignore dash-only or empty unit identifiers (e.g. "-" means no unit)
+            if c_unit and re.match(r'^[-\s]+$', c_unit):
+                c_unit = ""
             if not c_unit and seq == "0":
                 c_unit = unit_id
             if not c_unit and c_addr_csz:

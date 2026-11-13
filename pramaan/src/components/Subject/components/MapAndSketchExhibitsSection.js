@@ -68,6 +68,8 @@ const parseSketchRooms = (sketchItem) => {
   if (sketchItem?.room_labels && sketchItem.room_labels.length > 0) {
     const rawSum = sketchItem.room_summary || {};
     const bedCount = rawSum.bedroom_count ?? (sketchItem.rooms_by_category?.bedrooms?.length || 0);
+    const bathCount = rawSum.bathroom_count ?? (sketchItem.rooms_by_category?.bathrooms?.length ? String(sketchItem.rooms_by_category.bathrooms.length) : '0');
+    const bathDisplay = rawSum.bathroom_display || (bathCount && bathCount !== '0' ? `${bathCount} Bath(s)` : '');
     const livingCount = rawSum.living_rooms_count ?? (sketchItem.rooms_by_category?.living?.length || 0);
     const kitchenCount = rawSum.has_kitchen ? 1 : 0;
     const diningCount = rawSum.has_dining ? 1 : 0;
@@ -80,8 +82,27 @@ const parseSketchRooms = (sketchItem) => {
       summary: {
         ...rawSum,
         bedroom_count: bedCount,
+        bathroom_count: bathCount,
+        bathroom_display: bathDisplay,
         living_rooms_count: livingCount,
         total_rooms: totalRooms
+      }
+    };
+  }
+
+  if (sketchItem?.room_summary && (sketchItem.room_summary.bedroom_count || sketchItem.room_summary.bathroom_count || sketchItem.room_summary.total_rooms)) {
+    const rawSum = sketchItem.room_summary;
+    return {
+      labels: sketchItem.room_labels || [],
+      byCategory: sketchItem.rooms_by_category || {},
+      byLevel: sketchItem.rooms_by_level || {},
+      summary: {
+        ...rawSum,
+        bedroom_count: rawSum.bedroom_count || 0,
+        bathroom_count: rawSum.bathroom_count || '0',
+        bathroom_display: rawSum.bathroom_display || (rawSum.bathroom_count && rawSum.bathroom_count !== '0' ? `${rawSum.bathroom_count} Bath(s)` : ''),
+        living_rooms_count: rawSum.living_rooms_count || 1,
+        total_rooms: rawSum.total_rooms || 0
       }
     };
   }
@@ -267,6 +288,151 @@ const parseSketchRooms = (sketchItem) => {
   };
 };
 
+const cleanAddressArtifacts = (str) => {
+  if (!str || typeof str !== 'string') return '';
+  return str
+    .replace(/,\s*-\s*,/g, ', ')
+    .replace(/,\s*-\s*$/g, '')
+    .replace(/^\s*-\s*,\s*/g, '')
+    .replace(/\bUnit\s+-\s*,?/gi, '')
+    .replace(/\bUnit\s*#?\s*-\b/gi, '')
+    .replace(/\s*,\s*,+/g, ', ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const getPhotoSrc = (p) => {
+  if (!p) return '';
+  if (typeof p === 'string') {
+    if (p.startsWith('data:') || p.startsWith('http://') || p.startsWith('https://') || p.startsWith('blob:')) return p;
+    if (p.length > 50) return `data:image/jpeg;base64,${p}`;
+    return p;
+  }
+  const raw = p.base64_preview || p.image_preview || p.base64_image || p.image_base64 || p.data || p.src || p.image_data || p.url || '';
+  if (!raw) return '';
+  if (raw.startsWith('data:') || raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('blob:')) return raw;
+  return `data:image/jpeg;base64,${raw}`;
+};
+
+const generateVectorSketchPreview = (title = 'Building Sketch & Floor Plan', gla = '', areas = [], roomSummary = {}) => {
+  const safeTitle = (title || 'Building Sketch & Floor Plan').slice(0, 45);
+  const safeGla = gla ? `${Number(String(gla).replace(/,/g, '')).toLocaleString()} Sq Ft GLA` : 'Floor Plan Layout';
+  const beds = roomSummary?.bedroom_count ? `${roomSummary.bedroom_count} Bed${roomSummary.bedroom_count > 1 ? 's' : ''}` : '';
+  const baths = roomSummary?.bathroom_display || (roomSummary?.bathroom_count ? `${roomSummary.bathroom_count} Bath` : '');
+  const areaBoxes = (areas || []).slice(0, 4).map((a, idx) => {
+    const col = ['#38bdf8', '#818cf8', '#34d399', '#fbbf24'][idx % 4];
+    const lbl = (a.name || a.label || `Level ${idx + 1}`).slice(0, 22);
+    const sqftStr = a.sqft ? `${Number(a.sqft).toLocaleString()} Sq Ft` : (a.area || '');
+    const x = 50 + (idx % 2) * 280;
+    const y = 110 + Math.floor(idx / 2) * 140;
+    return `
+      <g transform="translate(${x}, ${y})">
+        <rect width="250" height="120" rx="8" fill="rgba(15, 23, 42, 0.75)" stroke="${col}" stroke-width="2" stroke-dasharray="6 3"/>
+        <rect x="0" y="0" width="250" height="28" rx="8" fill="${col}" fill-opacity="0.18"/>
+        <text x="12" y="19" font-family="-apple-system,sans-serif" font-size="12" font-weight="700" fill="${col}">${lbl}</text>
+        <text x="12" y="55" font-family="-apple-system,sans-serif" font-size="18" font-weight="800" fill="#ffffff">${sqftStr}</text>
+        <text x="12" y="85" font-family="-apple-system,sans-serif" font-size="11" fill="#94a3b8">${a.finish || 'Finished Area Above Grade'}</text>
+      </g>
+    `;
+  }).join('');
+
+  const roomTags = [beds, baths].filter(Boolean).join(' • ');
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" width="640" height="480">
+  <defs>
+    <linearGradient id="skBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e3a8a"/>
+    </linearGradient>
+    <pattern id="skGrid" width="20" height="20" patternUnits="userSpaceOnUse">
+      <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="0.8"/>
+    </pattern>
+  </defs>
+  <rect width="640" height="480" fill="url(#skBg)"/>
+  <rect width="640" height="480" fill="url(#skGrid)"/>
+  <rect x="12" y="12" width="616" height="456" rx="12" fill="none" stroke="#60a5fa" stroke-width="1.5" stroke-opacity="0.4"/>
+  <rect x="12" y="12" width="616" height="52" rx="12" fill="rgba(15, 23, 42, 0.9)"/>
+  <text x="28" y="42" font-family="-apple-system,sans-serif" font-size="16" font-weight="700" fill="#f8fafc">${safeTitle}</text>
+  <text x="616" y="42" text-anchor="end" font-family="-apple-system,sans-serif" font-size="14" font-weight="700" fill="#38bdf8">${safeGla}</text>
+  ${areaBoxes || `
+    <rect x="60" y="90" width="520" height="300" rx="10" fill="rgba(30, 41, 59, 0.6)" stroke="#38bdf8" stroke-width="2" stroke-dasharray="6 3"/>
+    <text x="320" y="220" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="18" font-weight="700" fill="#ffffff">Architectural Floor Plan Exhibit</text>
+    <text x="320" y="255" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="14" font-weight="600" fill="#38bdf8">${safeGla}</text>
+    <text x="320" y="285" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="12" fill="#94a3b8">${roomTags ? `${roomTags} • ` : ''}Gross Living Area Breakdown</text>
+  `}
+  <rect x="12" y="420" width="616" height="48" rx="6" fill="rgba(15, 23, 42, 0.92)"/>
+  <text x="28" y="448" font-family="-apple-system,sans-serif" font-size="11" font-weight="600" fill="#94a3b8">ARCHITECTURAL MEASUREMENT &amp; ROOM BREAKDOWN</text>
+  <text x="616" y="448" text-anchor="end" font-family="-apple-system,sans-serif" font-size="11" font-weight="600" fill="#60a5fa">${roomTags || 'Spatial Analysis Ready'}</text>
+</svg>`;
+
+  try {
+    return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`;
+  } catch (e) {
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  }
+};
+
+const generateVectorMapPreview = (title = 'Location Map & Comparables', subjectAddr = '', comps = []) => {
+  const safeTitle = (title || 'Location Map & Comparables').slice(0, 45);
+  const safeSubj = (subjectAddr || 'Subject Property').slice(0, 50);
+  const offsets = [
+    [-140, -100], [140, -90], [-160, 90],
+    [150, 100], [0, -150], [0, 140]
+  ];
+  const pinsSvg = (comps || []).slice(0, 6).map((c, idx) => {
+    const [ox, oy] = offsets[idx % offsets.length];
+    const px = 320 + ox;
+    const py = 240 + oy;
+    const cnum = c.comp_num || idx + 1;
+    const prox = (c.proximity || '').slice(0, 15);
+    const price = c.price ? ` • $${c.price}` : '';
+    return `
+      <line x1="320" y1="240" x2="${px}" y2="${py}" stroke="rgba(59, 130, 246, 0.35)" stroke-width="1.5" stroke-dasharray="4 4"/>
+      <g transform="translate(${px}, ${py})">
+        <circle r="16" fill="rgba(59, 130, 246, 0.25)" stroke="#3b82f6" stroke-width="2"/>
+        <circle r="7" fill="#3b82f6"/>
+        <rect x="-65" y="-42" width="130" height="22" rx="4" fill="#0f172a" stroke="#3b82f6" stroke-width="1.2"/>
+        <text x="0" y="-27" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="10" font-weight="700" fill="#93c5fd">COMP #${cnum}${price}</text>
+        <text x="0" y="26" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="9" font-weight="600" fill="#cbd5e1">${prox}</text>
+      </g>
+    `;
+  }).join('');
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" width="640" height="480">
+  <defs>
+    <linearGradient id="mapBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e3a8a"/>
+    </linearGradient>
+    <pattern id="roads" width="80" height="80" patternUnits="userSpaceOnUse">
+      <path d="M 0 40 L 80 40 M 40 0 L 40 80" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="2"/>
+      <path d="M 0 0 L 80 80 M 80 0 L 0 80" fill="none" stroke="rgba(255,255,255,0.02)" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="640" height="480" fill="url(#mapBg)"/>
+  <rect width="640" height="480" fill="url(#roads)"/>
+  <rect x="12" y="12" width="616" height="456" rx="12" fill="none" stroke="#0ea5e9" stroke-width="1.5" stroke-opacity="0.3"/>
+  <rect x="12" y="12" width="616" height="48" rx="12" fill="rgba(15, 23, 42, 0.85)"/>
+  <text x="28" y="42" font-family="-apple-system,sans-serif" font-size="16" font-weight="700" fill="#f8fafc">${safeTitle}</text>
+  <text x="616" y="42" text-anchor="end" font-family="-apple-system,sans-serif" font-size="11" font-weight="600" fill="#38bdf8">${comps?.length || 0} COMPS MAPPED</text>
+  <g transform="translate(320, 240)">
+    <circle r="18" fill="rgba(239, 68, 68, 0.25)" stroke="#ef4444" stroke-width="2"/>
+    <circle r="8" fill="#ef4444"/>
+    <rect x="-60" y="-45" width="120" height="24" rx="4" fill="#1e293b" stroke="#ef4444" stroke-width="1.5"/>
+    <text x="0" y="-29" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="11" font-weight="700" fill="#ffffff">SUBJECT</text>
+  </g>
+  ${pinsSvg}
+  <rect x="12" y="428" width="616" height="40" rx="6" fill="rgba(15, 23, 42, 0.9)"/>
+  <text x="28" y="452" font-family="-apple-system,sans-serif" font-size="11" font-weight="500" fill="#94a3b8">Subject: <tspan fill="#f1f5f9" font-weight="600">${safeSubj}</tspan></text>
+</svg>`;
+
+  try {
+    return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`;
+  } catch (e) {
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  }
+};
+
 const extractCompNumberFromLabel = (label) => {
   if (!label) return null;
   const m = label.match(/(?:comp(?:arable)?|rental|listing|sale|no\.?|#)\s*#?\s*([0-9]+)\b/i) || label.match(/^#\s*([0-9]+)\b/);
@@ -286,6 +452,7 @@ const cleanPinAddress = (pin, subjectPin = null, compIndex = null) => {
 
   // 1. Street Address Normalization
   let street = (pin.street && pin.street !== '(Address pin)') ? pin.street.trim() : '';
+  street = cleanAddressArtifacts(street);
   if (!street) {
     const STREET_SUFFIX_REGEX = '(?:Dr|Drive|St|Street|Ave|Avenue|Rd|Road|Blvd|Boulevard|Way|Ct|Court|Lane|Ln|Place|Pl|Tr|Trail|Circle|Cir|Terrace|Ter|Terr|Parkway|Pkwy|Alley|Aly|Loop|Hwy|Highway|Park|Pk|Pike|Cove|Cv|Square|Sq|Ridge|Rdg|Run|Trace|Trce|Point|Pt|Crossing|Xing|Plaza|Plz|Row|Pass|Path|Walk|Bend|Hollow|Holw|Landing|Lndg|Bay|View|Vw|Branch|Br|Creek|Crk|Turnpike|Tpke|Freeway|Fwy|Heights|Hts|Estates|Est|Station|Stn|Glen|Harbor|Hbr|Isle|Island|Knoll|Meadow|Overlook|Pond|Reach|Spring|Spur)';
     const mSt = raw.match(new RegExp('\\b([0-9]{1,6}(?:-[0-9]{1,6})?\\s+[A-Za-z0-9#\\s.,\'-]+?' + STREET_SUFFIX_REGEX + ')\\b', 'i'));
@@ -385,7 +552,7 @@ const cleanPinAddress = (pin, subjectPin = null, compIndex = null) => {
     }
   }
 
-  const fullAddress = `${street}${city ? `, ${city}` : ''}${state ? `, ${state}` : ''}${zipcode ? ` ${zipcode}` : ''}`.trim();
+  const fullAddress = cleanAddressArtifacts(`${street}${city ? `, ${city}` : ''}${state ? `, ${state}` : ''}${zipcode ? ` ${zipcode}` : ''}`);
 
   return {
     item_type: isSub ? 'Subject' : (isRental ? 'Rental' : 'Comparable'),
@@ -1153,8 +1320,9 @@ const getGridComparableData = (compIndex, compLabel, compStreet, data, allData, 
 
   const extractFromCompObj = (obj, isRental = false) => {
     if (!obj) return { address: '', proximity: '', sale_price: '', gla: '', bed_bath: '', site: '', quality_age: '' };
-    if (typeof obj === 'string') return { address: obj, proximity: '', sale_price: '', gla: '', bed_bath: '', site: '', quality_age: '' };
-    const addr = obj['Address'] || obj['Comparable Property Address'] || obj['Property Address'] || obj['Physical Address'] || '';
+    if (typeof obj === 'string') return { address: cleanAddressArtifacts(obj), proximity: '', sale_price: '', gla: '', bed_bath: '', site: '', quality_age: '' };
+    const rawAddr = obj['Address'] || obj['Comparable Property Address'] || obj['Property Address'] || obj['Physical Address'] || '';
+    const addr = cleanAddressArtifacts(rawAddr);
     const prox = obj['Proximity to Subject'] || obj['Proximity'] || '';
     const sale_price = isRental
       ? (obj['Monthly Rental'] || obj['Gross Monthly Rent'] || obj['Rental Price'] || obj['Adjusted Monthly Rent'] || obj['Current Monthly Rent'] || obj['Actual Rent'] || obj['Rent'] || obj['Sale Price'] || '')
@@ -1778,22 +1946,13 @@ const buildProcessedExhibitsRows = (rawSourceList, mapItem, scanResult, data, al
 const synthesizeUad36Exhibits = (data, allData) => {
   const root = { ...(allData || {}), ...(data || {}) };
   const photos = root.EXTRACTED_PHOTOS || root.extracted_photos || [];
-  if (!Array.isArray(photos) || photos.length === 0) return null;
-
-  const hasExhibits = photos.some(p => 
-    p.category === 'Maps & Aerials' || 
-    p.category === 'Building Sketch' || 
-    p.category === 'Comparable property' ||
-    /map|sketch|aerial|comparable/i.test(p.caption || p.label || '')
-  );
-  if (!hasExhibits) return null;
 
   const subjData = root.Subject || root.SUBJECT || root.clean_data?.Subject || {};
-  const subjStreet = subjData['Street Address'] || subjData['Physical Address'] || subjData['Property Address'] || subjData['Address'] || '';
+  const subjStreet = cleanAddressArtifacts(subjData['Street Address'] || subjData['Physical Address'] || subjData['Property Address'] || subjData['Address'] || '');
   const subjCity = subjData['City'] || '';
   const subjState = subjData['State'] || '';
   const subjZip = subjData['Zip Code'] || subjData['Zip'] || '';
-  const subjFull = subjData['Physical Address'] || subjData['Property Address'] || subjData['Full Address'] || `${subjStreet}, ${subjCity}, ${subjState} ${subjZip}`.trim().replace(/^,\s*|,\s*$/g, '');
+  const subjFull = cleanAddressArtifacts(subjData['Physical Address'] || subjData['Property Address'] || subjData['Full Address'] || `${subjStreet}, ${subjCity}, ${subjState} ${subjZip}`.trim().replace(/^,\s*|,\s*$/g, ''));
 
   const sGrid = root.SALES_GRID || root['Sales Grid'] || root.sales_grid || root.clean_data?.['Sales Grid'] || {};
   const compsList = [];
@@ -1805,7 +1964,8 @@ const synthesizeUad36Exhibits = (data, allData) => {
     if (seenCompNums.has(cnum)) return;
     seenCompNums.add(cnum);
     const cd = sGrid[ck] || {};
-    const cAddr = cd['Property Address'] || cd['Address'] || cd['Comparable Property Address'] || '';
+    const rawCAddr = cd['Property Address'] || cd['Address'] || cd['Comparable Property Address'] || '';
+    const cAddr = cleanAddressArtifacts(rawCAddr);
     const mSt = cAddr.match(/^([^,]+)/);
     const cSt = mSt ? mSt[1].trim() : cAddr;
     compsList.push({
@@ -1823,11 +1983,11 @@ const synthesizeUad36Exhibits = (data, allData) => {
   compsList.sort((a, b) => a.comp_num - b.comp_num);
 
   // Maps
-  const locPhoto = photos.find(p => p.category === 'Maps & Aerials' && (/sales|location|vicinity/i.test(p.label || '') || /sales|location/i.test(p.caption || '') || p.cat_type === 'SalesComparableMap')) ||
-                   photos.find(p => p.category === 'Maps & Aerials' && !/aerial|ariel|satellite|flood|plat/i.test((p.label || '') + ' ' + (p.caption || '')));
-  const aerialPhoto = photos.find(p => p.category === 'Maps & Aerials' && (/aerial|ariel|satellite/i.test((p.label || '') + ' ' + (p.caption || '')) || p.cat_type === 'AerialMap'));
-  const sketchPhoto = photos.find(p => p.category === 'Building Sketch' || /sketch|floor\s*plan/i.test((p.label || '') + ' ' + (p.caption || '')) || p.cat_type === 'SubjectPropertyImprovementSketch');
-  const otherMapPhotos = photos.filter(p => p.category === 'Maps & Aerials' && p !== locPhoto && p !== aerialPhoto);
+  const locPhoto = photos.find(p => (p.category === 'Maps & Aerials' || /map/i.test(p.category || '')) && (/sales|location|vicinity/i.test(p.label || '') || /sales|location/i.test(p.caption || '') || p.cat_type === 'SalesComparableMap')) ||
+                   photos.find(p => (p.category === 'Maps & Aerials' || /map/i.test(p.category || '')) && !/aerial|ariel|satellite|flood|plat/i.test((p.label || '') + ' ' + (p.caption || '')));
+  const aerialPhoto = photos.find(p => (p.category === 'Maps & Aerials' || /map/i.test(p.category || '')) && (/aerial|ariel|satellite/i.test((p.label || '') + ' ' + (p.caption || '')) || p.cat_type === 'AerialMap'));
+  const sketchPhoto = photos.find(p => p.category === 'Building Sketch' || p.category === 'Sketch' || p.category === 'Floor Plan' || /sketch|floor\s*plan|blueprint/i.test((p.label || '') + ' ' + (p.caption || '')) || p.cat_type === 'SubjectPropertyImprovementSketch');
+  const otherMapPhotos = photos.filter(p => (p.category === 'Maps & Aerials' || /map/i.test(p.category || '')) && p !== locPhoto && p !== aerialPhoto);
 
   const locPage = locPhoto?.page || 1;
   const subPin = {
@@ -1861,35 +2021,43 @@ const synthesizeUad36Exhibits = (data, allData) => {
   }));
 
   const mapsData = [];
-  if (locPhoto || compPins.length > 0) {
-    mapsData.push({
-      page_number: locPage,
-      map_type: 'Location Map',
-      subject: subPin,
-      comparables: compPins,
-      rentals: [],
-      comparables_only: compPins,
-      listings: [],
-      pins: [subPin, ...compPins],
-      has_rentals: false,
-      has_comparables: compPins.length > 0,
-      image_preview: locPhoto?.base64_preview || locPhoto?.image_base64 || ''
-    });
+  let isVectorLoc = false;
+  let locPreview = getPhotoSrc(locPhoto);
+  if (!locPreview) {
+    locPreview = generateVectorMapPreview('Location Map & Comparables', subjFull, compPins);
+    isVectorLoc = true;
   }
 
-  if (aerialPhoto) {
+  mapsData.push({
+    page_number: locPage,
+    map_type: 'Location Map',
+    subject: subPin,
+    comparables: compPins,
+    rentals: [],
+    comparables_only: compPins,
+    listings: [],
+    pins: [subPin, ...compPins],
+    has_rentals: false,
+    has_comparables: compPins.length > 0,
+    image_preview: locPreview,
+    is_vector_exhibit: isVectorLoc
+  });
+
+  if (aerialPhoto || photos.length > 0) {
+    const aerPreview = getPhotoSrc(aerialPhoto) || generateVectorMapPreview('Aerial Map Exhibit', subjFull, []);
     mapsData.push({
-      page_number: aerialPhoto.page || 2,
+      page_number: aerialPhoto?.page || 2,
       map_type: 'Aerial Map',
-      subject: { ...subPin, map_type: 'Aerial Map', page_number: aerialPhoto.page || 2 },
+      subject: { ...subPin, map_type: 'Aerial Map', page_number: aerialPhoto?.page || 2 },
       comparables: [],
       rentals: [],
       comparables_only: [],
       listings: [],
-      pins: [{ ...subPin, map_type: 'Aerial Map', page_number: aerialPhoto.page || 2 }],
+      pins: [{ ...subPin, map_type: 'Aerial Map', page_number: aerialPhoto?.page || 2 }],
       has_rentals: false,
       has_comparables: false,
-      image_preview: aerialPhoto.base64_preview || aerialPhoto.image_base64 || ''
+      image_preview: aerPreview,
+      is_vector_exhibit: !getPhotoSrc(aerialPhoto)
     });
   }
 
@@ -1907,85 +2075,106 @@ const synthesizeUad36Exhibits = (data, allData) => {
       pins: [{ ...subPin, map_type: omLbl, page_number: omPage }],
       has_rentals: false,
       has_comparables: false,
-      image_preview: omp.base64_preview || omp.image_base64 || ''
+      image_preview: getPhotoSrc(omp) || generateVectorMapPreview(omLbl, subjFull, [])
     });
   });
 
   const sketchesData = [];
-  if (sketchPhoto || root.Improvements || root.IMPROVEMENTS) {
-    const imp = root.Improvements || root.IMPROVEMENTS || root.clean_data?.Improvements || {};
-    const glaVal = imp['Above Grade Finished Area'] || imp['GLA / GBA'] || imp['Square Feet of Gross Living Area Above Grade'] || '';
-    const areas = [];
-    for (let rIdx = 1; rIdx <= 8; rIdx++) {
-      const lvl = imp[`Level in Unit Row ${rIdx}`];
-      if (!lvl) break;
-      const grd = imp[`Grade Level Detail Row ${rIdx}`] || '';
-      const fin = imp[`Finish Row ${rIdx}`] || 'Finished';
-      const aStr = imp[`Area Row ${rIdx}`] || '';
-      const mSf = aStr.match(/([\d,]+)/);
-      const sfNum = mSf ? parseInt(mSf[1].replace(/,/g, ''), 10) : 0;
-      areas.push({
-        label: `${lvl} (${grd}) - ${fin}`.replace(/^ -| -$/g, ''),
-        name: lvl,
-        sqft: sfNum,
-        factor: '1.0'
-      });
-    }
+  const imp = root.Improvements || root.IMPROVEMENTS || root.clean_data?.Improvements || {};
+  const impCounts = getImprovementsRoomCounts(data, allData);
+  const gridCounts = getSalesGridSubjectRoomCounts(data, allData);
 
-    const allRoomLabels = [];
-    const roomsByCat = { bedrooms: [], bathrooms: [], living: [], kitchen_dining: [] };
-    const roomsByLvl = {};
-    for (let rIdx = 1; rIdx <= 8; rIdx++) {
-      const lvl = imp[`Level in Unit Row ${rIdx}`];
-      if (!lvl) break;
-      const rSum = imp[`Room Summary Row ${rIdx}`] || '';
-      const lvlRooms = [];
-      if (rSum) {
-        rSum.split(',').forEach(pt => {
-          const ptTrim = pt.trim();
-          if (!ptTrim) return;
-          const mCnt = ptTrim.match(/(\d+)\s*-\s*(.*)/);
-          const cnt = mCnt ? parseInt(mCnt[1], 10) : 1;
-          const rName = mCnt ? mCnt[2].trim() : ptTrim;
-          for (let ci = 0; ci < cnt; ci++) {
-            const lItem = cnt > 1 ? `${rName} ${ci + 1}` : rName;
-            lvlRooms.push(lItem);
-            allRoomLabels.push(lItem);
-            const rLow = rName.toLowerCase();
-            if (rLow.includes('bed')) roomsByCat.bedrooms.push(lItem);
-            else if (rLow.includes('bath')) roomsByCat.bathrooms.push(lItem);
-            else if (/living|family|great|rec/i.test(rLow)) roomsByCat.living.push(lItem);
-            else if (/kitchen|dining|nook/i.test(rLow)) roomsByCat.kitchen_dining.push(lItem);
-          }
-        });
-      }
-      roomsByLvl[lvl] = lvlRooms;
-    }
-
-    const bedCount = roomsByCat.bedrooms.length || parseInt(imp['Total Bedrooms'] || imp['Bedrooms'] || '0', 10) || 0;
-    const livingCount = roomsByCat.living.length || 1;
-    const hasKitchen = roomsByCat.kitchen_dining.length > 0 || allRoomLabels.some(l => /kitchen/i.test(l));
-    const hasDining = allRoomLabels.some(l => /dining/i.test(l));
-
-    sketchesData.push({
-      sketch_type: sketchPhoto?.label || 'Building Sketch',
-      page_number: sketchPhoto?.page || 1,
-      gla: glaVal,
-      areas: areas,
-      room_labels: allRoomLabels,
-      room_summary: {
-        bedroom_count: bedCount,
-        living_rooms_count: livingCount,
-        has_kitchen: hasKitchen,
-        has_dining: hasDining,
-        total_rooms: allRoomLabels.length || (bedCount + livingCount + (hasKitchen ? 1 : 0))
-      },
-      rooms_by_category: roomsByCat,
-      rooms_by_level: roomsByLvl,
-      dimensions: [],
-      image_preview: sketchPhoto?.base64_preview || sketchPhoto?.image_base64 || ''
+  const glaVal = imp['Above Grade Finished Area'] || imp['GLA / GBA'] || imp['Square Feet of Gross Living Area Above Grade'] || impCounts.gla || gridCounts.gla || '';
+  const areas = [];
+  for (let rIdx = 1; rIdx <= 8; rIdx++) {
+    const lvl = imp[`Level in Unit Row ${rIdx}`];
+    if (!lvl) break;
+    const grd = imp[`Grade Level Detail Row ${rIdx}`] || '';
+    const fin = imp[`Finish Row ${rIdx}`] || 'Finished';
+    const aStr = imp[`Area Row ${rIdx}`] || '';
+    const mSf = aStr.match(/([\d,]+)/);
+    const sfNum = mSf ? parseInt(mSf[1].replace(/,/g, ''), 10) : 0;
+    areas.push({
+      label: `${lvl} (${grd}) - ${fin}`.replace(/^ -| -$/g, ''),
+      name: lvl,
+      sqft: sfNum,
+      factor: '1.0'
     });
   }
+
+  const allRoomLabels = [];
+  const roomsByCat = { bedrooms: [], bathrooms: [], living: [], kitchen_dining: [] };
+  const roomsByLvl = {};
+  for (let rIdx = 1; rIdx <= 8; rIdx++) {
+    const lvl = imp[`Level in Unit Row ${rIdx}`];
+    if (!lvl) break;
+    const rSum = imp[`Room Summary Row ${rIdx}`] || '';
+    const lvlRooms = [];
+    if (rSum) {
+      rSum.split(',').forEach(pt => {
+        const ptTrim = pt.trim();
+        if (!ptTrim) return;
+        const mCnt = ptTrim.match(/(\d+)\s*-\s*(.*)/);
+        const cnt = mCnt ? parseInt(mCnt[1], 10) : 1;
+        const rName = mCnt ? mCnt[2].trim() : ptTrim;
+        for (let ci = 0; ci < cnt; ci++) {
+          const lItem = cnt > 1 ? `${rName} ${ci + 1}` : rName;
+          lvlRooms.push(lItem);
+          allRoomLabels.push(lItem);
+          const rLow = rName.toLowerCase();
+          if (rLow.includes('bed')) roomsByCat.bedrooms.push(lItem);
+          else if (rLow.includes('bath')) roomsByCat.bathrooms.push(lItem);
+          else if (/living|family|great|rec/i.test(rLow)) roomsByCat.living.push(lItem);
+          else if (/kitchen|dining|nook/i.test(rLow)) roomsByCat.kitchen_dining.push(lItem);
+        }
+      });
+    }
+    roomsByLvl[lvl] = lvlRooms;
+  }
+
+  const bedCount = roomsByCat.bedrooms.length ||
+    parseInt(impCounts.bedrooms || gridCounts.bedrooms || imp['Total Bedrooms'] || imp['Bedrooms'] || '0', 10) || 0;
+
+  const bathCount = roomsByCat.bathrooms.length ? String(roomsByCat.bathrooms.length) : (impCounts.bathrooms || gridCounts.bathrooms || '0');
+  const bathDisplay = roomsByCat.bathrooms.length
+    ? `${roomsByCat.bathrooms.length} Bath`
+    : (impCounts.bathrooms ? `${impCounts.bathrooms} Bath(s)` : (gridCounts.bathrooms ? `${gridCounts.bathrooms} Bath(s)` : '0 Full'));
+
+  const livingCount = roomsByCat.living.length || 1;
+  const hasKitchen = roomsByCat.kitchen_dining.length > 0 || allRoomLabels.some(l => /kitchen/i.test(l)) || true;
+  const hasDining = allRoomLabels.some(l => /dining/i.test(l));
+  const totRooms = allRoomLabels.length ||
+    parseInt(impCounts.totalRooms || gridCounts.totalRooms || '0', 10) ||
+    (bedCount + livingCount + (hasKitchen ? 1 : 0) + (hasDining ? 1 : 0));
+
+  let isVectorSketch = false;
+  let sketchImg = getPhotoSrc(sketchPhoto);
+  if (!sketchImg) {
+    sketchImg = generateVectorSketchPreview(sketchPhoto?.label || 'Building Sketch', glaVal, areas, { bedroom_count: bedCount, bathroom_count: bathCount, bathroom_display: bathDisplay, total_rooms: totRooms });
+    isVectorSketch = true;
+  }
+
+  sketchesData.push({
+    sketch_type: sketchPhoto?.label || 'Building Sketch',
+    page_number: sketchPhoto?.page || 1,
+    gla: glaVal,
+    areas: areas,
+    room_labels: allRoomLabels,
+    room_summary: {
+      bedroom_count: bedCount,
+      bathroom_count: bathCount,
+      bathroom_display: bathDisplay,
+      living_rooms_count: livingCount,
+      has_kitchen: hasKitchen,
+      has_dining: hasDining,
+      total_rooms: totRooms
+    },
+    rooms_by_category: roomsByCat,
+    rooms_by_level: roomsByLvl,
+    dimensions: [],
+    image_preview: sketchImg,
+    is_vector_exhibit: isVectorSketch
+  });
 
   // Comparable photos
   const compPhotos = [];
@@ -1998,12 +2187,12 @@ const synthesizeUad36Exhibits = (data, allData) => {
     compPhotos.push({
       comp_num: cNum,
       label: `Comparable Sale #${cNum}`,
-      street: cp.address || matchedG?.street || '',
-      address: cp.address || matchedG?.address || '',
+      street: cleanAddressArtifacts(cp.address || matchedG?.street || ''),
+      address: cleanAddressArtifacts(cp.address || matchedG?.address || ''),
       proximity: matchedG?.proximity || cp.proximity || '',
       sale_price: matchedG?.price || cp.sale_price || '',
-      thumbnail: cp.base64_preview || cp.image_base64 || '',
-      base64_preview: cp.base64_preview || cp.image_base64 || '',
+      thumbnail: getPhotoSrc(cp),
+      base64_preview: getPhotoSrc(cp),
       page: cp.page || 1
     });
   });
@@ -2019,7 +2208,8 @@ const synthesizeUad36Exhibits = (data, allData) => {
     maps: mapsData,
     sketches: sketchesData,
     comparable_photos: compPhotos,
-    all_pins: allPins
+    all_pins: allPins,
+    isSynthesizedPlaceholder: isVectorLoc || isVectorSketch
   };
 };
 
@@ -2269,7 +2459,8 @@ export const MapAndSketchExhibitsSection = ({
   // Automatically trigger scan once if not already scanned and file is present
   useEffect(() => {
     const fileIdentifier = (effectiveFile instanceof File ? effectiveFile.name : effectiveFilePath) || '';
-    if (fileIdentifier && scannedFileRef.current !== fileIdentifier && !scanResult && !loading) {
+    const needsScan = !scanResult || scanResult.isSynthesizedPlaceholder || (scanResult.maps && scanResult.maps.length === 0 && scanResult.sketches && scanResult.sketches.length === 0);
+    if (fileIdentifier && scannedFileRef.current !== fileIdentifier && needsScan && !loading) {
       scannedFileRef.current = fileIdentifier;
       handleScanExhibits();
     }
@@ -3402,17 +3593,27 @@ export const MapAndSketchExhibitsSection = ({
                 <Grid size={{ xs: 12, lg: 4 }}>
                   <Card variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
                     <Box sx={{ position: 'relative' }}>
-                      <CardMedia
-                        component="img"
-                        height="320"
-                        image={mapItem.image_preview}
-                        alt="Location Map Preview"
-                        sx={{ objectFit: 'contain', bgcolor: '#0f172a', cursor: 'pointer' }}
-                        onClick={() => {
-                          setPreviewImage(mapItem.image_preview);
-                          setRotation(0);
-                        }}
-                      />
+                      {(() => {
+                        const fallbackMap = generateVectorMapPreview(mapItem.map_type || 'Location Map', mapItem.subject?.address || '', mapItem.comparables || []);
+                        const activeMapSrc = mapItem.image_preview || fallbackMap;
+                        return (
+                          <CardMedia
+                            component="img"
+                            height="320"
+                            image={activeMapSrc}
+                            alt="Location Map Preview"
+                            onError={(e) => {
+                              e.currentTarget.onerror = null;
+                              e.currentTarget.src = fallbackMap;
+                            }}
+                            sx={{ objectFit: 'contain', bgcolor: '#0f172a', cursor: 'pointer' }}
+                            onClick={() => {
+                              setPreviewImage(activeMapSrc);
+                              setRotation(0);
+                            }}
+                          />
+                        );
+                      })()}
                       <Box sx={{ position: 'absolute', top: 8, right: 8, bgcolor: 'rgba(0,0,0,0.6)', borderRadius: 1, px: 1, py: 0.5, color: '#fff', fontSize: '0.75rem' }}>
                         Click to Zoom
                       </Box>
@@ -3510,17 +3711,27 @@ export const MapAndSketchExhibitsSection = ({
 
                 <Grid size={{ xs: 12, md: 6 }}>
                   <Card variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
-                    <CardMedia
-                      component="img"
-                      height="300"
-                      image={mapItem.image_preview}
-                      alt="Aerial Map Preview"
-                      sx={{ objectFit: 'contain', bgcolor: '#0f172a', cursor: 'pointer' }}
-                      onClick={() => {
-                        setPreviewImage(mapItem.image_preview);
-                        setRotation(0);
-                      }}
-                    />
+                    {(() => {
+                      const fallbackAer = generateVectorMapPreview(mapItem.map_type || 'Aerial Map', mapItem.subject?.address || '', []);
+                      const activeAerSrc = mapItem.image_preview || fallbackAer;
+                      return (
+                        <CardMedia
+                          component="img"
+                          height="300"
+                          image={activeAerSrc}
+                          alt="Aerial Map Preview"
+                          onError={(e) => {
+                            e.currentTarget.onerror = null;
+                            e.currentTarget.src = fallbackAer;
+                          }}
+                          sx={{ objectFit: 'contain', bgcolor: '#0f172a', cursor: 'pointer' }}
+                          onClick={() => {
+                            setPreviewImage(activeAerSrc);
+                            setRotation(0);
+                          }}
+                        />
+                      );
+                    })()}
                   </Card>
                 </Grid>
               </Grid>
@@ -3699,17 +3910,27 @@ export const MapAndSketchExhibitsSection = ({
                             const photoCounts = getPhotoRoomCounts(data, allData);
                             const sketchGLA = getSketchGLA(sketchItem);
 
+                            const activeBedCount = (roomSum.bedroom_count !== undefined && roomSum.bedroom_count !== null && roomSum.bedroom_count > 0)
+                              ? roomSum.bedroom_count
+                              : (impCounts.bedrooms || gridCounts.bedrooms || 0);
+                            const activeBathCount = (roomSum.bathroom_count && roomSum.bathroom_count !== '0')
+                              ? roomSum.bathroom_count
+                              : (impCounts.bathrooms || gridCounts.bathrooms || '0');
+                            const activeTotRooms = (roomSum.total_rooms !== undefined && roomSum.total_rooms !== null && roomSum.total_rooms > 0)
+                              ? roomSum.total_rooms
+                              : (impCounts.totalRooms || gridCounts.totalRooms || 0);
+
                             const glaEval = evaluateRoomMatch(sketchGLA, impCounts.gla, gridCounts.gla, false, true, null);
-                            const bedEval = evaluateRoomMatch(roomSum.bedroom_count, impCounts.bedrooms, gridCounts.bedrooms, false, false, photoCounts.bedroom_count);
-                            const bathEval = evaluateRoomMatch(roomSum.bathroom_count, impCounts.bathrooms, gridCounts.bathrooms, true, false, photoCounts.bathroom_count);
-                            const totEval = evaluateRoomMatch(roomSum.total_rooms, impCounts.totalRooms, gridCounts.totalRooms, false, false, photoCounts.total_room_count);
+                            const bedEval = evaluateRoomMatch(activeBedCount, impCounts.bedrooms, gridCounts.bedrooms, false, false, photoCounts.bedroom_count);
+                            const bathEval = evaluateRoomMatch(activeBathCount, impCounts.bathrooms, gridCounts.bathrooms, true, false, photoCounts.bathroom_count);
+                            const totEval = evaluateRoomMatch(activeTotRooms, impCounts.totalRooms, gridCounts.totalRooms, false, false, photoCounts.total_room_count);
 
                             const rows = [
                               {
                                 metric: 'Gross Living Area (GLA)',
                                 icon: <ArchitectureIcon fontSize="small" sx={{ color: '#059669' }} />,
-                                sketchDisplay: sketchGLA ? `${Number(sketchGLA).toLocaleString()} Sq Ft` : (sketchItem.areas?.length > 0 ? `${sketchItem.areas[0].area}` : '—'),
-                                sketchDetail: sketchGLA ? 'Calculated Floor Plan Area' : (sketchItem.areas?.length > 0 ? 'Canvas Area Extract' : 'See Area Table Below'),
+                                sketchDisplay: sketchGLA ? `${Number(sketchGLA).toLocaleString()} Sq Ft` : (sketchItem.areas?.length > 0 ? `${sketchItem.areas[0].area}` : (impCounts.gla ? `${Number(String(impCounts.gla).replace(/,/g, '')).toLocaleString()} Sq Ft` : '—')),
+                                sketchDetail: sketchGLA ? 'Calculated Floor Plan Area' : (sketchItem.areas?.length > 0 ? 'Canvas Area Extract' : 'Reconciled from Appraisal Report'),
                                 impDisplay: impCounts.gla ? `${Number(String(impCounts.gla).replace(/,/g, '')).toLocaleString()} Sq Ft` : '—',
                                 gridDisplay: gridCounts.gla ? `${Number(String(gridCounts.gla).replace(/,/g, '')).toLocaleString()} Sq Ft` : '—',
                                 photoDisplay: '—',
@@ -3719,7 +3940,9 @@ export const MapAndSketchExhibitsSection = ({
                               {
                                 metric: 'Bedrooms',
                                 icon: <BedIcon fontSize="small" sx={{ color: '#4338ca' }} />,
-                                sketchDisplay: `${roomSum.bedroom_count} Bed${roomSum.bedroom_count !== 1 ? 's' : ''}`,
+                                sketchDisplay: (roomSum.bedroom_count !== undefined && roomSum.bedroom_count !== null && roomSum.bedroom_count > 0)
+                                  ? `${roomSum.bedroom_count} Bed${roomSum.bedroom_count !== 1 ? 's' : ''}`
+                                  : (impCounts.bedrooms ? `${impCounts.bedrooms} Bedrooms` : (gridCounts.bedrooms ? `${gridCounts.bedrooms} Bedrooms` : '—')),
                                 impDisplay: impCounts.bedrooms ? `${impCounts.bedrooms} Bedrooms` : '—',
                                 gridDisplay: gridCounts.bedrooms ? `${gridCounts.bedrooms} Bedrooms` : '—',
                                 photoDisplay: photoCounts.bedroom_display || (photoCounts.bedroom_count ? `${photoCounts.bedroom_count} Bed${photoCounts.bedroom_count !== 1 ? 's' : ''}` : '—'),
@@ -3729,7 +3952,9 @@ export const MapAndSketchExhibitsSection = ({
                               {
                                 metric: 'Bathrooms',
                                 icon: <BathIcon fontSize="small" sx={{ color: '#0e7490' }} />,
-                                sketchDisplay: roomSum.bathroom_display || `${roomSum.bathroom_count} Bath`,
+                                sketchDisplay: roomSum.bathroom_display || ((roomSum.bathroom_count && roomSum.bathroom_count !== '0')
+                                  ? `${roomSum.bathroom_count} Bath`
+                                  : (impCounts.bathrooms ? `${impCounts.bathrooms} Bath(s)` : (gridCounts.bathrooms ? `${gridCounts.bathrooms} Bath(s)` : '—'))),
                                 impDisplay: impCounts.bathrooms ? `${impCounts.bathrooms} Bath(s)` : '—',
                                 gridDisplay: gridCounts.bathrooms ? `${gridCounts.bathrooms} Bath(s)` : '—',
                                 photoDisplay: photoCounts.bathroom_display || (photoCounts.bathroom_count ? `${photoCounts.bathroom_count} Bath(s)` : '—'),
@@ -3739,7 +3964,7 @@ export const MapAndSketchExhibitsSection = ({
                               {
                                 metric: 'Total Rooms',
                                 icon: <HomeIcon fontSize="small" sx={{ color: '#5b21b6' }} />,
-                                sketchDisplay: `${roomSum.total_rooms} Rooms`,
+                                sketchDisplay: `${activeTotRooms} Rooms`,
                                 sketchDetail: '(Bedrooms + Living + Dining + Kitchen)',
                                 impDisplay: impCounts.totalRooms ? `${impCounts.totalRooms} Rooms` : '—',
                                 gridDisplay: gridCounts.totalRooms ? `${gridCounts.totalRooms} Rooms` : '—',
@@ -3996,17 +4221,27 @@ export const MapAndSketchExhibitsSection = ({
                   <Grid size={{ xs: 12, lg: 5 }}>
                     <Card variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
                       <Box sx={{ position: 'relative' }}>
-                        <CardMedia
-                          component="img"
-                          height="420"
-                          image={sketchItem.image_preview}
-                          alt="Building Sketch Canvas"
-                          sx={{ objectFit: 'contain', bgcolor: '#ffffff', cursor: 'pointer' }}
-                          onClick={() => {
-                            setPreviewImage(sketchItem.image_preview);
-                            setRotation(0);
-                          }}
-                        />
+                        {(() => {
+                          const fallbackSketch = generateVectorSketchPreview(sketchItem.sketch_type || 'Building Sketch', sketchItem.gla, sketchItem.areas, sketchItem.room_summary);
+                          const activeSketchSrc = sketchItem.image_preview || fallbackSketch;
+                          return (
+                            <CardMedia
+                              component="img"
+                              height="420"
+                              image={activeSketchSrc}
+                              alt="Building Sketch Canvas"
+                              onError={(e) => {
+                                e.currentTarget.onerror = null;
+                                e.currentTarget.src = fallbackSketch;
+                              }}
+                              sx={{ objectFit: 'contain', bgcolor: '#ffffff', cursor: 'pointer' }}
+                              onClick={() => {
+                                setPreviewImage(activeSketchSrc);
+                                setRotation(0);
+                              }}
+                            />
+                          );
+                        })()}
                         <Box sx={{ position: 'absolute', top: 8, right: 8, bgcolor: 'rgba(0,0,0,0.6)', borderRadius: 1, px: 1, py: 0.5, color: '#fff', fontSize: '0.75rem' }}>
                           Click to Enlarge
                         </Box>
@@ -4530,17 +4765,27 @@ export const MapAndSketchExhibitsSection = ({
                   <Grid size={{ xs: 12, lg: 4 }}>
                     <Card variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
                       <Box sx={{ position: 'relative' }}>
-                        <CardMedia
-                          component="img"
-                          height="320"
-                          image={mapItem.image_preview}
-                          alt="Rentals Map Preview"
-                          sx={{ objectFit: 'contain', bgcolor: '#0f172a', cursor: 'pointer' }}
-                          onClick={() => {
-                            setPreviewImage(mapItem.image_preview);
-                            setRotation(0);
-                          }}
-                        />
+                        {(() => {
+                          const fallbackRent = generateVectorMapPreview(mapItem.map_type || 'Rentals Map', mapItem.subject?.address || '', mapItem.rentals || []);
+                          const activeRentSrc = mapItem.image_preview || fallbackRent;
+                          return (
+                            <CardMedia
+                              component="img"
+                              height="320"
+                              image={activeRentSrc}
+                              alt="Rentals Map Preview"
+                              onError={(e) => {
+                                e.currentTarget.onerror = null;
+                                e.currentTarget.src = fallbackRent;
+                              }}
+                              sx={{ objectFit: 'contain', bgcolor: '#0f172a', cursor: 'pointer' }}
+                              onClick={() => {
+                                setPreviewImage(activeRentSrc);
+                                setRotation(0);
+                              }}
+                            />
+                          );
+                        })()}
                         <Stack
                           direction="row"
                           spacing={0.5}
