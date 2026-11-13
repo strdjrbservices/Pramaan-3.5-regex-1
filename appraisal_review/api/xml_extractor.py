@@ -2660,6 +2660,9 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
     property_elem = root.find(".//PROPERTY")
     val_methods = root.find(".//VALUATION_METHODS")
     valuation = root.find(".//VALUATION")
+    proj = property_elem.find("PROJECT") if property_elem is not None else None
+    if proj is None and root is not None:
+        proj = root.find(".//PROJECT")
 
     # Form type detection & Report Identifiers
     mismo_form_type = ""
@@ -3759,10 +3762,14 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
                     subj_proj = root.find(".//SUBJECT_PROJECT")
                     if subj_proj is not None:
                         c_proj_name = subj_proj.attrib.get("ProjectName", "")
-                if not c_proj_name and proj is not None:
-                    c_proj_name = proj.attrib.get("_Name", "") or proj.attrib.get("ProjectName", "")
-                if not c_proj_phase and proj is not None:
-                    c_proj_phase = proj.attrib.get("_PhaseIdentifier", "") or proj.attrib.get("PhaseIdentifier", "") or proj.attrib.get("ProjectPhaseIdentifier", "")
+                proj_elem = proj if ('proj' in locals() and proj is not None) else (
+                    (property_elem.find("PROJECT") if ('property_elem' in locals() and property_elem is not None) else None) or
+                    (root.find(".//PROJECT") if root is not None else None)
+                )
+                if not c_proj_name and proj_elem is not None:
+                    c_proj_name = proj_elem.attrib.get("_Name", "") or proj_elem.attrib.get("ProjectName", "")
+                if not c_proj_phase and proj_elem is not None:
+                    c_proj_phase = proj_elem.attrib.get("_PhaseIdentifier", "") or proj_elem.attrib.get("PhaseIdentifier", "") or proj_elem.attrib.get("ProjectPhaseIdentifier", "")
             if not c_proj_name:
                 comp_proj = comp.find("PROJECT") or comp.find("SUBJECT_PROJECT")
                 if comp_proj is not None:
@@ -6953,6 +6960,8 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "Amenities include:": proj_amenities,
         "# of Units": u_subj or u_comp,
         "# of Units Completed": u_subj_comp or u_comp,
+        "# of Units (Project Completed)": u_comp or u_subj,
+        "# of Units (If Project Completed)": u_comp or u_subj,
         "# of Units For Sale": u_subj_sale,
         "# of Units Sold": u_subj_sold or u_comp_sold,
         "# of Units Rented": u_subj_rent or u_comp_rent,

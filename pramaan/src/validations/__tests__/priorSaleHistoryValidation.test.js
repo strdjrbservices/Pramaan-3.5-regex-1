@@ -108,3 +108,65 @@ describe('priorSaleHistoryValidation - checkPriorSaleHistoryFieldsNotBlank', () 
     });
 });
 
+describe('priorSaleHistoryValidation - Sales or Transfer History Rules Integration', () => {
+    test('checkResearchHistory integration: "did" is valid, "did not" is critical error', () => {
+        const field = "I did did not research the sale or transfer history of the subject property and comparable sales. If not, explain";
+        const validRes = checkPriorSaleHistoryFieldsNotBlank(field, "did", {});
+        expect(validRes.isMatch).toBe(true);
+
+        const invalidRes = checkPriorSaleHistoryFieldsNotBlank(field, "did not", {});
+        expect(invalidRes.isError).toBe(true);
+        expect(invalidRes.message).toContain('Critical Error');
+    });
+
+    test('Subject Prior Sales: "did not reveal" makes empty date/price valid', () => {
+        const dataDidNot = {
+            "My research did did not reveal any prior sales or transfers of the subject property for the three years prior to the effective date of this appraisal.": "did not"
+        };
+        const dateRes = checkPriorSaleHistoryFieldsNotBlank("Date of Prior Sale/Transfer", "", dataDidNot, ['Subject', 'Date of Prior Sale/Transfer'], 'Subject');
+        expect(dateRes).toBeNull();
+
+        const priceRes = checkPriorSaleHistoryFieldsNotBlank("Price of Prior Sale/Transfer", "", dataDidNot, ['Subject', 'Price of Prior Sale/Transfer'], 'Subject');
+        expect(priceRes).toBeNull();
+    });
+
+    test('Comparable Prior Sales: "did not reveal" makes empty comp date/price valid', () => {
+        const dataDidNot = {
+            "My research did did not reveal any prior sales or transfers of the comparable sales for the year prior to the date of sale of the comparable sale.": "did not"
+        };
+        const dateRes = checkPriorSaleHistoryFieldsNotBlank("Date of Prior Sale/Transfer", "", dataDidNot, ['COMPARABLE SALE #1', 'Date of Prior Sale/Transfer'], 'COMPARABLE SALE #1');
+        expect(dateRes).toBeNull();
+
+        const priceRes = checkPriorSaleHistoryFieldsNotBlank("Price of Prior Sale/Transfer", "", dataDidNot, ['COMPARABLE SALE #1', 'Price of Prior Sale/Transfer'], 'COMPARABLE SALE #1');
+        expect(priceRes).toBeNull();
+    });
+
+    test('Data Source cannot be blank when data is provided', () => {
+        const blankSrc = checkPriorSaleHistoryFieldsNotBlank("Data Source(s) for subject property research", "", {});
+        expect(blankSrc.isError).toBe(true);
+        expect(blankSrc.message).toContain('cannot be blank');
+
+        const validSrc = checkPriorSaleHistoryFieldsNotBlank("Data Source(s) for subject property research", "Realist", {});
+        expect(validSrc.isMatch).toBe(true);
+    });
+
+    test('Effective date must be valid and in current year', () => {
+        const currentYear = new Date().getFullYear();
+        const validEff = checkPriorSaleHistoryFieldsNotBlank("Effective Date of Data Source(s) for prior sale", `11/09/${currentYear}`, {});
+        expect(validEff.isMatch).toBe(true);
+
+        const invalidEff = checkPriorSaleHistoryFieldsNotBlank("Effective Date of Data Source(s) for prior sale", "11/09/1990", {});
+        expect(invalidEff.isError).toBe(true);
+        expect(invalidEff.message).toContain('must be the current year');
+    });
+
+    test('Indicated Value by Sales Comparison Approach $ is monitored in prior sale history', () => {
+        const blankVal = checkPriorSaleHistoryFieldsNotBlank("Indicated Value by Sales Comparison Approach $", "");
+        expect(blankVal.isError).toBe(true);
+        expect(blankVal.message).toContain('must not be blank');
+
+        const validVal = checkPriorSaleHistoryFieldsNotBlank("Indicated Value by Sales Comparison Approach $", "1,200,000");
+        expect(validVal.isMatch).toBe(true);
+    });
+});
+

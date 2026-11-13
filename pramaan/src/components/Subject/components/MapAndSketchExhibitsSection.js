@@ -37,6 +37,7 @@ import {
   Download as DownloadIcon,
   Refresh as RefreshIcon,
   CheckCircle as CheckCircleIcon,
+  WarningAmber as WarningAmberIcon,
   Close as CloseIcon,
   Check as CheckIcon,
   Layers as LayersIcon,
@@ -1040,6 +1041,93 @@ const evaluateRoomMatch = (sketchVal, impVal, gridVal, isBath = false, isGLA = f
     bg: '#fef3c7',
     border: '#fde68a',
     isMatch: false
+  };
+};
+
+export const getTotalSalesGridComps = (data, allData, scanResult) => {
+  const root = { ...(allData || {}), ...(data || {}) };
+  const sGrid = root.SALES_GRID || root['Sales Grid'] || root.sales_grid ||
+                root.clean_data?.['Sales Grid'] || root.fields?.['Sales Grid'] ||
+                root.clean_data?.SALES_GRID || root.fields?.SALES_GRID || {};
+
+  const activeCompNums = new Set();
+  const allSalesKeys = new Set([...Object.keys(root || {}), ...Object.keys(sGrid || {})]);
+
+  allSalesKeys.forEach(k => {
+    const m = k.match(/(?:COMPARABLE(?:\s+SALE)?|COMP)[_\s]+#?([0-9]+)/i);
+    if (m) {
+      const num = parseInt(m[1], 10);
+      const compData = sGrid[k] || root[k];
+      if (compData && typeof compData === 'object') {
+        if (compData.item_type === 'Subject') return;
+        const hasValues = Object.entries(compData).some(([prop, val]) => {
+          if (val === null || val === undefined) return false;
+          const sVal = String(val).trim();
+          return sVal !== '' && sVal !== '—' && sVal !== 'N/A';
+        });
+        if (hasValues) {
+          activeCompNums.add(num);
+        }
+      } else if (compData && typeof compData === 'string' && compData.trim() !== '') {
+        activeCompNums.add(num);
+      }
+    }
+  });
+
+  if (scanResult?.reference_records?.sales_comps) {
+    scanResult.reference_records.sales_comps.forEach(sc => {
+      if (sc.comp_num) {
+        if (sc.address || sc.sale_price || sc.proximity) {
+          activeCompNums.add(sc.comp_num);
+        }
+      }
+    });
+  }
+
+  for (let i = 1; i <= 20; i++) {
+    const candidateKeys = [
+      `COMPARABLE SALE #${i}`,
+      `COMPARABLE SALE ${i}`,
+      `Comparable #${i}`,
+      `Comparable Sale #${i}`,
+      `Comparable Sale ${i}`,
+      `COMP_${i}`,
+      `COMP #${i}`,
+      `Comp #${i}`,
+      `Comp ${i}`
+    ];
+    for (const key of candidateKeys) {
+      const item = root[key] || sGrid[key];
+      if (item && typeof item === 'object') {
+        const hasValues = Object.entries(item).some(([k, v]) => {
+          if (v === null || v === undefined) return false;
+          const s = String(v).trim();
+          return s !== '' && s !== '—' && s !== 'N/A';
+        });
+        if (hasValues) {
+          activeCompNums.add(i);
+          break;
+        }
+      }
+    }
+  }
+
+  // Fallback: If no comp had individual non-empty check but keys exist
+  if (activeCompNums.size === 0) {
+    allSalesKeys.forEach(k => {
+      const m = k.match(/(?:COMPARABLE(?:\s+SALE)?|COMP)[_\s]+#?([0-9]+)/i);
+      if (m) activeCompNums.add(parseInt(m[1], 10));
+    });
+    if (scanResult?.reference_records?.sales_comps) {
+      scanResult.reference_records.sales_comps.forEach(sc => {
+        if (sc.comp_num) activeCompNums.add(sc.comp_num);
+      });
+    }
+  }
+
+  return {
+    count: activeCompNums.size,
+    compNums: Array.from(activeCompNums).sort((a, b) => a - b)
   };
 };
 
@@ -2547,6 +2635,10 @@ export const MapAndSketchExhibitsSection = ({
             if (listingsCount > 0) parts.push(`${listingsCount} Listings`);
             const chipText = parts.length > 0 ? `${parts.join(', ')} Detected` : 'No Sales Callouts Detected';
 
+            const salesGridSummary = getTotalSalesGridComps(data, allData, scanResult);
+            const totalSalesGridComps = salesGridSummary.count;
+            const isCountMatch = totalSalesGridComps > 0 && compsCount > 0 && totalSalesGridComps === compsCount;
+
             return (
               <Box key={mapItem.page_number || activeLocMapIdx}>
                 {locationMaps.length > 1 && (
@@ -2578,10 +2670,53 @@ export const MapAndSketchExhibitsSection = ({
                   {/* Left: Comparables & Subject Data Table */}
                   <Grid size={{ xs: 12, lg: 8 }}>
                     <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-                      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
+                      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5, flexWrap: 'wrap', gap: 1 }}>
                         <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#1e293b' }}>
                           {mapItem.map_type} (Page {mapItem.page_number})
                         </Typography>
+
+                        {/* UI Validation: Total Number of Sales Grid Comparables */}
+                        <Tooltip
+                          title={
+                            totalSalesGridComps === 0
+                              ? 'UI Validation: No Sales Grid Comparables found in appraisal report data.'
+                              : isCountMatch
+                              ? `UI Validation Verified: Total ${totalSalesGridComps} Sales Grid Comparables match the ${compsCount} comparables detected on this Location Map.`
+                              : `UI Validation Discrepancy: ${totalSalesGridComps} comparables in Sales Comparison Grid vs ${compsCount} detected on this Location Map.`
+                          }
+                          arrow
+                        >
+                          <Chip
+                            icon={
+                              isCountMatch ? (
+                                <CheckCircleIcon sx={{ fontSize: '15px !important', color: '#16a34a !important' }} />
+                              ) : (
+                                <WarningAmberIcon sx={{ fontSize: '15px !important', color: '#d97706 !important' }} />
+                              )
+                            }
+                            label={
+                              totalSalesGridComps === 0
+                                ? '0 Sales Grid Comparables'
+                                : isCountMatch
+                                ? `${totalSalesGridComps} Sales Grid Comparables`
+                                : `${totalSalesGridComps} Sales Grid Comparables (${totalSalesGridComps} Grid vs ${compsCount} Map)`
+                            }
+                            size="small"
+                            variant="outlined"
+                            sx={{
+                              fontWeight: 700,
+                              fontSize: '0.78rem',
+                              bgcolor: isCountMatch ? '#f0fdf4' : '#fffbeb',
+                              color: isCountMatch ? '#166534' : '#92400e',
+                              borderColor: isCountMatch ? '#bbf7d0' : '#fde68a',
+                              boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                              '& .MuiChip-icon': {
+                                ml: 0.75
+                              }
+                            }}
+                          />
+                        </Tooltip>
+
                         <Chip
                           label={chipText}
                           size="small"
