@@ -1,8 +1,9 @@
 export const checkHousingPriceAndAge = (field, arg2, arg3) => {
-    const priceField = "one unit housing price(high,low,pred)";
-    const ageField = "one unit housing age(high,low,pred)";
+    const fLower = String(field || '').toLowerCase().trim();
+    const isPrice = fLower.includes('housing price') || fLower.includes('housing_price');
+    const isAge = fLower.includes('housing age') || fLower.includes('housing_age');
 
-    if (field !== priceField && field !== ageField) return null;
+    if (!isPrice && !isAge) return null;
 
     let val = arg2;
     let allData = arg3 || {};
@@ -14,6 +15,20 @@ export const checkHousingPriceAndAge = (field, arg2, arg3) => {
 
     if ((!val || (typeof val === 'string' && val.trim() === '')) && allData) {
         val = allData?.NEIGHBORHOOD?.[field] ?? allData?.[field] ?? val;
+    }
+
+    if (!val && allData?.NEIGHBORHOOD) {
+        if (isPrice) {
+            val = allData.NEIGHBORHOOD['one unit housing price(high,low,pred)'] ||
+                  allData.NEIGHBORHOOD['condominium housing price(high,low,pred)'] ||
+                  allData.NEIGHBORHOOD['ONE UNIT HOUSING PRICE(HIGH,LOW,PRED)'] ||
+                  allData.NEIGHBORHOOD['CONDOMINIUM HOUSING PRICE(HIGH,LOW,PRED)'];
+        } else if (isAge) {
+            val = allData.NEIGHBORHOOD['one unit housing age(high,low,pred)'] ||
+                  allData.NEIGHBORHOOD['condominium housing age(high,low,pred)'] ||
+                  allData.NEIGHBORHOOD['ONE UNIT HOUSING AGE(HIGH,LOW,PRED)'] ||
+                  allData.NEIGHBORHOOD['CONDOMINIUM HOUSING AGE(HIGH,LOW,PRED)'];
+        }
     }
 
     const fieldLabel = field;
@@ -326,6 +341,34 @@ export const checkDemandSupply = (field, arg2, arg3, arg4, arg5) => {
     return { isMatch: true };
 };
 
+export const checkMarketingTime = (field, arg2, arg3, arg4, arg5) => {
+    if (!field || String(field).trim().toLowerCase() !== 'marketing time') return null;
+    const { text, path, saleName } = parseArgs(arg2, arg3, arg4, arg5);
+    if (isSalesCompField(path, saleName, text)) return null;
+
+    const value = String(text || '').trim().toLowerCase();
+    if (!value) {
+        return { isError: true, skipBlankFilter: true, message: "'Marketing Time' in Neighborhood section must not be blank." };
+    }
+
+    const validTimeValues = [
+        'under 3 mths', '3-6 mths', 'over 6 mths',
+        'under 3 mos', '3-6 mos', 'over 6 mos',
+        'under 3 months', '3-6 months', 'over 6 months',
+        'under 3', '3-6', 'over 6',
+        'under3', 'threetosix', 'oversix'
+    ];
+
+    if (!validTimeValues.some(v => value.includes(v) || v.includes(value))) {
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: "Marketing Time in Neighborhood section must be one of: 'Under 3 mths', '3-6 mths', or 'Over 6 mths'."
+        };
+    }
+    return { isMatch: true };
+};
+
 export const checkSingleChoiceFields = (field, arg2, arg3, arg4, arg5) => {
     const { text, path, saleName } = parseArgs(arg2, arg3, arg4, arg5);
     if (isSalesCompField(path, saleName, text)) return null;
@@ -343,6 +386,9 @@ export const checkSingleChoiceFields = (field, arg2, arg3, arg4, arg5) => {
     }
     if (fieldClean === 'demand/supply' || fieldClean === 'demand-supply') {
         return checkDemandSupply(field, arg2, arg3, arg4, arg5);
+    }
+    if (fieldLower === 'marketing time') {
+        return checkMarketingTime(field, arg2, arg3, arg4, arg5);
     }
 
     const singleChoiceFields = ['Built-Up', 'Growth', 'Property Values', 'Demand/Supply', 'Marketing Time', 'Demand / Supply'];
@@ -411,15 +457,28 @@ export const checkNeighborhoodFieldsNotBlank = (field, arg2, arg3, arg4, arg5) =
         'Commercial',
         'Other',
         'one unit housing price(high,low,pred)',
+        'ONE UNIT HOUSING PRICE(HIGH,LOW,PRED)',
         'one unit housing age(high,low,pred)',
+        'ONE UNIT HOUSING AGE(HIGH,LOW,PRED)',
+        'condominium housing price(high,low,pred)',
+        'CONDOMINIUM HOUSING PRICE(HIGH,LOW,PRED)',
+        'condominium housing age(high,low,pred)',
+        'CONDOMINIUM HOUSING AGE(HIGH,LOW,PRED)',
         'Neighborhood Boundaries',
         'Neighborhood Description',
         'Market Conditions:',
+        'Market Conditions',
         ...VERSION_1_NEIGHBORHOOD_FIELDS
     ];
 
-    if (fieldsToCheck.includes(field)) {
-        if (field === 'one unit housing price(high,low,pred)' || field === 'one unit housing age(high,low,pred)') {
+    const fLower = String(field || '').toLowerCase().trim();
+    const isMatched = fieldsToCheck.includes(field) ||
+        fLower.includes('housing price') ||
+        fLower.includes('housing age') ||
+        fLower.includes('market conditions');
+
+    if (isMatched) {
+        if (fLower.includes('housing price') || fLower.includes('housing age')) {
             let highStr = '';
             let lowStr = '';
             let predStr = '';
@@ -733,7 +792,12 @@ export const getPredominantPriceValue = (allData, text) => {
         const fieldKeys = [
             'one unit housing price(high,low,pred)',
             'ONE UNIT HOUSING PRICE(HIGH,LOW,PRED)',
+            'condominium housing price(high,low,pred)',
+            'CONDOMINIUM HOUSING PRICE(HIGH,LOW,PRED)',
             'Housing Price Predominant',
+            'Housing Price Pred',
+            'Condominium Housing Price Pred',
+            'Price Pred',
             'Predominant Price: $',
             'Predominant Price',
             'Predominant'
@@ -843,7 +907,7 @@ export const checkPredominantPriceVsIndicatedValue = (field, text, allData, fiel
     if (!actualData) return null;
 
     const fLower = String(field || '').toLowerCase().trim();
-    const isPriceField = fLower.includes('one unit housing price') || fLower.includes('predominant price');
+    const isPriceField = fLower.includes('housing price') || fLower.includes('predominant price');
     const isIndicatedValField = fLower.includes('indicated value') || fLower.includes('opinion of the market value') || fLower === 'final value $';
 
     if (!isPriceField && !isIndicatedValField) return null;

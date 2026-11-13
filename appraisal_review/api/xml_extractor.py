@@ -3391,26 +3391,41 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
 
         # Housing (high, low, pred)
         housing_elems = nb_elem.findall("_HOUSING")
-        chosen_housing = None
-        for h in housing_elems:
-            if h.attrib.get("_Type") == "SingleFamily":
-                chosen_housing = h
-                break
-        if chosen_housing is None and housing_elems:
-            chosen_housing = housing_elems[0]
+        is_condo_form = "1073" in form_type or "CONDO" in form_type.upper()
+        is_mf_form = "1025" in form_type
+        target_types = ["Condominium"] if is_condo_form else (["TwoToFourFamily"] if is_mf_form else ["SingleFamily"])
 
-        if chosen_housing is not None:
-            h_low = chosen_housing.attrib.get("_LowPriceAmount", "").strip()
-            h_high = chosen_housing.attrib.get("_HighPriceAmount", "").strip()
-            h_pred = chosen_housing.attrib.get("_PredominantPriceAmount", "").strip()
-            if h_high and h_low and h_pred:
-                housing_price = f"{h_high} / {h_low} / {h_pred}"
+        matching_elems = [h for h in housing_elems if h.attrib.get("_Type") in target_types]
+        if not matching_elems and housing_elems:
+            if is_condo_form:
+                condo_elems = [h for h in housing_elems if "Condo" in h.attrib.get("_Type", "")]
+                matching_elems = condo_elems if condo_elems else housing_elems
+            else:
+                matching_elems = housing_elems
 
-            h_newest = chosen_housing.attrib.get("_NewestYearsCount", "").strip()
-            h_oldest = chosen_housing.attrib.get("_OldestYearsCount", "").strip()
-            h_pred_age = chosen_housing.attrib.get("_PredominantAgeYearsCount", "").strip()
-            if h_oldest and h_newest and h_pred_age:
-                housing_age = f"{h_oldest} / {h_newest} / {h_pred_age}"
+        for h in matching_elems:
+            if not h_low and h.attrib.get("_LowPriceAmount"):
+                h_low = h.attrib.get("_LowPriceAmount", "").strip()
+            if not h_high and h.attrib.get("_HighPriceAmount"):
+                h_high = h.attrib.get("_HighPriceAmount", "").strip()
+            if not h_pred and h.attrib.get("_PredominantPriceAmount"):
+                h_pred = h.attrib.get("_PredominantPriceAmount", "").strip()
+            if not h_newest and h.attrib.get("_NewestYearsCount"):
+                h_newest = h.attrib.get("_NewestYearsCount", "").strip()
+            if not h_oldest and h.attrib.get("_OldestYearsCount"):
+                h_oldest = h.attrib.get("_OldestYearsCount", "").strip()
+            if not h_pred_age and h.attrib.get("_PredominantAgeYearsCount"):
+                h_pred_age = h.attrib.get("_PredominantAgeYearsCount", "").strip()
+
+        if h_high and h_low and h_pred:
+            housing_price = f"{h_high} / {h_low} / {h_pred}"
+        elif h_high or h_low or h_pred:
+            housing_price = f"{h_high or '0'} / {h_low or '0'} / {h_pred or '0'}"
+
+        if h_oldest and h_newest and h_pred_age:
+            housing_age = f"{h_oldest} / {h_newest} / {h_pred_age}"
+        elif h_oldest or h_newest or h_pred_age:
+            housing_age = f"{h_oldest or '0'} / {h_newest or '0'} / {h_pred_age or '0'}"
 
     # Contract
     is_refinance = "refinance" in purpose.lower()
@@ -5181,6 +5196,16 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "one unit housing price(high,low,pred)": housing_price,
         "ONE UNIT HOUSING PRICE(HIGH,LOW,PRED)": housing_price,
         "one unit housing age(high,low,pred)": housing_age,
+        "condominium housing price(high,low,pred)": housing_price,
+        "CONDOMINIUM HOUSING PRICE(HIGH,LOW,PRED)": housing_price,
+        "condominium housing age(high,low,pred)": housing_age,
+        "CONDOMINIUM HOUSING AGE(HIGH,LOW,PRED)": housing_age,
+        "Condominium Housing Price High": h_high,
+        "Condominium Housing Price Low": h_low,
+        "Condominium Housing Price Pred": h_pred,
+        "Condominium Housing Age High": h_oldest,
+        "Condominium Housing Age Low": h_newest,
+        "Condominium Housing Age Pred": h_pred_age,
         "Housing Price High": h_high,
         "Housing Price Low": h_low,
         "Housing Price Pred": h_pred,
