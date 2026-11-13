@@ -1,9 +1,7 @@
 import React from 'react';
-
 import { Paper, Box, Typography, Tooltip, IconButton, LinearProgress } from '@mui/material';
-
 import LibraryBooksIcon from '@mui/icons-material/LibraryBooks';
-
+import { PlaylistAdd as PlaylistAddIcon, CheckCircle as CheckCircleIcon } from '@mui/icons-material';
 import { EditableField } from './EditableField';
 
 
@@ -2284,73 +2282,183 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
       );
     };
 
-    // Helper to render interactive checkbox
-    const renderNbCheckbox = (fieldKey, optionLabel) => {
+    // Helper to check if a specific option is checked
+    const isNbOptionChecked = (fieldKey, optionLabel) => {
       const currentVal = String(getNbRawVal(fieldKey) || '').trim().toLowerCase();
       const targetLabel = optionLabel.trim().toLowerCase();
+      if (!currentVal) return false;
 
-      // Flexible matching (e.g. "Under 3 mos" vs "Under 3 mths", "3-6 mos" vs "3-6 mths", "Over 6 mos" vs "Over 6 mths")
-      const isChecked = currentVal === targetLabel || (
-        (targetLabel.includes('3 m') || targetLabel.includes('3-6') || targetLabel.includes('over 6')) && (
-          (targetLabel.includes('under 3') && (currentVal.includes('under 3') || currentVal.includes('under3') || currentVal.includes('underthree'))) ||
-          (targetLabel.includes('3-6') && (currentVal.includes('3-6') || currentVal.includes('threetosix'))) ||
-          (targetLabel.includes('over 6') && (currentVal.includes('over 6') || currentVal.includes('oversix')))
-        )
-      ) || (
-        targetLabel.includes('75') && currentVal.includes('75') && (
-          (targetLabel.includes('over') && currentVal.includes('over')) ||
-          (targetLabel.includes('25-75') && currentVal.includes('25-75')) ||
-          (targetLabel.includes('under') && currentVal.includes('under'))
-        )
-      ) || (
-        targetLabel === 'in balance' && (currentVal === 'in balance' || currentVal === 'inbalance')
-      ) || (
-        targetLabel === 'over supply' && (currentVal === 'over supply' || currentVal === 'oversupply')
+      if (currentVal === targetLabel) return true;
+
+      // Marketing Time matching
+      if (targetLabel.includes('3 m') || targetLabel.includes('3-6') || targetLabel.includes('over 6')) {
+        if (targetLabel.includes('under 3') && (currentVal.includes('under 3') || currentVal.includes('under3') || currentVal.includes('underthree'))) return true;
+        if (targetLabel.includes('3-6') && (currentVal.includes('3-6') || currentVal.includes('threetosix'))) return true;
+        if (targetLabel.includes('over 6') && (currentVal.includes('over 6') || currentVal.includes('oversix'))) return true;
+      }
+
+      // Built-Up matching
+      if (targetLabel.includes('75') && currentVal.includes('75')) {
+        if (targetLabel.includes('over') && currentVal.includes('over')) return true;
+        if (targetLabel.includes('25-75') && currentVal.includes('25-75')) return true;
+        if (targetLabel.includes('under') && currentVal.includes('under')) return true;
+      }
+
+      // Demand/Supply matching
+      if (targetLabel === 'in balance' && (currentVal === 'in balance' || currentVal === 'inbalance')) return true;
+      if (targetLabel === 'over supply' && (currentVal === 'over supply' || currentVal === 'oversupply')) return true;
+      if (targetLabel === 'shortage' && currentVal === 'shortage') return true;
+
+      // Location matching
+      if (targetLabel === 'urban' && currentVal === 'urban') return true;
+      if (targetLabel === 'suburban' && currentVal === 'suburban') return true;
+      if (targetLabel === 'rural' && currentVal === 'rural') return true;
+
+      // Growth matching
+      if (targetLabel === 'rapid' && currentVal === 'rapid') return true;
+      if (targetLabel === 'stable' && currentVal === 'stable') return true;
+      if (targetLabel === 'slow' && currentVal === 'slow') return true;
+
+      // Property Values matching
+      if (targetLabel === 'increasing' && currentVal === 'increasing') return true;
+      if (targetLabel === 'stable' && currentVal === 'stable') return true;
+      if (targetLabel === 'declining' && currentVal === 'declining') return true;
+
+      return false;
+    };
+
+    const handleNbToggleOption = (fieldKey, optionLabel) => {
+      if (!isEditable) return;
+      const isCurrentlyChecked = isNbOptionChecked(fieldKey, optionLabel);
+      const newVal = isCurrentlyChecked ? '' : optionLabel;
+      if (onDataChange) {
+        onDataChange([fieldKey], newVal);
+        onDataChange(['NEIGHBORHOOD', fieldKey], newVal);
+      }
+    };
+
+    // Helper to render interactive single-choice row with green/red validation highlight
+    const renderNbChoiceRow = (fieldKey, label, options, labelWidth = '75px') => {
+      const isAnyChecked = options.some(opt => isNbOptionChecked(fieldKey, opt));
+      const fieldPath = [fieldKey];
+      const isManuallyValidated = manualValidations && (
+        manualValidations[JSON.stringify(fieldPath)] ||
+        manualValidations[fieldKey]
       );
-
-      const handleToggle = () => {
-        if (!isEditable) return;
-        const newVal = isChecked ? '' : optionLabel;
-        if (onDataChange) {
-          onDataChange([fieldKey], newVal);
-        }
-      };
+      const isValid = isAnyChecked;
+      const bg = isManuallyValidated ? '#87ceeb' : (isValid ? '#91ff00ff' : '#ff0015ff');
+      const textColor = (isValid || isManuallyValidated) ? '#000000' : '#ffffff';
+      const borderColor = isManuallyValidated ? '#4682b4' : (isValid ? '#70d600' : '#721c24');
+      const tooltipMsg = isManuallyValidated
+        ? 'Manually validated'
+        : (isValid ? `${label} is validated.` : `'${label}' in Neighborhood section must not be blank. Please select one option.`);
 
       return (
-        <div
-          onClick={handleToggle}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            cursor: isEditable ? 'pointer' : 'default',
-            userSelect: 'none',
-            fontSize: '0.78rem',
-            marginRight: '10px',
-            lineHeight: 1.2
-          }}
-          title={isEditable ? `Toggle ${optionLabel}` : optionLabel}
-        >
-          <div
-            style={{
-              width: '14px',
-              height: '14px',
-              border: '1.5px solid #212529',
-              borderRadius: '2px',
-              backgroundColor: '#fff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginRight: '5px',
-              fontWeight: '900',
-              fontSize: '11px',
-              color: '#000',
-              lineHeight: 1,
-              flexShrink: 0
-            }}
-          >
-            {isChecked ? '✕' : ''}
-          </div>
-          <span style={{ color: '#212529', fontWeight: isChecked ? 600 : 400 }}>{optionLabel}</span>
+        <div style={{ display: 'flex', alignItems: 'center', margin: '2px 0' }}>
+          <span style={{ fontWeight: 600, width: labelWidth, flexShrink: 0, fontSize: '0.76rem', color: '#212529' }}>
+            {label}
+          </span>
+          <Tooltip title={tooltipMsg} arrow placement="top">
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flex: 1,
+                backgroundColor: bg,
+                color: textColor,
+                border: `1px solid ${borderColor}`,
+                borderRadius: '4px',
+                padding: '2px 6px',
+                minHeight: '25px',
+                transition: 'background-color 0.2s ease, border-color 0.2s ease'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                {options.map((opt) => {
+                  const checked = isNbOptionChecked(fieldKey, opt);
+                  return (
+                    <div
+                      key={opt}
+                      onClick={() => handleNbToggleOption(fieldKey, opt)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        cursor: isEditable ? 'pointer' : 'default',
+                        userSelect: 'none',
+                        fontSize: '0.76rem',
+                        lineHeight: 1.2
+                      }}
+                      title={isEditable ? `Select ${opt}` : opt}
+                    >
+                      <div
+                        style={{
+                          width: '13px',
+                          height: '13px',
+                          border: checked ? '1.5px solid #000' : (isValid ? '1.5px solid #212529' : '1.5px solid #fff'),
+                          borderRadius: '2px',
+                          backgroundColor: '#fff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          marginRight: '4px',
+                          fontWeight: 900,
+                          fontSize: '10px',
+                          color: '#000',
+                          lineHeight: 1,
+                          flexShrink: 0
+                        }}
+                      >
+                        {checked ? '✕' : ''}
+                      </div>
+                      <span style={{ color: textColor, fontWeight: checked ? 700 : 500 }}>
+                        {opt}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Revision / Manual Validation Icon buttons */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '2px', marginLeft: 'auto' }} onClick={(e) => e.stopPropagation()}>
+                {revisionHandlers && revisionHandlers.onAddRevision && (
+                  <Tooltip title="Add to Revision">
+                    <IconButton
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const currentChecked = options.find(opt => isNbOptionChecked(fieldKey, opt)) || '';
+                        const text = currentChecked
+                          ? `Please review and revise '${label}' (Current Value: "${currentChecked}") in the Neighborhood section.`
+                          : `Please provide '${label}' in the Neighborhood section.`;
+                        if (navigator.clipboard) navigator.clipboard.writeText(text);
+                        if (window.dispatchEvent) {
+                          window.dispatchEvent(new CustomEvent('showNotification', { detail: `'${label}' revision text copied to clipboard!` }));
+                        }
+                      }}
+                      size="small"
+                      sx={{ padding: '1px', color: textColor }}
+                    >
+                      <PlaylistAddIcon sx={{ fontSize: '0.95rem' }} />
+                    </IconButton>
+                  </Tooltip>
+                )}
+                {handleManualValidation && (
+                  <Tooltip title={isManuallyValidated ? "Remove Manual Validation" : "Mark as Validated"}>
+                    <IconButton
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleManualValidation(fieldPath);
+                      }}
+                      size="small"
+                      sx={{ padding: '1px', color: isManuallyValidated ? '#155724' : textColor }}
+                    >
+                      <CheckCircleIcon sx={{ fontSize: '0.95rem' }} />
+                    </IconButton>
+                  </Tooltip>
+                )}
+              </div>
+            </div>
+          </Tooltip>
         </div>
       );
     };
@@ -2514,36 +2622,10 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
                   <div style={{ backgroundColor: '#e9ecef', padding: '4px 8px', fontWeight: 'bold', fontSize: '0.78rem', textAlign: 'center', borderBottom: '1px solid #212529' }}>
                     Neighborhood Characteristics
                   </div>
-                  <div style={{ padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: '8px', justifyContent: 'space-around', flex: 1, minHeight: '115px' }}>
-                    {/* Location */}
-                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                      <span style={{ fontWeight: 600, width: '65px', flexShrink: 0 }}>Location</span>
-                      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
-                        {renderNbCheckbox('Location', 'Urban')}
-                        {renderNbCheckbox('Location', 'Suburban')}
-                        {renderNbCheckbox('Location', 'Rural')}
-                      </div>
-                    </div>
-
-                    {/* Built-Up */}
-                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                      <span style={{ fontWeight: 600, width: '65px', flexShrink: 0 }}>Built-Up</span>
-                      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
-                        {renderNbCheckbox('Built-Up', 'Over 75%')}
-                        {renderNbCheckbox('Built-Up', '25-75%')}
-                        {renderNbCheckbox('Built-Up', 'Under 25%')}
-                      </div>
-                    </div>
-
-                    {/* Growth */}
-                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                      <span style={{ fontWeight: 600, width: '65px', flexShrink: 0 }}>Growth</span>
-                      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
-                        {renderNbCheckbox('Growth', 'Rapid')}
-                        {renderNbCheckbox('Growth', 'Stable')}
-                        {renderNbCheckbox('Growth', 'Slow')}
-                      </div>
-                    </div>
+                  <div style={{ padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: '6px', justifyContent: 'space-around', flex: 1, minHeight: '115px' }}>
+                    {renderNbChoiceRow('Location', 'Location', ['Urban', 'Suburban', 'Rural'], '65px')}
+                    {renderNbChoiceRow('Built-Up', 'Built-Up', ['Over 75%', '25-75%', 'Under 25%'], '65px')}
+                    {renderNbChoiceRow('Growth', 'Growth', ['Rapid', 'Stable', 'Slow'], '65px')}
                   </div>
                 </div>
 
@@ -2552,36 +2634,10 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
                   <div style={{ backgroundColor: '#e9ecef', padding: '4px 8px', fontWeight: 'bold', fontSize: '0.78rem', textAlign: 'center', borderBottom: '1px solid #212529' }}>
                     {housingTrendsTitle}
                   </div>
-                  <div style={{ padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: '8px', justifyContent: 'space-around', flex: 1, minHeight: '115px' }}>
-                    {/* Property Values */}
-                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                      <span style={{ fontWeight: 600, width: '92px', flexShrink: 0 }}>Property Values</span>
-                      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
-                        {renderNbCheckbox('Property Values', 'Increasing')}
-                        {renderNbCheckbox('Property Values', 'Stable')}
-                        {renderNbCheckbox('Property Values', 'Declining')}
-                      </div>
-                    </div>
-
-                    {/* Demand/Supply */}
-                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                      <span style={{ fontWeight: 600, width: '92px', flexShrink: 0 }}>Demand/Supply</span>
-                      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
-                        {renderNbCheckbox('Demand/Supply', 'Shortage')}
-                        {renderNbCheckbox('Demand/Supply', 'In Balance')}
-                        {renderNbCheckbox('Demand/Supply', 'Over Supply')}
-                      </div>
-                    </div>
-
-                    {/* Marketing Time */}
-                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                      <span style={{ fontWeight: 600, width: '92px', flexShrink: 0 }}>Marketing Time</span>
-                      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
-                        {renderNbCheckbox('Marketing Time', 'Under 3 mths')}
-                        {renderNbCheckbox('Marketing Time', '3-6 mths')}
-                        {renderNbCheckbox('Marketing Time', 'Over 6 mths')}
-                      </div>
-                    </div>
+                  <div style={{ padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: '6px', justifyContent: 'space-around', flex: 1, minHeight: '115px' }}>
+                    {renderNbChoiceRow('Property Values', 'Property Values', ['Increasing', 'Stable', 'Declining'], '92px')}
+                    {renderNbChoiceRow('Demand/Supply', 'Demand/Supply', ['Shortage', 'In Balance', 'Over Supply'], '92px')}
+                    {renderNbChoiceRow('Marketing Time', 'Marketing Time', ['Under 3 mths', '3-6 mths', 'Over 6 mths'], '92px')}
                   </div>
                 </div>
 
