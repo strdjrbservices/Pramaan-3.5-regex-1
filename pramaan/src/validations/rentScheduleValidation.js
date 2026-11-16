@@ -134,26 +134,83 @@ export const is1007Active = (allData, selectedFormType) => {
         normalized.includes('1007') ||
         normalized.includes('1025') ||
         Boolean(allData?.RENTAL_GRID || allData?.['Comparable Rental Data'] || allData?.clean_data?.['Comparable Rental Data'] ||
-                allData?.['Comparable Rent Schedule'] || allData?.clean_data?.['Comparable Rent Schedule'] ||
-                allData?.['Single Family Rent Schedule'] || allData?.clean_data?.['Single Family Rent Schedule'])
+            allData?.['Comparable Rent Schedule'] || allData?.clean_data?.['Comparable Rent Schedule'] ||
+            allData?.['Single Family Rent Schedule'] || allData?.clean_data?.['Single Family Rent Schedule'])
     );
 };
 
 export const checkRentProximityToSubject = (field, text, allData, path, saleName) => {
-    if (field !== 'Proximity to Subject' || !saleName || !saleName.startsWith('COMPARABLE NO.')) {
+    let actualText = text;
+    let actualAllData = allData;
+    let actualPath = path;
+    let actualSaleName = saleName;
+
+    // Handle (field, allData, saleName) call signature
+    if (text && typeof text === 'object' && !Array.isArray(text) && typeof allData === 'string') {
+        actualAllData = text;
+        actualSaleName = allData;
+        actualText = null;
+    }
+
+    if (!actualSaleName && Array.isArray(actualPath) && actualPath.length > 0) {
+        actualSaleName = actualPath[0];
+    }
+    if (!actualSaleName && typeof actualPath === 'string') {
+        actualSaleName = actualPath;
+    }
+
+    const normField = String(field || '').trim().toLowerCase();
+    if (normField !== 'proximity to subject') return null;
+
+    if (!actualSaleName || String(actualSaleName).trim().toLowerCase() === 'subject') {
         return null;
     }
 
-    const proximityText = String(text || '').trim();
+    const normSale = String(actualSaleName).toUpperCase();
+    if (normSale.includes('SALE') && !normSale.includes('RENT')) {
+        return null;
+    }
+
+    const isRentComp = normSale.startsWith('COMPARABLE NO') ||
+        normSale.includes('RENT') ||
+        normSale.startsWith('RENTAL') ||
+        (Array.isArray(actualPath) && actualPath.some(p => {
+            const s = String(p).toUpperCase();
+            return s.includes('RENT') || s.startsWith('COMPARABLE NO') || s.startsWith('RENTAL');
+        }));
+
+    if (!isRentComp) return null;
+
+    let proximityText = (actualText !== null && actualText !== undefined) ? String(actualText).trim() : '';
+
+    if (!proximityText && actualAllData && typeof actualAllData === 'object') {
+        const compData = actualAllData[actualSaleName] ||
+            actualAllData['Comparable Rental Data']?.[actualSaleName] ||
+            actualAllData.clean_data?.['Comparable Rental Data']?.[actualSaleName] ||
+            actualAllData['Single Family Rent Schedule']?.[actualSaleName] ||
+            actualAllData.RENTAL_GRID?.[actualSaleName] ||
+            {};
+        proximityText = String(compData['Proximity to Subject'] || compData['Proximity'] || '').trim();
+    }
+
     if (!proximityText) return null;
 
-    const proximityValue = parseFloat(proximityText);
+    const match = proximityText.match(/\d*\.?\d+/);
+    const proximityValue = match ? parseFloat(match[0]) : NaN;
     if (isNaN(proximityValue)) return null;
 
-    if (proximityValue > 1) {
-        return { isError: true, message: `For Rent Comparables, Proximity to Subject (${proximityText}) must not be greater than 1.0 mile.` };
+    if (proximityValue > 10) {
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: `The miles of rental should be not more than 10 miles (current: ${proximityText}).`
+        };
     }
-    return { isMatch: true };
+
+    return {
+        isMatch: true,
+        message: `Valid: The miles of rental is not more than 10 miles (${proximityText}).`
+    };
 };
 
 export const isNA = (val) => {

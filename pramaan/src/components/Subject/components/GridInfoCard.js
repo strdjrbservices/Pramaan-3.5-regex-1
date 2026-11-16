@@ -2072,76 +2072,100 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
         </div>
 
-        {options.length > 0 && (
+        {options.length > 0 && (() => {
+          const isStatusField = label === 'Status' || keys.includes('Existing/Proposed/Under Const.') || keys.includes('Construction Status');
+          if (isStatusField) {
+            const vLower = valStr.toLowerCase();
+            const hasExist = vLower.includes('exist');
+            const hasProp = vLower.includes('proposed');
+            const hasUnder = vLower.includes('under') && (vLower.includes('const') || vLower.includes('construct'));
+            const count = [hasExist, hasProp, hasUnder].filter(Boolean).length;
+            const isSingleValid = count === 1;
+            const isManuallyValidated = manualValidations && (
+              manualValidations[JSON.stringify(targetPath)] ||
+              manualValidations[actualKey]
+            );
+            const bg = isManuallyValidated ? '#87ceeb' : (isSingleValid ? '#91ff00ff' : '#ff0015ff');
+            const textColor = (isSingleValid || isManuallyValidated) ? '#000000' : '#ffffff';
+            const borderColor = isManuallyValidated ? '#4682b4' : (isSingleValid ? '#70d600' : '#721c24');
+            const selName = hasExist ? 'Existing' : (hasProp ? 'Proposed' : (hasUnder ? 'Under Const.' : ''));
+            const tip = isManuallyValidated
+              ? 'Manually validated'
+              : (isSingleValid
+                  ? `Status is validated: '${selName}' is selected.`
+                  : "One of 'Existing', 'Under Construction', or 'Proposed' must be selected.");
 
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 8px', marginBottom: '3px' }}>
+            return (
+              <Tooltip title={tip} arrow placement="top">
+                <div style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  gap: '4px 8px',
+                  padding: '3px 6px',
+                  marginBottom: '3px',
+                  backgroundColor: bg,
+                  color: textColor,
+                  border: `1px solid ${borderColor}`,
+                  borderRadius: '4px',
+                  transition: 'background-color 0.2s ease, border-color 0.2s ease'
+                }}>
+                  {options.map(opt => {
+                    const isChecked = checkOptionMatches(valStr, opt);
+                    const handleToggle = () => {
+                      const newVal = isChecked ? '' : opt;
+                      onDataChange(targetPath, newVal);
+                    };
+                    return (
+                      <label key={opt} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', cursor: 'pointer', fontSize: '0.7rem', userSelect: 'none', margin: 0, color: textColor, fontWeight: isChecked ? 700 : 500 }}>
+                        <input type="checkbox" checked={isChecked} onChange={handleToggle} style={{ margin: 0, width: '12px', height: '12px' }} />
+                        <span>{opt}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </Tooltip>
+            );
+          }
 
-            {options.map(opt => {
+          return (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 8px', marginBottom: '3px' }}>
+              {options.map(opt => {
+                const isChecked = checkOptionMatches(valStr, opt);
+                const handleToggle = () => {
+                  let items = valStr ? valStr.split(',').map(s => s.trim()).filter(Boolean) : [];
+                  if (isChecked) {
+                    items = items.filter(item => !checkOptionMatches(item, opt));
+                  } else {
+                    items.push(opt);
+                  }
+                  const newVal = items.join(', ');
+                  onDataChange(targetPath, newVal);
 
-              const isChecked = checkOptionMatches(valStr, opt);
+                  if (keys.includes('Foundation Type') || keys.includes('Foundation')) {
+                    const altKey = actualKey === 'Foundation Type' ? 'Foundation' : 'Foundation Type';
+                    onDataChange(getFieldPath(altKey), newVal);
+                    const isFull = newVal.toLowerCase().includes('full basement') || (newVal.toLowerCase().includes('basement') && !newVal.toLowerCase().includes('partial'));
+                    const isPartial = newVal.toLowerCase().includes('partial');
+                    const isSlab = newVal.toLowerCase().includes('slab');
+                    const isCrawl = newVal.toLowerCase().includes('crawl');
+                    onDataChange(getFieldPath('Full Basement'), isFull ? 'Yes' : 'No');
+                    onDataChange(getFieldPath('Partial Basement'), isPartial ? 'Yes' : 'No');
+                    onDataChange(getFieldPath('Concrete Slab'), isSlab ? 'Yes' : 'No');
+                    onDataChange(getFieldPath('Crawl Space'), isCrawl ? 'Yes' : 'No');
+                  }
+                };
 
-              const handleToggle = () => {
-
-                let items = valStr ? valStr.split(',').map(s => s.trim()).filter(Boolean) : [];
-
-                if (isChecked) {
-
-                  items = items.filter(item => !checkOptionMatches(item, opt));
-
-                } else {
-
-                  items.push(opt);
-
-                }
-
-                const newVal = items.join(', ');
-
-                onDataChange(targetPath, newVal);
-
-                if (keys.includes('Foundation Type') || keys.includes('Foundation')) {
-
-                  const altKey = actualKey === 'Foundation Type' ? 'Foundation' : 'Foundation Type';
-
-                  onDataChange(getFieldPath(altKey), newVal);
-
-                  const isFull = newVal.toLowerCase().includes('full basement') || (newVal.toLowerCase().includes('basement') && !newVal.toLowerCase().includes('partial'));
-
-                  const isPartial = newVal.toLowerCase().includes('partial');
-
-                  const isSlab = newVal.toLowerCase().includes('slab');
-
-                  const isCrawl = newVal.toLowerCase().includes('crawl');
-
-                  onDataChange(getFieldPath('Full Basement'), isFull ? 'Yes' : 'No');
-
-                  onDataChange(getFieldPath('Partial Basement'), isPartial ? 'Yes' : 'No');
-
-                  onDataChange(getFieldPath('Concrete Slab'), isSlab ? 'Yes' : 'No');
-
-                  onDataChange(getFieldPath('Crawl Space'), isCrawl ? 'Yes' : 'No');
-
-
-                }
-
-              };
-
-              return (
-
-                <label key={opt} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', cursor: 'pointer', fontSize: '0.7rem', userSelect: 'none', margin: 0 }}>
-
-                  <input type="checkbox" checked={isChecked} onChange={handleToggle} style={{ margin: 0, width: '12px', height: '12px' }} />
-
-                  <span>{opt}</span>
-
-                </label>
-
-              );
-
-            })}
-
-          </div>
-
-        )}
+                return (
+                  <label key={opt} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', cursor: 'pointer', fontSize: '0.7rem', userSelect: 'none', margin: 0 }}>
+                    <input type="checkbox" checked={isChecked} onChange={handleToggle} style={{ margin: 0, width: '12px', height: '12px' }} />
+                    <span>{opt}</span>
+                  </label>
+                );
+              })}
+            </div>
+          );
+        })()}
 
         <EditableField
 
@@ -3193,15 +3217,135 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
                     </div>
                   </div>
                   {/* Row 3: Existing / Proposed / Under Construction */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', padding: '3px 6px', borderBottom: '1px solid #212529', minHeight: '44px', justifyContent: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                      {renderPiCheckbox('Existing/Proposed/Under Const.', 'Existing')}
-                      {renderPiCheckbox('Existing/Proposed/Under Const.', 'Proposed')}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                      {renderPiCheckbox('Existing/Proposed/Under Const.', 'Under Construction')}
-                    </div>
-                  </div>
+                  {(() => {
+                    const fieldKey = 'Existing/Proposed/Under Const.';
+                    const currentVal = String(getPiRawVal(fieldKey, 'Existing/Proposed/Under Construction') || '').trim().toLowerCase();
+                    const hasExisting = currentVal === 'existing' || currentVal.startsWith('exist');
+                    const hasProposed = currentVal.includes('proposed');
+                    const hasUnderConst = currentVal.includes('under const') || (currentVal.includes('under') && currentVal.includes('construct'));
+                    const selectedCount = [hasExisting, hasProposed, hasUnderConst].filter(Boolean).length;
+                    const isValid = selectedCount === 1;
+                    const fieldPath = [fieldKey];
+                    const isManuallyValidated = manualValidations && (
+                      manualValidations[JSON.stringify(fieldPath)] ||
+                      manualValidations[fieldKey]
+                    );
+                    const bg = isManuallyValidated ? '#87ceeb' : (isValid ? '#91ff00ff' : '#ff0015ff');
+                    const textColor = (isValid || isManuallyValidated) ? '#000000' : '#ffffff';
+                    const borderColor = isManuallyValidated ? '#4682b4' : (isValid ? '#70d600' : '#721c24');
+                    const selectedOpt = hasExisting ? 'Existing' : (hasProposed ? 'Proposed' : (hasUnderConst ? 'Under Construction' : ''));
+                    const tooltipMsg = isManuallyValidated
+                      ? 'Manually validated'
+                      : (isValid
+                          ? `Status is validated: '${selectedOpt}' is selected.`
+                          : "One of 'Existing', 'Under Construction', or 'Proposed' must be selected.");
+
+                    const handleToggleOption = (opt) => {
+                      if (!isEditable) return;
+                      const isCurrentlyChecked = (
+                        (opt === 'Existing' && hasExisting) ||
+                        (opt === 'Proposed' && hasProposed) ||
+                        (opt === 'Under Construction' && hasUnderConst)
+                      );
+                      const newVal = isCurrentlyChecked ? '' : opt;
+                      if (onDataChange) {
+                        onDataChange([fieldKey], newVal);
+                        onDataChange(['Existing/Proposed/Under Construction'], newVal);
+                        onDataChange(['PROJECT_INFO', fieldKey], newVal);
+                      }
+                    };
+
+                    const renderOption = (optLabel, isChecked) => (
+                      <div
+                        onClick={() => handleToggleOption(optLabel)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          cursor: isEditable ? 'pointer' : 'default',
+                          userSelect: 'none',
+                          fontSize: '0.76rem',
+                          marginRight: '8px',
+                          lineHeight: 1.2
+                        }}
+                        title={isEditable ? `Select ${optLabel}` : optLabel}
+                      >
+                        <div
+                          style={{
+                            width: '13px',
+                            height: '13px',
+                            border: isChecked ? '1.5px solid #000' : (isValid ? '1.5px solid #212529' : '1.5px solid #fff'),
+                            borderRadius: '2px',
+                            backgroundColor: '#fff',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            marginRight: '4px',
+                            fontWeight: 900,
+                            fontSize: '10px',
+                            color: '#000',
+                            lineHeight: 1,
+                            flexShrink: 0
+                          }}
+                        >
+                          {isChecked ? '✕' : ''}
+                        </div>
+                        <span style={{ color: textColor, fontWeight: isChecked ? 700 : 500 }}>
+                          {optLabel}
+                        </span>
+                      </div>
+                    );
+
+                    return (
+                      <Tooltip title={tooltipMsg} arrow placement="top">
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '3px',
+                            padding: '3px 6px',
+                            borderBottom: '1px solid #212529',
+                            minHeight: '44px',
+                            justifyContent: 'center',
+                            backgroundColor: bg,
+                            color: textColor,
+                            border: `1px solid ${borderColor}`,
+                            borderRadius: '3px',
+                            transition: 'background-color 0.2s ease, border-color 0.2s ease'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div style={{ display: 'flex', alignItems: 'center' }}>
+                              {renderOption('Existing', hasExisting)}
+                              {renderOption('Proposed', hasProposed)}
+                            </div>
+                            {revisionHandlers && revisionHandlers.onAddRevision && (
+                              <div onClick={(e) => e.stopPropagation()} style={{ marginLeft: 'auto' }}>
+                                <Tooltip title="Add to Revision">
+                                  <IconButton
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      revisionHandlers.onAddRevision({
+                                        field: fieldKey,
+                                        value: selectedOpt,
+                                        section: 'Project Information'
+                                      });
+                                    }}
+                                    size="small"
+                                    sx={{ p: '1px', color: textColor }}
+                                  >
+                                    <PlaylistAddIcon sx={{ fontSize: '13px' }} />
+                                  </IconButton>
+                                </Tooltip>
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center' }}>
+                            {renderOption('Under Construction', hasUnderConst)}
+                          </div>
+                        </div>
+                      </Tooltip>
+                    );
+                  })()}
                   {/* Row 4: Year Built */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px', borderBottom: '1px solid #212529', minHeight: '26px' }}>
                     <span style={{ fontWeight: 600, fontSize: '0.74rem', whiteSpace: 'nowrap', marginRight: '6px' }}>Year Built</span>
@@ -4768,7 +4912,16 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
                   true,
                   [
                     "Prior Sale History: Analysis of prior sale or transfer history of the subject property and comparable sales",
-                    "Analysis of prior sale or transfer history of the subject property and comparable sales."
+                    "Analysis of prior sale or transfer history of the subject property and comparable sales.",
+                    "Analysis of Prior Sale and Transfer History of Subject Property",
+                    "Report the results of the research and analysis of the prior sale or transfer history of the subject property and comparable sales",
+                    "Prior Sale History: Report the results of the research and analysis of the prior sale or transfer history of the subject property and comparable sales",
+                    "Analysis of Prior Sale and Transfer History of Comparable Sales",
+                    "SubjectPriorSalesAndTransferHistory",
+                    "Prior Sales Analysis Comment",
+                    "_CurrentSalesAgreementAnalysisComment",
+                    "_PriorSalesAnalysisComment",
+                    "GSEPriorSaleComment"
                   ]
                 )}
               </div>

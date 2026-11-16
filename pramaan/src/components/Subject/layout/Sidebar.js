@@ -4,6 +4,8 @@ import {
     CircularProgress, ListItemIcon, Typography, ToggleButton, ToggleButtonGroup, Chip,
 } from '@mui/material';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
+import MenuIcon from '@mui/icons-material/Menu';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import { keyframes } from '@mui/system';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import NightlightRoundIcon from '@mui/icons-material/NightlightRound';
@@ -16,81 +18,104 @@ const bounce = keyframes`
 `;
 
 const Sidebar = ({
-    sections, isOpen, isLocked, onLockToggle, onMouseEnter, onMouseLeave,
+    sections, isOpen, onToggle, isLocked, onLockToggle,
     onSectionClick, onThemeToggle, currentTheme, activeSection, loading,
     loadingSection, extractedSections = new Set(), visibleSections = new Set(),
     onArrowClick, extractionSource = 'pdf', onExtractionSourceChange,
     hasPdfFile = false, hasXmlFile = false, onOpenPdfXmlDiff, diffCount = 0
-}) => (
-    <>
-        {isOpen && (
-            <Box
-                onClick={onLockToggle}
-                sx={{
-                    display: { xs: 'block', md: 'none' },
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    width: '100vw',
-                    height: '100vh',
-                    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-                    backdropFilter: 'blur(3px)',
-                    zIndex: 1100,
-                    transition: 'opacity 0.3s ease',
-                }}
-            />
-        )}
+}) => {
+    const handleToggle = onToggle || onLockToggle;
 
-        {!isOpen && (
-            <IconButton
-                onClick={onLockToggle}
-                sx={{
-                    display: { xs: 'flex', md: 'none' },
-                    position: 'fixed',
-                    bottom: 24,
-                    left: 24,
-                    zIndex: 1090,
-                    backgroundColor: currentTheme === 'dark' ? '#1e88e5' : '#005A9C',
-                    color: '#ffffff',
-                    boxShadow: '0 4px 14px rgba(0,0,0,0.25)',
-                    '&:hover': {
-                        backgroundColor: currentTheme === 'dark' ? '#1565c0' : '#004070',
-                    },
-                    width: 50,
-                    height: 50,
-                    borderRadius: '50%',
-                }}
-            >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="3" y1="12" x2="21" y2="12"></line>
-                    <line x1="3" y1="6" x2="21" y2="6"></line>
-                    <line x1="3" y1="18" x2="21" y2="18"></line>
-                </svg>
-            </IconButton>
-        )}
+    return (
+        <>
+            {isOpen && (
+                <Box
+                    onClick={handleToggle}
+                    sx={{
+                        display: { xs: 'block', md: 'none' },
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        width: '100vw',
+                        height: '100vh',
+                        backgroundColor: 'rgba(0, 0, 0, 0.4)',
+                        backdropFilter: 'blur(3px)',
+                        zIndex: 1100,
+                        transition: 'opacity 0.3s ease',
+                    }}
+                />
+            )}
 
-        <div className={`sidebar ${isOpen ? 'open' : 'closed'}`} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
-            <div className="sidebar-header">
-                <Box className="sidebar-logo" sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: 40, height: 40 }}>
-                    <PremiumLogo size={40} fullScreen={false} />
-                </Box>
-                <Typography variant="h6" className="sidebar-title" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-                    DJRB
-                </Typography>
-                <Tooltip title={isLocked ? "Unpin Sidebar" : "Pin Sidebar"} placement="right">
-                    <IconButton onClick={onLockToggle} size="small" className="sidebar-toggle-btn">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isLocked ? 'rotate(45deg)' : 'none', transition: 'transform 0.2s' }}>
-                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-                            <circle cx="12" cy="10" r="3"></circle>
-                        </svg>
-                    </IconButton>
-                </Tooltip>
-                <Tooltip title="Toggle Dark/Light Theme" placement="right">
-                    <IconButton onClick={onThemeToggle} size="small" sx={{ color: 'var(--primary-color)', ml: 1 }}>
-                        {currentTheme === 'dark' ? <LightModeIcon /> : <NightlightRoundIcon />}
-                    </IconButton>
-                </Tooltip>
-            </div>
+            {!isOpen && (
+                <IconButton
+                    onClick={handleToggle}
+                    aria-label="Open Sidebar"
+                    sx={{
+                        display: { xs: 'flex', md: 'none' },
+                        position: 'fixed',
+                        bottom: 24,
+                        left: 24,
+                        zIndex: 1090,
+                        backgroundColor: currentTheme === 'dark' ? '#1e88e5' : '#005A9C',
+                        color: '#ffffff',
+                        boxShadow: '0 4px 14px rgba(0,0,0,0.25)',
+                        '&:hover': {
+                            backgroundColor: currentTheme === 'dark' ? '#1565c0' : '#004070',
+                        },
+                        width: 50,
+                        height: 50,
+                        borderRadius: '50%',
+                    }}
+                >
+                    <MenuIcon />
+                </IconButton>
+            )}
+
+            <div className={`sidebar ${isOpen ? 'open' : 'closed'}`}>
+                {isOpen ? (
+                    <div className="sidebar-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.85rem 0.75rem' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, overflow: 'hidden' }}>
+                            <Box className="sidebar-logo" sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: 34, height: 34, flexShrink: 0, m: 0 }}>
+                                <PremiumLogo size={34} fullScreen={false} />
+                            </Box>
+                            <Typography variant="h6" className="sidebar-title" sx={{ fontWeight: 'bold', color: 'primary.main', m: 0, whiteSpace: 'nowrap' }}>
+                                DJRB
+                            </Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
+                            <Tooltip title="Toggle Dark/Light Theme" placement="bottom">
+                                <IconButton onClick={onThemeToggle} size="small" sx={{ color: 'var(--primary-color)' }}>
+                                    {currentTheme === 'dark' ? <LightModeIcon fontSize="small" /> : <NightlightRoundIcon fontSize="small" />}
+                                </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Close Sidebar" placement="bottom">
+                                <IconButton onClick={handleToggle} size="small" sx={{ color: 'var(--primary-color)' }} aria-label="Close Sidebar">
+                                    <ChevronLeftIcon />
+                                </IconButton>
+                            </Tooltip>
+                        </Box>
+                    </div>
+                ) : (
+                    <div className="sidebar-header" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '0.85rem 0' }}>
+                        <Tooltip title="Open Sidebar" placement="right">
+                            <IconButton
+                                onClick={handleToggle}
+                                size="medium"
+                                aria-label="Open Sidebar"
+                                sx={{
+                                    color: 'primary.main',
+                                    width: 40,
+                                    height: 40,
+                                    '&:hover': {
+                                        bgcolor: currentTheme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'
+                                    }
+                                }}
+                            >
+                                <MenuIcon />
+                            </IconButton>
+                        </Tooltip>
+                    </div>
+                )}
 
             {isOpen && (
                 <Box sx={{ px: 1.5, py: 1.2, borderBottom: '1px solid var(--sidebar-border)', bgcolor: currentTheme === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)' }}>
@@ -216,6 +241,7 @@ const Sidebar = ({
             </div>
         </div>
     </>
-);
+    );
+};
 
 export default Sidebar;

@@ -1,4 +1,5 @@
-import { checkBasementDetails, checkFoundationType, getFoundationStatus } from '../improvementsValidation';
+import { checkBasementDetails, checkFoundationType, getFoundationStatus, checkExistingProposedUnderConst, checkEffectiveAge } from '../improvementsValidation';
+import { getReconAsOfYear, getYearBuiltFromImprovements, getSubjectExpectedActualAge, checkSubjectAgeConsistency } from '../salesComparisonValidation';
 
 describe('Improvements Validation - Foundation & Basement Area', () => {
     describe('getFoundationStatus', () => {
@@ -168,6 +169,130 @@ describe('Improvements Validation - Foundation & Basement Area', () => {
             test(`matches "${term}" as Half Bath`, () => {
                 expect(halfBathRegex.test(term)).toBe(true);
             });
+        });
+    });
+
+    describe('checkExistingProposedUnderConst - Existing / Under Construction / Proposed', () => {
+        test('passes when exactly one valid option is selected: Existing', () => {
+            const res = checkExistingProposedUnderConst('Status', 'Existing', { 'Reconciliation Status': 'As Is' });
+            expect(res.isMatch).toBe(true);
+            expect(res.isError).toBeFalsy();
+        });
+
+        test('passes when exactly one valid option is selected: Proposed', () => {
+            const res = checkExistingProposedUnderConst('Existing/Proposed/Under Const.', 'Proposed', { 'Reconciliation Status': 'Subject to Completion' });
+            expect(res.isMatch).toBe(true);
+            expect(res.isError).toBeFalsy();
+        });
+
+        test('passes when exactly one valid option is selected: Under Construction / Under Const.', () => {
+            const res = checkExistingProposedUnderConst('Construction Status', 'Under Construction', { 'Reconciliation Status': 'Subject to Repairs' });
+            expect(res.isMatch).toBe(true);
+            expect(res.isError).toBeFalsy();
+
+            const res2 = checkExistingProposedUnderConst('Status', 'Under Const.', { 'Reconciliation Status': 'Subject to Repairs' });
+            expect(res2.isMatch).toBe(true);
+        });
+
+        test('fails when blank or empty', () => {
+            const res = checkExistingProposedUnderConst('Status', '');
+            expect(res.isError).toBe(true);
+            expect(res.skipBlankFilter).toBe(true);
+            expect(res.message).toBe("One of 'Existing', 'Under Construction', or 'Proposed' must be selected.");
+        });
+
+        test('fails when multiple options are selected', () => {
+            const res = checkExistingProposedUnderConst('Status', 'Existing, Proposed');
+            expect(res.isError).toBe(true);
+            expect(res.message).toBe("Only one of 'Existing', 'Under Construction', or 'Proposed' must be selected.");
+        });
+
+        test('fails when an invalid option is provided', () => {
+            const res = checkExistingProposedUnderConst('Status', 'Unknown Status');
+            expect(res.isError).toBe(true);
+            expect(res.message).toBe("One of 'Existing', 'Under Construction', or 'Proposed' must be selected.");
+        });
+    });
+
+    describe('Actual Age and Effective Age Calculations & Validations', () => {
+        test('getReconAsOfYear correctly extracts year from reconciliation date', () => {
+            expect(getReconAsOfYear({ RECONCILIATION: { 'as of': '11/10/2026' } })).toBe(2026);
+            expect(getReconAsOfYear({ RECONCILIATION: { 'as of': '11/10/26' } })).toBe(2026);
+            expect(getReconAsOfYear({ RECONCILIATION: { 'as of date': '2026-11-10' } })).toBe(2026);
+            expect(getReconAsOfYear({ Reconciliation: { 'as of': 'November 10, 2026' } })).toBe(2026);
+            expect(getReconAsOfYear({ 'as of': '11/10/2026' })).toBe(2026);
+            expect(getReconAsOfYear({ CERTIFICATION: { 'Effective Date of Appraisal': '10/05/2026' } })).toBe(2026);
+        });
+
+        test('getYearBuiltFromImprovements extracts year built', () => {
+            expect(getYearBuiltFromImprovements({ IMPROVEMENTS: { 'Year Built': '2000' } })).toBe(2000);
+            expect(getYearBuiltFromImprovements({ Improvements: { 'Year Built': '1995 Est' } })).toBe(1995);
+            expect(getYearBuiltFromImprovements({ 'Year Built': '2010' })).toBe(2010);
+        });
+
+        test('getSubjectExpectedActualAge calculates recon as of DATE minus year built', () => {
+            const allData = {
+                RECONCILIATION: { 'as of': '11/10/2026' },
+                IMPROVEMENTS: { 'Year Built': '2006' }
+            };
+            expect(getSubjectExpectedActualAge(allData)).toBe(20);
+        });
+
+        test('checkSubjectAgeConsistency validates Subject Actual Age matches expected calculation', () => {
+            const allData = {
+                RECONCILIATION: { 'as of': '11/10/2026' },
+                IMPROVEMENTS: { 'Year Built': '2006', 'Effective Age (Yrs)': '15' }
+            };
+
+            const passRes = checkSubjectAgeConsistency('Actual Age', '20', allData, ['Subject', 'Actual Age'], 'Subject');
+            expect(passRes.isMatch).toBe(true);
+            expect(passRes.isError).toBeFalsy();
+
+            const failRes = checkSubjectAgeConsistency('Actual Age', '22', allData, ['Subject', 'Actual Age'], 'Subject');
+            expect(failRes.isError).toBe(true);
+            expect(failRes.message).toContain('Subject Actual Age (22) in Sales Grid should be 20');
+        });
+
+        test('checkSubjectAgeConsistency fails when Effective Age >= Actual Age', () => {
+            const allData = {
+                RECONCILIATION: { 'as of': '11/10/2026' },
+                IMPROVEMENTS: { 'Year Built': '2006', 'Effective Age (Yrs)': '20' }
+            };
+
+            const failRes = checkSubjectAgeConsistency('Actual Age', '20', allData, ['Subject', 'Actual Age'], 'Subject');
+            expect(failRes.isError).toBe(true);
+            expect(failRes.message).toBe('Effective Age (20) must be less than Actual Age (20).');
+
+            const allDataHigher = {
+                ...allData,
+                IMPROVEMENTS: { 'Year Built': '2006', 'Effective Age (Yrs)': '25' }
+            };
+            const failResHigher = checkSubjectAgeConsistency('Actual Age', '20', allDataHigher, ['Subject', 'Actual Age'], 'Subject');
+            expect(failResHigher.isError).toBe(true);
+            expect(failResHigher.message).toBe('Effective Age (25) must be less than Actual Age (20).');
+        });
+
+        test('checkEffectiveAge enforces effective age is strictly less than actual age', () => {
+            const allData = {
+                RECONCILIATION: { 'as of': '11/10/2026' },
+                IMPROVEMENTS: { 'Year Built': '2006' }
+            };
+
+            const blankRes = checkEffectiveAge('Effective Age (Yrs)', '', allData);
+            expect(blankRes.isError).toBe(true);
+            expect(blankRes.message).toContain('cannot be blank');
+
+            const passRes = checkEffectiveAge('Effective Age (Yrs)', '15', allData);
+            expect(passRes.isMatch).toBe(true);
+            expect(passRes.isError).toBeFalsy();
+
+            const equalRes = checkEffectiveAge('Effective Age (Yrs)', '20', allData);
+            expect(equalRes.isError).toBe(true);
+            expect(equalRes.message).toBe('Effective Age (20) must be less than Actual Age (20).');
+
+            const greaterRes = checkEffectiveAge('Effective Age', '25', allData);
+            expect(greaterRes.isError).toBe(true);
+            expect(greaterRes.message).toBe('Effective Age (25) must be less than Actual Age (20).');
         });
     });
 });

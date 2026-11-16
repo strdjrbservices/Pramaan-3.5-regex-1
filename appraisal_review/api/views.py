@@ -729,12 +729,11 @@ def compare_html_to_pdf_with_prompt(request):
         if old_file:
             old_tmp_path = _save_temp_file(old_file)
 
-        if html_file and ("1004d" in str(comment).lower() or "html" in str(comment).lower()):
+        if html_file and "1004d" in str(request.data.get("form_type", "")).lower() and not comment:
             if not html_tmp_path:
                 html_tmp_path = _save_temp_file(html_file)
             with open(html_tmp_path, "r", encoding="utf-8", errors="replace") as hf:
                 html_content = hf.read()
-            pdf_tmp_path = _save_temp_file(pdf_file)
             data = compare_report_to_html_offline(pdf_tmp_path, html_content)
             if "comparison_results" in data:
                 data["details"] = data["comparison_results"]
@@ -1193,7 +1192,7 @@ def compare_pdf_to_html(request):
             {"detail": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
     finally:
-        if os.path.exists(pdf_tmp_path):
+        if pdf_tmp_path and os.path.exists(pdf_tmp_path):
             os.remove(pdf_tmp_path)
 
 
@@ -1302,6 +1301,8 @@ def compare_pdf_to_xml(request):
     finally:
         if pdf_tmp_path and os.path.exists(pdf_tmp_path):
             os.remove(pdf_tmp_path)
+        if old_tmp_path and os.path.exists(old_tmp_path):
+            os.remove(old_tmp_path)
         if xml_tmp_path and os.path.exists(xml_tmp_path):
             os.remove(xml_tmp_path)
 
@@ -1311,9 +1312,10 @@ def compare_pdf_to_xml(request):
 def compare_pdfs(request):
     """
     Compares two report files (PDF or XML) 100% offline.
+    Supports deep field & checkbox differences.
     """
-    old_pdf_file = request.data.get("old_pdf_file")
-    new_pdf_file = request.data.get("new_pdf_file")
+    old_pdf_file = request.data.get("old_pdf_file") or request.data.get("old_file")
+    new_pdf_file = request.data.get("new_pdf_file") or request.data.get("new_file") or request.data.get("file")
     revision_request = request.data.get("revision_request")
     form_type = request.data.get("form_type")
 
@@ -1346,9 +1348,9 @@ def compare_pdfs(request):
             {"detail": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
     finally:
-        if os.path.exists(old_tmp_path):
+        if old_tmp_path and os.path.exists(old_tmp_path):
             os.remove(old_tmp_path)
-        if os.path.exists(new_tmp_path):
+        if new_tmp_path and os.path.exists(new_tmp_path):
             os.remove(new_tmp_path)
 
 

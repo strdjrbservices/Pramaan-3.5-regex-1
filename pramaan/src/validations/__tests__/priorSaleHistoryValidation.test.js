@@ -1,4 +1,9 @@
-import { checkPriorSaleHistoryFieldsNotBlank, PRIOR_SALE_HISTORY_FIELDS_TO_CHECK } from '../priorSaleHistoryValidation';
+import {
+    checkPriorSaleHistoryFieldsNotBlank,
+    checkSubjectPriorSaleValueIncrease,
+    extractYearFromDateStr,
+    getAppraisalCurrentYear
+} from '../priorSaleHistoryValidation';
 
 describe('priorSaleHistoryValidation - checkPriorSaleHistoryFieldsNotBlank', () => {
     test('returns error with skipBlankFilter: true when a prior sale history field is empty or blank', () => {
@@ -168,5 +173,315 @@ describe('priorSaleHistoryValidation - Sales or Transfer History Rules Integrati
         const validVal = checkPriorSaleHistoryFieldsNotBlank("Indicated Value by Sales Comparison Approach $", "1,200,000");
         expect(validVal.isMatch).toBe(true);
     });
+
+    test('Subject Prior Sale Price: 0 fails without comment stating "family transfer" or "sold to family member"', () => {
+        const dataWithoutComment = {
+            "Date of Prior Sale/Transfer": "02/09/2026",
+            "Price of Prior Sale/Transfer": "0"
+        };
+        const res = checkPriorSaleHistoryFieldsNotBlank(
+            "Price of Prior Sale/Transfer",
+            "0",
+            dataWithoutComment,
+            ['Subject', 'Price of Prior Sale/Transfer'],
+            'Subject'
+        );
+        expect(res.isError).toBe(true);
+        expect(res.message).toBe("If prior sale is present, 'Price of Prior Sale/Transfer' for Subject must be greater than 0 or include a comment stating 'family transfer' or 'sold to family member'.");
+    });
+
+    test('Subject Prior Sale Price: 0 passes when comment states "family transfer"', () => {
+        const dataWithComment = {
+            "Date of Prior Sale/Transfer": "02/09/2026",
+            "Price of Prior Sale/Transfer": "0",
+            "Analysis of prior sale or transfer history of the subject property and comparable sales": "The prior deed transfer was a family transfer between mother and son."
+        };
+        const res = checkPriorSaleHistoryFieldsNotBlank(
+            "Price of Prior Sale/Transfer",
+            "0",
+            dataWithComment,
+            ['Subject', 'Price of Prior Sale/Transfer'],
+            'Subject'
+        );
+        expect(res.isMatch).toBe(true);
+        expect(res.message).toContain("Family transfer");
+    });
+
+    test('Subject Prior Sale Price: 0 passes when comment states "sold to family member"', () => {
+        const dataWithComment = {
+            "Date of Prior Sale/Transfer": "02/09/2026",
+            "Price of Prior Sale/Transfer": "0",
+            "Analysis of prior sale or transfer history of the subject property and comparable sales": "Subject property was sold to family member with nominal consideration."
+        };
+        const res = checkPriorSaleHistoryFieldsNotBlank(
+            "Price of Prior Sale/Transfer",
+            "$0",
+            dataWithComment,
+            ['Subject', 'Price of Prior Sale/Transfer'],
+            'Subject'
+        );
+        expect(res.isMatch).toBe(true);
+        expect(res.message).toContain("Family transfer");
+    });
+
+    test('Subject Prior Sale Price: passes when price is > 0', () => {
+        const res = checkPriorSaleHistoryFieldsNotBlank(
+            "Price of Prior Sale/Transfer",
+            "$325,000",
+            {},
+            ['Subject', 'Price of Prior Sale/Transfer'],
+            'Subject'
+        );
+        expect(res.isMatch).toBe(true);
+    });
+
+    test('Subject Prior Sale Price: passes when "family transfer" is written directly in the field', () => {
+        const res = checkPriorSaleHistoryFieldsNotBlank(
+            "Price of Prior Sale/Transfer",
+            "0 - family transfer",
+            {},
+            ['Subject', 'Price of Prior Sale/Transfer'],
+            'Subject'
+        );
+        expect(res.isMatch).toBe(true);
+    });
+
+    test('Comp Prior Sale Price: 0 fails without comment and mentions comparable in message', () => {
+        const compDataWithoutComment = {
+            'COMPARABLE SALE #1': {
+                'Date of Prior Sale/Transfer': '05/12/2025',
+                'Price of Prior Sale/Transfer': '0'
+            }
+        };
+        const res = checkPriorSaleHistoryFieldsNotBlank(
+            "Price of Prior Sale/Transfer",
+            "0",
+            compDataWithoutComment,
+            ['COMPARABLE SALE #1', 'Price of Prior Sale/Transfer'],
+            'COMPARABLE SALE #1'
+        );
+        expect(res.isError).toBe(true);
+        expect(res.message).toBe("If prior sale is present, 'Price of Prior Sale/Transfer' for COMPARABLE SALE #1 must be greater than 0 or include a comment stating 'family transfer' or 'sold to family member'.");
+    });
+
+    test('Comp Prior Sale Price: 0 passes when comment states "sold to family member" or "family transfer"', () => {
+        const compDataWithComment = {
+            'COMPARABLE SALE #1': {
+                'Date of Prior Sale/Transfer': '05/12/2025',
+                'Price of Prior Sale/Transfer': '0'
+            },
+            'Analysis of prior sale or transfer history of the subject property and comparable sales': 'Comp 1 was transferred to family member.'
+        };
+        const res = checkPriorSaleHistoryFieldsNotBlank(
+            "Price of Prior Sale/Transfer",
+            "0",
+            compDataWithComment,
+            ['COMPARABLE SALE #1', 'Price of Prior Sale/Transfer'],
+            'COMPARABLE SALE #1'
+        );
+        expect(res.isMatch).toBe(true);
+    });
+
+    test('Comp Prior Sale Price: passes when price is > 0', () => {
+        const res = checkPriorSaleHistoryFieldsNotBlank(
+            "Price of Prior Sale/Transfer",
+            "450,000",
+            {},
+            ['COMPARABLE SALE #1', 'Price of Prior Sale/Transfer'],
+            'COMPARABLE SALE #1'
+        );
+        expect(res.isMatch).toBe(true);
+    });
 });
 
+describe('checkSubjectPriorSaleValueIncrease (15% rule when subject prior sale year is same as current year)', () => {
+    const baseCurrentYearData = {
+        'as of': '10/18/2026',
+        Subject: {
+            'Date of Prior Sale/Transfer': '04/15/2026',
+            'Price of Prior Sale/Transfer': '$400,000'
+        },
+        RECONCILIATION: {
+            'Opinion of Market Value': '$500,000'
+        }
+    };
+
+    test('flags error when final value exceeds prior sale price by > 15% in same year and no comment exists', () => {
+        const res = checkSubjectPriorSaleValueIncrease(
+            'Price of Prior Sale/Transfer',
+            '$400,000',
+            baseCurrentYearData,
+            ['Subject', 'Price of Prior Sale/Transfer'],
+            'Subject'
+        );
+        expect(res).toBeDefined();
+        expect(res.isError).toBe(true);
+        expect(res.skipBlankFilter).toBe(true);
+        expect(res.message).toContain('Please add comment to check increase in value');
+        expect(res.message).toContain('2026');
+        expect(res.message).toContain('$500,000');
+        expect(res.message).toContain('$400,000');
+    });
+
+    test('validates successfully when final value exceeds prior sale price by > 15% in same year but an explanatory comment is provided', () => {
+        const dataWithComment = {
+            ...baseCurrentYearData,
+            PRIOR_SALE_HISTORY: {
+                'Analysis of prior sale or transfer history of the subject property and comparable sales':
+                    'The subject property was purchased by an investor and underwent substantial renovations prior to resale.'
+            }
+        };
+        const res = checkSubjectPriorSaleValueIncrease(
+            'Price of Prior Sale/Transfer',
+            '$400,000',
+            dataWithComment,
+            ['Subject', 'Price of Prior Sale/Transfer'],
+            'Subject'
+        );
+        expect(res).toBeDefined();
+        expect(res.isMatch).toBe(true);
+        expect(res.message).toContain('supported by explanatory comment');
+        expect(res.message).toContain('25.0%');
+    });
+
+    test('validates successfully when final value is within 15% of prior sale price in same year', () => {
+        const dataWithin15 = {
+            ...baseCurrentYearData,
+            RECONCILIATION: {
+                'Opinion of Market Value': '$440,000' // 10% increase <= 15%
+            }
+        };
+        const res = checkSubjectPriorSaleValueIncrease(
+            'Price of Prior Sale/Transfer',
+            '$400,000',
+            dataWithin15,
+            ['Subject', 'Price of Prior Sale/Transfer'],
+            'Subject'
+        );
+        expect(res).toBeDefined();
+        expect(res.isMatch).toBe(true);
+        expect(res.message).toContain('within 15% of prior sale');
+    });
+
+    test('returns null when prior sale year is different from current year (e.g. prior sale in 2024, current year 2026)', () => {
+        const dataDifferentYear = {
+            ...baseCurrentYearData,
+            Subject: {
+                'Date of Prior Sale/Transfer': '04/15/2024',
+                'Price of Prior Sale/Transfer': '$400,000'
+            }
+        };
+        const res = checkSubjectPriorSaleValueIncrease(
+            'Price of Prior Sale/Transfer',
+            '$400,000',
+            dataDifferentYear,
+            ['Subject', 'Price of Prior Sale/Transfer'],
+            'Subject'
+        );
+        expect(res).toBeNull();
+    });
+
+    test('returns null when subject prior sale price is 0 or missing', () => {
+        const dataNoPriorSale = {
+            ...baseCurrentYearData,
+            Subject: {
+                'Date of Prior Sale/Transfer': '04/15/2026',
+                'Price of Prior Sale/Transfer': '$0'
+            }
+        };
+        const res = checkSubjectPriorSaleValueIncrease(
+            'Price of Prior Sale/Transfer',
+            '$0',
+            dataNoPriorSale,
+            ['Subject', 'Price of Prior Sale/Transfer'],
+            'Subject'
+        );
+        expect(res).toBeNull();
+    });
+
+    test('returns null for comparable sales (only validates Subject)', () => {
+        const res = checkSubjectPriorSaleValueIncrease(
+            'Price of Prior Sale/Transfer',
+            '$400,000',
+            baseCurrentYearData,
+            ['COMPARABLE SALE #1', 'Price of Prior Sale/Transfer'],
+            'COMPARABLE SALE #1'
+        );
+        expect(res).toBeNull();
+    });
+
+    test('validates Opinion of Market Value and highlights error when > 15% without comment', () => {
+        const res = checkSubjectPriorSaleValueIncrease(
+            'Opinion of Market Value',
+            '$520,000',
+            baseCurrentYearData,
+            ['RECONCILIATION', 'Opinion of Market Value']
+        );
+        expect(res).toBeDefined();
+        expect(res.isError).toBe(true);
+        expect(res.message).toContain('Please add comment to check increase in value');
+    });
+
+    test('validates Prior Sale Analysis comment box and passes when comment is provided', () => {
+        const resEmptyComment = checkSubjectPriorSaleValueIncrease(
+            'Analysis of prior sale or transfer history of the subject property and comparable sales',
+            '',
+            baseCurrentYearData,
+            ['Analysis of prior sale or transfer history of the subject property and comparable sales']
+        );
+        expect(resEmptyComment).toBeDefined();
+        expect(resEmptyComment.isError).toBe(true);
+        expect(resEmptyComment.message).toContain('Please add comment to check increase in value');
+
+        const resFilledComment = checkSubjectPriorSaleValueIncrease(
+            'Analysis of prior sale or transfer history of the subject property and comparable sales',
+            'Subject property was completely remodeled with a new roof and kitchen.',
+            baseCurrentYearData,
+            ['Analysis of prior sale or transfer history of the subject property and comparable sales']
+        );
+        expect(resFilledComment).toBeDefined();
+        expect(resFilledComment.isMatch).toBe(true);
+        expect(resFilledComment.message).toContain('supported by explanatory comment');
+    });
+
+    test('integrates into checkPriorSaleHistoryFieldsNotBlank seamlessly', () => {
+        // Price check without comment returns error
+        const resErr = checkPriorSaleHistoryFieldsNotBlank(
+            'Price of Prior Sale/Transfer',
+            '$400,000',
+            baseCurrentYearData,
+            ['Subject', 'Price of Prior Sale/Transfer'],
+            'Subject'
+        );
+        expect(resErr.isError).toBe(true);
+        expect(resErr.message).toContain('Please add comment to check increase in value');
+
+        // Price check with comment returns match
+        const dataWithComment = {
+            ...baseCurrentYearData,
+            'Analysis of prior sale or transfer history of the subject property and comparable sales':
+                'Remodeled prior to sale explaining increase.'
+        };
+        const resMatch = checkPriorSaleHistoryFieldsNotBlank(
+            'Price of Prior Sale/Transfer',
+            '$400,000',
+            dataWithComment,
+            ['Subject', 'Price of Prior Sale/Transfer'],
+            'Subject'
+        );
+        expect(resMatch.isMatch).toBe(true);
+        expect(resMatch.message).toContain('supported by explanatory comment');
+    });
+
+    test('date string and year helper functions correctly extract years from different formats', () => {
+        expect(extractYearFromDateStr('07/30/2026')).toBe(2026);
+        expect(extractYearFromDateStr('2026-07-30')).toBe(2026);
+        expect(extractYearFromDateStr('s09/26:c07/26')).toBe(2026);
+        expect(extractYearFromDateStr('04/24')).toBe(2024);
+        expect(extractYearFromDateStr('04/15/24')).toBe(2024);
+        expect(extractYearFromDateStr('None')).toBeNull();
+        expect(extractYearFromDateStr('N/A')).toBeNull();
+
+        expect(getAppraisalCurrentYear(baseCurrentYearData)).toBe(2026);
+    });
+});

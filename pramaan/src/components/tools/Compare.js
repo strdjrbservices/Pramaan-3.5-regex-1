@@ -477,6 +477,7 @@ const Compare = () => {
         ...prev,
         [mode]: parsedOutput,
       }));
+
       if (mode === 'pdf-pdf' && result) {
         setOldPdfPageCount(result.old_pdf_page_count);
         setNewPdfPageCount(result.new_pdf_page_count);
@@ -511,187 +512,17 @@ const Compare = () => {
     }
   };
 
-  const renderPdfToPdfResponse = (data) => {
-    if (!data) return null;
-
-    const comparisonSummary = data?.comparison_summary || [];
-    const summaryText = data?.summary || '';
-
-    const oldMarketValueRaw = data.old_market_value || 'Not Found';
-    const newMarketValueRaw = data.new_market_value || 'Not Found';
-
-    const normalizedOldMarketValue = normalizeCurrencyValue(oldMarketValueRaw);
-    const normalizedNewMarketValue = normalizeCurrencyValue(newMarketValueRaw);
-
-    const areMarketValuesMatching = (oldMarketValueRaw === 'Not Found' && newMarketValueRaw === 'Not Found') ||
-      (!isNaN(normalizedOldMarketValue) && !isNaN(normalizedNewMarketValue) &&
-        normalizedOldMarketValue === normalizedNewMarketValue);
-
-    if (comparisonSummary.length === 0) {
-      return (
-        <Alert severity="success" sx={{ mt: 3 }}>
-          No differences were found between the two documents.
-        </Alert>
-      );
-    }
-
-    const pageStructureChanges = comparisonSummary.filter(c => c.category === 'page_structure' || c.field === 'Page Added' || c.field === 'Page Deleted');
-    const textChanges = comparisonSummary.filter(c => c.category === 'text_change' || (c.field && c.field.toLowerCase().includes('text commentary')));
-    const fieldChanges = comparisonSummary.filter(c => c.category === 'field_change' || (!c.category && c.field !== 'Page Added' && c.field !== 'Page Deleted' && !c.field.toLowerCase().includes('text commentary')));
-
-    const filteredSummary = comparisonSummary.filter(item => {
-      if (pdfPdfFilter === 'pages') return item.category === 'page_structure' || item.field === 'Page Added' || item.field === 'Page Deleted';
-      if (pdfPdfFilter === 'text') return item.category === 'text_change' || (item.field && item.field.toLowerCase().includes('text commentary'));
-      if (pdfPdfFilter === 'fields') return item.category === 'field_change' || (!item.category && item.field !== 'Page Added' && item.field !== 'Page Deleted' && !item.field.toLowerCase().includes('text commentary'));
-      return true;
-    });
-
-    const getFieldBadge = (field) => {
-      const f = (field || '').toLowerCase();
-      if (f === 'page deleted') {
-        return <Chip label="Page Deleted" color="error" size="small" sx={{ fontWeight: 'bold', mr: 1, height: 22, fontSize: '0.7rem' }} />;
-      }
-      if (f === 'page added') {
-        return <Chip label="Page Added" color="success" size="small" sx={{ fontWeight: 'bold', mr: 1, height: 22, fontSize: '0.7rem' }} />;
-      }
-      if (f.includes('text commentary added')) {
-        return <Chip label="Text Added" color="info" size="small" sx={{ fontWeight: 'bold', mr: 1, height: 22, fontSize: '0.7rem' }} />;
-      }
-      if (f.includes('text commentary modified')) {
-        return <Chip label="Text Modified" color="secondary" size="small" sx={{ fontWeight: 'bold', mr: 1, height: 22, fontSize: '0.7rem' }} />;
-      }
-      if (f.includes('text commentary removed')) {
-        return <Chip label="Text Removed" color="warning" size="small" sx={{ fontWeight: 'bold', mr: 1, height: 22, fontSize: '0.7rem' }} />;
-      }
-      if (f.includes('property replaced')) {
-        return <Chip label="Comp Replaced" color="warning" size="small" sx={{ fontWeight: 'bold', mr: 1, height: 22, fontSize: '0.7rem' }} />;
-      }
-      return null;
-    };
-
-    return (
-      <Paper elevation={1} sx={{ p: 3, mt: 3, borderRadius: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1.5 }}>
-          <Typography variant="h6" fontWeight="bold">Comparison Results</Typography>
-          <ToggleButtonGroup
-            size="small"
-            value={pdfPdfFilter}
-            exclusive
-            onChange={(e, next) => next && setPdfPdfFilter(next)}
-            aria-label="Filter changes"
-          >
-            <ToggleButton value="all" sx={{ px: 1.5, py: 0.5, fontSize: '0.78rem' }}>
-              All ({comparisonSummary.length})
-            </ToggleButton>
-            {pageStructureChanges.length > 0 && (
-              <ToggleButton value="pages" sx={{ px: 1.5, py: 0.5, fontSize: '0.78rem', color: 'error.main' }}>
-                Pages Added/Deleted ({pageStructureChanges.length})
-              </ToggleButton>
-            )}
-            {textChanges.length > 0 && (
-              <ToggleButton value="text" sx={{ px: 1.5, py: 0.5, fontSize: '0.78rem', color: 'secondary.main' }}>
-                Text Commentary ({textChanges.length})
-              </ToggleButton>
-            )}
-            {fieldChanges.length > 0 && (
-              <ToggleButton value="fields" sx={{ px: 1.5, py: 0.5, fontSize: '0.78rem', color: 'primary.main' }}>
-                Field Differences ({fieldChanges.length})
-              </ToggleButton>
-            )}
-          </ToggleButtonGroup>
-        </Box>
-
-        {summaryText && (
-          <Paper elevation={0} sx={{ p: 2.5, mb: 3, borderLeft: 4, borderColor: 'primary.main', bgcolor: '#f8fafc', borderRadius: 2 }}>
-            <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.7, fontWeight: 500 }}>
-              <HighlightKeywords text={summaryText} keywordGroups={keywordGroups} />
-            </Typography>
-          </Paper>
-        )}
-        <Grid container spacing={2} sx={{ mb: 3 }}>
-          <Grid item xs={6}>
-            <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', borderRadius: 2 }}>
-              <Typography variant="caption" color="text.secondary">Old Report Page Count</Typography>
-              <Typography variant="h6" fontWeight="bold">{data.old_pdf_page_count || oldPdfPageCount || 'N/A'}</Typography>
-            </Paper>
-          </Grid>
-          <Grid item xs={6}>
-            <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', borderRadius: 2 }}>
-              <Typography variant="caption" color="text.secondary">New Report Page Count</Typography>
-              <Typography variant="h6" fontWeight="bold">{data.new_pdf_page_count || newPdfPageCount || 'N/A'}</Typography>
-            </Paper>
-          </Grid>
-        </Grid>
-        <Paper variant="outlined" sx={{ p: 2, mb: 3, borderRadius: 2, bgcolor: areMarketValuesMatching ? 'success.lighter' : 'error.lighter' }}>
-          <Typography variant="subtitle2" fontWeight="bold" gutterBottom>Opinion of Market Value Comparison</Typography>
-          <Stack direction="row" spacing={2} alignItems="center">
-            <Typography>Old Value: <strong>{oldMarketValueRaw}</strong></Typography>
-            <Divider orientation="vertical" flexItem />
-            <Typography>New Value: <strong>{newMarketValueRaw}</strong></Typography>
-            {areMarketValuesMatching ? <CheckCircleIcon color="success" /> : <CancelIcon color="error" />}
-          </Stack>
-        </Paper>
-
-        <TableContainer sx={{ maxHeight: 600 }}>
-          <Table stickyHeader sx={{ minWidth: 650 }} aria-label="comparison table">
-            <TableHead>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 'bold' }}>Field Changed</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>Original Value</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>Revised Value</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>Comment</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 'bold' }}>Page</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filteredSummary.map((change, index) => {
-                const isDel = change.field === 'Page Deleted';
-                const isAdd = change.field === 'Page Added';
-                return (
-                  <TableRow
-                    key={index}
-                    sx={{
-                      bgcolor: isDel ? '#fff5f5' : (isAdd ? '#f0fff4' : 'inherit'),
-                      '&:hover': { bgcolor: isDel ? '#ffebee' : (isAdd ? '#e8f5e9' : 'action.hover') },
-                      '&:last-child td, &:last-child th': { border: 0 }
-                    }}
-                  >
-                    <TableCell component="th" scope="row">
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        {getFieldBadge(change.field)}
-                        <HighlightKeywords text={change.field} keywordGroups={keywordGroups} />
-                      </Box>
-                    </TableCell>
-                    <TableCell sx={{ maxWidth: 220, wordBreak: 'break-word' }}>
-                      <HighlightKeywords text={change.original_value} keywordGroups={keywordGroups} />
-                    </TableCell>
-                    <TableCell sx={{ maxWidth: 220, wordBreak: 'break-word' }}>
-                      <HighlightKeywords text={change.revised_value} keywordGroups={keywordGroups} />
-                    </TableCell>
-                    <TableCell sx={{ maxWidth: 300, wordBreak: 'break-word' }}>
-                      <HighlightKeywords text={change.comment} keywordGroups={keywordGroups} />
-                    </TableCell>
-                    <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{change.page_no}</TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </Paper>
-    );
-  };
-
-  const renderRevisionResponse = (data) => {
+  const renderRevisionFindingsSection = (data, isSecondary = false, customTitle = "Revision Verification Findings") => {
     if (!data) return null;
 
     const comparisonSummary = data?.comparison_summary || [];
     const summaryText = data?.summary || '';
 
     if (comparisonSummary.length === 0) {
+      if (isSecondary) return null;
       return (
         <Alert severity="success" sx={{ mt: 3 }}>
-          No differences were found.
+          No revision issues or discrepancies were found.
         </Alert>
       );
     }
@@ -716,7 +547,7 @@ const Compare = () => {
 
     const handleCopyFindings = () => {
       const lines = [
-        `Revision Verification Findings (${verifiedCount} of ${comparisonSummary.length} Verified):`,
+        `${customTitle} (${verifiedCount} of ${comparisonSummary.length} Verified):`,
         '',
         ...comparisonSummary.map((c, i) => {
           let text = `Item #${c.item_no || i + 1} [${c.status || 'N/A'}]` +
@@ -737,11 +568,11 @@ const Compare = () => {
     };
 
     return (
-      <Paper elevation={1} sx={{ p: 3, mt: 3, borderRadius: 3 }}>
+      <Paper elevation={isSecondary ? 0 : 1} sx={{ p: isSecondary ? 2.5 : 3, mt: 3, borderRadius: 3, border: isSecondary ? '1px solid' : 'none', borderColor: 'divider', bgcolor: isSecondary ? '#fcfdfd' : 'background.paper' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1.5 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <Typography variant="h6" fontWeight="bold">
-              Revision Verification Findings
+              {customTitle}
             </Typography>
             <Chip
               label={`${verifiedCount} of ${comparisonSummary.length} Verified`}
@@ -754,6 +585,14 @@ const Compare = () => {
                 label={`${needsReviewCount} Needs Review`}
                 size="small"
                 sx={{ bgcolor: '#fff3e0', color: '#e65100', fontWeight: 'bold', border: '1px solid #ffe0b2' }}
+              />
+            )}
+            {unfulfilledCount > 0 && (
+              <Chip
+                label={`${unfulfilledCount} Unfulfilled`}
+                size="small"
+                color="error"
+                sx={{ fontWeight: 'bold' }}
               />
             )}
           </Box>
@@ -776,9 +615,11 @@ const Compare = () => {
                   Review ({needsReviewCount})
                 </ToggleButton>
               )}
-              <ToggleButton value="unfulfilled" sx={{ px: 1.5, py: 0.5, fontSize: '0.78rem', color: unfulfilledCount > 0 ? 'error.main' : 'inherit' }}>
-                Unfulfilled ({unfulfilledCount})
-              </ToggleButton>
+              {unfulfilledCount > 0 && (
+                <ToggleButton value="unfulfilled" sx={{ px: 1.5, py: 0.5, fontSize: '0.78rem', color: 'error.main' }}>
+                  Unfulfilled ({unfulfilledCount})
+                </ToggleButton>
+              )}
             </ToggleButtonGroup>
             <Button
               variant="outlined"
@@ -803,8 +644,8 @@ const Compare = () => {
           </Paper>
         )}
 
-        <TableContainer sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-          <Table sx={{ minWidth: 800 }} aria-label="revision verification table">
+        <TableContainer sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, maxHeight: 600 }}>
+          <Table stickyHeader sx={{ minWidth: 800 }} aria-label="revision verification table">
             <TableHead sx={{ bgcolor: 'action.hover' }}>
               <TableRow>
                 <TableCell sx={{ fontWeight: 'bold', width: '50px' }}>#</TableCell>
@@ -909,6 +750,208 @@ const Compare = () => {
                   </TableCell>
                 </TableRow>
               ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Paper>
+    );
+  };
+
+  const renderRevisionResponse = (data) => renderRevisionFindingsSection(data, false, "Revision Verification Findings");
+
+  const renderPdfToPdfResponse = (data) => {
+    if (!data) return null;
+
+    const comparisonSummary = data?.comparison_summary || [];
+    const summaryText = data?.summary || '';
+
+    const oldMarketValueRaw = data.old_market_value || 'Not Found';
+    const newMarketValueRaw = data.new_market_value || 'Not Found';
+
+    const normalizedOldMarketValue = normalizeCurrencyValue(oldMarketValueRaw);
+    const normalizedNewMarketValue = normalizeCurrencyValue(newMarketValueRaw);
+
+    const areMarketValuesMatching = (oldMarketValueRaw === 'Not Found' && newMarketValueRaw === 'Not Found') ||
+      (!isNaN(normalizedOldMarketValue) && !isNaN(normalizedNewMarketValue) &&
+        normalizedOldMarketValue === normalizedNewMarketValue);
+
+    const pageStructureChanges = comparisonSummary.filter(c => c.category === 'page_structure' || c.field === 'Page Added' || c.field === 'Page Deleted');
+    const textChanges = comparisonSummary.filter(c => c.category === 'text_change' || (c.field && c.field.toLowerCase().includes('text commentary')));
+    const checkboxChanges = comparisonSummary.filter(c => c.category === 'checkbox_change' || (c.field && c.field.toLowerCase().includes('(checkbox)')));
+    const fieldChanges = comparisonSummary.filter(c => {
+      if (c.category === 'checkbox_change' || (c.field && c.field.toLowerCase().includes('(checkbox)'))) return false;
+      if (c.category === 'page_structure' || c.field === 'Page Added' || c.field === 'Page Deleted') return false;
+      if (c.category === 'text_change' || (c.field && c.field.toLowerCase().includes('text commentary'))) return false;
+      return true;
+    });
+
+    const filteredSummary = comparisonSummary.filter(item => {
+      if (pdfPdfFilter === 'checkboxes') return item.category === 'checkbox_change' || (item.field && item.field.toLowerCase().includes('(checkbox)'));
+      if (pdfPdfFilter === 'pages') return item.category === 'page_structure' || item.field === 'Page Added' || item.field === 'Page Deleted';
+      if (pdfPdfFilter === 'text') return item.category === 'text_change' || (item.field && item.field.toLowerCase().includes('text commentary'));
+      if (pdfPdfFilter === 'fields') {
+        if (item.category === 'checkbox_change' || (item.field && item.field.toLowerCase().includes('(checkbox)'))) return false;
+        if (item.category === 'page_structure' || item.field === 'Page Added' || item.field === 'Page Deleted') return false;
+        if (item.category === 'text_change' || (item.field && item.field.toLowerCase().includes('text commentary'))) return false;
+        return true;
+      }
+      return true;
+    });
+
+    const getFieldBadge = (field, category) => {
+      const f = (field || '').toLowerCase();
+      if (category === 'checkbox_change' || f.includes('(checkbox)')) {
+        return <Chip label="Checkbox Changed" sx={{ bgcolor: '#7c3aed', color: '#fff', fontWeight: 'bold', mr: 1, height: 22, fontSize: '0.7rem' }} />;
+      }
+      if (f === 'page deleted') {
+        return <Chip label="Page Deleted" color="error" size="small" sx={{ fontWeight: 'bold', mr: 1, height: 22, fontSize: '0.7rem' }} />;
+      }
+      if (f === 'page added') {
+        return <Chip label="Page Added" color="success" size="small" sx={{ fontWeight: 'bold', mr: 1, height: 22, fontSize: '0.7rem' }} />;
+      }
+      if (f.includes('text commentary added')) {
+        return <Chip label="Text Added" color="info" size="small" sx={{ fontWeight: 'bold', mr: 1, height: 22, fontSize: '0.7rem' }} />;
+      }
+      if (f.includes('text commentary modified')) {
+        return <Chip label="Text Modified" color="secondary" size="small" sx={{ fontWeight: 'bold', mr: 1, height: 22, fontSize: '0.7rem' }} />;
+      }
+      if (f.includes('text commentary removed')) {
+        return <Chip label="Text Removed" color="warning" size="small" sx={{ fontWeight: 'bold', mr: 1, height: 22, fontSize: '0.7rem' }} />;
+      }
+      if (f.includes('property replaced')) {
+        return <Chip label="Comp Replaced" color="warning" size="small" sx={{ fontWeight: 'bold', mr: 1, height: 22, fontSize: '0.7rem' }} />;
+      }
+      return null;
+    };
+
+    if (comparisonSummary.length === 0) {
+      return (
+        <Alert severity="success" sx={{ mt: 3 }}>
+          No differences were found between the two documents.
+        </Alert>
+      );
+    }
+
+    return (
+      <Paper elevation={1} sx={{ p: 3, mt: 3, borderRadius: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1.5 }}>
+          <Typography variant="h6" fontWeight="bold">Comparison Results (PDF/PDF & XML/XML)</Typography>
+          <ToggleButtonGroup
+            size="small"
+            value={pdfPdfFilter}
+            exclusive
+            onChange={(e, next) => next && setPdfPdfFilter(next)}
+            aria-label="Filter changes"
+          >
+            <ToggleButton value="all" sx={{ px: 1.5, py: 0.5, fontSize: '0.78rem' }}>
+              All ({comparisonSummary.length})
+            </ToggleButton>
+            {checkboxChanges.length > 0 && (
+              <ToggleButton value="checkboxes" sx={{ px: 1.5, py: 0.5, fontSize: '0.78rem', color: '#7c3aed', fontWeight: 'bold' }}>
+                Checkbox Changes ({checkboxChanges.length})
+              </ToggleButton>
+            )}
+            {pageStructureChanges.length > 0 && (
+              <ToggleButton value="pages" sx={{ px: 1.5, py: 0.5, fontSize: '0.78rem', color: 'error.main' }}>
+                Pages Added/Deleted ({pageStructureChanges.length})
+              </ToggleButton>
+            )}
+            {textChanges.length > 0 && (
+              <ToggleButton value="text" sx={{ px: 1.5, py: 0.5, fontSize: '0.78rem', color: 'secondary.main' }}>
+                Text Commentary ({textChanges.length})
+              </ToggleButton>
+            )}
+            {fieldChanges.length > 0 && (
+              <ToggleButton value="fields" sx={{ px: 1.5, py: 0.5, fontSize: '0.78rem', color: 'primary.main' }}>
+                Field Differences ({fieldChanges.length})
+              </ToggleButton>
+            )}
+          </ToggleButtonGroup>
+        </Box>
+
+        {summaryText && (
+          <Paper elevation={0} sx={{ p: 2.5, mb: 3, borderLeft: 4, borderColor: 'primary.main', bgcolor: '#f8fafc', borderRadius: 2 }}>
+            <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.7, fontWeight: 500 }}>
+              <HighlightKeywords text={summaryText} keywordGroups={keywordGroups} />
+            </Typography>
+          </Paper>
+        )}
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          <Grid item xs={6} sm={checkboxChanges.length > 0 ? 4 : 6}>
+            <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', borderRadius: 2 }}>
+              <Typography variant="caption" color="text.secondary">Old Report Page Count</Typography>
+              <Typography variant="h6" fontWeight="bold">{data.old_pdf_page_count || oldPdfPageCount || 'N/A'}</Typography>
+            </Paper>
+          </Grid>
+          <Grid item xs={6} sm={checkboxChanges.length > 0 ? 4 : 6}>
+            <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', borderRadius: 2 }}>
+              <Typography variant="caption" color="text.secondary">New Report Page Count</Typography>
+              <Typography variant="h6" fontWeight="bold">{data.new_pdf_page_count || newPdfPageCount || 'N/A'}</Typography>
+            </Paper>
+          </Grid>
+          {checkboxChanges.length > 0 && (
+            <Grid item xs={12} sm={4}>
+              <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', borderRadius: 2, borderColor: '#7c3aed', bgcolor: '#faf5ff' }}>
+                <Typography variant="caption" sx={{ color: '#7c3aed', fontWeight: 600 }}>Checkbox Changes</Typography>
+                <Typography variant="h6" fontWeight="bold" sx={{ color: '#6b21a8' }}>{checkboxChanges.length}</Typography>
+              </Paper>
+            </Grid>
+          )}
+        </Grid>
+        <Paper variant="outlined" sx={{ p: 2, mb: 3, borderRadius: 2, bgcolor: areMarketValuesMatching ? 'success.lighter' : 'error.lighter' }}>
+          <Typography variant="subtitle2" fontWeight="bold" gutterBottom>Opinion of Market Value Comparison</Typography>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Typography>Old Value: <strong>{oldMarketValueRaw}</strong></Typography>
+            <Divider orientation="vertical" flexItem />
+            <Typography>New Value: <strong>{newMarketValueRaw}</strong></Typography>
+            {areMarketValuesMatching ? <CheckCircleIcon color="success" /> : <CancelIcon color="error" />}
+          </Stack>
+        </Paper>
+
+        <TableContainer sx={{ maxHeight: 600 }}>
+          <Table stickyHeader sx={{ minWidth: 650 }} aria-label="comparison table">
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 'bold' }}>Field Changed</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>Original Value</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>Revised Value</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>Comment</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 'bold' }}>Page</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {filteredSummary.map((change, index) => {
+                const isDel = change.field === 'Page Deleted';
+                const isAdd = change.field === 'Page Added';
+                const isCheckbox = change.category === 'checkbox_change' || (change.field && change.field.toLowerCase().includes('(checkbox)'));
+                return (
+                  <TableRow
+                    key={index}
+                    sx={{
+                      bgcolor: isDel ? '#fff5f5' : (isAdd ? '#f0fff4' : (isCheckbox ? '#faf5ff' : 'inherit')),
+                      '&:hover': { bgcolor: isDel ? '#ffebee' : (isAdd ? '#e8f5e9' : (isCheckbox ? '#f3e8ff' : 'action.hover')) },
+                      '&:last-child td, &:last-child th': { border: 0 }
+                    }}
+                  >
+                    <TableCell component="th" scope="row">
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        {getFieldBadge(change.field, change.category)}
+                        <HighlightKeywords text={change.field} keywordGroups={keywordGroups} />
+                      </Box>
+                    </TableCell>
+                    <TableCell sx={{ maxWidth: 220, wordBreak: 'break-word' }}>
+                      <HighlightKeywords text={change.original_value} keywordGroups={keywordGroups} />
+                    </TableCell>
+                    <TableCell sx={{ maxWidth: 220, wordBreak: 'break-word' }}>
+                      <HighlightKeywords text={change.revised_value} keywordGroups={keywordGroups} />
+                    </TableCell>
+                    <TableCell sx={{ maxWidth: 300, wordBreak: 'break-word' }}>
+                      <HighlightKeywords text={change.comment} keywordGroups={keywordGroups} />
+                    </TableCell>
+                    <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{change.page_no}</TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </TableContainer>
@@ -1026,7 +1069,7 @@ const Compare = () => {
             <ToggleButton value="revision">Revision Verification</ToggleButton>
             <ToggleButton value="checklist">Confirmation Checklist</ToggleButton>
             <ToggleButton value="pdf-html">New XML / PDF to HTML</ToggleButton>
-            <ToggleButton value="pdf-pdf">PDF/PDF</ToggleButton>
+            <ToggleButton value="pdf-pdf">PDF/PDF & XML/XML</ToggleButton>
           </ToggleButtonGroup>
 
           <Divider flexItem sx={{ width: '100%', maxWidth: 800, mx: 'auto !important' }} />
@@ -1131,7 +1174,7 @@ const Compare = () => {
             }
             sx={{ px: 6, py: 1.5, borderRadius: 3, fontSize: '1.1rem', fontWeight: 'bold', boxShadow: 4 }}
           >
-            {comparisonMode === 'revision' ? 'Verify Revisions' : (comparisonMode === 'checklist' ? 'Run Confirmation Check' : (comparisonMode === 'pdf-html' ? 'Compare XML/PDF to HTML' : 'Compare'))}
+            {comparisonMode === 'revision' ? 'Verify Revisions' : (comparisonMode === 'checklist' ? 'Run Confirmation Check' : (comparisonMode === 'pdf-html' ? 'Compare XML/PDF to HTML' : 'Deep Compare (PDF/PDF & XML/XML)'))}
           </LoadingButton>
         </Box>
         {loading && <Typography variant="body2" sx={{ mt: -2, mb: 3, textAlign: 'center', color: 'text.secondary' }}>Processing... {Math.floor(timer / 60)}m {timer % 60}s</Typography>}
@@ -1259,7 +1302,8 @@ const Compare = () => {
                     No differences found between the two documents.
                   </Alert>
                 )}
-              </Paper>)}
+              </Paper>
+            )}
           </>
         )}
       </Box>

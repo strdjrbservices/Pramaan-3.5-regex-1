@@ -924,6 +924,18 @@ export const createRevisionHandlers = (data = {}, setNotification = () => {}, se
         setNotification({ open: true, message: "Indicated Value by Sales Comparison Approach $", severity: "success" });
         setNotes(prev => `${prev}\n- ${revisionText}`);
       },
+      onPriceOfPriorSaleTransferButtonClick: () => {
+        const revisionText = "If prior sale is present, 'Price of Prior Sale/Transfer' must be greater than 0 or include a comment stating 'family transfer' or 'sold to family member'.";
+        navigator.clipboard.writeText(revisionText);
+        setNotification({ open: true, message: "prior sale price revision copied!", severity: "success" });
+        setNotes(prev => `${prev}\n- ${revisionText}`);
+      },
+      onPriceOfPriorSaleButtonClick: () => {
+        const revisionText = "If prior sale is present, 'Price of Prior Sale/Transfer' must be greater than 0 or include a comment stating 'family transfer' or 'sold to family member'.";
+        navigator.clipboard.writeText(revisionText);
+        setNotification({ open: true, message: "prior sale price revision copied!", severity: "success" });
+        setNotes(prev => `${prev}\n- ${revisionText}`);
+      },
 
       // CERTIFICATION
 

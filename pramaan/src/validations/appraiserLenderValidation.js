@@ -261,6 +261,172 @@ export const checkDateGreaterThanToday = (field, text) => {
     return { isMatch: true };
 };
 
+export const parseStandardDate = (dateInput) => {
+    if (!dateInput && dateInput !== 0) return null;
+    const val = typeof dateInput === 'object' && dateInput !== null ? (dateInput.value ?? dateInput.text ?? '') : String(dateInput);
+    const trimmed = String(val).trim();
+    if (!trimmed) return null;
+
+    // MM/DD/YYYY or M/D/YYYY
+    const mdy4 = trimmed.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+    if (mdy4) {
+        const month = parseInt(mdy4[1], 10) - 1;
+        const day = parseInt(mdy4[2], 10);
+        const year = parseInt(mdy4[3], 10);
+        const d = new Date(year, month, day);
+        d.setHours(0, 0, 0, 0);
+        return isNaN(d.getTime()) ? null : d;
+    }
+
+    // MM/DD/YY or M/D/YY
+    const mdy2 = trimmed.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2})$/);
+    if (mdy2) {
+        const month = parseInt(mdy2[1], 10) - 1;
+        const day = parseInt(mdy2[2], 10);
+        const yy = parseInt(mdy2[3], 10);
+        const year = yy >= 70 ? 1900 + yy : 2000 + yy;
+        const d = new Date(year, month, day);
+        d.setHours(0, 0, 0, 0);
+        return isNaN(d.getTime()) ? null : d;
+    }
+
+    // YYYY-MM-DD or YYYY/MM/DD
+    const ymd = trimmed.match(/^(\d{4})[/.-](\d{1,2})[/.-](\d{1,2})$/);
+    if (ymd) {
+        const year = parseInt(ymd[1], 10);
+        const month = parseInt(ymd[2], 10) - 1;
+        const day = parseInt(ymd[3], 10);
+        const d = new Date(year, month, day);
+        d.setHours(0, 0, 0, 0);
+        return isNaN(d.getTime()) ? null : d;
+    }
+
+    const parsed = Date.parse(trimmed);
+    if (!isNaN(parsed)) {
+        const d = new Date(parsed);
+        d.setHours(0, 0, 0, 0);
+        return d;
+    }
+
+    return null;
+};
+
+export const getSignatureDateStr = (allData, text) => {
+    if (text !== undefined && text !== null && String(text).trim() !== '') {
+        const s = typeof text === 'object' ? (text.value ?? '') : String(text);
+        if (s.trim()) return s.trim();
+    }
+    if (!allData || typeof allData !== 'object') return '';
+    const cert = allData.CERTIFICATION || allData.Certification || allData.APPRAISER || allData;
+    const candidates = [
+        cert?.['Date of Signature and Report'],
+        cert?.['Date of Signature'],
+        cert?.['Date Signed'],
+        cert?.['Report Signed Date'],
+        cert?.['Signature Date'],
+        allData['Date of Signature and Report'],
+        allData['Date of Signature'],
+        allData['Date Signed'],
+        allData['Report Signed Date']
+    ];
+    for (const cand of candidates) {
+        if (cand !== undefined && cand !== null && String(cand).trim() !== '') {
+            const s = typeof cand === 'object' ? (cand.value ?? '') : String(cand);
+            if (s.trim()) return s.trim();
+        }
+    }
+    return '';
+};
+
+export const getEffectiveDateStr = (allData, text) => {
+    if (text !== undefined && text !== null && String(text).trim() !== '') {
+        const s = typeof text === 'object' ? (text.value ?? '') : String(text);
+        if (s.trim()) return s.trim();
+    }
+    if (!allData || typeof allData !== 'object') return '';
+    const cert = allData.CERTIFICATION || allData.Certification || allData.APPRAISER || allData;
+    const candidates = [
+        cert?.['Effective Date of Appraisal'],
+        cert?.['Effective Date'],
+        cert?.['Appraisal Effective Date'],
+        allData.RECONCILIATION?.['as of'],
+        allData.Reconciliation?.['as of'],
+        allData['Effective Date of Appraisal'],
+        allData['Effective Date'],
+        allData['Appraisal Effective Date'],
+        allData['as of']
+    ];
+    for (const cand of candidates) {
+        if (cand !== undefined && cand !== null && String(cand).trim() !== '') {
+            const s = typeof cand === 'object' ? (cand.value ?? '') : String(cand);
+            if (s.trim()) return s.trim();
+        }
+    }
+    return '';
+};
+
+export const checkSignatureDateVsEffectiveDate = (field, text, allData) => {
+    const cleanField = String(field || '').trim().toLowerCase();
+    const isSignatureField =
+        cleanField === 'date of signature and report' ||
+        cleanField === 'date of signature' ||
+        cleanField === 'date signed' ||
+        cleanField === 'report signed date' ||
+        cleanField === 'supervisory date of signature' ||
+        cleanField === 'supervisory date signed' ||
+        cleanField === 'supervisory appraiser date of signature';
+
+    const isEffectiveField =
+        cleanField === 'effective date of appraisal' ||
+        cleanField === 'effective date';
+
+    if (!isSignatureField && !isEffectiveField) return null;
+
+    let sigDateStr = '';
+    let effDateStr = '';
+
+    if (isSignatureField) {
+        sigDateStr = (text !== undefined && text !== null ? (typeof text === 'object' ? (text.value ?? '') : String(text)) : '').trim();
+        if (!sigDateStr) {
+            sigDateStr = getSignatureDateStr(allData);
+        }
+        effDateStr = getEffectiveDateStr(allData);
+    } else {
+        effDateStr = (text !== undefined && text !== null ? (typeof text === 'object' ? (text.value ?? '') : String(text)) : '').trim();
+        if (!effDateStr) {
+            effDateStr = getEffectiveDateStr(allData);
+        }
+        sigDateStr = getSignatureDateStr(allData);
+    }
+
+    if (!sigDateStr || !effDateStr) return null;
+
+    const sigDate = parseStandardDate(sigDateStr);
+    const effDate = parseStandardDate(effDateStr);
+
+    if (!sigDate) {
+        return { isError: true, message: `Invalid Date of Signature format: '${sigDateStr}'.` };
+    }
+    if (!effDate) {
+        return { isError: true, message: `Invalid Effective Date format: '${effDateStr}'.` };
+    }
+
+    const sigTime = sigDate.getTime();
+    const effTime = effDate.getTime();
+
+    if (sigTime <= effTime) {
+        return {
+            isError: true,
+            message: `The signature date (${sigDateStr}) should always be greater than the effective date (${effDateStr}) in the certification section.`
+        };
+    }
+
+    return {
+        isMatch: true,
+        message: `Signature Date (${sigDateStr}) is greater than Effective Date (${effDateStr}) and validated.`
+    };
+};
+
 export const checkSupervisoryAppraiserFields = (field, text, allData, fieldPath) => {
     const fieldStr = String(field || '').trim();
 
@@ -397,5 +563,219 @@ export const checkUspapReportingOption = (field, text, allData) => {
         message: "Must be either 'Appraisal Report' or 'Restricted Appraisal Report'."
     };
 };
+
+export const extractPageNumbers = (val, pagesArray) => {
+    if (Array.isArray(pagesArray) && pagesArray.length > 0) {
+        return pagesArray.map(p => typeof p === 'number' ? p : parseInt(p, 10)).filter(n => !isNaN(n));
+    }
+    if (Array.isArray(val) && val.length > 0) {
+        return val.map(p => typeof p === 'number' ? p : parseInt(p, 10)).filter(n => !isNaN(n));
+    }
+    if (val === null || val === undefined) return [];
+    const str = typeof val === 'object' ? (val.value ?? val.text ?? '') : String(val);
+    const trimmed = str.trim();
+    if (!trimmed || trimmed.toLowerCase() === 'not present' || trimmed.toLowerCase() === 'no') {
+        return [];
+    }
+    const pageMatch = trimmed.match(/page[s]?\s*[:(]?\s*([0-9,\s-]+)\)?/i);
+    if (pageMatch) {
+        const nums = pageMatch[1].match(/\d+/g);
+        if (nums && nums.length > 0) {
+            return nums.map(n => parseInt(n, 10));
+        }
+    }
+    if (trimmed.toLowerCase().startsWith('present') || trimmed.toLowerCase().startsWith('yes')) {
+        const nums = trimmed.match(/\d+/g);
+        if (nums && nums.length > 0) {
+            return nums.map(n => parseInt(n, 10));
+        }
+    }
+    return [];
+};
+
+export const checkUadAndCertificationAddenda = (field, text, data) => {
+    let allData = null;
+    let textVal = text;
+
+    if (data && typeof data === 'object') {
+        allData = data;
+    } else if (text && typeof text === 'object') {
+        allData = text;
+        textVal = null;
+    } else if (field && typeof field === 'object') {
+        allData = field;
+        textVal = null;
+    } else {
+        allData = {};
+    }
+
+    const uadDetails = allData.uad_details || allData.Subject?.uad_details || allData.comparisonData?.uad_details || {};
+
+    const rawUadVal = String(
+        allData['UAD pages present in the report'] ||
+        allData['UAD Pages Present in the Report'] ||
+        allData['UAD Pages Present'] ||
+        allData['UAD & Certification Addenda'] ||
+        allData.Subject?.['UAD pages present in the report'] ||
+        (allData.has_uad_pages ? 'Present' : '') ||
+        (uadDetails.has_uad_pages ? 'Present' : '') ||
+        ''
+    ).trim();
+
+    const isPresent = Boolean(
+        allData.has_uad_pages ||
+        allData.Subject?.has_uad_pages ||
+        uadDetails.has_uad_pages ||
+        rawUadVal.toLowerCase().startsWith('present') ||
+        rawUadVal.toLowerCase() === 'yes' ||
+        rawUadVal.toLowerCase() === 'true'
+    );
+
+    // If UAD & Certification Addenda is not present, then valid
+    if (!isPresent) {
+        return {
+            isMatch: true,
+            section: 'Certification & Addenda',
+            field: field || 'UAD & Certification Addenda',
+            message: 'UAD & Certification Addenda is not present (validation passed).'
+        };
+    }
+
+    // When present, check compulsory:
+    // 1. one page for Limiting Conditions
+    const limitingPages = uadDetails.limiting_conditions_pages ||
+        allData.limiting_conditions_pages ||
+        allData.Subject?.limiting_conditions_pages ||
+        [];
+    const rawLimitingVal = (field === 'Limiting Conditions' || field === 'Statement of Assumptions and Limiting Conditions') && textVal
+        ? textVal
+        : (
+            allData['Limiting Conditions'] ||
+            allData['Statement of Assumptions and Limiting Conditions'] ||
+            allData.Subject?.['Limiting Conditions'] ||
+            uadDetails.limiting_conditions_presence ||
+            ''
+        );
+    const limitingList = extractPageNumbers(rawLimitingVal, limitingPages);
+    const limitingCount = limitingList.length;
+
+    // 2. two pages for Appraiser Certification
+    const certPages = uadDetails.certification_pages ||
+        allData.certification_pages ||
+        allData.Subject?.certification_pages ||
+        [];
+    const rawCertVal = (field === "Appraiser's Certification" || field === 'Appraiser Certification') && textVal
+        ? textVal
+        : (
+            allData["Appraiser's Certification"] ||
+            allData['Appraiser Certification'] ||
+            allData.Subject?.["Appraiser's Certification"] ||
+            uadDetails.certification_presence ||
+            ''
+        );
+    const certList = extractPageNumbers(rawCertVal, certPages);
+    const certCount = certList.length;
+
+    // 3. three pages for UAD Definitions Addendum
+    const uadPages = uadDetails.uad_pages ||
+        allData.uad_pages ||
+        allData.Subject?.uad_pages ||
+        [];
+    const rawUadDefVal = (field === 'UAD Definitions Addendum') && textVal
+        ? textVal
+        : (
+            allData['UAD Definitions Addendum'] ||
+            allData.Subject?.['UAD Definitions Addendum'] ||
+            uadDetails.uad_presence ||
+            rawUadVal
+        );
+    const uadList = extractPageNumbers(rawUadDefVal, uadPages);
+    const uadCount = uadList.length;
+
+    const isLimitingValid = limitingCount >= 1;
+    const isCertValid = certCount >= 2;
+    const isUadValid = uadCount >= 3;
+
+    // If validating a specific subfield:
+    if (field === 'Limiting Conditions' || field === 'Statement of Assumptions and Limiting Conditions') {
+        if (!isLimitingValid) {
+            return {
+                isError: true,
+                section: 'Certification & Addenda',
+                field: 'Limiting Conditions',
+                message: `Limiting Conditions requires 1 page (${limitingCount === 0 ? 'not present' : `found ${limitingCount} pages`}).`
+            };
+        }
+        return {
+            isMatch: true,
+            section: 'Certification & Addenda',
+            field: 'Limiting Conditions',
+            message: `Limiting Conditions is valid (${limitingCount} page present).`
+        };
+    }
+
+    if (field === "Appraiser's Certification" || field === 'Appraiser Certification') {
+        if (!isCertValid) {
+            return {
+                isError: true,
+                section: 'Certification & Addenda',
+                field: 'Appraiser Certification',
+                message: `Appraiser Certification requires 2 pages (${certCount === 0 ? 'not present' : `found ${certCount} page`}).`
+            };
+        }
+        return {
+            isMatch: true,
+            section: 'Certification & Addenda',
+            field: 'Appraiser Certification',
+            message: `Appraiser Certification is valid (${certCount} pages present).`
+        };
+    }
+
+    if (field === 'UAD Definitions Addendum') {
+        if (!isUadValid) {
+            return {
+                isError: true,
+                section: 'Certification & Addenda',
+                field: 'UAD Definitions Addendum',
+                message: `UAD Definitions Addendum requires 3 pages (${uadCount === 0 ? 'not present' : `found ${uadCount} pages`}).`
+            };
+        }
+        return {
+            isMatch: true,
+            section: 'Certification & Addenda',
+            field: 'UAD Definitions Addendum',
+            message: `UAD Definitions Addendum is valid (${uadCount} pages present).`
+        };
+    }
+
+    // Otherwise, validate the full addenda set
+    const errors = [];
+    if (!isLimitingValid) {
+        errors.push(`Limiting Conditions requires 1 page (${limitingCount === 0 ? 'not present' : `found ${limitingCount} page${limitingCount > 1 ? 's' : ''}`})`);
+    }
+    if (!isCertValid) {
+        errors.push(`Appraiser Certification requires 2 pages (${certCount === 0 ? 'not present' : `found ${certCount} page`})`);
+    }
+    if (!isUadValid) {
+        errors.push(`UAD Definitions Addendum requires 3 pages (${uadCount === 0 ? 'not present' : `found ${uadCount} page${uadCount > 1 ? 's' : ''}`})`);
+    }
+
+    if (errors.length > 0) {
+        return {
+            isError: true,
+            section: 'Certification & Addenda',
+            field: 'UAD & Certification Addenda',
+            message: `UAD & Certification Addenda error: Missing compulsory pages: ${errors.join('; ')}.`
+        };
+    }
+
+    return {
+        isMatch: true,
+        section: 'Certification & Addenda',
+        field: 'UAD & Certification Addenda',
+        message: `UAD & Certification Addenda is valid: Limiting Conditions (${limitingCount} page${limitingCount > 1 ? 's' : ''}), Appraiser Certification (${certCount} pages), and UAD Definitions Addendum (${uadCount} pages) are present.`
+    };
+};
+
 
 
