@@ -8,6 +8,7 @@ import {
 } from '@mui/icons-material';
 import { EditableField } from './FormComponents';
 import { checkCondoCoopProjectsTableFields } from '../../../validations/form1073Validation';
+import { getSubjectExpectedActualAge } from '../../../validations/salesComparisonValidation';
 
 export const SubjectRentScheduleTable = ({ data, onDataChange, editingField, setEditingField, isEditable = true, allData, extractionAttempted, manualValidations, handleManualValidation, revisionHandlers }) => {
     const units = [1, 2, 3, 4];
@@ -688,6 +689,12 @@ export const SalesComparisonSection = ({ data, salesGridRows, comparableSales, e
         const s3 = (data?.SALES_GRID && typeof data.SALES_GRID.Subject === 'object' && data.SALES_GRID.Subject) || {};
         const subjectData = { ...s2, ...s1, ...s3 };
         let value = subjectData[row.valueKey] ?? subjectData[row.subjectValueKey] ?? data?.[row.subjectValueKey] ?? data?.[row.valueKey] ?? '';
+        if (!value && (row.valueKey === 'Actual Age' || row.label === 'Actual Age')) {
+            const calcAge = getSubjectExpectedActualAge(allData || data);
+            if (calcAge !== null && !isNaN(calcAge)) {
+                value = String(calcAge);
+            }
+        }
         return value;
     };
 

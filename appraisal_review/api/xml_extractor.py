@@ -3668,7 +3668,48 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
             comp_prior_did = "did" if c_prior == "Y" else ("did not" if c_prior == "N" else c_prior)
             comp_prior_src = comp_res.attrib.get("DataSourceDescription", "").strip()
 
-    prior_anal_comment = sales_comp_elem.attrib.get("_CurrentSalesAgreementAnalysisComment", "") if sales_comp_elem is not None else ""
+    prior_anal_comment = ""
+    if sales_comp_elem is not None:
+        prior_anal_comment = (
+            sales_comp_elem.attrib.get("_PriorSalesAnalysisComment", "").strip() or
+            sales_comp_elem.attrib.get("_ResearchAnalysisComment", "").strip() or
+            sales_comp_elem.attrib.get("_CurrentSalesAgreementAnalysisComment", "").strip() or
+            sales_comp_elem.attrib.get("SalesHistoryAnalysisComment", "").strip() or
+            ""
+        )
+    if not prior_anal_comment and research_elem is not None:
+        prior_anal_comment = (
+            research_elem.attrib.get("_PriorSalesAnalysisComment", "").strip() or
+            research_elem.attrib.get("_ResearchAnalysisComment", "").strip() or
+            research_elem.attrib.get("SalesHistoryAnalysisComment", "").strip() or
+            research_elem.attrib.get("_Comment", "").strip() or
+            ""
+        )
+    if not prior_anal_comment:
+        for ps_elem in (root.findall(".//PRIOR_SALE") + root.findall(".//PRIOR_SALES") + root.findall(".//{*}PRIOR_SALE") + root.findall(".//{*}PRIOR_SALES")):
+            c = (
+                ps_elem.attrib.get("GSEPriorSaleComment", "").strip() or
+                ps_elem.attrib.get("_Comment", "").strip() or
+                ps_elem.attrib.get("AnalysisComment", "").strip() or
+                ps_elem.attrib.get("_PriorSalesAnalysisComment", "").strip() or
+                ps_elem.attrib.get("_AnalysisDescription", "").strip() or
+                ""
+            )
+            if c:
+                prior_anal_comment = c
+                break
+    if not prior_anal_comment:
+        for ra_elem in (root.findall(".//RESEARCH_ANALYSIS") + root.findall(".//{*}RESEARCH_ANALYSIS")):
+            c = (
+                ra_elem.attrib.get("_PriorSalesAnalysisComment", "").strip() or
+                ra_elem.attrib.get("_ResearchAnalysisComment", "").strip() or
+                ra_elem.attrib.get("SalesHistoryAnalysisComment", "").strip() or
+                ra_elem.attrib.get("_Comment", "").strip() or
+                ""
+            )
+            if c:
+                prior_anal_comment = c
+                break
 
     offered_str = ""
     if list_cnt or list_low or list_high:
@@ -7312,8 +7353,27 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
     res_research_val = res_comment if res_did == "did not" and res_comment else res_did
     prior_anal_comment_full = prior_anal_comment
     if not prior_anal_comment_full:
-        for ps_elem in root.findall(".//PRIOR_SALE"):
-            c = ps_elem.attrib.get("GSEPriorSaleComment", "").strip()
+        for ps_elem in (root.findall(".//PRIOR_SALE") + root.findall(".//PRIOR_SALES") + root.findall(".//{*}PRIOR_SALE") + root.findall(".//{*}PRIOR_SALES")):
+            c = (
+                ps_elem.attrib.get("GSEPriorSaleComment", "").strip() or
+                ps_elem.attrib.get("_Comment", "").strip() or
+                ps_elem.attrib.get("AnalysisComment", "").strip() or
+                ps_elem.attrib.get("_PriorSalesAnalysisComment", "").strip() or
+                ps_elem.attrib.get("_AnalysisDescription", "").strip() or
+                ""
+            )
+            if c:
+                prior_anal_comment_full = c
+                break
+    if not prior_anal_comment_full:
+        for ra_elem in (root.findall(".//RESEARCH_ANALYSIS") + root.findall(".//{*}RESEARCH_ANALYSIS")):
+            c = (
+                ra_elem.attrib.get("_PriorSalesAnalysisComment", "").strip() or
+                ra_elem.attrib.get("_ResearchAnalysisComment", "").strip() or
+                ra_elem.attrib.get("SalesHistoryAnalysisComment", "").strip() or
+                ra_elem.attrib.get("_Comment", "").strip() or
+                ""
+            )
             if c:
                 prior_anal_comment_full = c
                 break
@@ -7372,6 +7432,11 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "Effective Date of Data Source(s)": subj_ps_eff,
         "Effective Date of Data Source(s) for prior sale": subj_ps_eff,
         "Analysis of prior sale or transfer history of the subject property and comparable sales": prior_anal_comment_full,
+        "Analysis of prior sale or transfer history of the subject property and comparable sales.": prior_anal_comment_full,
+        "SubjectPriorSalesAndTransferHistory": prior_anal_comment_full,
+        "GSEPriorSaleComment": prior_anal_comment_full,
+        "_CurrentSalesAgreementAnalysisComment": prior_anal_comment_full,
+        "_PriorSalesAnalysisComment": prior_anal_comment_full,
     }
 
     # Combined master fields object

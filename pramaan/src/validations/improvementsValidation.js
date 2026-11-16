@@ -1,4 +1,5 @@
 import { checkProjectAndPropertyCondition } from './form1073Validation';
+import { getSubjectExpectedActualAge, getSubjectGridActualAge } from './salesComparisonValidation';
 
 export const checkUnits = (field, text) => {
     if (field !== 'Units') return null;
@@ -758,8 +759,9 @@ export const checkConstructionStatusAndReconciliation = (
     if (!status) {
         return {
             isError: true,
+            skipBlankFilter: true,
             message:
-                "Construction status must be 'Existing', 'Proposed', or 'Under Const.'."
+                "One of 'Existing', 'Under Construction', or 'Proposed' must be selected."
         };
     }
 
@@ -786,6 +788,64 @@ export const checkConstructionStatusAndReconciliation = (
     }
 
     return { isMatch: true };
+};
+
+/**
+ * Validates that exactly one of 'Existing', 'Under Construction', or 'Proposed' is selected.
+ */
+export const checkExistingProposedUnderConst = (field, text, allData) => {
+    const cleanField = String(field || '').trim().toLowerCase();
+    const isStatusField =
+        cleanField === 'existing/proposed/under const.' ||
+        cleanField === 'existing/proposed/under construction' ||
+        cleanField === 'status' ||
+        cleanField === 'construction status' ||
+        cleanField.includes('existing/proposed');
+
+    if (!isStatusField) return null;
+
+    const val = String(text || '').trim().toLowerCase();
+    if (!val) {
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: "One of 'Existing', 'Under Construction', or 'Proposed' must be selected."
+        };
+    }
+
+    const hasExisting = val.includes('exist');
+    const hasProposed = val.includes('proposed');
+    const hasUnderConst = val.includes('under') && (val.includes('const') || val.includes('construct'));
+
+    const count = [hasExisting, hasProposed, hasUnderConst].filter(Boolean).length;
+
+    if (count === 0) {
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: "One of 'Existing', 'Under Construction', or 'Proposed' must be selected."
+        };
+    }
+
+    if (count > 1) {
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: "Only one of 'Existing', 'Under Construction', or 'Proposed' must be selected."
+        };
+    }
+
+    if (allData && typeof allData === 'object') {
+        const recCheck = checkConstructionStatusAndReconciliation(field, text, allData);
+        if (recCheck && recCheck.isError) {
+            return recCheck;
+        }
+    }
+
+    return {
+        isMatch: true,
+        message: "Construction status is valid."
+    };
 };
 
 export const checkDesignStyle = (field, text, allData, fieldPath, saleName) => {
@@ -946,11 +1006,48 @@ export const checkYearBuilt = (field, text) => {
     return { isMatch: true };
 };
 
-export const checkEffectiveAge = (field, text) => {
-    if (field !== 'Effective Age (Yrs)') return null;
-    if (!String(text || '').trim()) {
-        return { isError: true, message: "'Effective Age (Yrs)' cannot be blank." };
+export const checkEffectiveAge = (field, text, allData) => {
+    const fieldName = String(field || '').trim();
+    const isEffectiveAgeField = fieldName === 'Effective Age (Yrs)' ||
+        fieldName === 'Effective Age' ||
+        fieldName === 'Effective Age (Yrs.)' ||
+        fieldName === 'Effective Age (Years)' ||
+        fieldName.toLowerCase().includes('effective age');
+
+    if (!isEffectiveAgeField) return null;
+
+    const valStr = typeof text === 'object' && text !== null ? (text.value ?? '') : String(text || '');
+    const trimmed = valStr.trim();
+    if (!trimmed) {
+        return { isError: true, message: `'${fieldName || 'Effective Age (Yrs)'}' cannot be blank.` };
     }
+
+    let effNum = parseInt(trimmed.replace(/[^0-9]/g, ''), 10);
+    if (isNaN(effNum) && trimmed.toLowerCase().includes('new')) {
+        effNum = 0;
+    }
+    if (isNaN(effNum)) {
+        return { isError: true, message: "Effective Age must be a valid number." };
+    }
+
+    let actualAge = getSubjectExpectedActualAge(allData);
+    if (actualAge === null) {
+        actualAge = getSubjectGridActualAge(allData);
+    }
+
+    if (actualAge !== null && !isNaN(actualAge)) {
+        if (effNum >= actualAge) {
+            return {
+                isError: true,
+                message: `Effective Age (${effNum}) must be less than Actual Age (${actualAge}).`
+            };
+        }
+        return {
+            isMatch: true,
+            message: `Effective Age (${effNum}) is less than Actual Age (${actualAge}) and validated.`
+        };
+    }
+
     return { isMatch: true };
 };
 

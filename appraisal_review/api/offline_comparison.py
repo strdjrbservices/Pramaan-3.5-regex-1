@@ -2419,7 +2419,15 @@ def verify_revision_request_offline(
             page_no = f"Page {p_pages[0]}" if p_pages else "Page 1"
 
             original_finding = "Subject prior sale / transfer history revision requested"
-            if prior_date or prior_price:
+            clean_num = re.sub(r'[\$,\s]', '', prior_price)
+            is_zero_price = (clean_num == '0' or clean_num == '0.00')
+            has_fam_transfer = any(w in new_full_text.lower() for w in [
+                "family transfer", "sold to family member", "sale to family member",
+                "sold to family", "transfer to family member", "transferred to family member",
+                "transfer between family members", "family sale", "family member transfer"
+            ])
+
+            if (prior_date or prior_price) and not (is_zero_price and not has_fam_transfer):
                 status = "Fulfilled"
                 price_str = f"${prior_price}" if prior_price and not prior_price.startswith("$") else prior_price
                 revised_finding = f"Prior sale date: '{prior_date}', price: '{price_str}' verified on {page_no}"
@@ -2429,6 +2437,11 @@ def verify_revision_request_offline(
                 evidence["source"] = "Subject Prior Sale History"
                 evidence["page_no"] = page_no
                 evidence["section"] = section
+            elif is_zero_price and not has_fam_transfer:
+                status = "Needs Review"
+                revised_finding = f"Prior sale price is reported as $0 without family transfer explanation on {page_no}"
+                finding = f"Review needed: Prior sale price is $0 on {page_no}; requires comment explaining family transfer or sale to family member."
+                comment = "Appraiser reported prior sale price as $0 without comment stating family transfer or sold to family member."
             elif any(k in new_full_text for k in ["prior sale", "transfer", "deed"]):
                 status = "Fulfilled"
                 revised_finding = f"Prior sale / deed transfer commentary and exhibits verified on {page_no}"
@@ -3648,6 +3661,120 @@ SUPPRESSED_FIELD_EXACT = {
     "certification_presence",
 }
 
+def is_checkbox_field(section_name: str, field_name: str, val_old: Any = "", val_new: Any = "") -> bool:
+    """
+    Determines if a field difference represents an appraisal checkbox, radio button,
+    or boolean indicator change between reports (PDF/PDF, XML/XML, PDF/XML).
+    """
+    sec = str(section_name or "").lower().strip()
+    f = str(field_name or "").lower().strip()
+    v_old = str(val_old or "").lower().strip()
+    v_new = str(val_new or "").lower().strip()
+
+    # 1. Explicit indicator / checkbox keywords in field name
+    if any(k in f for k in ["checkbox", "_ind", "indicator", "choice", "checked", "selection", "(yes/no)"]):
+        return True
+
+    # 1b. Exclude non-checkbox fields (narratives, addresses, amounts, adjustments, numeric ranges, dates, prices, sources)
+    if any(k in f for k in [
+        "comment", "commentary", "explanation", "description", "narrative",
+        "amount", "$", "adjustment", "address", "price range", "age range",
+        "predominant", "license", "phone", "email", "state certification",
+        "date", "price", "source", "name"
+    ]):
+        return False
+
+    # 2. Section-specific and standard appraisal checkbox fields
+    checkbox_terms = [
+        # Occupant / Rights / Transaction
+        "occupant", "property rights", "assignment type", "transaction type",
+        "offered for sale", "12-month", "12 month", "listing history",
+        # Contract
+        "did did not", "did/did not", "did / did not", "analyze the contract",
+        "financial assistance", "seller is the owner", "seller is owner", "owner of public record",
+        # Neighborhood
+        "location", "built-up", "built up", "growth", "property values",
+        "demand/supply", "demand / supply", "marketing time", "one-unit housing",
+        "present land use",
+        # Site
+        "zoning compliance", "highest and best use", "highest & best use",
+        "electricity", "gas", "water", "sanitary sewer",
+        "off-site improvements", "alley", "street surface",
+        "fema special flood", "flood hazard area", "flood hazard", "flood zone",
+        "typical for the market", "adverse site",
+        # Improvements
+        "units", "one with accessory unit", "adu", "design (style)",
+        "existing/proposed", "existing / proposed", "construction status",
+        "foundation", "foundation type", "basement", "basement type",
+        "full basement", "partial basement", "concrete slab", "crawl space",
+        "sump pump", "outside entry", "outside entry/exit",
+        "infestation", "dampness", "settlement", "evidence of",
+        "heating type", "heating", "cooling type", "cooling", "central air", "individual",
+        "attic", "amenities", "fireplace", "patio", "deck", "patio/deck", "pool",
+        "woodstove", "fence", "porch", "car storage", "att./det./built-in",
+        "appliances", "refrigerator", "range/oven", "range / oven",
+        "dishwasher", "disposal", "microwave", "washer/dryer", "washer / dryer", "washer", "dryer",
+        "physical deficiencies", "conform to the neighborhood", "conforms to neighborhood",
+        # Sales Comparison / Prior Sales
+        "research the sale", "reveal any prior", "three years prior", "one year prior",
+        "research the prior", "analyze the prior", "prior sale analyzed", "prior sale researched",
+        # Reconciliation
+        "reconciliation status", "as is", "subject to completion", "subject to repairs",
+        "subject to inspection", "subject to", "hypothetical condition", "extraordinary assumption",
+        # Certification / Inspection / USPAP
+        "did inspect", "did not inspect", "inspect interior", "inspect exterior",
+        "prior service", "prior services", "uspap reporting option",
+        # PUD / Condo / Projects
+        "pud", "planned unit development", "condominium", "condo", "cooperative",
+        "developer in control", "common elements", "units complete",
+        # 1004D / MC
+        "appraised value declined", "improvements completed", "overall trend",
+    ]
+
+    if f.strip() in ["street", "street:"]:
+        return True
+
+    for term in checkbox_terms:
+        if term in f:
+            return True
+
+    # 3. Known boolean / radio value tokens
+    boolean_radio_tokens = {
+        "yes", "no", "checked", "unchecked", "did", "did not", "true", "false",
+        "owner", "tenant", "vacant", "fee simple", "leasehold",
+        "urban", "suburban", "rural", "rapid", "stable", "slow",
+        "increasing", "declining", "shortage", "in balance", "over supply",
+        "under 3 mths", "3-6 mths", "over 6 mths", "under 3 months", "3-6 months", "over 6 months",
+        "legal", "legal nonconforming", "legal nonconforming (grandfathered use)", "no zoning", "illegal", "illegal (not a legal use)",
+        "public", "private", "one", "one with accessory unit",
+        "detached", "attached", "semi-detached", "semi-det.", "existing", "proposed", "under const.", "under construction",
+        "crawl space", "full basement", "partial basement", "concrete slab", "slab",
+        "fwa", "hwbb", "radiant", "central air", "central air conditioning",
+        "as is", "subject to repairs", "subject to completion", "subject to inspection",
+        "performed", "did not perform", "analyzed", "did not analyze", "completed", "not completed",
+    }
+
+    if (v_old in boolean_radio_tokens or v_new in boolean_radio_tokens) and len(v_old) < 50 and len(v_new) < 50:
+        return True
+
+    return False
+
+def _find_section_data(fields_dict: Dict[str, Any], sec_name: str) -> Dict[str, Any]:
+    """
+    Robust case-insensitive and alias-aware dictionary lookup for report sections
+    across both PDF and XML representations.
+    """
+    if not isinstance(fields_dict, dict):
+        return {}
+    if sec_name in fields_dict and isinstance(fields_dict[sec_name], dict):
+        return fields_dict[sec_name]
+    norm_target = re.sub(r"[^a-z0-9]", "", sec_name.lower())
+    for k, v in fields_dict.items():
+        if isinstance(v, dict):
+            if re.sub(r"[^a-z0-9]", "", k.lower()) == norm_target:
+                return v
+    return {}
+
 def clean_and_consolidate_comparison(summary: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Minimizes noise, duplicate aliases, boilerplate headers, and internal metadata
@@ -3686,6 +3813,19 @@ def clean_and_consolidate_comparison(summary: List[Dict[str, Any]]) -> List[Dict
                 sim = difflib.SequenceMatcher(None, clean_old, clean_new).ratio()
                 if sim >= 0.85:
                     continue
+            filtered.append(item)
+            continue
+
+        # 2.5 Checkbox changes: preserve all substantive checkbox changes
+        if cat == "checkbox_change":
+            norm_o = re.sub(r"[^\w]", "", old_val.lower())
+            norm_n = re.sub(r"[^\w]", "", new_val.lower())
+            if norm_o == norm_n and (norm_o or norm_n):
+                continue
+            dedup_key = ("checkbox", field.lower().strip(), norm_o, norm_n)
+            if dedup_key in seen:
+                continue
+            seen.add(dedup_key)
             filtered.append(item)
             continue
 
@@ -3751,12 +3891,20 @@ def clean_and_consolidate_comparison(summary: List[Dict[str, Any]]) -> List[Dict
     # Consolidate replaced comparable sales
     comp_groups: Dict[str, List[Tuple[str, Dict[str, Any]]]] = {}
     other_fields: List[Dict[str, Any]] = []
-    page_text: List[Dict[str, Any]] = []
+    page_struct: List[Dict[str, Any]] = []
+    checkbox_items: List[Dict[str, Any]] = []
+    text_items: List[Dict[str, Any]] = []
 
     for item in filtered:
         cat = item.get("category", "")
-        if cat in ["page_structure", "text_change"]:
-            page_text.append(item)
+        if cat == "page_structure":
+            page_struct.append(item)
+            continue
+        if cat == "checkbox_change":
+            checkbox_items.append(item)
+            continue
+        if cat == "text_change":
+            text_items.append(item)
             continue
 
         f = item.get("field", "")
@@ -3768,7 +3916,7 @@ def clean_and_consolidate_comparison(summary: List[Dict[str, Any]]) -> List[Dict
         else:
             other_fields.append(item)
 
-    final_list = list(page_text)
+    final_list = list(page_struct) + list(checkbox_items) + list(text_items)
 
     for c_num, items in sorted(comp_groups.items(), key=lambda x: int(x[0])):
         addr_item = next((it for sub_f, it in items if sub_f.lower() in ["address"]), None)
@@ -3882,23 +4030,40 @@ def compare_documents_offline(
         "SALES_COMPARISON",
         "RECONCILIATION",
         "CERTIFICATION",
+        "USPAP_IDENTIFICATION",
+        "PUD_INFO",
+        "PROJECT_INFO",
+        "PROJECT_ANALYSIS",
+        "COST_APPROACH",
+        "INCOME_APPROACH",
+        "MARKET_CONDITIONS",
+        "SUBJECT_RENT_SCHEDULE",
+        "INFO_OF_SALES",
     ]
 
     seen_field_changes = set()  # deduplication: (normalized_key, old_val, new_val)
     for sec in SECTIONS_TO_COMPARE:
-        new_sec_data = new_fields.get(sec, {})
-        old_sec_data = old_fields.get(sec, {})
-        if not isinstance(new_sec_data, dict):
+        new_sec_data = _find_section_data(new_fields, sec)
+        old_sec_data = _find_section_data(old_fields, sec)
+        if not isinstance(new_sec_data, dict) and not isinstance(old_sec_data, dict):
             continue
+        if not isinstance(new_sec_data, dict):
+            new_sec_data = {}
+        if not isinstance(old_sec_data, dict):
+            old_sec_data = {}
 
-        for k, new_v in new_sec_data.items():
+        all_keys = list(dict.fromkeys(list(new_sec_data.keys()) + list(old_sec_data.keys())))
+        for k in all_keys:
             if k in ["extracted_photos", "EXTRACTED_PHOTOS"]:
                 continue
-            old_v = old_sec_data.get(k, "") if isinstance(old_sec_data, dict) else ""
+            new_v = new_sec_data.get(k, "")
+            old_v = old_sec_data.get(k, "")
 
             # If value is dictionary (nested comp)
             if isinstance(new_v, dict) and isinstance(old_v, dict):
-                for sub_k, sub_new_v in new_v.items():
+                sub_all_keys = list(dict.fromkeys(list(new_v.keys()) + list(old_v.keys())))
+                for sub_k in sub_all_keys:
+                    sub_new_v = new_v.get(sub_k, "")
                     sub_old_v = old_v.get(sub_k, "")
                     if str(sub_new_v).strip() != str(sub_old_v).strip():
                         if str(sub_new_v).strip() or str(sub_old_v).strip():
@@ -3906,13 +4071,17 @@ def compare_documents_offline(
                             if _dedup_key in seen_field_changes:
                                 continue
                             seen_field_changes.add(_dedup_key)
+                            is_chk = is_checkbox_field(f"{k}:{sub_k}", sub_k, sub_old_v, sub_new_v)
+                            cat = "checkbox_change" if is_chk else "field_change"
+                            f_label = f"{k}: {sub_k} (Checkbox)" if is_chk else f"{k}: {sub_k}"
+                            cmnt = f"Checkbox for '{sub_k}' updated from '{sub_old_v or 'Not Marked'}' to '{sub_new_v or 'Not Marked'}'." if is_chk else f"Revised from '{sub_old_v}' to '{sub_new_v}'."
                             field_changes.append({
-                                "field": f"{k}: {sub_k}",
+                                "field": f_label,
                                 "original_value": str(sub_old_v) if str(sub_old_v).strip() else "Not Present",
                                 "revised_value": str(sub_new_v) if str(sub_new_v).strip() else "Not Present",
                                 "page_no": "2",
-                                "comment": f"Revised from '{sub_old_v}' to '{sub_new_v}'.",
-                                "category": "field_change",
+                                "comment": cmnt,
+                                "category": cat,
                             })
                 continue
 
@@ -3929,17 +4098,23 @@ def compare_documents_offline(
                     if _dedup_key in seen_field_changes:
                         continue
                     seen_field_changes.add(_dedup_key)
-                    page_hint = "1" if sec in ["SUBJECT", "CONTRACT", "NEIGHBORHOOD", "SITE", "IMPROVEMENTS"] else "2"
+
+                    is_chk = is_checkbox_field(sec, k, s_old, s_new)
+                    cat = "checkbox_change" if is_chk else "field_change"
+                    f_label = f"{sec}: {k} (Checkbox)" if is_chk else f"{sec}: {k}"
+                    cmnt = f"Checkbox for '{k}' updated from '{s_old or 'Not Marked'}' to '{s_new or 'Not Marked'}'." if is_chk else f"{k} updated from '{s_old}' to '{s_new}'."
+
+                    page_hint = "1" if sec in ["SUBJECT", "CONTRACT", "NEIGHBORHOOD", "SITE", "IMPROVEMENTS"] else ("3" if sec in ["CERTIFICATION", "USPAP_IDENTIFICATION"] else "2")
                     field_changes.append({
-                        "field": f"{sec}: {k}",
+                        "field": f_label,
                         "original_value": s_old if s_old else "Not Present",
                         "revised_value": s_new if s_new else "Not Present",
                         "page_no": page_hint,
-                        "comment": f"{k} updated from '{s_old}' to '{s_new}'.",
-                        "category": "field_change",
+                        "comment": cmnt,
+                        "category": cat,
                     })
 
-    # Combine in priority order: 1) Page Structure Changes, 2) Text Commentary Changes, 3) Field Differences
+    # Combine in priority order: 1) Page Structure Changes, 2) Text Commentary Changes, 3) Checkbox and Field Differences
     raw_summary = page_structure_changes + text_changes + field_changes
 
     # Minimize noise, remove redundant aliases/metadata, and consolidate replaced comparables
@@ -3947,8 +4122,9 @@ def compare_documents_offline(
 
     pages_added_count = sum(1 for c in comparison_summary if c.get("field") == "Page Added")
     pages_deleted_count = sum(1 for c in comparison_summary if c.get("field") == "Page Deleted")
+    checkbox_changes_count = sum(1 for c in comparison_summary if c.get("category") == "checkbox_change")
     text_changes_count = sum(1 for c in comparison_summary if c.get("category") == "text_change")
-    field_changes_count = sum(1 for c in comparison_summary if c.get("category") == "field_change" or (c.get("category") != "page_structure" and c.get("category") != "text_change"))
+    field_changes_count = sum(1 for c in comparison_summary if c.get("category") == "field_change" or (c.get("category") not in ["page_structure", "text_change", "checkbox_change"]))
     diff_count = len(comparison_summary)
 
     summary_parts = []
@@ -3965,6 +4141,8 @@ def compare_documents_offline(
         detail_breakdown.append(f"{pages_added_count} page(s) added")
     if pages_deleted_count:
         detail_breakdown.append(f"{pages_deleted_count} page(s) deleted")
+    if checkbox_changes_count:
+        detail_breakdown.append(f"{checkbox_changes_count} checkbox change(s)")
     if text_changes_count:
         detail_breakdown.append(f"{text_changes_count} text commentary change(s)")
     if field_changes_count:
@@ -3985,6 +4163,7 @@ def compare_documents_offline(
         "new_pdf_page_count": new_page_count,
         "pages_added_count": pages_added_count,
         "pages_deleted_count": pages_deleted_count,
+        "checkbox_changes_count": checkbox_changes_count,
         "text_changes_count": text_changes_count,
         "field_changes_count": field_changes_count,
         "comparison_summary": comparison_summary,

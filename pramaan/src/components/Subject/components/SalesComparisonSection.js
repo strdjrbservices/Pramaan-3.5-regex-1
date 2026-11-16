@@ -1,7 +1,7 @@
 import React from 'react';
 import { EditableField } from './FormComponents';
 import { Tooltip, IconButton, Paper, Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow } from '@mui/material';
-import { getOpinionOfMarketValue, getComparableSalesPrices, evaluateBracketing } from '../../../validations/salesComparisonValidation';
+import { getOpinionOfMarketValue, getComparableSalesPrices, evaluateBracketing, getSubjectExpectedActualAge } from '../../../validations/salesComparisonValidation';
 import LibraryBooksIcon from '@mui/icons-material/LibraryBooks';
 
 
@@ -195,6 +195,12 @@ const SalesComparisonSection = ({
                   }
                   if (!subjectValue && (row.valueKey === 'Project Name and Phase' || row.label === 'Project Name and Phase')) {
                     subjectValue = subjectObj?.['Project Name and Phase'] || data?.['Project Name and Phase'] || (subjectObj?.['Project Name'] ? `${subjectObj['Project Name']}${subjectObj['Phase'] ? `\n${subjectObj['Phase']}` : ''}`.trim() : (data?.['Project Name'] ? `${data['Project Name']}${data['Phase'] ? `\n${data['Phase']}` : ''}`.trim() : '')) || '';
+                  }
+                  if (!subjectValue && (row.valueKey === 'Actual Age' || row.label === 'Actual Age')) {
+                    const calcAge = getSubjectExpectedActualAge(allData || data);
+                    if (calcAge !== null && !isNaN(calcAge)) {
+                      subjectValue = String(calcAge);
+                    }
                   }
 
                   const subjectStyle = {};

@@ -204,7 +204,6 @@ function Subject({ defaultFormType }) {
     }
   }, [initialFormType]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isSidebarLocked, setIsSidebarLocked] = useState(false);
   const [extractionAttempted, setExtractionAttempted] = useState(false);
   const [lastExtractionTime, setLastExtractionTime] = useState(null);
   const timerRef = useRef(null);
@@ -223,7 +222,6 @@ function Subject({ defaultFormType }) {
   const [pdfXmlDiffResult, setPdfXmlDiffResult] = useState(null);
   const [pdfXmlDiffLoading, setPdfXmlDiffLoading] = useState(false);
   const [pdfXmlDiffError, setPdfXmlDiffError] = useState('');
-  const sidebarLeaveTimerRef = useRef(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [editingField, setEditingField] = useState(null);
   const [extractionProgress, setExtractionProgress] = useState(0);
@@ -633,15 +631,19 @@ function Subject({ defaultFormType }) {
       'Units': [improvementsValidation.checkUnits, improvementsValidation.checkAccessoryUnit],
       '# of Stories': [improvementsValidation.checkNumberOfStories],
       'Type': [improvementsValidation.checkPropertyType],
-      'Existing/Proposed/Under Const.': [improvementsValidation.checkConstructionStatusAndReconciliation],
-      'Status': [improvementsValidation.checkConstructionStatusAndReconciliation],
-      'Construction Status': [improvementsValidation.checkConstructionStatusAndReconciliation],
+      'Existing/Proposed/Under Const.': [improvementsValidation.checkExistingProposedUnderConst, improvementsValidation.checkConstructionStatusAndReconciliation],
+      'Existing/Proposed/Under Construction': [improvementsValidation.checkExistingProposedUnderConst, improvementsValidation.checkConstructionStatusAndReconciliation],
+      'Status': [improvementsValidation.checkExistingProposedUnderConst, improvementsValidation.checkConstructionStatusAndReconciliation],
+      'Construction Status': [improvementsValidation.checkExistingProposedUnderConst, improvementsValidation.checkConstructionStatusAndReconciliation],
       'Design (Style)': [improvementsValidation.checkDesignStyle, improvementsValidation.checkSubjectDesignStyleConsistency, salesComparisonValidation.checkDesignStyleAdjustment],
       'Year Built': [improvementsValidation.checkYearBuilt, version1Validation.checkYearBuiltConsistency, version1Validation.checkVersion1YearBuiltAdjustmentConsistency],
       'Year Built Adjustment': [version1Validation.checkVersion1YearBuiltAdjustmentConsistency],
       'Construction Method': [version1Validation.checkVersion1ConstructionMethodAdjustmentConsistency],
       'Construction Method Adjustment': [version1Validation.checkVersion1ConstructionMethodAdjustmentConsistency],
       'Effective Age (Yrs)': [improvementsValidation.checkEffectiveAge],
+      'Effective Age': [improvementsValidation.checkEffectiveAge],
+      'Effective Age (Yrs.)': [improvementsValidation.checkEffectiveAge],
+      'Effective Age (Years)': [improvementsValidation.checkEffectiveAge],
       'Additional features': [improvementsValidation.checkAdditionalFeatures],
       'Describe the condition of the property': [improvementsValidation.checkPropertyConditionDescription],
       'Are there any physical deficiencies or adverse conditions that affect the livability, soundness, or structural integrity of the property? If Yes, describe': [improvementsValidation.checkPhysicalDeficienciesImprovements],
@@ -699,7 +701,8 @@ function Subject({ defaultFormType }) {
       'Bedrooms': [salesComparisonValidation.checkBedroomsAdjustment], 'Bedrooms Adjustment': [salesComparisonValidation.checkBedroomsAdjustment],
       'Baths': [salesComparisonValidation.checkBathsAdjustment], 'Baths Adjustment': [salesComparisonValidation.checkBathsAdjustment],
       'Quality of Construction': [salesComparisonValidation.checkQualityOfConstructionAdjustment], 'Quality of Construction Adjustment': [salesComparisonValidation.checkQualityOfConstructionAdjustment],
-      'Proximity to Subject': [salesComparisonValidation.checkProximityToSubject],
+      'Proximity to Subject': [rentScheduleValidation.checkRentProximityToSubject, salesComparisonValidation.checkProximityToSubject],
+      'Proximity to Subject comment': [salesComparisonValidation.checkProximityToSubject],
       'Site': [salesComparisonValidation.checkSiteAdjustment, version1Validation.checkSiteSizesConsistency], 'Site Adjustment': [salesComparisonValidation.checkSiteAdjustment],
       'Gross Living Area': [salesComparisonValidation.checkGrossLivingAreaAdjustment], 'Gross Living Area Adjustment': [salesComparisonValidation.checkGrossLivingAreaAdjustment],
       'Design (Style) Adjustment': [salesComparisonValidation.checkDesignStyleAdjustment],
@@ -718,8 +721,8 @@ function Subject({ defaultFormType }) {
       'Basement Adjustment': [salesComparisonValidation.checkBasementAdjustment],
       'Data Source(s)': [salesComparisonValidation.checkDataSourceDOM],
       'Actual Age': [salesComparisonValidation.checkActualAgeAdjustment, salesComparisonValidation.checkSubjectAgeConsistency], 'Actual Age Adjustment': [salesComparisonValidation.checkActualAgeAdjustment],
-      'Sale Price': [salesComparisonValidation.checkSalePrice, salesComparisonValidation.checkCompSalePriceBracketing],
-      'Sale Price $': [salesComparisonValidation.checkSalePrice, salesComparisonValidation.checkCompSalePriceBracketing],
+      'Sale Price': [salesComparisonValidation.checkCompSalePriceWithinNeighborhoodRange, salesComparisonValidation.checkSalePrice, salesComparisonValidation.checkCompSalePriceBracketing],
+      'Sale Price $': [salesComparisonValidation.checkCompSalePriceWithinNeighborhoodRange, salesComparisonValidation.checkSalePrice, salesComparisonValidation.checkCompSalePriceBracketing],
       'Adjusted Sale Price of Comparable': [salesComparisonValidation.checkCompAdjustedSalePriceBracketing],
       'Adjusted Sale Price of Comparables': [salesComparisonValidation.checkCompAdjustedSalePriceBracketing],
       'Adjusted Sale Price': [salesComparisonValidation.checkCompAdjustedSalePriceBracketing],
@@ -738,17 +741,18 @@ function Subject({ defaultFormType }) {
       'Location': [salesComparisonValidation.checkLocationConsistency, neighborhoodValidation.checkLocation, neighborhoodValidation.checkNeighborhoodFieldsNotBlank, version1Validation.checkVersion1LocationAdjustmentConsistency],
       'Location Adjustment': [salesComparisonValidation.checkLocationConsistency, version1Validation.checkVersion1LocationAdjustmentConsistency],
 
-      'Indicated Value by Sales Comparison Approach $': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkFinalValueConsistency, neighborhoodValidation.checkPredominantPriceVsIndicatedValue],
-      'Indicated Value by: Sales Comparison Approach $': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkFinalValueConsistency, reconciliationValidation.checkCostApproachDeveloped, neighborhoodValidation.checkPredominantPriceVsIndicatedValue],
-      'opinion of the market value, as defined, of the real property that is the subject of this report is $': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkFinalValueConsistency],
-      'OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkFinalValueConsistency],
-      'Opinion of Market Value': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkFinalValueConsistency],
-      'Indicated Value by Sales Comparison Approach': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkFinalValueConsistency, neighborhoodValidation.checkPredominantPriceVsIndicatedValue],
+      'Indicated Value by Sales Comparison Approach $': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkFinalValueConsistency, neighborhoodValidation.checkPredominantPriceVsIndicatedValue, priorSaleHistoryValidation.checkSubjectPriorSaleValueIncrease],
+      'Indicated Value by: Sales Comparison Approach $': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkFinalValueConsistency, reconciliationValidation.checkCostApproachDeveloped, neighborhoodValidation.checkPredominantPriceVsIndicatedValue, priorSaleHistoryValidation.checkSubjectPriorSaleValueIncrease],
+      'opinion of the market value, as defined, of the real property that is the subject of this report is $': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkFinalValueConsistency, priorSaleHistoryValidation.checkSubjectPriorSaleValueIncrease],
+      'OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkFinalValueConsistency, priorSaleHistoryValidation.checkSubjectPriorSaleValueIncrease],
+      'Opinion of Market Value': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkFinalValueConsistency, priorSaleHistoryValidation.checkSubjectPriorSaleValueIncrease],
+      'Indicated Value by Sales Comparison Approach': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkFinalValueConsistency, neighborhoodValidation.checkPredominantPriceVsIndicatedValue, priorSaleHistoryValidation.checkSubjectPriorSaleValueIncrease],
       'APPRAISED VALUE OF SUBJECT PROPERTY $': [reconciliationValidation.checkFinalValueConsistency],
       'Cost Approach (if developed)': [reconciliationValidation.checkCostApproachDeveloped, form1004And1007Validation.checkCostApproachMatchConsistency],
       'This appraisal is made "as is", subject to completion per plans and specifications on the basis of a hypothetical condition that the improvements have been completed, subject to the following repairs or alterations on the basis of a hypothetical condition that the repairs or alterations have been completed, or subject to the following required inspection based on the extraordinary assumption that the condition or deficiency does not require alteration or repair:': [reconciliationValidation.checkAppraisalCondition],
       'Reconciliation Status': [reconciliationValidation.checkAppraisalCondition],
-      'as of': [reconciliationValidation.checkAsOfDate, form1004And1007Validation.checkRentScheduleAsOfDateConsistency],
+      'as of': [reconciliationValidation.checkAsOfDate, form1004And1007Validation.checkRentScheduleAsOfDateConsistency, contractValidation.checkContractDateVsAsOfDate],
+      'as of date': [reconciliationValidation.checkAsOfDate, contractValidation.checkContractDateVsAsOfDate],
       'I (WE) ESTIMATE THE MONTHLY MARKET RENT OF THE SUBJECT AS OF': [form1004And1007Validation.checkRentScheduleAsOfDateConsistency],
       'TO BE $': [
         rentScheduleValidation.checkRentScheduleToBeBracketing,
@@ -757,8 +761,8 @@ function Subject({ defaultFormType }) {
       'Indicated Monthly Market Rent': [
         rentScheduleValidation.checkCompIndicatedMonthlyMarketRentBracketing
       ],
-      'final value': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkReconciliationFieldsNotBlank, reconciliationValidation.checkFinalValueConsistency],
-      'Final Value $': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkFinalValueConsistency],
+      'final value': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkReconciliationFieldsNotBlank, reconciliationValidation.checkFinalValueConsistency, priorSaleHistoryValidation.checkSubjectPriorSaleValueIncrease],
+      'Final Value $': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkFinalValueConsistency, priorSaleHistoryValidation.checkSubjectPriorSaleValueIncrease],
       'Supervisory Signature': [appraiserLenderValidation.checkSupervisoryAppraiserFields],
       'Supervisory Appraiser Signature': [appraiserLenderValidation.checkSupervisoryAppraiserFields],
       'Supervisory Name': [appraiserLenderValidation.checkSupervisoryAppraiserFields],
@@ -810,14 +814,32 @@ function Subject({ defaultFormType }) {
       'or State License #': [appraiserLenderValidation.checkAppraiserLicenseGroup],
       'or Other (describe)': [appraiserLenderValidation.checkAppraiserLicenseGroup],
       'State #': [appraiserLenderValidation.checkAppraiserLicenseGroup],
+      'Date of Signature and Report': [appraiserLenderValidation.checkAppraiserFieldsNotBlank, appraiserLenderValidation.checkSignatureDateVsEffectiveDate],
+      'Date of Signature': [appraiserLenderValidation.checkAppraiserFieldsNotBlank, appraiserLenderValidation.checkSignatureDateVsEffectiveDate],
+      'Date Signed': [appraiserLenderValidation.checkAppraiserFieldsNotBlank, appraiserLenderValidation.checkSignatureDateVsEffectiveDate],
+      'Report Signed Date': [appraiserLenderValidation.checkAppraiserFieldsNotBlank, appraiserLenderValidation.checkSignatureDateVsEffectiveDate],
+      'UAD pages present in the report': [appraiserLenderValidation.checkUadAndCertificationAddenda],
+      'UAD Pages Present in the Report': [appraiserLenderValidation.checkUadAndCertificationAddenda],
+      'UAD Pages Present': [appraiserLenderValidation.checkUadAndCertificationAddenda],
+      'UAD & Certification Addenda': [appraiserLenderValidation.checkUadAndCertificationAddenda],
+      'UAD Definitions Addendum': [appraiserLenderValidation.checkUadAndCertificationAddenda],
+      'Limiting Conditions': [appraiserLenderValidation.checkUadAndCertificationAddenda],
+      'Statement of Assumptions and Limiting Conditions': [appraiserLenderValidation.checkUadAndCertificationAddenda],
+      'Appraiser Certification': [appraiserLenderValidation.checkUadAndCertificationAddenda],
+      "Appraiser's Certification": [appraiserLenderValidation.checkUadAndCertificationAddenda],
       'Assignment Type': [subjectValidation.checkAssignmentTypeConsistency, htmlDataValidation.checkTransactionTypeHtmlConsistency],
       'ASSIGNMENT TYPE': [subjectValidation.checkAssignmentTypeConsistency, htmlDataValidation.checkTransactionTypeHtmlConsistency],
       'Transaction Type': [htmlDataValidation.checkTransactionTypeHtmlConsistency],
       'TRANSACTION TYPE': [htmlDataValidation.checkTransactionTypeHtmlConsistency],
 
       "I did did not analyze the contract for sale for the subject purchase transaction. Explain the results of the analysis of the contract for sale or why the analysis was not performed.": [contractValidation.checkContractFieldsMandatory, contractValidation.checkContractAnalysisConsistency],
-      "Contract Price $": [contractValidation.checkContractFieldsMandatory, contractValidation.checkContractAnalysisConsistency],
-      "Date of Contract": [contractValidation.checkContractFieldsMandatory, contractValidation.checkContractAnalysisConsistency],
+      "Contract Price $": [contractValidation.checkContractFieldsMandatory, contractValidation.checkContractAnalysisConsistency, contractValidation.checkContractPriceVsFinalValue],
+      "Contract Price": [contractValidation.checkContractFieldsMandatory, contractValidation.checkContractAnalysisConsistency, contractValidation.checkContractPriceVsFinalValue],
+      "Purchase Price $": [contractValidation.checkContractFieldsMandatory, contractValidation.checkContractAnalysisConsistency, contractValidation.checkContractPriceVsFinalValue],
+      "Purchase Price": [contractValidation.checkContractFieldsMandatory, contractValidation.checkContractAnalysisConsistency, contractValidation.checkContractPriceVsFinalValue],
+      "Date of Contract": [contractValidation.checkContractFieldsMandatory, contractValidation.checkContractAnalysisConsistency, contractValidation.checkContractDateVsAsOfDate],
+      "Date Of Contract": [contractValidation.checkContractFieldsMandatory, contractValidation.checkContractAnalysisConsistency, contractValidation.checkContractDateVsAsOfDate],
+      "Contract Date": [contractValidation.checkContractFieldsMandatory, contractValidation.checkContractAnalysisConsistency, contractValidation.checkContractDateVsAsOfDate],
       "Is property seller owner of public record?": [contractValidation.checkContractFieldsMandatory, contractValidation.checkContractAnalysisConsistency, (field, text, data) => contractValidation.checkYesNoOnly(field, text, data, { name: 'Is property seller owner of public record?' })],
       "Data Source(s) (Contract)": [contractValidation.checkContractFieldsMandatory, contractValidation.checkContractAnalysisConsistency],
       "Is there any financial assistance (loan charges, sale concessions, gift or downpayment assistance, etc.) to be paid by any party on behalf of the borrower?": [contractValidation.checkContractFieldsMandatory, contractValidation.checkContractAnalysisConsistency, (field, text, data) => contractValidation.checkYesNoOnly(field, text, data, { name: 'Is there any financial assistance (loan charges, sale concessions, gift or downpayment assistance, etc.) to be paid by any party on behalf of the borrower?' }), contractValidation.checkFinancialAssistanceInconsistency],
@@ -898,7 +920,10 @@ function Subject({ defaultFormType }) {
       ...(priorSaleHistoryValidation.PRIOR_SALE_HISTORY_FIELDS_TO_CHECK || [])
     ]));
     allPriorSaleHistoryFields.forEach(field => {
-      registry[field] = [priorSaleHistoryValidation.checkPriorSaleHistoryFieldsNotBlank];
+      registry[field] = [
+        priorSaleHistoryValidation.checkPriorSaleHistoryFieldsNotBlank,
+        priorSaleHistoryValidation.checkSubjectPriorSaleValueIncrease
+      ];
     });
 
     infoOfSalesFields.forEach(field => {
@@ -1006,6 +1031,7 @@ function Subject({ defaultFormType }) {
     dateCheckFields.forEach(field => {
       if (!registry[field]) registry[field] = [];
       registry[field].push(reconciliationValidation.checkEffectiveDatesConsistency);
+      registry[field].push(appraiserLenderValidation.checkSignatureDateVsEffectiveDate);
       if (selectedFormType === 'Appraisal Version #1' || selectedFormType === 'Version 1' || selectedFormType === 'Version1') {
         registry[field].push(version1Validation.checkVersion1EffectiveDatesConsistency);
       }
@@ -1246,7 +1272,10 @@ function Subject({ defaultFormType }) {
     }
 
     // 1. Proximity to Subject handling
-    if (baseFieldName.toLowerCase() === 'proximity to subject' || messageLower.includes('proximity to subject') || messageLower.includes('proximity')) {
+    if (baseFieldName.toLowerCase() === 'proximity to subject' || messageLower.includes('proximity to subject') || messageLower.includes('proximity') || messageLower.includes('miles of rental')) {
+      if (messageLower.includes('miles of rental') || (path && path.some(p => String(p).toLowerCase().includes('comparable no') || String(p).toLowerCase().includes('rent')))) {
+        return `Rent Schedule: ${messageStr}.${valueSuffix}`;
+      }
       const valText = (valueStr && valueStr !== 'Blank') ? valueStr : (messageStr.match(/\(([^)]+)\)/)?.[1] || '');
       if (isGreaterOrExceeds || messageLower.includes('miles') || messageLower.includes('1.0')) {
         return `Sales grid: Proximity to Subject (${valText || 'distance'}) exceeds distance guideline of 1.0 mile. Please address or provide explanation for using this comparable sale.${valueSuffix}`;
@@ -2226,8 +2255,15 @@ function Subject({ defaultFormType }) {
         newData["UAD pages present in the report"] = value;
         newData["UAD Pages Present in the Report"] = value;
         newData["UAD Pages Present"] = value;
+        newData["UAD Definitions Addendum"] = value;
         newData.SUBJECT["UAD pages present in the report"] = value;
         newData.Subject["UAD pages present in the report"] = value;
+        if (!newData.uad_details) newData.uad_details = {};
+        newData.uad_details = {
+          ...newData.uad_details,
+          uad_presence: value,
+          uad_pages: appraiserLenderValidation.extractPageNumbers(value, [])
+        };
       }
 
       if (
@@ -2240,6 +2276,12 @@ function Subject({ defaultFormType }) {
         newData["Statement of Assumptions and Limiting Conditions"] = value;
         newData.SUBJECT["Limiting Conditions"] = value;
         newData.Subject["Limiting Conditions"] = value;
+        if (!newData.uad_details) newData.uad_details = {};
+        newData.uad_details = {
+          ...newData.uad_details,
+          limiting_conditions_presence: value,
+          limiting_conditions_pages: appraiserLenderValidation.extractPageNumbers(value, [])
+        };
       }
 
       if (
@@ -2252,6 +2294,12 @@ function Subject({ defaultFormType }) {
         newData["Appraiser Certification"] = value;
         newData.SUBJECT["Appraiser's Certification"] = value;
         newData.Subject["Appraiser's Certification"] = value;
+        if (!newData.uad_details) newData.uad_details = {};
+        newData.uad_details = {
+          ...newData.uad_details,
+          certification_presence: value,
+          certification_pages: appraiserLenderValidation.extractPageNumbers(value, [])
+        };
       }
 
       const uspapLongKey = "This report was prepared under the following USPAP reporting option:\nAppraisal Report A written report prepared under Standards Rule 2-2(a).\nRestricted Appraisal Report A written report prepared under Standards Rule 2-2(b).";
@@ -5719,22 +5767,8 @@ function Subject({ defaultFormType }) {
     return () => observer.disconnect();
   }, [data, visibleSectionsList]);
 
-  const handleSidebarEnter = () => {
-    if (sidebarLeaveTimerRef.current) {
-      clearTimeout(sidebarLeaveTimerRef.current);
-      sidebarLeaveTimerRef.current = null;
-    }
-    if (!isSidebarLocked) {
-      setIsSidebarOpen(true);
-    }
-  };
-
-  const handleSidebarLeave = () => {
-    if (!isSidebarLocked) {
-      sidebarLeaveTimerRef.current = setTimeout(() => {
-        setIsSidebarOpen(false);
-      }, 300);
-    }
+  const handleToggleSidebar = () => {
+    setIsSidebarOpen(prev => !prev);
   };
 
   const renderForm = () => {
@@ -5859,11 +5893,8 @@ function Subject({ defaultFormType }) {
       <div className="page-container">
         <Sidebar
           sections={visibleSectionsList}
-          isOpen={isSidebarOpen || isSidebarLocked}
-          isLocked={isSidebarLocked}
-          onLockToggle={() => { setIsSidebarLocked(!isSidebarLocked); }}
-          onMouseEnter={handleSidebarEnter}
-          onMouseLeave={handleSidebarLeave}
+          isOpen={isSidebarOpen}
+          onToggle={handleToggleSidebar}
           onSectionClick={handleSectionClick}
           onThemeToggle={handleThemeChange}
           currentTheme={themeMode}
@@ -5880,7 +5911,7 @@ function Subject({ defaultFormType }) {
           onOpenPdfXmlDiff={handleOpenPdfXmlDiff}
           diffCount={pdfXmlDiffResult ? pdfXmlDiffResult.filter(r => r.status !== 'Match').length : 0}
         />
-        <div className={`main-content container-fluid ${isSidebarOpen || isSidebarLocked ? 'sidebar-open' : ''}`}>
+        <div className={`main-content container-fluid ${isSidebarOpen ? 'sidebar-open' : ''}`}>
           {selectedFormType !== '1004D' && (
             <>
               <Box
@@ -6754,6 +6785,15 @@ function Subject({ defaultFormType }) {
                         const certStr = data["Appraiser's Certification"] || data['Appraiser Certification'] || uadDetails.certification_presence || (certPages.length > 0 ? `Present (Page${certPages.length > 1 ? 's' : ''} ${certPages.join(', ')})` : 'Not Present');
                         const uadDefStr = data['UAD Definitions Addendum'] || uadDetails.uad_presence || (uadPages.length > 0 ? `Present (Page${uadPages.length > 1 ? 's' : ''} ${uadPages.join(', ')})` : (isPresent ? uadVal : 'Not Present'));
 
+                        const limitingList = appraiserLenderValidation.extractPageNumbers(limitingStr, limitingPages);
+                        const certList = appraiserLenderValidation.extractPageNumbers(certStr, certPages);
+                        const uadList = appraiserLenderValidation.extractPageNumbers(uadDefStr, uadPages);
+
+                        const isLimitingValid = !isPresent || limitingList.length >= 1;
+                        const isCertValid = !isPresent || certList.length >= 2;
+                        const isUadValid = !isPresent || uadList.length >= 3;
+                        const isAddendaValid = !isPresent || (isLimitingValid && isCertValid && isUadValid);
+
                         const pageTooltip = `UAD Addendum: ${uadDefStr} | Limiting Conditions: ${limitingStr} | Appraiser Certification: ${certStr}`;
 
                         return (
@@ -6766,18 +6806,18 @@ function Subject({ defaultFormType }) {
                                 flexDirection: 'column',
                                 justifyContent: 'space-between',
                                 height: '100%',
-                                borderColor: isPresent ? 'success.main' : 'divider',
-                                bgcolor: isPresent ? '#f0fdf4' : 'background.paper'
+                                borderColor: isAddendaValid ? 'success.main' : 'error.main',
+                                bgcolor: isAddendaValid ? (isPresent ? '#f0fdf4' : 'background.paper') : '#fff5f5'
                               }}
                             >
                               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                                <Typography variant="caption" color="secondary.main" fontWeight="bold" noWrap>
+                                <Typography variant="caption" color={isAddendaValid ? "secondary.main" : "error.main"} fontWeight="bold" noWrap>
                                   UAD & Certification Addenda
                                 </Typography>
                                 <Tooltip title={pageTooltip}>
                                   <IconButton
                                     size="small"
-                                    color={isPresent ? "success" : "default"}
+                                    color={isAddendaValid ? "success" : "error"}
                                     sx={{ p: 0.2 }}
                                   >
                                     <DescriptionIcon fontSize="small" />
@@ -6796,30 +6836,69 @@ function Subject({ defaultFormType }) {
                               />
 
                               {/* uad_details Full Metadata Breakdown: Limiting Conditions, Certification, UAD Pages */}
-                              <Box sx={{ mt: 1, pt: 0.75, borderTop: '1px dashed #ced4da', display: 'flex', flexDirection: 'column', gap: 0.4 }}>
+                              <Box sx={{ mt: 1, pt: 0.75, borderTop: '1px dashed #ced4da', display: 'flex', flexDirection: 'column', gap: 0.75 }}>
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <Typography variant="caption" sx={{ fontSize: '0.70rem', color: 'text.secondary', fontWeight: 500 }}>
+                                  <Typography variant="caption" sx={{ fontSize: '0.70rem', color: 'text.secondary', fontWeight: 500, minWidth: '135px' }}>
                                     Limiting Conditions:
                                   </Typography>
-                                  <Typography variant="caption" sx={{ fontSize: '0.70rem', fontWeight: 600, color: limitingStr.startsWith('Present') ? 'success.dark' : 'text.disabled' }}>
-                                    {limitingStr}
-                                  </Typography>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flex: 1, justifyContent: 'flex-end' }}>
+                                    <EditableField
+                                      fieldPath={['Limiting Conditions']}
+                                      value={limitingStr}
+                                      onDataChange={handleDataChange}
+                                      editingField={editingField}
+                                      setEditingField={setEditingField}
+                                      isEditable={isEditable}
+                                      allData={{ ...data, comparisonData }}
+                                    />
+                                    {!isLimitingValid && (
+                                      <Typography variant="caption" sx={{ fontSize: '0.65rem', color: 'error.main', fontWeight: 600 }}>
+                                        (Requires 1 page)
+                                      </Typography>
+                                    )}
+                                  </Box>
                                 </Box>
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <Typography variant="caption" sx={{ fontSize: '0.70rem', color: 'text.secondary', fontWeight: 500 }}>
+                                  <Typography variant="caption" sx={{ fontSize: '0.70rem', color: 'text.secondary', fontWeight: 500, minWidth: '135px' }}>
                                     Appraiser Certification:
                                   </Typography>
-                                  <Typography variant="caption" sx={{ fontSize: '0.70rem', fontWeight: 600, color: certStr.startsWith('Present') ? 'success.dark' : 'text.disabled' }}>
-                                    {certStr}
-                                  </Typography>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flex: 1, justifyContent: 'flex-end' }}>
+                                    <EditableField
+                                      fieldPath={['Appraiser Certification']}
+                                      value={certStr}
+                                      onDataChange={handleDataChange}
+                                      editingField={editingField}
+                                      setEditingField={setEditingField}
+                                      isEditable={isEditable}
+                                      allData={{ ...data, comparisonData }}
+                                    />
+                                    {!isCertValid && (
+                                      <Typography variant="caption" sx={{ fontSize: '0.65rem', color: 'error.main', fontWeight: 600 }}>
+                                        (Requires 2 pages)
+                                      </Typography>
+                                    )}
+                                  </Box>
                                 </Box>
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <Typography variant="caption" sx={{ fontSize: '0.70rem', color: 'text.secondary', fontWeight: 500 }}>
+                                  <Typography variant="caption" sx={{ fontSize: '0.70rem', color: 'text.secondary', fontWeight: 500, minWidth: '135px' }}>
                                     UAD Definitions Addendum:
                                   </Typography>
-                                  <Typography variant="caption" sx={{ fontSize: '0.70rem', fontWeight: 600, color: uadDefStr.startsWith('Present') ? 'success.dark' : 'text.disabled' }}>
-                                    {uadDefStr}
-                                  </Typography>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flex: 1, justifyContent: 'flex-end' }}>
+                                    <EditableField
+                                      fieldPath={['UAD Definitions Addendum']}
+                                      value={uadDefStr}
+                                      onDataChange={handleDataChange}
+                                      editingField={editingField}
+                                      setEditingField={setEditingField}
+                                      isEditable={isEditable}
+                                      allData={{ ...data, comparisonData }}
+                                    />
+                                    {!isUadValid && (
+                                      <Typography variant="caption" sx={{ fontSize: '0.65rem', color: 'error.main', fontWeight: 600 }}>
+                                        (Requires 3 pages)
+                                      </Typography>
+                                    )}
+                                  </Box>
                                 </Box>
                               </Box>
                             </Paper>

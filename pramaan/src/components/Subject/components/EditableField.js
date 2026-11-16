@@ -1,15 +1,15 @@
 import React from 'react';
-import { checkContractFieldsMandatory, checkFinancialAssistanceInconsistency, checkContractAnalysisConsistency, checkYesNoOnly } from '../../../validations/contractValidation';
+import { checkContractFieldsMandatory, checkFinancialAssistanceInconsistency, checkContractAnalysisConsistency, checkYesNoOnly, checkContractPriceVsFinalValue, checkContractDateVsAsOfDate } from '../../../validations/contractValidation';
 import { checkTaxYear, checkRETaxes, checkSpecialAssessments, checkPUD, checkHOA, checkHOAFrequency, checkOfferedForSale, checkReportDataSourceOfferingPriceDate, checkAnsi, checkFullAddressConsistency, checkPresence, checkAssignmentTypeConsistency, checkSubjectFieldsNotBlank, checkFhaCaseNo, checkOccupancy, checkPriorServicesDisclosure } from '../../../validations/subjectValidation';
 import { checkZoning, checkNonconformingComment, checkZoningDescription, checkSpecificZoningClassification, checkHighestAndBestUse, checkFemaInconsistency, checkFemaFieldsConsistency, checkSiteSectionBlank, checkArea, checkYesNoWithComment, checkUtilities } from '../../../validations/siteValidation';
 import { checkVersion1UtilitySubfields, checkZoningClassificationDescription, checkSiteSizesConsistency, checkVersion1EffectiveDatesConsistency, checkAboveGradeFinishedAreaConsistency, checkYearBuiltConsistency, checkAppraiserNameConsistency, checkVersion1ComparableListingStatusConsistency, checkVersion1ComparableTransferTermsConsistency, checkVersion1YearBuiltAdjustmentConsistency, checkVersion1ConstructionMethodAdjustmentConsistency, checkVersion1SiteSizeAdjustmentConsistency, checkVersion1LocationAdjustmentConsistency, checkVersion1AttachedDetachedAdjustmentConsistency, checkVersion1HeatingAdjustmentConsistency, checkVersion1AmenitiesAdjustmentConsistency, checkVersion1QualityConditionConsistency, checkVersion1AreaAdjustmentConsistency, checkVersion1OverallQualityConditionAdjustmentConsistency, checkVersion1VehicleStorageAdjustmentConsistency } from '../Version1/version1Validation';
 import { checkHousingPriceAndAge, checkPredominantPriceVsIndicatedValue, checkNeighborhoodUsageConsistency, checkSingleChoiceFields, checkNeighborhoodBoundaries, checkNeighborhoodFieldsNotBlank, checkOtherLandUseComment, checkOtherLandUse, checkSearchCriteriaDescription, checkNeighborhoodListPricesConsistency, checkNeighborhoodSalePricesConsistency, checkLocation, checkBuiltUp, checkGrowth, checkPropertyValues, checkDemandSupply } from '../../../validations/neighborhoodValidation';
-import { checkUnits, checkAccessoryUnit, checkNumberOfStories, checkPropertyType, checkConstructionStatusAndReconciliation, checkDesignStyle, checkSubjectDesignStyleConsistency, checkYearBuilt, checkEffectiveAge, checkAdditionalFeatures, checkPhysicalDeficienciesImprovements, checkNeighborhoodConformity, checkFoundationType, checkBasementDetails, checkEvidenceOf, checkMaterialCondition, checkHeatingFuel, checkCarStorage, checkImprovementsFieldsNotBlank } from '../../../validations/improvementsValidation';
-import { checkConditionAdjustment, checkBedroomsAdjustment, checkBathsAdjustment, checkQualityOfConstructionAdjustment, checkProximityToSubject, checkSiteAdjustment, checkGrossLivingAreaAdjustment, checkSubjectAddressInconsistency, checkDesignStyleAdjustment, checkFunctionalUtilityAdjustment, checkEnergyEfficientItemsAdjustment, checkPorchPatioDeckAdjustment, checkHeatingCoolingAdjustment, checkDataSourceDOM, checkActualAgeAdjustment, checkLeaseholdFeeSimpleConsistency, checkDateOfSale, checkLocationConsistency, checkSalePrice, checkSubjectAgeConsistency, checkViewAdjustment, checkCompSalePriceBracketing, checkCompAdjustedSalePriceBracketing, checkSalesConcessions, checkSalesConcessionsAdjustment, checkBasementAdjustment, checkGrossLivingAreaBracketing, checkSiteBracketing, checkBasementAreaBracketing, checkBasementFinishedAreaBracketing, checkGarageCarportAdjustment, checkGarageCarportBracketing } from '../../../validations/salesComparisonValidation';
+import { checkUnits, checkAccessoryUnit, checkNumberOfStories, checkPropertyType, checkConstructionStatusAndReconciliation, checkExistingProposedUnderConst, checkDesignStyle, checkSubjectDesignStyleConsistency, checkYearBuilt, checkEffectiveAge, checkAdditionalFeatures, checkPhysicalDeficienciesImprovements, checkNeighborhoodConformity, checkFoundationType, checkBasementDetails, checkEvidenceOf, checkMaterialCondition, checkHeatingFuel, checkCarStorage, checkImprovementsFieldsNotBlank } from '../../../validations/improvementsValidation';
+import { checkConditionAdjustment, checkBedroomsAdjustment, checkBathsAdjustment, checkQualityOfConstructionAdjustment, checkProximityToSubject, checkSiteAdjustment, checkGrossLivingAreaAdjustment, checkSubjectAddressInconsistency, checkDesignStyleAdjustment, checkFunctionalUtilityAdjustment, checkEnergyEfficientItemsAdjustment, checkPorchPatioDeckAdjustment, checkHeatingCoolingAdjustment, checkDataSourceDOM, checkActualAgeAdjustment, checkLeaseholdFeeSimpleConsistency, checkDateOfSale, checkLocationConsistency, checkSalePrice, checkSubjectAgeConsistency, checkViewAdjustment, checkCompSalePriceBracketing, checkCompAdjustedSalePriceBracketing, checkSalesConcessions, checkSalesConcessionsAdjustment, checkBasementAdjustment, checkGrossLivingAreaBracketing, checkSiteBracketing, checkBasementAreaBracketing, checkBasementFinishedAreaBracketing, checkGarageCarportAdjustment, checkGarageCarportBracketing, checkCompSalePriceWithinNeighborhoodRange } from '../../../validations/salesComparisonValidation';
 import { checkFinalValueConsistency, checkCostApproachDeveloped, checkAppraisalCondition, checkAsOfDate, checkFinalValueBracketing, checkReconciliationFieldsNotBlank, checkFiveValuesConsistency, checkEffectiveDatesConsistency, checkPropertyQualityConsistency, checkPropertyConditionConsistency, checkHbuConsistency, checkCostApproachConsistency, checkAttachmentTypeConsistency, checkPropertyRightsConsistency, checkAppraiserCredentialLevelConsistency } from '../../../validations/reconciliationValidation';
-import { checkLenderAddressInconsistency, checkLenderNameInconsistency, checkUnpaidLender, checkAppraiserFieldsNotBlank, checkLicenseNumberConsistency as checkAppraiserLicenseConsistency, checkDateGreaterThanToday, checkClientNameHtmlConsistency, checkClientAddressHtmlConsistency, checkBorrowerHtmlConsistency, checkAppraiserVendorNameConsistency, checkSupervisoryAppraiserFields, checkAppraiserLicenseGroup, checkUspapReportingOption, checkReasonableExposureTime, checkAppraiserInspection } from '../../../validations/appraiserLenderValidation';
+import { checkLenderAddressInconsistency, checkLenderNameInconsistency, checkUnpaidLender, checkAppraiserFieldsNotBlank, checkLicenseNumberConsistency as checkAppraiserLicenseConsistency, checkDateGreaterThanToday, checkClientNameHtmlConsistency, checkClientAddressHtmlConsistency, checkBorrowerHtmlConsistency, checkAppraiserVendorNameConsistency, checkSupervisoryAppraiserFields, checkAppraiserLicenseGroup, checkUspapReportingOption, checkReasonableExposureTime, checkAppraiserInspection, checkSignatureDateVsEffectiveDate, checkUadAndCertificationAddenda } from '../../../validations/appraiserLenderValidation';
 import { checkCostNew, checkSourceOfCostData, checkIndicatedValueByCostApproach, checkCostApproachFieldsNotBlank, checkOpinionOfSiteValue, checkRemainingEconomicLife } from '../../../validations/costApproachValidation';
-import { checkResearchHistory, checkSubjectPriorSales, checkComparablePriorSales, checkDataSourceNotBlank, checkEffectiveDateIsCurrentYear, checkSubjectPriorSaleDate, checkCompPriorSaleDate } from '../../../validations/salesHistoryValidation';
+import { checkResearchHistory, checkSubjectPriorSales, checkComparablePriorSales, checkDataSourceNotBlank, checkEffectiveDateIsCurrentYear, checkSubjectPriorSaleDate, checkCompPriorSaleDate, checkPriorSalePrice } from '../../../validations/salesHistoryValidation';
 import { checkStateRequirements } from '../../../validations/stateValidation';
 import { checkLenderAddressInconsistency as checkLenderAddressHtmlInconsistency, checkSubjectLenderNameVsHtml, checkBorrowerNameVsHtml, checkTransactionTypeHtmlConsistency, checkAppraisalTypeHtmlConsistency, checkCountyHtmlConsistency, checkPropertyAddressHtmlConsistency } from '../../../validations/htmldatavaliadtion';
 import {
@@ -36,7 +36,8 @@ import {
   checkRentOtherAdjustment,
   checkMinimumRentalComparables,
   checkRentScheduleToBeBracketing,
-  checkCompIndicatedMonthlyMarketRentBracketing
+  checkCompIndicatedMonthlyMarketRentBracketing,
+  checkRentProximityToSubject
 } from '../../../validations/rentScheduleValidation';
 import { checkIncomeApproachFieldsNotBlank, checkIncomeApproach1007Required, INCOME_APPROACH_1007_REQUIRED_FIELDS } from '../../../validations/incomeApproachValidation';
 import { checkPudInformationFieldsNotBlank, checkPudControlAndFees } from '../../../validations/pudInformationValidation';
@@ -45,7 +46,7 @@ import { checkProjectInfoFieldsNotBlank, checkCondoForeclosureFieldsNotBlank, ch
 import { checkProjectAnalysisFieldsNotBlank, findProjectAnalysisConditionalConfig, PROJECT_ANALYSIS_FIELDS_TO_CHECK } from '../../../validations/projectAnalysisValidation';
 import { checkUnitDescriptionsFieldsNotBlank, checkUnitChargeCalculation, UNIT_DESCRIPTIONS_FIELDS_TO_CHECK } from '../../../validations/unitDescriptionsValidation';
 import { checkProjectSiteFieldsNotBlank } from '../../../validations/projectSiteValidation';
-import { checkPriorSaleHistoryFieldsNotBlank, PRIOR_SALE_HISTORY_FIELDS_TO_CHECK } from '../../../validations/priorSaleHistoryValidation';
+import { checkPriorSaleHistoryFieldsNotBlank, checkSubjectPriorSaleValueIncrease, PRIOR_SALE_HISTORY_FIELDS_TO_CHECK } from '../../../validations/priorSaleHistoryValidation';
 import { checkInfoOfSalesFieldsNotBlank } from '../../../validations/infoOfSalesValidation';
 import { checkRentScheduleAsOfDateConsistency, checkRentScheduleToBeAmountConsistency, checkIncomeApproachIndicatedValueConsistency, checkCostApproachMatchConsistency } from '../../../validations/form1004And1007Validation';
 import { Tooltip, IconButton } from '@mui/material';
@@ -276,9 +277,10 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'Units': [checkUnits, checkAccessoryUnit],
     '# of Stories': [checkNumberOfStories],
     'Type': [checkPropertyType],
-    'Existing/Proposed/Under Const.': [checkConstructionStatusAndReconciliation],
-    'Status': [checkConstructionStatusAndReconciliation],
-    'Construction Status': [checkConstructionStatusAndReconciliation],
+    'Existing/Proposed/Under Const.': [checkExistingProposedUnderConst, checkConstructionStatusAndReconciliation],
+    'Existing/Proposed/Under Construction': [checkExistingProposedUnderConst, checkConstructionStatusAndReconciliation],
+    'Status': [checkExistingProposedUnderConst, checkConstructionStatusAndReconciliation],
+    'Construction Status': [checkExistingProposedUnderConst, checkConstructionStatusAndReconciliation],
     'Design (Style)': [checkDesignStyle, checkSubjectDesignStyleConsistency, checkDesignStyleAdjustment],
     'Design and Appeal': [checkRentSubjectDesignStyleConsistency, checkRentDesignAppealAdjustment],
     'Design and Appeal Adjustment': [checkRentDesignAppealAdjustment],
@@ -289,6 +291,9 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'Construction Method': [checkVersion1ConstructionMethodAdjustmentConsistency],
     'Construction Method Adjustment': [checkVersion1ConstructionMethodAdjustmentConsistency],
     'Effective Age (Yrs)': [checkEffectiveAge],
+    'Effective Age': [checkEffectiveAge],
+    'Effective Age (Yrs.)': [checkEffectiveAge],
+    'Effective Age (Years)': [checkEffectiveAge],
     'Additional features': [checkAdditionalFeatures],
     'Describe the condition of the project and quality of construction.': [checkProjectAndPropertyCondition],
     'Describe the condition of the project and quality of construction': [checkProjectAndPropertyCondition],
@@ -373,7 +378,8 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'Room Count Bdrms': [checkRentSubjectRoomCountConsistency, checkRentRoomCountAdjustment, checkBedroomsAdjustment],
     'Room Count Baths': [checkRentSubjectRoomCountConsistency, checkRentRoomCountAdjustment, checkBathsAdjustment],
     'Quality of Construction': [checkQualityOfConstructionAdjustment], 'Quality of Construction Adjustment': [checkQualityOfConstructionAdjustment],
-    'Proximity to Subject': [checkProximityToSubject],
+    'Proximity to Subject': [checkRentProximityToSubject, checkProximityToSubject],
+    'Proximity to Subject comment': [checkProximityToSubject],
     'Site': [checkSiteBracketing, checkSiteAdjustment, checkSiteSizesConsistency], 'Site Adjustment': [checkSiteAdjustment],
     'Gross Living Area': [checkGrossLivingAreaBracketing, checkRentSubjectGrossLivingAreaConsistency, checkRentGrossLivingAreaAdjustment, checkGrossLivingAreaAdjustment], 'Gross Living Area Adjustment': [checkRentGrossLivingAreaAdjustment, checkGrossLivingAreaAdjustment],
     'Gross Living Area (GLA)': [checkGrossLivingAreaBracketing, checkRentSubjectGrossLivingAreaConsistency, checkRentGrossLivingAreaAdjustment, checkGrossLivingAreaAdjustment],
@@ -391,8 +397,8 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'Heating/Cooling': [checkHeatingCoolingAdjustment], 'Heating/Cooling Adjustment': [checkHeatingCoolingAdjustment],
     'Data Source(s)': [checkDataSourceDOM],
     'Actual Age': [checkActualAgeAdjustment, checkSubjectAgeConsistency], 'Actual Age Adjustment': [checkActualAgeAdjustment],
-    'Sale Price': [checkSalePrice, checkCompSalePriceBracketing],
-    'Sale Price $': [checkSalePrice, checkCompSalePriceBracketing],
+    'Sale Price': [checkCompSalePriceWithinNeighborhoodRange, checkSalePrice, checkCompSalePriceBracketing],
+    'Sale Price $': [checkCompSalePriceWithinNeighborhoodRange, checkSalePrice, checkCompSalePriceBracketing],
     'Adjusted Sale Price of Comparable': [checkCompAdjustedSalePriceBracketing],
     'Adjusted Sale Price of Comparables': [checkCompAdjustedSalePriceBracketing],
     'Adjusted Sale Price': [checkCompAdjustedSalePriceBracketing],
@@ -450,7 +456,9 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'Cost Approach (if developed)': [checkCostApproachDeveloped, checkCostApproachMatchConsistency],
     'This appraisal is made "as is", subject to completion per plans and specifications on the basis of a hypothetical condition that the improvements have been completed, subject to the following repairs or alterations on the basis of a hypothetical condition that the repairs or alterations have been completed, or subject to the following required inspection based on the extraordinary assumption that the condition or deficiency does not require alteration or repair:': [checkAppraisalCondition],
     'Reconciliation Status': [checkAppraisalCondition],
-    'as of': [checkAsOfDate, checkRentScheduleAsOfDateConsistency],
+    'as of': [checkAsOfDate, checkRentScheduleAsOfDateConsistency, checkContractDateVsAsOfDate],
+    'as of date': [checkAsOfDate, checkContractDateVsAsOfDate],
+    'as of Date': [checkAsOfDate, checkContractDateVsAsOfDate],
 
     'final value': [checkFinalValueBracketing, checkReconciliationFieldsNotBlank],
     // Appraiser/Lender Validations
@@ -509,6 +517,15 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'This report was prepared under the following USPAP reporting option:': [checkUspapReportingOption],
     'USPAP Reporting Option': [checkUspapReportingOption],
     'This Report is one of the following types:': [checkUspapReportingOption],
+    'UAD pages present in the report': [checkUadAndCertificationAddenda],
+    'UAD Pages Present in the Report': [checkUadAndCertificationAddenda],
+    'UAD Pages Present': [checkUadAndCertificationAddenda],
+    'UAD & Certification Addenda': [checkUadAndCertificationAddenda],
+    'UAD Definitions Addendum': [checkUadAndCertificationAddenda],
+    'Limiting Conditions': [checkUadAndCertificationAddenda],
+    'Statement of Assumptions and Limiting Conditions': [checkUadAndCertificationAddenda],
+    'Appraiser Certification': [checkUadAndCertificationAddenda],
+    "Appraiser's Certification": [checkUadAndCertificationAddenda],
     'Reasonable Exposure Time': [checkReasonableExposureTime],
     'Reasonable Exposure Time Comment': [checkReasonableExposureTime],
     'Exposure Comment': [checkReasonableExposureTime],
@@ -528,8 +545,13 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
 
     // Contract Section Validations
     "I did did not analyze the contract for sale for the subject purchase transaction. Explain the results of the analysis of the contract for sale or why the analysis was not performed.": [checkContractFieldsMandatory, checkContractAnalysisConsistency],
-    "Contract Price $": [checkContractFieldsMandatory, checkContractAnalysisConsistency],
-    "Date of Contract": [checkContractFieldsMandatory, checkContractAnalysisConsistency],
+    "Contract Price $": [checkContractFieldsMandatory, checkContractAnalysisConsistency, checkContractPriceVsFinalValue],
+    "Contract Price": [checkContractFieldsMandatory, checkContractAnalysisConsistency, checkContractPriceVsFinalValue],
+    "Purchase Price $": [checkContractFieldsMandatory, checkContractAnalysisConsistency, checkContractPriceVsFinalValue],
+    "Purchase Price": [checkContractFieldsMandatory, checkContractAnalysisConsistency, checkContractPriceVsFinalValue],
+    "Date of Contract": [checkContractFieldsMandatory, checkContractAnalysisConsistency, checkContractDateVsAsOfDate],
+    "Date Of Contract": [checkContractFieldsMandatory, checkContractAnalysisConsistency, checkContractDateVsAsOfDate],
+    "Contract Date": [checkContractFieldsMandatory, checkContractAnalysisConsistency, checkContractDateVsAsOfDate],
     "Is property seller owner of public record?": [
       checkContractFieldsMandatory,
       checkContractAnalysisConsistency,
@@ -547,12 +569,12 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     "If Yes, report the total dollar amount and describe the items to be paid": [checkContractFieldsMandatory, checkFinancialAssistanceInconsistency, checkContractAnalysisConsistency],
   };
 
-  validationRegistry['final value'] = [checkFinalValueConsistency, checkFinalValueBracketing];
-  validationRegistry['Final Value $'] = [checkFinalValueConsistency, checkFinalValueBracketing];
-  validationRegistry['opinion of the market value, as defined, of the real property that is the subject of this report is $'] = [checkFinalValueConsistency, checkFinalValueBracketing];
-  validationRegistry['OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $'] = [checkFinalValueConsistency, checkFinalValueBracketing];
-  validationRegistry['Opinion of Market Value'] = [checkFinalValueConsistency, checkFinalValueBracketing];
-  const indicatedValValidators = [checkFinalValueConsistency, checkFinalValueBracketing, checkPredominantPriceVsIndicatedValue, checkPriorSaleHistoryFieldsNotBlank];
+  validationRegistry['final value'] = [checkFinalValueConsistency, checkFinalValueBracketing, checkSubjectPriorSaleValueIncrease];
+  validationRegistry['Final Value $'] = [checkFinalValueConsistency, checkFinalValueBracketing, checkSubjectPriorSaleValueIncrease];
+  validationRegistry['opinion of the market value, as defined, of the real property that is the subject of this report is $'] = [checkFinalValueConsistency, checkFinalValueBracketing, checkSubjectPriorSaleValueIncrease];
+  validationRegistry['OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $'] = [checkFinalValueConsistency, checkFinalValueBracketing, checkSubjectPriorSaleValueIncrease];
+  validationRegistry['Opinion of Market Value'] = [checkFinalValueConsistency, checkFinalValueBracketing, checkSubjectPriorSaleValueIncrease];
+  const indicatedValValidators = [checkFinalValueConsistency, checkFinalValueBracketing, checkPredominantPriceVsIndicatedValue, checkSubjectPriorSaleValueIncrease, checkPriorSaleHistoryFieldsNotBlank];
   validationRegistry['Indicated Value by Sales Comparison Approach $'] = indicatedValValidators;
   validationRegistry['Indicated Value by Sales Comparison Approach'] = indicatedValValidators;
   validationRegistry['Indicated Value by: Sales Comparison Approach $'] = indicatedValValidators;
@@ -604,6 +626,19 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
       validationRegistry[field] = [];
     }
     validationRegistry[field].push(checkAppraiserFieldsNotBlank);
+  });
+
+  ['Date of Signature and Report', 'Date of Signature', 'Date Signed', 'Report Signed Date'].forEach(field => {
+    if (!validationRegistry[field]) validationRegistry[field] = [];
+    if (!validationRegistry[field].includes(checkSignatureDateVsEffectiveDate)) {
+      validationRegistry[field].push(checkSignatureDateVsEffectiveDate);
+    }
+  });
+  ['Effective Date of Appraisal', 'Effective Date'].forEach(field => {
+    if (!validationRegistry[field]) validationRegistry[field] = [];
+    if (!validationRegistry[field].includes(checkSignatureDateVsEffectiveDate)) {
+      validationRegistry[field].push(checkSignatureDateVsEffectiveDate);
+    }
   });
 
   validationRegistry['Lender/Client Company Address'].push(checkLenderAddressInconsistency);
@@ -784,6 +819,15 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     if (!validationRegistry[f].includes(checkSubjectPriorSaleDate)) validationRegistry[f].push(checkSubjectPriorSaleDate, checkCompPriorSaleDate);
   });
 
+  [
+    "Price of Prior Sale/Transfer",
+    "Prior Sale History: Price of Prior Sale/Transfer",
+    "Comparable Transfer Amount"
+  ].forEach(f => {
+    if (!validationRegistry[f]) validationRegistry[f] = [];
+    if (!validationRegistry[f].includes(checkPriorSalePrice)) validationRegistry[f].push(checkPriorSalePrice);
+  });
+
   const incomeApproachFieldsToValidate = [
     "Estimated Monthly Market Rent $", "X Gross Rent Multiplier  = $",
     "Indicated Value by Income Approach", "Summary of Income Approach (including support for market rent and GRM) "
@@ -922,6 +966,7 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
   PRIOR_SALE_HISTORY_FIELDS_TO_CHECK.forEach(field => {
     if (!validationRegistry[field]) validationRegistry[field] = [];
     validationRegistry[field].push(checkPriorSaleHistoryFieldsNotBlank);
+    validationRegistry[field].push(checkSubjectPriorSaleValueIncrease);
   });
 
   const infoOfSalesFieldsToValidate = [
@@ -1082,8 +1127,8 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
           checksToRun = [checkPriorSaleHistoryFieldsNotBlank];
         } else if (lowerLookup.includes('this appraisal is made') || lowerLookup === 'reconciliation status') {
           checksToRun = [checkAppraisalCondition];
-        } else if (lowerLookup === 'existing/proposed/under const.' || lowerLookup === 'status' || lowerLookup === 'construction status' || lowerLookup.includes('existing/proposed')) {
-          checksToRun = [checkConstructionStatusAndReconciliation];
+        } else if (lowerLookup === 'existing/proposed/under const.' || lowerLookup === 'existing/proposed/under construction' || lowerLookup === 'status' || lowerLookup === 'construction status' || lowerLookup.includes('existing/proposed')) {
+          checksToRun = [checkExistingProposedUnderConst, checkConstructionStatusAndReconciliation];
         } else if (lowerLookup === 'appraisal type' || lowerLookup === 'appraisal_type') {
           checksToRun = [checkAppraisalTypeHtmlConsistency];
         } else if (lowerLookup === 'property address' || lowerLookup === 'property_address') {

@@ -74,6 +74,8 @@ const normalizeCheckArgs = (field, arg2, arg3, arg4, arg5) => {
     if (arg3 && typeof arg3 === 'object' && !arg3.hasOwnProperty('prototype') && !Array.isArray(arg3)) {
         allData = arg3;
         saleName = arg5;
+        if (!saleName && typeof arg4 === 'string') saleName = arg4;
+        if (!saleName && Array.isArray(arg4) && arg4.length > 0) saleName = arg4[0];
         textVal = arg2;
     } else {
         allData = arg2;
@@ -442,48 +444,187 @@ export const checkQualityOfConstructionAdjustment = (field, arg2, arg3, arg4, ar
     return { isMatch: true };
 };
 
-export const checkProximityToSubject = (field, text, allData, arg4, arg5) => {
-    let saleName = arg4;
-    if (Array.isArray(arg4)) saleName = arg5;
+export const checkProximityToSubject = (field, arg2, arg3, arg4, arg5) => {
+    let { allData, saleName, textVal } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
+    if (!saleName && Array.isArray(arg4) && arg4.length > 0) saleName = arg4[0];
+    if (!saleName && typeof arg4 === 'string') saleName = arg4;
+    if (!saleName && typeof arg5 === 'string') saleName = arg5;
 
-    if (field !== 'Proximity to Subject' || !allData || !allData.Subject || !saleName || saleName === 'Subject') return null;
-    const proximityText = String(text || '').trim();
-    if (!proximityText) return null;
+    if (!allData || !saleName || String(saleName).trim().toLowerCase() === 'subject') return null;
 
-    const proximityValue = parseFloat(proximityText);
-    if (isNaN(proximityValue)) return null;
-
-    const neighborhoodSection = allData.NEIGHBORHOOD || allData.Neighborhood || allData.neighborhood || {};
-    let location = String(neighborhoodSection.Location || neighborhoodSection.location || '').trim().toLowerCase();
-    if (!location || !['urban', 'suburban', 'rural'].includes(location)) {
-        location = 'suburban';
+    const normSale = String(saleName || '').toUpperCase();
+    if (normSale.startsWith('COMPARABLE NO') || (normSale.includes('RENT') && !normSale.includes('SALE')) || normSale.startsWith('RENTAL')) {
+        return null;
     }
 
-    const comment = String(
-        allData[saleName]?.['Proximity to Subject comment'] ||
-        allData['Summary of Sales Comparison Approach'] ||
-        allData['Sales Comparison Commentary'] ||
-        allData.Subject?.['Summary of Sales Comparison Approach'] ||
+    const normField = String(field || '').trim().toLowerCase();
+    const isProximityField = normField === 'proximity to subject';
+    const isCommentField = normField === 'proximity to subject comment' || normField === 'proximity comment';
+
+    if (!isProximityField && !isCommentField) return null;
+
+    const compObj = (typeof getComparableGridData === 'function')
+        ? getComparableGridData(allData, saleName)
+        : (allData?.[saleName] || allData?.SALES_GRID?.[saleName] || allData?.['Sales Grid']?.[saleName] || {});
+
+    let rawProxText = '';
+    if (isProximityField) {
+        if (textVal !== null && textVal !== undefined && String(textVal).trim() !== '') {
+            rawProxText = String(textVal).trim();
+        } else {
+            rawProxText = String(compObj['Proximity to Subject'] || compObj['Proximity'] || '').trim();
+        }
+    } else {
+        rawProxText = String(compObj['Proximity to Subject'] || compObj['Proximity'] || '').trim();
+        if (!rawProxText && textVal && /\d*\.?\d+\s*(?:mi|mile|miles)/i.test(String(textVal))) {
+            rawProxText = String(textVal).trim();
+        }
+    }
+
+    const proximityText = String(rawProxText || '').trim();
+    if (!proximityText) {
+        if (isCommentField && textVal && String(textVal).trim()) {
+            return { isMatch: true, message: 'Proximity comment is present.' };
+        }
+        return null;
+    }
+
+    const match = proximityText.match(/\d*\.?\d+/);
+    const proximityValue = match ? parseFloat(match[0]) : NaN;
+    if (isNaN(proximityValue)) {
+        if (isCommentField && textVal && String(textVal).trim()) {
+            return { isMatch: true, message: 'Proximity comment is present.' };
+        }
+        return null;
+    }
+
+    const rawLocation = String(
+        allData?.NEIGHBORHOOD?.Location ||
+        allData?.Neighborhood?.Location ||
+        allData?.neighborhood?.location ||
+        allData?.Location ||
+        allData?.location ||
+        allData?.NEIGHBORHOOD?.['Location'] ||
+        ''
+    ).toLowerCase().trim();
+
+    let threshold = 3.0;
+    let displayLocation = 'Suburban';
+
+    if (rawLocation.includes('suburban')) {
+        threshold = 3.0;
+        displayLocation = 'Suburban';
+    } else if (rawLocation.includes('urban')) {
+        threshold = 1.0;
+        displayLocation = 'Urban';
+    } else if (rawLocation.includes('rural')) {
+        threshold = 5.0;
+        displayLocation = 'Rural';
+    } else {
+        threshold = 3.0;
+        displayLocation = 'Suburban';
+    }
+
+    const article = displayLocation === 'Urban' ? 'an' : 'a';
+    const mileWord = threshold === 1.0 ? '1.0 mile' : `${threshold}.0 miles`;
+
+    const commentFromComp = String(
+        compObj['Proximity to Subject comment'] ||
+        compObj['Proximity to Subject Comment'] ||
+        compObj['Proximity Comment'] ||
+        compObj['comment'] ||
+        allData?.[saleName]?.['Proximity to Subject comment'] ||
+        allData?.SALES_GRID?.[saleName]?.['Proximity to Subject comment'] ||
+        allData?.['Sales Grid']?.[saleName]?.['Proximity to Subject comment'] ||
         ''
     ).trim();
 
-    const overrideField = 'Proximity to Subject comment';
+    const commentaryFromNarrative = String(
+        allData?.['Summary of Sales Comparison Approach'] ||
+        allData?.['Sales Comparison Commentary'] ||
+        allData?.Subject?.['Summary of Sales Comparison Approach'] ||
+        allData?.SALES_GRID?.Subject?.['Summary of Sales Comparison Approach'] ||
+        ''
+    ).trim();
 
-    if (location === 'urban') {
-        if (proximityValue > 1 && !comment) {
-            return { isError: true, field: overrideField, message: `Proximity to Subject (${proximityText}) is greater than 1.0 miles for an Urban location. A comment is required.` };
-        }
-    } else if (location === 'suburban') {
-        if (proximityValue > 3 && !comment) {
-            return { isError: true, field: overrideField, message: `Proximity to Subject (${proximityText}) is greater than 3.0 miles for a Suburban location. A comment is required.` };
-        }
-    } else if (location === 'rural') {
-        if (proximityValue > 5 && !comment) {
-            return { isError: true, field: overrideField, message: `Proximity to Subject (${proximityText}) is greater than 5.0 miles for a Rural location. A comment is required.` };
+    const currentComment = isCommentField && textVal !== null && textVal !== undefined && String(textVal).trim() !== ''
+        ? String(textVal).trim()
+        : commentFromComp;
+
+    const compNumMatch = String(saleName).match(/\d+/);
+    const compNum = compNumMatch ? compNumMatch[0] : '';
+    let narrativeMentionsCompDistance = false;
+
+    if (commentaryFromNarrative && compNum) {
+        const normNarr = commentaryFromNarrative.toLowerCase();
+        const mentionsComp = normNarr.includes(`comp ${compNum}`) ||
+                             normNarr.includes(`comp #${compNum}`) ||
+                             normNarr.includes(`comparable ${compNum}`) ||
+                             normNarr.includes(`comparable #${compNum}`) ||
+                             normNarr.includes(`comparable sale ${compNum}`) ||
+                             normNarr.includes(`comparable sale #${compNum}`);
+        const mentionsDistance = normNarr.includes('mile') ||
+                                 normNarr.includes('distance') ||
+                                 normNarr.includes('proximity') ||
+                                 normNarr.includes(proximityText.toLowerCase());
+        if (mentionsComp && mentionsDistance) {
+            narrativeMentionsCompDistance = true;
         }
     }
 
-    return { isMatch: true };
+    // Strip out distance, units (miles, mi), direction words/abbreviations to check if real comment text exists
+    const strippedComment = currentComment.toLowerCase()
+        .replace(/([0-9.]+|\b(miles|mile|mi|north|south|east|west|ne|nw|se|sw|n|s|e|w|approx|approximately)\b|[^a-z0-9])/g, '')
+        .trim();
+
+    const hasSpecificCompComment = Boolean(currentComment && strippedComment.length > 0);
+
+    const hasExplanatoryComment = Boolean(
+        hasSpecificCompComment || narrativeMentionsCompDistance
+    );
+
+    if (proximityValue > threshold) {
+        if (!hasExplanatoryComment) {
+            if (isProximityField) {
+                return {
+                    isError: true,
+                    skipBlankFilter: true,
+                    message: `Proximity to Subject (${proximityText}) is greater than ${mileWord} for ${article} ${displayLocation} location. An explanatory comment is required.`
+                };
+            }
+            return {
+                isError: true,
+                skipBlankFilter: true,
+                message: `An explanatory comment is required because Proximity to Subject (${proximityText}) exceeds ${mileWord} for ${article} ${displayLocation} location.`
+            };
+        }
+        if (isProximityField) {
+            return {
+                isMatch: true,
+                message: `Proximity to Subject (${proximityText}) exceeds ${mileWord} for ${article} ${displayLocation} location, supported by explanatory comment.`
+            };
+        }
+        return {
+            isMatch: true,
+            message: `Explanatory comment provided for comp exceeding distance guideline (${proximityText} > ${mileWord}).`
+        };
+    }
+
+    if (isProximityField) {
+        return {
+            isMatch: true,
+            message: `Proximity to Subject (${proximityText}) is within the ${threshold}.0 mile guideline for ${article} ${displayLocation} location.`
+        };
+    }
+
+    if (currentComment) {
+        return {
+            isMatch: true,
+            message: `Proximity to Subject (${proximityText}) is within the ${threshold}.0 mile guideline for ${article} ${displayLocation} location.`
+        };
+    }
+
+    return null;
 };
 
 export const parseAreaToSqFt = (areaStr) => {
@@ -2043,25 +2184,260 @@ export const checkSalesConcessionsAdjustment = (field, arg2, arg3, arg4, arg5) =
     };
 };
 
-export const checkSalePrice = (field, arg2, arg3, arg4, arg5) => {
-    const { allData, saleName } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
-    if (field !== 'Sale Price' || !allData || !saleName || saleName === 'Subject') {
+export const getNeighborhoodTwelveMonthSalesRange = (allData) => {
+    if (!allData || typeof allData !== 'object') return null;
+
+    const candidateKeys = [
+        "There are ___comparable sales in the subject neighborhoodwithin the past twelvemonths ranging in sale price from$___ to $____",
+        "THERE ARE ___COMPARABLE SALES IN THE SUBJECT NEIGHBORHOODWITHIN THE PAST TWELVEMONTHS RANGING IN SALE PRICE FROM$___ TO $____",
+        "THERE ARE ____ COMPARABLE SALES IN THE SUBJECT NEIGHBORHOOD WITHIN THE PAST TWELVE MONTHS RANGING IN SALE PRICE FROM $ ___ TO $ ___",
+        "THERE ARE ____ COMPARABLE SALES IN THE SUBJECT NEIGHBORHOOD WITHIN THE PAST TWELVE MONTHS RANGING IN SALE PRICE FROM$___ TO $____",
+        "THERE ARE ___ COMPARABLE SALES IN THE SUBJECT NEIGHBORHOOD WITHIN THE PAST TWELVE MONTHS RANGING IN SALE PRICE FROM $ ___ TO $ ___",
+        "There are ___ comparable sales in the subject neighborhood within the past twelve months ranging in sale price from $___ to $___",
+        "Comparable Sales in Subject Neighborhood Past 12 Months",
+        "Comparable Sales in the Subject Neighborhood within the Past Twelve Months"
+    ];
+
+    const sources = [
+        allData,
+        allData.Subject,
+        allData.SUBJECT,
+        allData.NEIGHBORHOOD,
+        allData.Neighborhood,
+        allData.neighborhood,
+        allData.SALES_COMPARISON,
+        allData['Sales Comparison'],
+        allData.SALES_TRANSFER,
+        allData.sales_transfer
+    ];
+
+    let foundStr = '';
+
+    for (const src of sources) {
+        if (!src || typeof src !== 'object') continue;
+        for (const key of candidateKeys) {
+            if (src[key] !== undefined && src[key] !== null) {
+                const val = typeof src[key] === 'object' && src[key] !== null
+                    ? (src[key].value ?? src[key].text ?? '')
+                    : src[key];
+                const str = String(val).trim();
+                if (str && str !== '$' && str !== '____' && str !== '___') {
+                    foundStr = str;
+                    break;
+                }
+            }
+        }
+        if (foundStr) break;
+    }
+
+    if (!foundStr) {
+        for (const src of sources) {
+            if (!src || typeof src !== 'object') continue;
+            for (const [k, v] of Object.entries(src)) {
+                if (typeof k === 'string' &&
+                    k.toLowerCase().includes('comparable sales') &&
+                    (k.toLowerCase().includes('twelve') || k.toLowerCase().includes('12'))
+                ) {
+                    const val = typeof v === 'object' && v !== null ? (v.value ?? v.text ?? '') : v;
+                    const str = String(val).trim();
+                    if (str && str !== '$' && str !== '____' && str !== '___') {
+                        foundStr = str;
+                        break;
+                    }
+                }
+            }
+            if (foundStr) break;
+        }
+    }
+
+    if (!foundStr) return null;
+
+    const match1 = foundStr.match(/ranging in sale price from\s*\$?\s*([\d,._]+)\s*(?:to|-)\s*\$?\s*([\d,._]+)/i);
+    let valLow = null;
+    let valHigh = null;
+
+    if (match1) {
+        valLow = match1[1];
+        valHigh = match1[2];
+    } else {
+        const match2 = foundStr.match(/^\s*\$?\s*([\d,._]+)\s*[:/,-]?\s*(?:to\s*)?\$?\s*([\d,._]+)\s*(?:to\s*|[,/-\s]\s*)\$?\s*([\d,._]+)\s*$/i);
+        if (match2) {
+            valLow = match2[2];
+            valHigh = match2[3];
+        } else {
+            const cleaned = foundStr
+                .replace(/\b12\s*[-\s]*months?\b/gi, '')
+                .replace(/\btwelve\s*[-\s]*months?\b/gi, '');
+            const numMatches = cleaned.match(/\d+(?:,\d+)*(?:\.\d+)?/g);
+            if (numMatches && numMatches.length >= 3) {
+                valLow = numMatches[1];
+                valHigh = numMatches[2];
+            } else if (numMatches && numMatches.length === 2) {
+                valLow = numMatches[0];
+                valHigh = numMatches[1];
+            }
+        }
+    }
+
+    if (!valLow || !valHigh) return null;
+
+    const parseNum = (v) => {
+        if (!v) return NaN;
+        const clean = String(v).replace(/[^0-9.]/g, '');
+        const n = parseFloat(clean);
+        return isNaN(n) ? NaN : n;
+    };
+
+    const numLow = parseNum(valLow);
+    const numHigh = parseNum(valHigh);
+
+    if (isNaN(numLow) || isNaN(numHigh) || numLow <= 0 || numHigh <= 0) {
         return null;
+    }
+
+    const minPrice = Math.min(numLow, numHigh);
+    const maxPrice = Math.max(numLow, numHigh);
+
+    return { minPrice, maxPrice, rawStr: foundStr };
+};
+
+export const checkCompSalePriceWithinNeighborhoodRange = (field, arg2, arg3, arg4, arg5) => {
+    const { allData, saleName, textVal } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
+    if (!allData || typeof allData !== 'object') return null;
+
+    let resolvedSaleName = saleName;
+    if (!resolvedSaleName && Array.isArray(arg4) && arg4.length > 0) {
+        resolvedSaleName = arg4[0];
+    }
+
+    if (!resolvedSaleName || String(resolvedSaleName).trim().toLowerCase() === 'subject') {
+        return null;
+    }
+
+    const compObj = (typeof getComparableGridData === 'function')
+        ? getComparableGridData(allData, resolvedSaleName)
+        : (allData[resolvedSaleName] || allData.SALES_GRID?.[resolvedSaleName] || {});
+
+    // Check Date of Sale/Time and Concessions for Active/Listing
+    const dateFieldVal = compObj['Date of Sale/Time'] ?? compObj['Date of Sale'] ?? '';
+    const dateText = String(
+        typeof dateFieldVal === 'object' && dateFieldVal !== null
+            ? (dateFieldVal.value ?? dateFieldVal.text ?? '')
+            : (dateFieldVal || '')
+    ).trim();
+
+    const concessionsFieldVal = compObj['Sales or Financing Concessions'] ?? compObj['Sales/Financing Concessions'] ?? compObj['Sales Concessions'] ?? '';
+    const concessionsText = String(
+        typeof concessionsFieldVal === 'object' && concessionsFieldVal !== null
+            ? (concessionsFieldVal.value ?? concessionsFieldVal.text ?? '')
+            : (concessionsFieldVal || '')
+    ).trim();
+
+    // Check if active or listing - if so, do NOT validate
+    const isListingOrActive = (
+        /(?:^|[^a-zA-Z0-9])(?:active|act\b|act\.|act;|listing|list\b|pend|pending|contract)/i.test(dateText) ||
+        /(?:^|[^a-zA-Z0-9])(?:active|act\b|act\.|act;|listing|list\b)/i.test(concessionsText) ||
+        dateText.toLowerCase().includes('active') ||
+        dateText.toLowerCase().includes('listing')
+    );
+
+    if (isListingOrActive) {
+        return null;
+    }
+
+    // Check if s;c date is given (settled sale date with 's' prefix e.g. s09/26;c07/26 or s09/26)
+    const hasSettledDate = (
+        /(?:^|[^a-zA-Z0-9])s\s*:?\s*(\d{1,2})\s*[/.-]\s*(\d{2,4})/i.test(dateText) ||
+        (/(?:^|[;\s])s\s*\d{1,2}/i.test(dateText) && /\d{2}/.test(dateText)) ||
+        (/(?:^|[;\s])s/i.test(dateText) && /(?:^|[;\s])c/i.test(dateText) && /\d{1,2}[/.-]\d{2,4}/.test(dateText))
+    );
+
+    if (!hasSettledDate) {
+        return null;
+    }
+
+    // Extract comp sale price
+    const rawSalePrice = (textVal !== null && textVal !== undefined && String(textVal).trim() !== '')
+        ? textVal
+        : (compObj['Sale Price'] ?? compObj['Sale Price $'] ?? '');
+
+    if (rawSalePrice === undefined || rawSalePrice === null || String(rawSalePrice).trim() === '') {
+        return null;
+    }
+
+    const compPrice = parseFloat(String(rawSalePrice).replace(/[^0-9.]/g, ''));
+    if (isNaN(compPrice) || compPrice <= 0) {
+        return null;
+    }
+
+    const range = getNeighborhoodTwelveMonthSalesRange(allData);
+    const compLabel = resolvedSaleName || 'Comp';
+
+    if (!range) {
+        return {
+            isError: true,
+            section: 'Sales Comparison',
+            field: 'Sale Price',
+            message: `Neighborhood 12-month comparable sales range ($__ to $__) is missing or invalid. ${compLabel} sale price cannot be verified.`
+        };
+    }
+
+    const { minPrice, maxPrice } = range;
+
+    if (compPrice < minPrice) {
+        return {
+            isError: true,
+            section: 'Sales Comparison',
+            field: 'Sale Price',
+            message: `${compLabel} sale price ($${compPrice.toLocaleString()}) is below the neighborhood 12-month comparable sales range ($${minPrice.toLocaleString()} - $${maxPrice.toLocaleString()}).`
+        };
+    }
+
+    if (compPrice > maxPrice) {
+        return {
+            isError: true,
+            section: 'Sales Comparison',
+            field: 'Sale Price',
+            message: `${compLabel} sale price ($${compPrice.toLocaleString()}) exceeds the neighborhood 12-month comparable sales range ($${minPrice.toLocaleString()} - $${maxPrice.toLocaleString()}).`
+        };
+    }
+
+    return {
+        isMatch: true,
+        section: 'Sales Comparison',
+        field: 'Sale Price',
+        message: `${compLabel} sale price ($${compPrice.toLocaleString()}) is within the neighborhood 12-month comparable sales range ($${minPrice.toLocaleString()} - $${maxPrice.toLocaleString()}).`
+    };
+};
+
+export const checkSalePrice = (field, arg2, arg3, arg4, arg5) => {
+    const { allData, saleName, textVal } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
+    if ((field !== 'Sale Price' && field !== 'Sale Price $') || !allData || !saleName || saleName === 'Subject') {
+        return null;
+    }
+
+    const rangeRes = checkCompSalePriceWithinNeighborhoodRange(field, arg2, arg3, arg4, arg5);
+    if (rangeRes && rangeRes.isError) {
+        return rangeRes;
     }
 
     const subjGrid = getSubjectGridData(allData);
     const subjectSalePriceText = String(subjGrid['Sale Price'] || allData.Subject?.['Sale Price'] || '').trim();
-    const compSalePriceText = String(allData[saleName]?.['Sale Price'] || '').trim();
+    const compSalePriceText = String(
+        (textVal !== null && textVal !== undefined && String(textVal).trim() !== '')
+            ? textVal
+            : (allData[saleName]?.['Sale Price'] || allData[saleName]?.['Sale Price $'] || '')
+    ).trim();
 
     if (!subjectSalePriceText || !compSalePriceText) {
-        return null;
+        return rangeRes || null;
     }
 
     const subjectPrice = parseFloat(subjectSalePriceText.replace(/[^0-9.-]+/g, ""));
     const compPrice = parseFloat(compSalePriceText.replace(/[^0-9.-]+/g, ""));
 
     if (isNaN(subjectPrice) || isNaN(compPrice) || subjectPrice === 0) {
-        return null;
+        return rangeRes || null;
     }
 
     const difference = Math.abs(subjectPrice - compPrice);
@@ -2071,76 +2447,294 @@ export const checkSalePrice = (field, arg2, arg3, arg4, arg5) => {
         return { isError: true, message: `Warning: Comp sale price ($${compPrice.toLocaleString()}) differs from Subject sale price ($${subjectPrice.toLocaleString()}) by more than 25%.` };
     }
 
-    return { isMatch: true };
+    return rangeRes || { isMatch: true };
+};
+
+export const extractYearFromDateString = (str) => {
+    if (!str && str !== 0) return null;
+    const val = typeof str === 'object' && str !== null ? (str.value ?? str.text ?? '') : String(str);
+    const trimmed = String(val).trim();
+    if (!trimmed) return null;
+
+    const fourDigitMatch = trimmed.match(/\b(18\d\d|19\d\d|20\d\d)\b/);
+    if (fourDigitMatch) {
+        return parseInt(fourDigitMatch[1], 10);
+    }
+
+    const twoDigitMatch = trimmed.match(/\b\d{1,2}[/.-]\d{1,2}[/.-](\d{2})\b/);
+    if (twoDigitMatch) {
+        const yy = parseInt(twoDigitMatch[1], 10);
+        return yy >= 70 ? 1900 + yy : 2000 + yy;
+    }
+
+    const parsedTime = Date.parse(trimmed);
+    if (!isNaN(parsedTime)) {
+        const d = new Date(parsedTime);
+        const y = d.getFullYear();
+        if (y >= 1800 && y <= 2100) return y;
+    }
+
+    return null;
+};
+
+export const getReconAsOfYear = (allData) => {
+    if (!allData || typeof allData !== 'object') return null;
+
+    const reconCandidates = [
+        allData.RECONCILIATION?.['as of'],
+        allData.Reconciliation?.['as of'],
+        allData['as of'],
+        allData.RECONCILIATION?.['as of date'],
+        allData.Reconciliation?.['as of date'],
+        allData['as of date'],
+        allData.RECONCILIATION?.['as of Date'],
+        allData.Reconciliation?.['as of Date'],
+        allData['as of Date'],
+        allData.RECONCILIATION?.['Appraisal Effective Date'],
+        allData.Reconciliation?.['Appraisal Effective Date'],
+        allData['Appraisal Effective Date'],
+        allData.RECONCILIATION?.['Effective Date of Appraisal'],
+        allData.Reconciliation?.['Effective Date of Appraisal'],
+        allData.RECONCILIATION?.['Effective Date'],
+        allData.Reconciliation?.['Effective Date']
+    ];
+
+    for (const cand of reconCandidates) {
+        const y = extractYearFromDateString(cand);
+        if (y !== null) return y;
+    }
+
+    const reconSections = [allData.RECONCILIATION, allData.Reconciliation, allData.reconciliation];
+    for (const sec of reconSections) {
+        if (sec && typeof sec === 'object') {
+            for (const [k, v] of Object.entries(sec)) {
+                if (k.toLowerCase().includes('as of') || k.toLowerCase().includes('effective date')) {
+                    const y = extractYearFromDateString(v);
+                    if (y !== null) return y;
+                }
+            }
+        }
+    }
+
+    const fallbackCandidates = [
+        allData.CERTIFICATION?.['Effective Date of Appraisal'],
+        allData.Certification?.['Effective Date of Appraisal'],
+        allData['Effective Date of Appraisal'],
+        allData.CERTIFICATION?.['Effective Date'],
+        allData.Certification?.['Effective Date'],
+        allData['Effective Date'],
+        allData.APPRAISER?.['Effective Date of Appraisal'],
+        allData.CERTIFICATION?.['Date of Signature and Report'],
+        allData.Certification?.['Date of Signature and Report'],
+        allData['Date of Signature and Report']
+    ];
+
+    for (const cand of fallbackCandidates) {
+        const y = extractYearFromDateString(cand);
+        if (y !== null) return y;
+    }
+
+    return null;
+};
+
+export const getYearBuiltFromImprovements = (allData) => {
+    if (!allData || typeof allData !== 'object') return null;
+
+    const candidates = [
+        allData.IMPROVEMENTS?.['Year Built'],
+        allData.Improvements?.['Year Built'],
+        allData.improvements?.['Year Built'],
+        allData['Year Built'],
+        allData.Subject?.['Year Built'],
+        allData.SUBJECT?.['Year Built'],
+        allData.SITE?.['Year Built'],
+        allData.Site?.['Year Built']
+    ];
+
+    for (const cand of candidates) {
+        const y = extractYearFromDateString(cand);
+        if (y !== null) return y;
+    }
+
+    const impSections = [allData.IMPROVEMENTS, allData.Improvements, allData.improvements];
+    for (const sec of impSections) {
+        if (sec && typeof sec === 'object') {
+            for (const [k, v] of Object.entries(sec)) {
+                if (k.toLowerCase().includes('year built')) {
+                    const y = extractYearFromDateString(v);
+                    if (y !== null) return y;
+                }
+            }
+        }
+    }
+
+    return null;
+};
+
+export const getSubjectExpectedActualAge = (allData) => {
+    const asOfYear = getReconAsOfYear(allData);
+    const yearBuilt = getYearBuiltFromImprovements(allData);
+    if (asOfYear !== null && yearBuilt !== null) {
+        return asOfYear - yearBuilt;
+    }
+    return null;
+};
+
+export const getEffectiveAge = (allData) => {
+    if (!allData || typeof allData !== 'object') return null;
+
+    const candidates = [
+        allData.IMPROVEMENTS?.['Effective Age (Yrs)'],
+        allData.Improvements?.['Effective Age (Yrs)'],
+        allData.IMPROVEMENTS?.['Effective Age'],
+        allData.Improvements?.['Effective Age'],
+        allData.IMPROVEMENTS?.['Effective Age (Yrs.)'],
+        allData.Improvements?.['Effective Age (Yrs.)'],
+        allData.IMPROVEMENTS?.['Effective Age (Years)'],
+        allData.Improvements?.['Effective Age (Years)'],
+        allData['Effective Age (Yrs)'],
+        allData['Effective Age'],
+        allData['Effective Age (Yrs.)'],
+        allData['Effective Age (Years)']
+    ];
+
+    for (const cand of candidates) {
+        if (cand !== undefined && cand !== null && String(cand).trim() !== '') {
+            const valStr = typeof cand === 'object' ? (cand.value ?? '') : String(cand);
+            const trimmed = valStr.trim();
+            if (trimmed.toLowerCase().includes('new')) return 0;
+            const digits = trimmed.replace(/[^0-9]/g, '');
+            if (digits) {
+                const parsed = parseInt(digits, 10);
+                if (!isNaN(parsed)) return parsed;
+            }
+        }
+    }
+
+    const impSections = [allData.IMPROVEMENTS, allData.Improvements, allData.improvements];
+    for (const sec of impSections) {
+        if (sec && typeof sec === 'object') {
+            for (const [k, v] of Object.entries(sec)) {
+                if (k.toLowerCase().includes('effective age')) {
+                    const valStr = typeof v === 'object' && v !== null ? (v.value ?? '') : String(v);
+                    const trimmed = valStr.trim();
+                    if (trimmed.toLowerCase().includes('new')) return 0;
+                    const digits = trimmed.replace(/[^0-9]/g, '');
+                    if (digits) {
+                        const parsed = parseInt(digits, 10);
+                        if (!isNaN(parsed)) return parsed;
+                    }
+                }
+            }
+        }
+    }
+
+    return null;
+};
+
+export const getSubjectGridActualAge = (allData) => {
+    if (!allData || typeof allData !== 'object') return null;
+
+    const subjGrid = (typeof getSubjectGridData === 'function' ? getSubjectGridData(allData) : {}) || {};
+    const candidates = [
+        subjGrid['Actual Age'],
+        subjGrid['Age'],
+        allData.SALES_GRID?.Subject?.['Actual Age'],
+        allData.SALES_GRID?.Subject?.['Age'],
+        allData['Sales Grid']?.Subject?.['Actual Age'],
+        allData['Sales Grid']?.Subject?.['Age'],
+        allData.Subject?.['Actual Age'],
+        allData.Subject?.['Age'],
+        allData.SUBJECT?.['Actual Age'],
+        allData.SUBJECT?.['Age'],
+        allData['Actual Age']
+    ];
+
+    for (const cand of candidates) {
+        if (cand !== undefined && cand !== null && String(cand).trim() !== '') {
+            const valStr = typeof cand === 'object' ? (cand.value ?? '') : String(cand);
+            const trimmed = valStr.trim();
+            if (trimmed.toLowerCase().includes('new')) return 0;
+            const digits = trimmed.replace(/[^0-9]/g, '');
+            if (digits) {
+                const parsed = parseInt(digits, 10);
+                if (!isNaN(parsed)) return parsed;
+            }
+        }
+    }
+
+    return null;
 };
 
 export const checkSubjectAgeConsistency = (field, arg2, arg3, arg4, arg5) => {
     let allData = null;
     let saleName = null;
     let actualAgeVal = null;
+    let fieldPath = null;
 
     if (arg3 && typeof arg3 === 'object' && !arg3.hasOwnProperty('prototype') && !Array.isArray(arg3)) {
         allData = arg3;
         saleName = arg5;
+        fieldPath = arg4;
         actualAgeVal = arg2;
     } else {
         allData = arg2;
         saleName = arg3;
+        fieldPath = arg4;
     }
 
-    if (field !== 'Actual Age' || saleName !== 'Subject' || !allData) return null;
+    if (!saleName && Array.isArray(fieldPath) && fieldPath.length > 0) {
+        saleName = fieldPath[0];
+    }
 
-    let actualAgeStr = String(actualAgeVal || '').trim();
+    if ((field !== 'Actual Age' && field !== 'Age') || !allData) return null;
+    if (saleName && saleName !== 'Subject' && !String(saleName).toLowerCase().includes('subject')) return null;
+
+    let actualAgeStr = String(actualAgeVal !== undefined && actualAgeVal !== null ? actualAgeVal : '').trim();
     if (!actualAgeStr) {
-        const subjGrid = getSubjectGridData(allData);
-        actualAgeStr = String(
-            subjGrid['Actual Age'] ||
-            allData['Actual Age'] ||
-            allData.Subject?.['Actual Age'] ||
-            ''
-        ).trim();
+        const gridAge = getSubjectGridActualAge(allData);
+        if (gridAge !== null) {
+            actualAgeStr = String(gridAge);
+        }
     }
 
-    const yearBuiltStr = String(
-        allData.IMPROVEMENTS?.['Year Built'] ||
-        allData['Year Built'] ||
-        allData.Subject?.['Year Built'] ||
-        allData['Subject']?.['Year Built'] ||
-        allData.SITE?.['Year Built'] ||
-        ''
-    ).trim();
-
-    if (!actualAgeStr || !yearBuiltStr) return null;
+    if (!actualAgeStr) return null;
 
     let actualAge = parseInt(actualAgeStr.replace(/[^0-9]/g, ''), 10);
     if (isNaN(actualAge) && actualAgeStr.toLowerCase().includes('new')) {
         actualAge = 0;
     }
-    const yearBuilt = parseInt(yearBuiltStr.replace(/[^0-9]/g, ''), 10);
+    if (isNaN(actualAge)) return null;
 
-    if (isNaN(actualAge) || isNaN(yearBuilt)) return null;
+    const asOfYear = getReconAsOfYear(allData);
+    const yearBuilt = getYearBuiltFromImprovements(allData);
 
-    let currentYear = new Date().getFullYear();
-    const effectiveDateStr = String(
-        allData.CERTIFICATION?.['Effective Date of Appraisal'] ||
-        allData['Effective Date of Appraisal'] ||
-        allData['Effective Date'] ||
-        allData.CERTIFICATION?.['Date of Signature and Report'] ||
-        allData['Date of Signature and Report'] ||
-        ''
-    ).trim();
-
-    if (effectiveDateStr) {
-        const yearMatch = effectiveDateStr.match(/\b(19\d\d|20\d\d)\b/);
-        if (yearMatch) {
-            currentYear = parseInt(yearMatch[1], 10);
+    if (asOfYear !== null && yearBuilt !== null) {
+        const expectedAge = asOfYear - yearBuilt;
+        if (actualAge !== expectedAge) {
+            return {
+                isError: true,
+                message: `Subject Actual Age (${actualAge}) in Sales Grid should be ${expectedAge} (calculated as 'as of DATE' in recon section [${asOfYear}] minus Year Built in improvements section [${yearBuilt}]).`
+            };
         }
     }
 
-    const calculatedAge = currentYear - yearBuilt;
+    // Rule i: Effective age should always be less than actual age
+    const effectiveAge = getEffectiveAge(allData);
+    if (effectiveAge !== null && !isNaN(effectiveAge)) {
+        if (effectiveAge >= actualAge) {
+            return {
+                isError: true,
+                message: `Effective Age (${effectiveAge}) must be less than Actual Age (${actualAge}).`
+            };
+        }
+    }
 
-    if (Math.abs(calculatedAge - actualAge) > 1) {
-        return { isError: true, message: `Subject Actual Age (${actualAge}) in Sales Grid does not match Year Built (${yearBuilt}). Expected ~${calculatedAge}.` };
+    if (asOfYear !== null && yearBuilt !== null) {
+        return {
+            isMatch: true,
+            message: `Subject Actual Age (${actualAge}) matches 'as of' date (${asOfYear}) minus Year Built (${yearBuilt}).`
+        };
     }
 
     return { isMatch: true };

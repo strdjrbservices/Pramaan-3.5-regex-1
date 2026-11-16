@@ -3,11 +3,9 @@ import {
     checkRentOtherBasementAdjustment,
     checkMinimumRentalComparables,
     getPresentRentalCompsCount,
-    isRentalCompPresent,
-    getComparableIndicatedMonthlyMarketRents,
-    getRentScheduleToBeValue,
     checkRentScheduleToBeBracketing,
-    checkCompIndicatedMonthlyMarketRentBracketing
+    checkCompIndicatedMonthlyMarketRentBracketing,
+    checkRentProximityToSubject
 } from '../rentScheduleValidation';
 
 describe('checkOtherBasement validation', () => {
@@ -360,5 +358,70 @@ describe('Comparable Rent Schedule TO BE $ Bracketing Validation', () => {
         };
         const res = checkRentScheduleToBeBracketing('TO BE $', '1,000', emptyData);
         expect(res).toBeNull();
+    });
+});
+
+describe('checkRentProximityToSubject validation', () => {
+    const mockData = {
+        'COMPARABLE NO. 1': {
+            'Proximity to Subject': '5.2 miles NW'
+        },
+        'COMPARABLE NO. 2': {
+            'Proximity to Subject': '12.5 miles S'
+        },
+        'COMPARABLE Rental No #1': {
+            'Proximity to Subject': '8.0 miles'
+        },
+        'COMPARABLE Rental No #2': {
+            'Proximity to Subject': '11.2 miles NE'
+        }
+    };
+
+    test('validates rental comparable with <= 10 miles as match', () => {
+        const res = checkRentProximityToSubject('Proximity to Subject', '5.2 miles NW', mockData, ['COMPARABLE NO. 1', 'Proximity to Subject'], 'COMPARABLE NO. 1');
+        expect(res).not.toBeNull();
+        expect(res.isMatch).toBe(true);
+        expect(res.message).toContain('The miles of rental is not more than 10 miles (5.2 miles NW)');
+    });
+
+    test('validates exactly 10.0 miles as match', () => {
+        const res = checkRentProximityToSubject('Proximity to Subject', '10.0 miles', mockData, ['COMPARABLE NO. 1', 'Proximity to Subject'], 'COMPARABLE NO. 1');
+        expect(res).not.toBeNull();
+        expect(res.isMatch).toBe(true);
+        expect(res.message).toContain('not more than 10 miles');
+    });
+
+    test('flags error when rental comparable exceeds 10 miles', () => {
+        const res = checkRentProximityToSubject('Proximity to Subject', '12.5 miles S', mockData, ['COMPARABLE NO. 2', 'Proximity to Subject'], 'COMPARABLE NO. 2');
+        expect(res).not.toBeNull();
+        expect(res.isError).toBe(true);
+        expect(res.message).toContain('The miles of rental should be not more than 10 miles (current: 12.5 miles S).');
+    });
+
+    test('works with Form 1025 rental naming (COMPARABLE Rental No #1)', () => {
+        const resValid = checkRentProximityToSubject('Proximity to Subject', '8.0 miles', mockData, ['COMPARABLE Rental No #1', 'Proximity to Subject'], 'COMPARABLE Rental No #1');
+        expect(resValid).not.toBeNull();
+        expect(resValid.isMatch).toBe(true);
+
+        const resInvalid = checkRentProximityToSubject('Proximity to Subject', '11.2 miles NE', mockData, ['COMPARABLE Rental No #2', 'Proximity to Subject'], 'COMPARABLE Rental No #2');
+        expect(resInvalid).not.toBeNull();
+        expect(resInvalid.isError).toBe(true);
+        expect(resInvalid.message).toContain('The miles of rental should be not more than 10 miles');
+    });
+
+    test('skips Subject property', () => {
+        const res = checkRentProximityToSubject('Proximity to Subject', '5.0 miles', mockData, ['Subject', 'Proximity to Subject'], 'Subject');
+        expect(res).toBeNull();
+    });
+
+    test('skips Sales grid comparable (COMPARABLE SALE #1)', () => {
+        const res = checkRentProximityToSubject('Proximity to Subject', '12.0 miles', mockData, ['COMPARABLE SALE #1', 'Proximity to Subject'], 'COMPARABLE SALE #1');
+        expect(res).toBeNull();
+    });
+
+    test('works with fallback call signature (field, allData, saleName)', () => {
+        const res = checkRentProximityToSubject('Proximity to Subject', mockData, 'COMPARABLE NO. 1');
+        expect(res).not.toBeNull();
+        expect(res.isMatch).toBe(true);
     });
 });
