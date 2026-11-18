@@ -97,6 +97,10 @@ export const checkNotBlank = (field, text, fieldName) => {
 export const checkDisallowedPhrases = (field, text) => {
     if (text === undefined || text === null) return null;
 
+    const fieldLower = String(field || '').trim().toLowerCase();
+    const isSupervisoryField = fieldLower.includes('supervisory');
+    const isUadPresenceField = fieldLower.includes('uad pages present') || fieldLower === 'uad & certification addenda';
+
     const checkString = (val) => {
         if (val === undefined || val === null) return null;
         if (typeof val === 'function') return null;
@@ -122,6 +126,19 @@ export const checkDisallowedPhrases = (field, text) => {
         if (str.includes('see attached')) {
             return 'SEE ATTACHED';
         }
+        if (str.includes('not attached') || str.includes('not-attached')) {
+            return 'NOT ATTACHED';
+        }
+
+        if (!isSupervisoryField && !isUadPresenceField) {
+            if (str.includes('not present') || str.includes('not-present')) {
+                return 'NOT PRESENT';
+            }
+            if (/\babsent\b/i.test(str)) {
+                return 'ABSENT';
+            }
+        }
+
         return null;
     };
 

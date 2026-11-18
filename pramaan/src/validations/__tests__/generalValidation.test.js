@@ -109,6 +109,69 @@ describe('generalValidation - checkDisallowedPhrases', () => {
         expect(res.message).toContain('SEE PLAT MAP');
     });
 
+    test('flags "NOT PRESENT" and "not present" as invalid error', () => {
+        const result1 = checkDisallowedPhrases('Map Reference', 'NOT PRESENT');
+        expect(result1).toEqual({
+            isError: true,
+            skipBlankFilter: true,
+            message: "'Map Reference' cannot contain 'NOT PRESENT'. Specific details must be provided."
+        });
+
+        const result2 = checkDisallowedPhrases('Legal Description', 'not present');
+        expect(result2).not.toBeNull();
+        expect(result2.isError).toBe(true);
+        expect(result2.message).toContain('NOT PRESENT');
+
+        const result3 = checkDisallowedPhrases('Comments', 'Deed information is not present in file');
+        expect(result3).not.toBeNull();
+        expect(result3.isError).toBe(true);
+    });
+
+    test('flags "ABSENT" and "absent" as invalid error while ignoring "absentee"', () => {
+        const result1 = checkDisallowedPhrases('Car Storage', 'ABSENT');
+        expect(result1).toEqual({
+            isError: true,
+            skipBlankFilter: true,
+            message: "'Car Storage' cannot contain 'ABSENT'. Specific details must be provided."
+        });
+
+        const result2 = checkDisallowedPhrases('E&O', 'absent');
+        expect(result2).not.toBeNull();
+        expect(result2.isError).toBe(true);
+        expect(result2.message).toContain('ABSENT');
+
+        const result3 = checkDisallowedPhrases('Invoice', 'invoice is absent');
+        expect(result3).not.toBeNull();
+        expect(result3.isError).toBe(true);
+
+        // Does not falsely flag 'absentee owner'
+        expect(checkDisallowedPhrases('Occupant', 'absentee owner')).toBeNull();
+    });
+
+    test('flags "NOT ATTACHED" and "not attached" as invalid error', () => {
+        const result1 = checkDisallowedPhrases('Invoice Attached', 'NOT ATTACHED');
+        expect(result1).toEqual({
+            isError: true,
+            skipBlankFilter: true,
+            message: "'Invoice Attached' cannot contain 'NOT ATTACHED'. Specific details must be provided."
+        });
+
+        const result2 = checkDisallowedPhrases('Flood Map', 'not attached');
+        expect(result2).not.toBeNull();
+        expect(result2.isError).toBe(true);
+        expect(result2.message).toContain('NOT ATTACHED');
+
+        const result3 = checkDisallowedPhrases('Exhibits', 'Addendum is not attached to this report');
+        expect(result3).not.toBeNull();
+        expect(result3.isError).toBe(true);
+    });
+
+    test('allows "Not Present" for optional supervisory appraiser and non-UAD indicator', () => {
+        expect(checkDisallowedPhrases('Supervisory Appraiser Name', 'Not Present')).toBeNull();
+        expect(checkDisallowedPhrases('Supervisory Name', 'not present')).toBeNull();
+        expect(checkDisallowedPhrases('UAD pages present in the report', 'Not Present')).toBeNull();
+    });
+
     test('defaults field name to Field if not supplied', () => {
         const res = checkDisallowedPhrases(null, 'SEE ATTACHED');
         expect(res.message).toBe("'Field' cannot contain 'SEE ATTACHED'. Specific details must be provided.");
