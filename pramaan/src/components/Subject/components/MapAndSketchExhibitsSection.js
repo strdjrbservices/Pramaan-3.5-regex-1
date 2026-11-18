@@ -60,7 +60,7 @@ import {
   getSketchAreasBreakdown,
   parseSketchRooms,
   extractSketchFromBase64
-} from '../utils/sketchPdfExtractor.js';
+} from '../utils/sketchPdfExtractor';
 
 const getRoomIconComponent = (category) => {
   switch (category) {
