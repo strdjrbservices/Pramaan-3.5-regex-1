@@ -5,10 +5,10 @@ import { checkZoning, checkNonconformingComment, checkZoningDescription, checkSp
 import { checkVersion1UtilitySubfields, checkZoningClassificationDescription, checkSiteSizesConsistency, checkVersion1EffectiveDatesConsistency, checkAboveGradeFinishedAreaConsistency, checkYearBuiltConsistency, checkAppraiserNameConsistency, checkVersion1ComparableListingStatusConsistency, checkVersion1ComparableTransferTermsConsistency, checkVersion1YearBuiltAdjustmentConsistency, checkVersion1ConstructionMethodAdjustmentConsistency, checkVersion1SiteSizeAdjustmentConsistency, checkVersion1LocationAdjustmentConsistency, checkVersion1AttachedDetachedAdjustmentConsistency, checkVersion1HeatingAdjustmentConsistency, checkVersion1AmenitiesAdjustmentConsistency, checkVersion1QualityConditionConsistency, checkVersion1AreaAdjustmentConsistency, checkVersion1OverallQualityConditionAdjustmentConsistency, checkVersion1VehicleStorageAdjustmentConsistency } from '../Version1/version1Validation';
 import { checkHousingPriceAndAge, checkPredominantPriceVsIndicatedValue, checkNeighborhoodUsageConsistency, checkSingleChoiceFields, checkNeighborhoodBoundaries, checkNeighborhoodFieldsNotBlank, checkOtherLandUseComment, checkOtherLandUse, checkSearchCriteriaDescription, checkNeighborhoodListPricesConsistency, checkNeighborhoodSalePricesConsistency, checkLocation, checkBuiltUp, checkGrowth, checkPropertyValues, checkDemandSupply } from '../../../validations/neighborhoodValidation';
 import { checkUnits, checkAccessoryUnit, checkNumberOfStories, checkPropertyType, checkConstructionStatusAndReconciliation, checkExistingProposedUnderConst, checkDesignStyle, checkSubjectDesignStyleConsistency, checkYearBuilt, checkEffectiveAge, checkAdditionalFeatures, checkPhysicalDeficienciesImprovements, checkNeighborhoodConformity, checkFoundationType, checkBasementDetails, checkEvidenceOf, checkMaterialCondition, checkHeatingFuel, checkCarStorage, checkImprovementsFieldsNotBlank } from '../../../validations/improvementsValidation';
-import { checkConditionAdjustment, checkBedroomsAdjustment, checkBathsAdjustment, checkQualityOfConstructionAdjustment, checkProximityToSubject, checkSiteAdjustment, checkGrossLivingAreaAdjustment, checkSubjectAddressInconsistency, checkDesignStyleAdjustment, checkFunctionalUtilityAdjustment, checkEnergyEfficientItemsAdjustment, checkPorchPatioDeckAdjustment, checkHeatingCoolingAdjustment, checkDataSourceDOM, checkActualAgeAdjustment, checkLeaseholdFeeSimpleConsistency, checkDateOfSale, checkLocationConsistency, checkSalePrice, checkSubjectAgeConsistency, checkViewAdjustment, checkCompSalePriceBracketing, checkCompAdjustedSalePriceBracketing, checkSalesConcessions, checkSalesConcessionsAdjustment, checkBasementAdjustment, checkGrossLivingAreaBracketing, checkSiteBracketing, checkBasementAreaBracketing, checkBasementFinishedAreaBracketing, checkGarageCarportAdjustment, checkGarageCarportBracketing, checkCompSalePriceWithinNeighborhoodRange } from '../../../validations/salesComparisonValidation';
+import { checkComparableAddressDuplicates, checkConditionAdjustment, checkBedroomsAdjustment, checkBathsAdjustment, checkQualityOfConstructionAdjustment, checkProximityToSubject, checkSiteAdjustment, checkGrossLivingAreaAdjustment, checkSubjectAddressInconsistency, checkDesignStyleAdjustment, checkFunctionalUtilityAdjustment, checkEnergyEfficientItemsAdjustment, checkPorchPatioDeckAdjustment, checkHeatingCoolingAdjustment, checkDataSourceDOM, checkActualAgeAdjustment, checkLeaseholdFeeSimpleConsistency, checkDateOfSale, checkLocationConsistency, checkSalePrice, checkSubjectAgeConsistency, checkViewAdjustment, checkCompSalePriceBracketing, checkCompAdjustedSalePriceBracketing, checkSalesConcessions, checkSalesConcessionsAdjustment, checkBasementAdjustment, checkGrossLivingAreaBracketing, checkSiteBracketing, checkBasementAreaBracketing, checkBasementFinishedAreaBracketing, checkGarageCarportAdjustment, checkGarageCarportBracketing, checkCompSalePriceWithinNeighborhoodRange } from '../../../validations/salesComparisonValidation';
 import { checkFinalValueConsistency, checkCostApproachDeveloped, checkAppraisalCondition, checkAsOfDate, checkFinalValueBracketing, checkReconciliationFieldsNotBlank, checkFiveValuesConsistency, checkEffectiveDatesConsistency, checkPropertyQualityConsistency, checkPropertyConditionConsistency, checkHbuConsistency, checkCostApproachConsistency, checkAttachmentTypeConsistency, checkPropertyRightsConsistency, checkAppraiserCredentialLevelConsistency } from '../../../validations/reconciliationValidation';
 import { checkLenderAddressInconsistency, checkLenderNameInconsistency, checkUnpaidLender, checkAppraiserFieldsNotBlank, checkLicenseNumberConsistency as checkAppraiserLicenseConsistency, checkDateGreaterThanToday, checkClientNameHtmlConsistency, checkClientAddressHtmlConsistency, checkBorrowerHtmlConsistency, checkAppraiserVendorNameConsistency, checkSupervisoryAppraiserFields, checkAppraiserLicenseGroup, checkUspapReportingOption, checkReasonableExposureTime, checkAppraiserInspection, checkSignatureDateVsEffectiveDate, checkUadAndCertificationAddenda } from '../../../validations/appraiserLenderValidation';
-import { checkCostNew, checkSourceOfCostData, checkIndicatedValueByCostApproach, checkCostApproachFieldsNotBlank, checkOpinionOfSiteValue, checkRemainingEconomicLife } from '../../../validations/costApproachValidation';
+import { checkCostNew, checkSourceOfCostData, checkIndicatedValueByCostApproach, checkCostApproachFieldsNotBlank, checkOpinionOfSiteValue, checkRemainingEconomicLife, checkBplCostApproachReplication } from '../../../validations/costApproachValidation';
 import { checkResearchHistory, checkSubjectPriorSales, checkComparablePriorSales, checkDataSourceNotBlank, checkEffectiveDateIsCurrentYear, checkSubjectPriorSaleDate, checkCompPriorSaleDate, checkPriorSalePrice } from '../../../validations/salesHistoryValidation';
 import { checkStateRequirements } from '../../../validations/stateValidation';
 import { checkLenderAddressInconsistency as checkLenderAddressHtmlInconsistency, checkSubjectLenderNameVsHtml, checkBorrowerNameVsHtml, checkTransactionTypeHtmlConsistency, checkAppraisalTypeHtmlConsistency, checkCountyHtmlConsistency, checkPropertyAddressHtmlConsistency } from '../../../validations/htmldatavaliadtion';
@@ -35,6 +35,7 @@ import {
   checkRentSubjectOtherConsistency,
   checkRentOtherAdjustment,
   checkMinimumRentalComparables,
+  checkRentalComparableAddressDuplicates,
   checkRentScheduleToBeBracketing,
   checkCompIndicatedMonthlyMarketRentBracketing,
   checkRentProximityToSubject
@@ -49,6 +50,7 @@ import { checkProjectSiteFieldsNotBlank } from '../../../validations/projectSite
 import { checkPriorSaleHistoryFieldsNotBlank, checkSubjectPriorSaleValueIncrease, PRIOR_SALE_HISTORY_FIELDS_TO_CHECK } from '../../../validations/priorSaleHistoryValidation';
 import { checkInfoOfSalesFieldsNotBlank } from '../../../validations/infoOfSalesValidation';
 import { checkRentScheduleAsOfDateConsistency, checkRentScheduleToBeAmountConsistency, checkIncomeApproachIndicatedValueConsistency, checkCostApproachMatchConsistency } from '../../../validations/form1004And1007Validation';
+import { checkDisallowedPhrases } from '../../../validations/generalValidation';
 import { Tooltip, IconButton } from '@mui/material';
 import { PlaylistAdd as PlaylistAddIcon, CheckCircle as CheckCircleIcon } from '@mui/icons-material';
 
@@ -183,8 +185,8 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'Offered for Sale in Last 12 Months': [checkOfferedForSale],
     'ANSI': [checkAnsi],
     'State': [checkStateRequirements],
-    'Property Address': [checkPropertyAddressHtmlConsistency, checkSubjectFieldsNotBlank, checkSubjectAddressInconsistency],
-    'PROPERTY ADDRESS': [checkPropertyAddressHtmlConsistency, checkSubjectFieldsNotBlank, checkSubjectAddressInconsistency],
+    'Property Address': [checkPropertyAddressHtmlConsistency, checkSubjectFieldsNotBlank, checkSubjectAddressInconsistency, checkComparableAddressDuplicates, checkRentalComparableAddressDuplicates],
+    'PROPERTY ADDRESS': [checkPropertyAddressHtmlConsistency, checkSubjectFieldsNotBlank, checkSubjectAddressInconsistency, checkComparableAddressDuplicates, checkRentalComparableAddressDuplicates],
     'property address': [checkPropertyAddressHtmlConsistency],
     'County': [checkCountyHtmlConsistency, checkSubjectFieldsNotBlank],
     'COUNTY': [checkCountyHtmlConsistency, checkSubjectFieldsNotBlank],
@@ -368,7 +370,7 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'Vehicle Storage Adjustment': [checkVersion1VehicleStorageAdjustmentConsistency],
 
     // Sales Comparison Validations
-    'Address': [checkSubjectAddressInconsistency, checkMinimumRentalComparables],
+    'Address': [checkSubjectAddressInconsistency, checkComparableAddressDuplicates, checkMinimumRentalComparables, checkRentalComparableAddressDuplicates],
     'Condition': [checkRentSubjectConditionConsistency, checkRentConditionAdjustment, checkConditionAdjustment], 'Condition Adjustment': [checkRentConditionAdjustment, checkConditionAdjustment],
     'Age': [checkRentSubjectAgeConsistency, checkRentAgeAdjustment, checkActualAgeAdjustment, checkSubjectAgeConsistency], 'Age Adjustment': [checkRentAgeAdjustment, checkActualAgeAdjustment],
     'Bedrooms': [checkBedroomsAdjustment], 'Bedrooms Adjustment': [checkBedroomsAdjustment],
@@ -682,8 +684,23 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
 
   // Cost Approach Validations
   validationRegistry["ESTIMATED/REPRODUCTION / REPLACEMENT COST NEW"] = [checkCostNew];
+  validationRegistry["Estimated"] = [checkCostNew];
+  validationRegistry["ESTIMATED COST NEW TYPE"] = [checkCostNew];
   validationRegistry["Source of cost data"] = [checkSourceOfCostData];
+  validationRegistry["Source of Cost Data"] = [checkSourceOfCostData];
   validationRegistry["Indicated Value By Cost Approach......................................................=$"] = [checkIndicatedValueByCostApproach];
+  validationRegistry["Indicated Value by Cost Approach"] = [checkIndicatedValueByCostApproach];
+
+  const costReplicationFields = [
+    "Provide adequate information for the lender/client to replicate the below cost figures and calculations.",
+    "Provide adequate information for the lender/client to replicate the below cost figures and calculations",
+    "Comments on Cost Approach (gross living area calculations, depreciation, etc.)",
+    "Support for the opinion of site value (summary of comparable land sales or other methods for estimating site value)"
+  ];
+  costReplicationFields.forEach(f => {
+    if (!validationRegistry[f]) validationRegistry[f] = [];
+    validationRegistry[f].push(checkBplCostApproachReplication);
+  });
 
   const opinionOfSiteFields = [
     "OPINION OF SITE VALUE = $ ................................................",
@@ -1082,7 +1099,12 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     let validationResult = null;
     let isValBlank = (text === undefined || text === null || String(text).trim() === '');
 
-    if (customValidation && typeof customValidation === 'function') {
+    const disallowedRes = checkDisallowedPhrases(lookupField, text);
+    if (disallowedRes && disallowedRes.isError) {
+      validationResult = disallowedRes;
+    }
+
+    if (!validationResult && customValidation && typeof customValidation === 'function') {
       const customRes = customValidation(lookupField, text, data, fieldPath, saleName);
       if (customRes) validationResult = customRes;
     }
@@ -1102,7 +1124,9 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
       }
       if (checksToRun.length === 0 && typeof lookupField === 'string') {
         const lowerLookup = lookupField.toLowerCase();
-        if (lowerLookup.includes('comparable properties currently offered for sale') ||
+        if (lowerLookup.includes('replicate the below cost figures')) {
+          checksToRun = [checkBplCostApproachReplication];
+        } else if (lowerLookup.includes('comparable properties currently offered for sale') ||
           lowerLookup.includes('properties currently offered for sale') ||
           lowerLookup.includes('comparable sales in the subject neighborhood') ||
           (lowerLookup.includes('comparable sales') && lowerLookup.includes('twelve'))) {

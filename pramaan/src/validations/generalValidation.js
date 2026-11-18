@@ -93,3 +93,46 @@ export const checkNotBlank = (field, text, fieldName) => {
     }
     return null;
 };
+
+export const checkDisallowedPhrases = (field, text) => {
+    if (text === undefined || text === null) return null;
+
+    const checkString = (val) => {
+        if (val === undefined || val === null) return null;
+        if (typeof val === 'function') return null;
+        if (typeof val === 'object') {
+            for (const v of Object.values(val)) {
+                const sub = checkString(v);
+                if (sub) return sub;
+            }
+            return null;
+        }
+        const str = String(val).trim().toLowerCase().replace(/\s+/g, ' ');
+        if (!str) return null;
+
+        if (str.includes('see attached addendun')) {
+            return 'SEE ATTACHED ADDENDUN';
+        }
+        if (str.includes('see attached addendum')) {
+            return 'SEE ATTACHED ADDENDUM';
+        }
+        if (str.includes('see plat map') || str.includes('see platmap')) {
+            return 'SEE PLAT MAP';
+        }
+        if (str.includes('see attached')) {
+            return 'SEE ATTACHED';
+        }
+        return null;
+    };
+
+    const matched = checkString(text);
+    if (matched) {
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: `'${field || 'Field'}' cannot contain '${matched}'. Specific details must be provided.`
+        };
+    }
+    return null;
+};
+

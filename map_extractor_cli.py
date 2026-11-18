@@ -19,6 +19,7 @@ import re
 import csv
 import json
 import base64
+import io
 import argparse
 from typing import List, Dict, Any, Optional, Tuple
 import xml.etree.ElementTree as ET
@@ -92,10 +93,34 @@ class MapExtractor:
         if self.ocr_engine_type in ["auto", "easyocr"] and easyocr is not None:
             try:
                 if _GLOBAL_EASYOCR_READER is None:
+                    # Look for model weights in local workspace first to work offline and in sandboxed environments
+                    cur_dir = os.path.dirname(os.path.abspath(__file__))
+                    ws_dir = os.path.dirname(cur_dir)
+                    cand_dirs = [
+                        os.path.join(ws_dir, ".easyocr", "model"),
+                        os.path.join(cur_dir, ".easyocr", "model"),
+                        os.path.join(os.getcwd(), ".easyocr", "model"),
+                        os.path.expanduser(r"~\.EasyOCR\model")
+                    ]
+                    m_dir = next((d for d in cand_dirs if os.path.exists(d)), None)
                     with warnings.catch_warnings():
                         warnings.filterwarnings("ignore", category=UserWarning)
                         warnings.filterwarnings("ignore", category=FutureWarning)
-                        _GLOBAL_EASYOCR_READER = easyocr.Reader(['en'], gpu=False, verbose=False)
+                        if m_dir:
+                            net_dir = os.path.join(os.path.dirname(m_dir), "user_network")
+                            try:
+                                os.makedirs(net_dir, exist_ok=True)
+                            except Exception:
+                                net_dir = os.path.join(tempfile.gettempdir(), ".easyocr_user_network")
+                                os.makedirs(net_dir, exist_ok=True)
+                            _GLOBAL_EASYOCR_READER = easyocr.Reader(['en'], gpu=False, verbose=False, model_storage_directory=m_dir, user_network_directory=net_dir, download_enabled=False)
+                        else:
+                            temp_u = os.path.join(tempfile.gettempdir(), ".easyocr_user_network")
+                            try:
+                                os.makedirs(temp_u, exist_ok=True)
+                            except Exception:
+                                pass
+                            _GLOBAL_EASYOCR_READER = easyocr.Reader(['en'], gpu=False, verbose=False, user_network_directory=temp_u)
                 self._easyocr_reader = _GLOBAL_EASYOCR_READER
                 self.active_engine = "easyocr"
                 return
@@ -194,6 +219,26 @@ class MapExtractor:
             except Exception:
                 pass
 
+        return []
+
+    def run_ocr_boxes(self, img_bgr: Any) -> List[Tuple[List, str, float]]:
+        """Runs OCR on an image, returning a list of (bbox, text, confidence) tuples."""
+        if img_bgr is None or img_bgr.size == 0:
+            return []
+
+        if self.active_engine == "easyocr" and self._easyocr_reader is not None:
+            try:
+                rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+                res = self._easyocr_reader.readtext(rgb)
+                results = []
+                for box, text, prob in res:
+                    txt_clean = text.strip()
+                    if txt_clean:
+                        results.append((box, txt_clean, float(prob)))
+                if results:
+                    return results
+            except Exception:
+                pass
         return []
 
     def get_pdf_doc(self, file_path: str):
@@ -420,7 +465,7 @@ class MapExtractor:
                 })
         return sketch_pages
 
-    def extract_sketch_room_labels(self, page, raw_text: str = "") -> Dict[str, Any]:
+    def extract_sketch_room_labels(self, page, raw_text: str = "", custom_blocks: Optional[List] = None) -> Dict[str, Any]:
         """
         Extracts interior room labels, architectural features, and floor levels
         (Bedrooms, Bathrooms, Living, Kitchen, Dining, Laundry, Garage, Open to Below, etc.)
@@ -440,67 +485,96 @@ class MapExtractor:
 
         ROOM_CATEGORIES = {
             'bedrooms': [
-                (r'\b(?:main|master|primary)\s+bed(?:room)?\b', 'Main Bedroom'),
-                (r'\bguest\s+bed(?:room)?\b', 'Guest Bedroom'),
-                (r'\bbed(?:room)?\s*\d*\b', 'Bedroom'),
+                (r'\b(?:main|master|primary|m)\s*(?:bed(?:room)?|bed\s*room|bed\s*rm|br|b\/r|bdrm)\b', 'Main Bedroom'),
+                (r'\bguest\s*(?:bed(?:room)?|bed\s*room|bed\s*rm|br|b\/r|bdrm)\b', 'Guest Bedroom'),
+                (r'\b(?:mbr|pbr)\b', 'Main Bedroom'),
+                (r'\b(?:bed\s*room|bed\s*rm|bedroom|bdrm)\s*\d*\b', 'Bedroom'),
                 (r'\b(?:be[cd]r[oc0-9]+m|eedroom|bacroom|becrcem|becrc-m)\b', 'Bedroom'),
-                (r'\b(?:br|bdrm)\b', 'Bedroom'),
+                (r'\b(?:b\/r|b\-r|br|bed)\s*\d*\b', 'Bedroom'),
                 (r'\bbed\s*\d+\b', 'Bedroom'),
             ],
             'bathrooms': [
-                (r'(?:^|[\s\b])(?:half[\s-]*(?:bath(?:room)?|ba)|1\/2[\s-]*(?:bath(?:room)?|ba)|0?\.5[\s-]*(?:bath(?:room)?|ba)|(?:bath(?:room)?|ba)\s*(?:\(\s*)?(?:half|1\/2|0?\.5)(?:\s*\))?|powder(?:\s*room)?|lav(?:atory)?|wc)\b', 'Half Bath'),
-                (r'\b(?:main|master|primary)\s+bath(?:room)?\b', 'Main Bath'),
+                # Half bath patterns (must precede full bath patterns)
+                (r'(?<![\d.])(?:0?\.5|1\/2)\s*(?:bath(?:room)?|ba\b|b\b|hf\b|hb\b|hba\b)', 'Half Bath'),
+                (r'(?<![\d.])1(?:\.0)?\s*(?:hb\b|h\/b\b|hba\b|h\/ba\b|half\s*b(?:ath)?\b|half\s*ba\b)', 'Half Bath'),
+                (r'\b(?:half[\s-]*(?:bath(?:room)?|ba|b)|h\/b|hb|hba|h\/ba)\b', 'Half Bath'),
+                (r'\b(?:powder(?:\s*room|\s*rm)?|pw[\s\/\.]*d?(?:\s*hb|\s*ba)?|pwd)\b', 'Half Bath'),
+                (r'\b(?:lav(?:atory)?|wc|w\.c\.)\b', 'Half Bath'),
+                (r'\b(?:bath(?:room)?|ba)\s*(?:\(\s*)?(?:half|1\/2|0?\.5)(?:\s*\))?', 'Half Bath'),
+
+                # Full bath patterns
+                (r'\b(?:main|master|primary|m)\s*(?:bath(?:room)?|ba|fb|f\/b)\b', 'Main Bath'),
+                (r'\bmba\b', 'Main Bath'),
+                (r'(?<![\d.])(?:[1-9](?:\.0)?)\s*(?:fb\b|f\/b\b|fba\b|f\/ba\b|full\s*b(?:ath)?\b|full\s*ba\b)', 'Full Bath'),
+                (r'(?<![\d.])(?:[1-9](?:\.0)?)\s*(?:bath(?:room)?|ba)\b', 'Full Bath'),
+                (r'\b(?:full\s*bath(?:room)?|full\s*ba|full\s*b)\b', 'Full Bath'),
+                (r'\b(?:fb|f\/b|f\-b|fba|f\/ba)\s*\d*\b', 'Full Bath'),
                 (r'\b(?:full\s+)?bath(?:room)?\s*\d*\b', 'Bath'),
-                (r'\bba\b', 'Bath'),
-                (r'\blav(?:atory)?\b', 'Half Bath'),
-                (r'\bwc\b', 'Half Bath'),
+                (r'(?<!fin\s)(?<!finished\s)(?<!unfin\s)(?<!unfinished\s)\bba\s*\d*\b', 'Bath'),
+            ],
+            'basement': [
+                (r'\b(?:fin(?:ished)?\s*(?:basement|base|bsmt|bmst|ba))\b', 'Finished Basement'),
+                (r'\b(?:unfin(?:ished)?\s*(?:basement|base|bsmt|bmst|ba))\b', 'Unfinished Basement'),
+                (r'\b(?:walk[\s-]*out\s*basement|daylight\s*basement|cellar|basement|bsmt)\b', 'Basement'),
             ],
             'living': [
-                (r'\bliving(?:\s*room|\s*rm|\s*area)?\b', 'Living Room'),
-                (r'\blivira\b', 'Living Room'),
-                (r'\bfamily(?:\s*room|\s*rm)?\b', 'Family Room'),
+                (r'\b(?:formal\s+)?(?:living(?:\s*room|\s*rm|\s*r|\s*area)?|livira|lr\b|l\/r\b|l\.r\.?)\b', 'Living Room'),
+                (r'\b(?:family(?:\s*room|\s*rm|\s*r|\s*area)?|fam(?:\s*room|\s*rm)?|fr\b|f\/r\b)\b', 'Family Room'),
                 (r'\bgreat\s*room\b', 'Great Room'),
-                (r'\brec(?:reation)?(?:\s*room)?\b', 'Rec Room'),
-                (r'\b(?:den|study|office|loft)\b', 'Den / Study'),
-                (r'\bsitting(?:\s*room|\s*area)?\b', 'Sitting Area'),
-                (r'\bsun\s*room|sunroom\b', 'Sun Room'),
+                (r'\b(?:rec(?:reation)?(?:\s*room|\s*rm)?)\b', 'Rec Room'),
+                (r'\b(?:game\s*room|game\s*rm|media\s*room|theater|theatre|billiard\s*room|play\s*room|playroom)\b', 'Game / Media Room'),
+                (r'\b(?:den|study|loft)\b', 'Den / Study'),
+                (r'\b(?:office|home\s*office|library)\b', 'Office'),
+                (r'\b(?:sitting(?:\s*room|\s*area)?)\b', 'Sitting Area'),
+                (r'\b(?:sun\s*room|sunroom)\b', 'Sun Room'),
                 (r'\bbonus\s*room\b', 'Bonus Room'),
-                (r'\bgame\s*room|media\s*room|theater\b', 'Game / Media Room'),
+                (r'\b(?:adu|a\.d\.u\.|accessory\s*dwelling(?:\s*unit)?)\b', 'ADU'),
             ],
             'kitchen_dining': [
-                (r'\bkitchen|kitch|kteten\b', 'Kitchen'),
-                (r'\bdining(?:\s*room|\s*rm|\s*area)?|diring\b', 'Dining Room'),
-                (r'\bbreakfast(?:\s*nook|\s*area|\s*room)?\b', 'Breakfast Nook'),
-                (r'\b(?:nook|dinette)\b', 'Dining Nook'),
+                (r'\b(?:kitchen|kitch|kteten|kit|ki)\b', 'Kitchen'),
+                (r'\b(?:dining\s*area|dinning\s*area)\b', 'Dining Area'),
+                (r'\b(?:formal\s+)?(?:dining(?:\s*room|\s*rm)?|dinning(?:\s*room|\s*rm)?|diring|dr\b|d\/r\b|d\.r\.?)\b', 'Dining Room'),
+                (r'\b(?:brkfst|brkfast|break\s*fast|breakfast|brk)(?:\s*(?:room|rm|nook|area))?\b', 'Breakfast Room'),
+                (r'\b(?:dining\s*nook|dinette|nook)\b', 'Dining Nook'),
                 (r'\bpantry\b', 'Pantry'),
-                (r'\bwet\s*bar|bar\b', 'Bar'),
+                (r'\b(?:wet\s*bar|bar)\b', 'Bar'),
             ],
             'openings_outdoor': [
                 (r'\bopen\s+to\s+below\b', 'Open to Below'),
-                (r'\b(?:closed\s*porch|uncover\s*porch|screened?\s*porch|porch)\b', 'Porch'),
+                (r'\b(?:open\s*porch|op\s*,\s*ep|op\/ep)\b', 'Open Porch'),
+                (r'\b(?:c(?:o)?v(?:ere)?d\s*p(?:o)?rc?h|cvd\s*porch|cov\s*porch|c\/p|cp)\b', 'Covered Porch'),
+                (r'\b(?:closed\s*porch|uncover(?:ed)?\s*porch|screened?\s*porch|front\s*porch|rear\s*porch|porch)\b', 'Porch'),
                 (r'\bdeck\b', 'Deck'),
                 (r'\bpatio\b', 'Patio'),
                 (r'\bbalcony\b', 'Balcony'),
-                (r'\bterrace|veranda|lanai\b', 'Terrace / Lanai'),
-                (r'\bcourtyard|breezeway\b', 'Courtyard / Breezeway'),
+                (r'\b(?:terrace|veranda|lanai)\b', 'Terrace / Lanai'),
+                (r'\b(?:courtyard|breezeway)\b', 'Courtyard / Breezeway'),
+                (r'\b(?:shed|storage\s*shed|tool\s*shed|workshop|barn)\b', 'Shed'),
             ],
             'garage_parking': [
-                (r'\b\d+[\s-]*car\s*(?:/|\s+)?(?:attached|detached)?\s*(?:carport|garage)?\b', 'Carport / Garage'),
-                (r'\b\d+\s*car\s*(?:attached|detached)?(?:\s*garage)?\b', 'Car Garage'),
-                (r'\b1\s*car\s*attached\b', '1 Car Attached'),
-                (r'\b2\s*car\s*attached\b', '2 Car Attached'),
-                (r'\b(?:attached|detached)?\s*garage\b', 'Garage'),
+                (r'\b1\s*car\s*attached(?:\s*garage)?\b', '1 Car Attached'),
+                (r'\b2\s*car\s*attached(?:\s*garage)?\b', '2 Car Attached'),
+                (r'\b3\s*car\s*attached(?:\s*garage)?\b', '3 Car Attached'),
+                (r'\b1\s*car\s*(?:detached|de-?attached)(?:\s*garage)?\b', '1 Car Detached'),
+                (r'\b2\s*car\s*(?:detached|de-?attached)(?:\s*garage)?\b', '2 Car Detached'),
+                (r'\b3\s*car\s*(?:detached|de-?attached)(?:\s*garage)?\b', '3 Car Detached'),
+                (r'\b\d+[\s-]*car\s*(?:/|\s+)?(?:attached|detached|de-?attached)?\s*(?:carport|garage)?\b', 'Carport / Garage'),
+                (r'\b\d+\s*car\s*(?:attached|detached|de-?attached)?(?:\s*garage)?\b', 'Car Garage'),
+                (r'\b(?:car\s*(?:detached|de-?attached)|(?:detached|de-?attached)\s*car)\b', 'Car Detached'),
+                (r'\b(?:car\s*attached|attached\s*car)\b', 'Car Attached'),
+                (r'\b(?:attached|detached|de-?attached)\s*garage\b', 'Garage'),
+                (r'\bgarage\b', 'Garage'),
                 (r'\bcarport\b', 'Carport'),
             ],
             'utility_laundry': [
-                (r'\blaundry(?:\s*room|\s*rm|\s*area)?\b', 'Laundry'),
-                (r'\butility(?:\s*room|\s*rm)?\b', 'Utility'),
-                (r'\bmud\s*room|mudroom\b', 'Mud Room'),
+                (r'\b(?:laundry(?:\s*room|\s*rm|\s*area)?|laundary|launda|laund|laun|lndry|ldy|la)\b', 'Laundry'),
+                (r'\butility(?:\s*room|\s*rm|\s*area)?\b', 'Utility'),
+                (r'\bmud\s*room|mudroom|mud\s*rm\b', 'Mud Room'),
                 (r'\b(?:foyer|entry(?:way)?|vestibule)\b', 'Foyer / Entry'),
-                (r'\b(?:stairs|stairway)\b', 'Stairs'),
-                (r'\bwalk[\s-]*in\s*closet|wic\b', 'Walk-in Closet'),
-                (r'\bcl(?:o)?se[td](?!\s*porch)\b', 'Closet'),
-                (r'\b(?:mechanical|furnace|hvac|storage)\b', 'Storage / Mech'),
+                (r'\b(?:entrance\s*stairs|entry\s*stairs|stairs|stairway|stair|staircase)\b', 'Stairs'),
+                (r'\b(?:walk[\s-]*in\s*closet|wic)\b', 'Walk-in Closet'),
+                (r'\bcl(?:o)?se[td]s?(?!\s*porch)\b', 'Closet'),
+                (r'\b(?:mech\.?|mechanical|furnace|hvac|boiler|storage)\b', 'Storage / Mech'),
             ]
         }
 
@@ -554,8 +628,9 @@ class MapExtractor:
                         c_level = lvl_name
                         if c_level not in b_level:
                             b_level[c_level] = []
-                        is_lvl = True
-                        break
+                        if not re.search(r'\b(?:fin(?:ished)?|unfin(?:ished)?)\s*(?:basement|base|bsmt|bmst|ba)\b|\bbasement\b', cleaned, re.I):
+                            is_lvl = True
+                            break
                 if is_lvl:
                     continue
 
@@ -589,7 +664,92 @@ class MapExtractor:
                 break
             filtered_lines.append(l)
 
-        by_category, by_level, all_labels = parse_lines_for_rooms(filtered_lines)
+        # Check if page has vector blocks or custom OCR blocks for high-precision spatial level clustering
+        blocks = None
+        cutoff_y = 880
+        if page is not None and hasattr(page, "get_text"):
+            try:
+                blocks = page.get_text("blocks")
+                for b in blocks:
+                    if re.search(stop_pat, b[4], re.I):
+                        cutoff_y = min(cutoff_y, b[1] - 5)
+            except Exception:
+                blocks = None
+        elif custom_blocks:
+            blocks = custom_blocks
+            for b in blocks:
+                if re.search(stop_pat, b[4], re.I):
+                    cutoff_y = min(cutoff_y, b[1] - 5)
+
+        if blocks:
+            try:
+                anchors = []
+                for b in blocks:
+                    if b[1] < cutoff_y:  # Ignore bottom calculation summary table
+                        txt_block = b[4].strip()
+                        for lvl in ['First Floor', '1st Floor', 'Main Level', 'Second Floor', '2nd Floor', 'Third Floor', '3rd Floor', 'Basement', 'Detached', 'Attached', 'Garage', '2 Car Detached']:
+                            if re.search(r'\b' + re.escape(lvl) + r'\b', txt_block, re.I):
+                                norm = ('1st Floor' if re.search(r'first|1st|main', lvl, re.I) 
+                                        else ('2nd Floor' if re.search(r'second|2nd', lvl, re.I)
+                                        else ('3rd Floor' if re.search(r'third|3rd', lvl, re.I)
+                                        else ('Basement' if 'basement' in lvl.lower()
+                                        else 'Garage'))))
+                                anchors.append({'level': norm, 'cx': (b[0] + b[2]) / 2, 'cy': (b[1] + b[3]) / 2})
+
+                if any(a['level'] == '2nd Floor' for a in anchors) and not any(a['level'] == '1st Floor' for a in anchors):
+                    min_x = min([a['cx'] for a in anchors if a['level'] == '2nd Floor'])
+                    anchors.append({'level': '1st Floor', 'cx': min_x / 2, 'cy': 400})
+                elif not anchors:
+                    anchors.append({'level': '1st Floor', 'cx': 300, 'cy': 400})
+
+                spatial_by_cat = {c: [] for c in ROOM_CATEGORIES}
+                spatial_by_lvl = {}
+                spatial_labels = []
+
+                for b in blocks:
+                    if b[1] < cutoff_y:
+                        cx, cy = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
+                        best_lvl = "1st Floor"
+                        min_dist = float("inf")
+                        for anc in anchors:
+                            d = ((cx - anc['cx'])**2 + (cy - anc['cy'])**2)**0.5
+                            if d < min_dist:
+                                min_dist = d
+                                best_lvl = anc['level']
+
+                        for l in b[4].split('\n'):
+                            cleaned = re.sub(r'\[?\s*\-?\d+(?:\.\d+)?\s*sq\s*ft\s*\]?', '', l, flags=re.I).strip()
+                            if not cleaned or len(cleaned) > 35 or re.match(r'^[\d\.\s\'\"x\=\-\+\/]+$', cleaned):
+                                continue
+                            if any(re.search(pat, cleaned, re.I) for pat in ignore_patterns):
+                                continue
+
+                            for cat, rules in ROOM_CATEGORIES.items():
+                                matched = False
+                                for pat, norm_name in rules:
+                                    if re.search(pat, cleaned, re.I):
+                                        item = {
+                                            'label': l.strip(),
+                                            'standard_name': norm_name,
+                                            'category': cat,
+                                            'level': best_lvl
+                                        }
+                                        spatial_by_lvl.setdefault(best_lvl, []).append(item)
+                                        spatial_by_cat[cat].append(item)
+                                        spatial_labels.append(l.strip())
+                                        matched = True
+                                        break
+                                if matched:
+                                    break
+
+                if spatial_labels:
+                    by_category, by_level, all_labels = spatial_by_cat, spatial_by_lvl, list(dict.fromkeys(spatial_labels))
+                else:
+                    by_category, by_level, all_labels = parse_lines_for_rooms(filtered_lines)
+            except Exception:
+                by_category, by_level, all_labels = parse_lines_for_rooms(filtered_lines)
+        else:
+            by_category, by_level, all_labels = parse_lines_for_rooms(filtered_lines)
 
         # Phase 2: If vector text found no room labels, trigger OCR on the drawing area
         if len(all_labels) == 0 and page is not None and fitz is not None:
@@ -617,7 +777,7 @@ class MapExtractor:
         garage_labels = [g['label'] for g in by_category['garage_parking']]
 
         has_kitchen = len(by_category['kitchen_dining']) > 0 and any('kitchen' in k['standard_name'].lower() for k in by_category['kitchen_dining'])
-        has_dining = any('dining' in k['standard_name'].lower() or 'nook' in k['standard_name'].lower() for k in by_category['kitchen_dining'])
+        has_dining = any('dining' in k['standard_name'].lower() or 'nook' in k['standard_name'].lower() or 'breakfast' in k['standard_name'].lower() for k in by_category['kitchen_dining'])
         living_count = len(by_category['living'])
         kitchen_count = 1 if has_kitchen else 0
         dining_count = 1 if has_dining else 0
@@ -645,65 +805,379 @@ class MapExtractor:
             'summary': summary
         }
 
+    def _parse_sketch_areas_from_text(self, txt: str) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        """Extracts structured area calculations and overall GLA directly from sketch text."""
+        lines = [l.strip() for l in (txt or "").split("\n") if l.strip()]
+        areas = []
+        seen_area_names = set()
+        in_summary = False
+        is_non_living = False
+
+        def is_noise(name: str) -> bool:
+            if not name or len(name) < 2:
+                return True
+            if re.search(r'[*+=×]', name):
+                return True
+            if re.search(r'\b\d+[a-zA-Z]?\s*[*xX×+=]', name):
+                return True
+            if re.search(r'^\d+[a-zA-Z]?$', name):
+                return True
+            if re.search(r'^[0-9\s*xX×+=.*#?]+$', name):
+                return True
+            if '[' in name or ']' in name:
+                return True
+            if re.search(r'\b(?:sq\s*ft|ft[²27?]?|sf|sqft)\b', name, re.I):
+                return True
+            if re.search(r'\d+\s*(?:ft|sf|f)', name, re.I):
+                return True
+            if re.search(r'\barea\s*[:=0-9]', name, re.I):
+                return True
+            if name.lower() in ['bed', 'bath', 'kitchen', 'living', 'dining', 'closet', 'stair', 'rec room']:
+                return True
+            return False
+
+        # 1. Parse Area Calculations Summary Table
+        for i, line in enumerate(lines):
+            line_clean = line.strip()
+            if re.search(r'\b(?:area\s*calculations(?:\s*summary)?|calculation\s*details|area\s*summary|area\s*calculation)\b', line_clean, re.I):
+                in_summary = True
+                continue
+            if re.search(r'\bnon[- ]*living\s*area\b', line_clean, re.I):
+                in_summary = True
+                is_non_living = True
+                continue
+            if re.search(r'\b(?:living\s*area|iving\s*area)\b', line_clean, re.I) and not re.search(r'total', line_clean, re.I):
+                in_summary = True
+                is_non_living = False
+                continue
+
+            if in_summary:
+                m_sf = re.search(r'^([0-9,]+(?:\.[0-9]+)?)\s*(?:sq\s*ft|ft[²2]?|sf|f)\s*[:?\"\'#]?(?:\s+(.*))?$', line_clean, re.I)
+                if m_sf:
+                    num = float(m_sf.group(1).replace(',', ''))
+                    inline_name = (m_sf.group(2) or "").strip()
+                    name = ""
+                    if inline_name and len(inline_name) < 40 and not is_noise(inline_name):
+                        name = inline_name
+                    else:
+                        for back in range(1, 4):
+                            if i - back >= 0:
+                                cand = lines[i - back].strip()
+                                if not re.search(r'(?:sq\s*ft|ft[²2]|sf|calculation\s*details|area\s*calculations)', cand, re.I) and not is_noise(cand) and len(cand) < 40:
+                                    name = cand
+                                    break
+                    if name:
+                        clean_name = re.sub(r'[:=-]+$', '', name).strip()
+                        if is_noise(clean_name):
+                            continue
+                        is_tot = bool(re.search(r'total\s*(?:living|sketch|area)|gross\s*living|\bgla\b', clean_name, re.I))
+                        if clean_name.lower() not in seen_area_names and len(clean_name) < 40:
+                            is_non = bool(re.search(r'garage|carport|porch|deck|patio|balcony|basement|non[- ]*living|unfinished', clean_name, re.I)) or is_non_living
+                            areas.append({
+                                "name": clean_name,
+                                "sqft": num,
+                                "area": f"{num:,.1f}".rstrip('0').rstrip('.') + " Sq Ft",
+                                "is_gla": (not is_non and not is_tot),
+                                "is_total_gla": is_tot,
+                                "is_non_living": is_non
+                            })
+                            seen_area_names.add(clean_name.lower())
+
+        # 2. Parse Bracketed Area Callouts in floorplan drawings: e.g. "First Floor [805.57 Sq ft]" or "Second Floor [446.6 Sq ft]"
+        for i, line in enumerate(lines):
+            m_comb = re.search(r'^([A-Za-z0-9\s/,-]+?)\s*\[\s*(?:Area:\s*)?([0-9,]+(?:\.[0-9]+)?)\s*(?:sq\s*ft|ft[²2]|sf|[#?\"\w]{1,3})?\s*\]', line, re.I)
+            if m_comb:
+                name = m_comb.group(1).strip()
+                num = float(m_comb.group(2).replace(',', ''))
+                clean_name = re.sub(r'[:=-]+$', '', name).strip()
+                if is_noise(clean_name):
+                    continue
+                if clean_name.lower() not in seen_area_names:
+                    is_non = bool(re.search(r'garage|carport|porch|deck|patio|balcony|basement|non[- ]*living|unfinished', clean_name, re.I))
+                    is_tot = bool(re.search(r'total\s*(?:living|sketch|area)|gross\s*living|\bgla\b', clean_name, re.I))
+                    areas.append({
+                        "name": clean_name,
+                        "sqft": num,
+                        "area": f"{num:,.1f}".rstrip('0').rstrip('.') + " Sq Ft",
+                        "is_gla": (not is_non and not is_tot),
+                        "is_total_gla": is_tot,
+                        "is_non_living": is_non
+                    })
+                    seen_area_names.add(clean_name.lower())
+                continue
+
+            m_brack = re.search(r'^\[\s*(?:Area:\s*)?([0-9,]+(?:\.[0-9]+)?)\s*(?:sq\s*ft|ft[²2]|sf|[#?\"\w]{1,3})?\s*\]', line, re.I)
+            if m_brack:
+                num = float(m_brack.group(1).replace(',', ''))
+                name = ""
+                for back in range(1, 4):
+                    if i - back >= 0:
+                        cand = lines[i - back].strip()
+                        if not re.search(r'(?:sq\s*ft|ft[²2]|sf|calculation\s*details|area\s*calculations|property address|borrower|lender)', cand, re.I) and len(cand) < 40:
+                            if is_noise(cand):
+                                continue
+                            if i - back - 1 >= 0 and lines[i - back - 1].strip().lower() in ['finished', 'unfinished']:
+                                name = f"{lines[i - back - 1].strip()} {cand}"
+                            else:
+                                name = cand
+                            break
+                if name:
+                    clean_name = re.sub(r'[:=-]+$', '', name).strip()
+                    if is_noise(clean_name):
+                        continue
+                    if clean_name.lower() not in seen_area_names:
+                        is_non = bool(re.search(r'garage|carport|porch|deck|patio|balcony|basement|non[- ]*living|unfinished', clean_name, re.I))
+                        is_tot = bool(re.search(r'total\s*(?:living|sketch|area)|gross\s*living|\bgla\b', clean_name, re.I))
+                        areas.append({
+                            "name": clean_name,
+                            "sqft": num,
+                            "area": f"{num:,.1f}".rstrip('0').rstrip('.') + " Sq Ft",
+                            "is_gla": (not is_non and not is_tot),
+                            "is_total_gla": is_tot,
+                            "is_non_living": is_non
+                        })
+                        seen_area_names.add(clean_name.lower())
+
+        # 3. Parse Inverted OCR / Sketch Lines: e.g. "816 f\" First Floor" or "408 f? Second Floor"
+        for line in lines:
+            m_inv = re.search(r'^([0-9,]+(?:\.[0-9]+)?)\s*(?:f[\"?\'#]|ft[²2]?|sq\s*ft|sf)\s+([A-Za-z0-9\s/,-]+)$', line, re.I)
+            if m_inv:
+                num = float(m_inv.group(1).replace(',', ''))
+                cand_name = m_inv.group(2).strip()
+                if cand_name and cand_name.lower() not in ['sq ft', 'sf', 'sqft', 'sq']:
+                    clean_name = re.sub(r'[:=-]+$', '', cand_name).strip()
+                    if is_noise(clean_name):
+                        continue
+                    if clean_name.lower() not in seen_area_names and len(clean_name) < 40 and not re.search(r'total|living area|calculation', clean_name, re.I):
+                        is_non = bool(re.search(r'garage|carport|porch|deck|patio|balcony|basement|non[- ]*living|unfinished', clean_name, re.I))
+                        is_tot = bool(re.search(r'total\s*(?:living|sketch|area)|gross\s*living|\bgla\b', clean_name, re.I))
+                        areas.append({
+                            "name": clean_name,
+                            "sqft": num,
+                            "area": f"{num:,.1f}".rstrip('0').rstrip('.') + " Sq Ft",
+                            "is_gla": (not is_non and not is_tot),
+                            "is_total_gla": is_tot,
+                            "is_non_living": is_non
+                        })
+                        seen_area_names.add(clean_name.lower())
+
+        # Determine overall sketch GLA
+        sketch_gla = None
+        for ar in areas:
+            if ar.get("is_total_gla"):
+                sketch_gla = str(int(round(ar["sqft"])))
+                break
+        if not sketch_gla:
+            living_sum = sum(ar["sqft"] for ar in areas if ar.get("is_gla"))
+            if living_sum > 0:
+                sketch_gla = str(int(round(living_sum)))
+        if not sketch_gla:
+            m_gla = re.search(r'(?:total\s*(?:living\s*area|sketch|area)|gross\s*living\s*area|gla)\s*[:=-]?\s*([0-9,]+(?:\.[0-9]+)?)\s*(?:sq\s*ft|sf)?', txt, re.I)
+            if m_gla:
+                sketch_gla = m_gla.group(1).replace(',', '')
+
+        return areas, sketch_gla
+
+    def _parse_sketch_areas_spatial(self, custom_blocks: List[Tuple]) -> List[Dict[str, Any]]:
+        """
+        Extracts structured areas from 2D OCR bounding boxes using spatial vertical proximity.
+        Pairs area measurements (e.g. '[Area: 816 ft²]') directly with the floor/level heading
+        positioned vertically above them.
+        """
+        if not custom_blocks:
+            return []
+
+        def is_noise(name: str) -> bool:
+            if not name or len(name) < 2:
+                return True
+            if re.search(r'[*+=×]', name):
+                return True
+            if re.search(r'\b\d+[a-zA-Z]?\s*[*xX×+=]', name):
+                return True
+            if re.search(r'^\d+[a-zA-Z]?$', name):
+                return True
+            if re.search(r'^[0-9\s*xX×+=.*#?]+$', name):
+                return True
+            if '[' in name or ']' in name:
+                return True
+            if re.search(r'\b(?:sq\s*ft|ft[²27?]?|sf|sqft)\b', name, re.I):
+                return True
+            if name.lower() in ['bed', 'bath', 'kitchen', 'living', 'dining', 'closet', 'stair', 'rec room']:
+                return True
+            return False
+
+        area_blocks = []
+        for b in custom_blocks:
+            txt = b[4].strip()
+            m = re.search(r'\[\s*(?:Area\s*[:=]\s*)?([0-9]{2,5}(?:\.[0-9]+)?)\s*(?:sq\s*ft|ft[²27?*#f]|sf|[#?\"\w]{1,3})?\s*\]|\bArea\s*[:=]\s*([0-9]{2,5}(?:\.[0-9]+)?)\b', txt, re.I)
+            if m:
+                try:
+                    sq_str = m.group(1) or m.group(2)
+                    sqft = float(sq_str)
+                    if 40 <= sqft <= 20000:
+                        area_blocks.append((b, sqft))
+                except (ValueError, TypeError):
+                    pass
+
+        if not area_blocks:
+            return []
+
+        LEVEL_KEYWORDS = [
+            ('first floor', 'First Floor'),
+            ('1st floor', 'First Floor'),
+            ('second floor', 'Second Floor'),
+            ('2nd floor', 'Second Floor'),
+            ('third floor', 'Third Floor'),
+            ('3rd floor', 'Third Floor'),
+            ('finished basement', 'Finished Basement'),
+            ('unfinished basement', 'Unfinished Basement'),
+            ('basement', 'Basement'),
+            ('lower level', 'Lower Level'),
+            ('main level', 'Main Level'),
+            ('upper level', 'Upper Level'),
+            ('attic', 'Attic'),
+            ('garage', 'Garage'),
+            ('porch', 'Porch'),
+            ('patio', 'Patio'),
+            ('deck', 'Deck'),
+            ('balcony', 'Balcony')
+        ]
+
+        areas = []
+        seen_levels = set()
+
+        for ab, sqft in area_blocks:
+            ab_cx = (ab[0] + ab[2]) / 2.0
+            ab_cy = (ab[1] + ab[3]) / 2.0
+
+            # Find candidates vertically above ab
+            cands = []
+            for b in custom_blocks:
+                if b == ab:
+                    continue
+                b_cx = (b[0] + b[2]) / 2.0
+                b_cy = (b[1] + b[3]) / 2.0
+                # Within horizontal proximity and directly above
+                if b_cy < ab_cy and abs(b_cx - ab_cx) < 140 and (ab_cy - b_cy) < 120:
+                    cands.append((b, b_cy, b[4].strip()))
+
+            cands.sort(key=lambda c: ab_cy - c[1])
+
+            matched_name = None
+            near_text = " ".join(c[2].lower() for c in cands if not c[2].startswith('['))
+            if 'basement' in near_text:
+                if 'unfinished' in near_text:
+                    matched_name = 'Unfinished Basement'
+                elif 'finished' in near_text:
+                    matched_name = 'Finished Basement'
+                else:
+                    matched_name = 'Basement'
+            else:
+                for c in cands:
+                    c_txt_l = c[2].lower()
+                    if c[2].startswith('[') or 'area' in c_txt_l:
+                        continue
+                    for kw, disp in LEVEL_KEYWORDS:
+                        if re.search(r'\b' + re.escape(kw) + r'\b', c_txt_l):
+                            matched_name = disp
+                            break
+                    if matched_name:
+                        break
+
+            if not matched_name and cands:
+                for c in cands:
+                    if not c[2].startswith('[') and not re.search(r'\barea\b', c[2], re.I) and not is_noise(c[2]):
+                        matched_name = re.sub(r'[:=-]+$', '', c[2]).strip()
+                        break
+
+            if is_noise(matched_name):
+                continue
+
+            if not matched_name or len(matched_name) < 3:
+                matched_name = f"Area {len(areas) + 1}"
+
+            if matched_name in seen_levels:
+                continue
+            seen_levels.add(matched_name)
+
+            is_non = bool(re.search(r'basement|garage|porch|patio|deck|balcony|unfinished|non[- ]*living', matched_name, re.I))
+            is_tot = bool(re.search(r'total|gross\s*living|\bgla\b', matched_name, re.I))
+
+            areas.append({
+                "name": matched_name,
+                "sqft": sqft,
+                "area": f"{sqft:,.1f}".rstrip('0').rstrip('.') + " Sq Ft",
+                "is_gla": (not is_non and not is_tot),
+                "is_total_gla": is_tot,
+                "is_non_living": is_non
+            })
+
+        return areas
+
     def process_sketch_page(self, page, page_num: int, sketch_type: str, source_filename: str) -> Dict[str, Any]:
         """Extracts square footage area calculations, exterior dimensions, and interior room labels from a sketch page."""
         txt = page.get_text() or ""
-        areas = []
         lines = [l.strip() for l in txt.split("\n") if l.strip()]
 
-        # 1. Extract Area Calculations Summary
-        for i, line in enumerate(lines):
-            if re.search(r'\bsq\s*ft\b', line, re.I):
-                label = ""
-                for back in range(1, 4):
-                    if i - back >= 0:
-                        candidate = lines[i - back]
-                        if not re.search(r'(?:sq\s*ft|total sketch|area calculations|property address|borrower|lender)', candidate, re.I) and len(candidate) < 35:
-                            label = candidate
-                            break
-                if not label:
-                    label = "Area"
-                areas.append({
-                    "name": label.replace("Non-living Area", "").strip() or "Calculated Area",
-                    "area": line
-                })
+        # 1. Extract Area Calculations Summary and Bracketed Areas
+        areas, sketch_gla = self._parse_sketch_areas_from_text(txt)
 
         # 2. Extract Exterior Wall Dimensions (e.g. 36', 30', 28.5')
         dim_matches = re.findall(r"(?:^|\s)([0-9]{1,3}(?:\.[0-9]+)?\s*['\"])", txt)
         dimensions = list(dict.fromkeys(dim_matches))
 
-        # 3. Extract Interior Room Labels & Layout
+        # 3. Extract Interior Room Labels & Layout with spatial level clustering
         room_data = self.extract_sketch_room_labels(page, txt)
 
-        # 4. Extract Sketch GLA / Living Area
-        sketch_gla = None
-        m_gla = re.search(r'(?:total\s*(?:living\s*area|sketch|area)|gross\s*living\s*area|gla)\s*[:=-]?\s*([0-9,]+(?:\.[0-9]+)?)\s*(?:sq\s*ft|sf)?', txt, re.I)
-        if m_gla:
-            sketch_gla = m_gla.group(1).replace(',', '')
-        elif areas:
-            for ar in areas:
-                if re.search(r'total\s*(?:sketch|living|area)|gross\s*living|gla', ar.get('name', ''), re.I):
-                    m_num = re.search(r'([0-9,]+(?:\.[0-9]+)?)', ar.get('area', ''))
-                    if m_num:
-                        sketch_gla = m_num.group(1).replace(',', '')
-                        break
-            if not sketch_gla:
-                living_sum = 0
-                found_any = False
-                for ar in areas:
-                    nm = ar.get('name', '').lower()
-                    if any(w in nm for w in ['first', 'second', 'third', '1st', '2nd', '3rd', 'floor', 'level', 'main', 'upper', 'living']) and not any(w in nm for w in ['garage', 'porch', 'patio', 'basement', 'non-living', 'deck']):
-                        m_num = re.search(r'([0-9,]+(?:\.[0-9]+)?)', ar.get('area', ''))
-                        if m_num:
-                            living_sum += float(m_num.group(1).replace(',', ''))
-                            found_any = True
-                if found_any and living_sum > 0:
-                    sketch_gla = str(int(living_sum) if living_sum.is_integer() else living_sum)
-
-        # 5. Render base64 image preview
+        # 4. Render base64 image preview
         clip_rect = fitz.Rect(10, 60, page.rect.width - 10, page.rect.height - 25) if fitz is not None else None
-        pix = page.get_pixmap(clip=clip_rect, dpi=150) if clip_rect is not None else page.get_pixmap(dpi=150)
+        pix = page.get_pixmap(clip=clip_rect, dpi=180) if clip_rect is not None else page.get_pixmap(dpi=180)
         b64_img = base64.b64encode(pix.tobytes("jpeg")).decode("utf-8")
+
+        # 5. OCR Fallback for scanned/raster sketches where vector text is empty or incomplete
+        if (not areas or len(room_data.get("all_labels", [])) < 2) and fitz is not None:
+            try:
+                np_arr = np.frombuffer(pix.tobytes("jpeg"), np.uint8)
+                img_bgr = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+                if img_bgr is not None and img_bgr.size > 0:
+                    ocr_boxes = self.run_ocr_boxes(img_bgr)
+                    if ocr_boxes:
+                        ocr_lines = []
+                        custom_blocks = []
+                        scale_x = (clip_rect.width / img_bgr.shape[1]) if clip_rect else (page.rect.width / img_bgr.shape[1])
+                        scale_y = (clip_rect.height / img_bgr.shape[0]) if clip_rect else (page.rect.height / img_bgr.shape[0])
+                        offset_x = clip_rect.x0 if clip_rect else 0
+                        offset_y = clip_rect.y0 if clip_rect else 0
+
+                        for box, ocr_txt, prob in ocr_boxes:
+                            ocr_lines.append(ocr_txt)
+                            bx0 = min(p[0] for p in box) * scale_x + offset_x
+                            bx1 = max(p[0] for p in box) * scale_x + offset_x
+                            by0 = min(p[1] for p in box) * scale_y + offset_y
+                            by1 = max(p[1] for p in box) * scale_y + offset_y
+                            custom_blocks.append((bx0, by0, bx1, by1, ocr_txt))
+
+                        ocr_full_text = "\n".join(ocr_lines)
+
+                        if not areas:
+                            spatial_areas = self._parse_sketch_areas_spatial(custom_blocks)
+                            if spatial_areas:
+                                areas = spatial_areas
+                                gla_sum = sum(a["sqft"] for a in areas if a.get("is_gla"))
+                                if gla_sum > 0:
+                                    sketch_gla = f"{gla_sum:,.0f}".replace(",", "")
+                            else:
+                                ocr_areas, ocr_gla = self._parse_sketch_areas_from_text(ocr_full_text)
+                                if ocr_areas:
+                                    areas = ocr_areas
+                                    sketch_gla = ocr_gla
+
+                        if len(room_data.get("all_labels", [])) < 2:
+                            ocr_room_data = self.extract_sketch_room_labels(None, ocr_full_text, custom_blocks=custom_blocks)
+                            if len(ocr_room_data.get("all_labels", [])) > len(room_data.get("all_labels", [])):
+                                room_data = ocr_room_data
+            except Exception as ocr_err:
+                print(f"Notice: Sketch OCR fallback error: {ocr_err}")
 
         return {
             "page_number": page_num,
@@ -719,6 +1193,93 @@ class MapExtractor:
             "raw_text_sample": " | ".join(lines[:12]),
             "image_preview": f"data:image/jpeg;base64,{b64_img}"
         }
+
+    def extract_sketch_from_base64(self, b64_str: str) -> Dict[str, Any]:
+        """
+        Dynamically extracts building sketch GLA, square footages, room labels,
+        and level breakdowns directly from a base64 string (either PDF or image).
+        """
+        if not b64_str or not isinstance(b64_str, str):
+            return {"status": "error", "message": "No base64 string provided"}
+
+        clean_b64 = b64_str
+        if "," in clean_b64:
+            clean_b64 = clean_b64.split(",", 1)[1]
+        clean_b64 = clean_b64.strip()
+
+        try:
+            raw_bytes = base64.b64decode(clean_b64)
+        except Exception as e:
+            return {"status": "error", "message": f"Base64 decode error: {e}"}
+
+        # Case 1: Base64 Encoded PDF
+        if raw_bytes.startswith(b"%PDF") and fitz is not None:
+            try:
+                doc = fitz.open(stream=raw_bytes, filetype="pdf")
+                for pno, page in enumerate(doc):
+                    hdr = page.get_text("text", clip=fitz.Rect(0, 0, page.rect.width, 100)).strip().upper()
+                    full_txt = (page.get_text("text") or "").upper()
+                    if any(k in hdr for k in ["SKETCH", "FLOOR PLAN", "AREA CALCULATIONS"]) or any(k in full_txt[:300] for k in ["BUILDING SKETCH", "SKETCH ADDENDUM", "FLOOR PLAN"]):
+                        res = self.process_sketch_page(page, pno + 1, "Building Sketch", "base64_stream")
+                        res["status"] = "success"
+                        return res
+                # Check for any page containing sq ft and floor/living
+                for pno, page in enumerate(doc):
+                    txt_u = (page.get_text("text") or "").upper()
+                    if "SQ FT" in txt_u and ("FIRST FLOOR" in txt_u or "LIVING AREA" in txt_u):
+                        res = self.process_sketch_page(page, pno + 1, "Building Sketch", "base64_stream")
+                        res["status"] = "success"
+                        return res
+            except Exception as pdf_err:
+                print(f"Notice: base64 PDF sketch extraction error: {pdf_err}")
+
+        # Case 2: Base64 Encoded Image (JPEG/PNG/etc.)
+        try:
+            np_arr = np.frombuffer(raw_bytes, np.uint8)
+            img_bgr = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+            if img_bgr is not None and img_bgr.size > 0:
+                ocr_boxes = self.run_ocr_boxes(img_bgr)
+                ocr_lines = []
+                custom_blocks = []
+                for box, ocr_txt, prob in ocr_boxes:
+                    ocr_lines.append(ocr_txt)
+                    bx0 = min(p[0] for p in box)
+                    bx1 = max(p[0] for p in box)
+                    by0 = min(p[1] for p in box)
+                    by1 = max(p[1] for p in box)
+                    custom_blocks.append((bx0, by0, bx1, by1, ocr_txt))
+
+                ocr_text = "\n".join(ocr_lines)
+
+                room_data = self.extract_sketch_room_labels(None, ocr_text, custom_blocks=custom_blocks)
+                spatial_areas = self._parse_sketch_areas_spatial(custom_blocks)
+                if spatial_areas:
+                    areas = spatial_areas
+                    gla_sum = sum(a["sqft"] for a in areas if a.get("is_gla"))
+                    sketch_gla = f"{gla_sum:,.0f}".replace(",", "") if gla_sum > 0 else None
+                else:
+                    areas, sketch_gla = self._parse_sketch_areas_from_text(ocr_text)
+
+                b64_preview = b64_str if b64_str.startswith("data:image/") else f"data:image/jpeg;base64,{clean_b64}"
+
+                return {
+                    "status": "success",
+                    "sketch_type": "Building Sketch",
+                    "page_number": 1,
+                    "gla": sketch_gla,
+                    "areas": areas,
+                    "room_labels": room_data.get("all_labels", []),
+                    "rooms_by_category": room_data.get("by_category", {}),
+                    "rooms_by_level": room_data.get("by_level", {}),
+                    "room_summary": room_data.get("summary", {}),
+                    "dimensions": [],
+                    "image_preview": b64_preview,
+                    "raw_text_sample": " | ".join(ocr_lines[:12])
+                }
+        except Exception as img_err:
+            print(f"Notice: base64 image sketch extraction error: {img_err}")
+
+        return {"status": "error", "message": "Could not extract sketch data from base64 string"}
 
     def normalize_ocr_text(self, text: str) -> str:
         """Normalizes common OCR character misreadings in appraisal callouts."""
@@ -1117,17 +1678,23 @@ class MapExtractor:
         # 9. White / Light Cards (Subject & White Card Pins - e.g. Greenport Subject, TOTAL cards)
         white_mask = cv2.inRange(hsv, np.array([0, 0, 222]), np.array([180, 28, 255]))
 
-        color_configs = [
-            ("red", red_mask, (0, 0, 255)),
-            ("blue", blue_mask, (255, 0, 0)),
-            ("green", green_mask, (0, 180, 0)),
-            ("orange", orange_mask, (0, 140, 255)),
-            ("teal", teal_mask, (200, 200, 0)),
-            ("yellow", yellow_mask, (0, 215, 255)),
-            ("purple", purple_mask, (200, 50, 180)),
-            ("green", pastel_green_mask, (0, 200, 100)),
-            ("white", white_mask, (200, 200, 200)),
-        ]
+        is_aerial = bool(re.search(r'aerial|satellite', map_type, re.IGNORECASE))
+        if is_aerial:
+            color_configs = [
+                ("red", red_mask, (0, 0, 255))
+            ]
+        else:
+            color_configs = [
+                ("red", red_mask, (0, 0, 255)),
+                ("blue", blue_mask, (255, 0, 0)),
+                ("green", green_mask, (0, 180, 0)),
+                ("orange", orange_mask, (0, 140, 255)),
+                ("teal", teal_mask, (200, 200, 0)),
+                ("yellow", yellow_mask, (0, 215, 255)),
+                ("purple", purple_mask, (200, 50, 180)),
+                ("green", pastel_green_mask, (0, 200, 100)),
+                ("white", white_mask, (200, 200, 200)),
+            ]
 
         pin_counter = 0
         base_name = os.path.splitext(os.path.basename(source_filename))[0]
@@ -1877,9 +2444,10 @@ class MapExtractor:
                         if api_dir not in sys.path:
                             sys.path.insert(0, api_dir)
                         from xml_extractor import extract_fields_from_xml  # type: ignore[import-not-found]
-                xml_data = extract_fields_from_xml(file_path)
+                xml_data = extract_fields_from_xml(file_path, extract_images=False)
                 clean = xml_data.get("clean_data", {})
                 sub = clean.get("Subject", {})
+                xml_sketches = xml_data.get("MAP_EXHIBITS_ANALYSIS", {}).get("sketches", [])
                 if sub:
                     subject_record = {
                         "street": sub.get("Property Address") or sub.get("Street Address") or "",
@@ -1966,65 +2534,104 @@ class MapExtractor:
                 import pdfplumber
                 p_indices = detect_form_pages(doc)
 
+                # Determine the best pdfplumber-compatible source for XML files
+                # Prefer companion PDF (same stem) over doc.tobytes() to avoid pdfplumber parse errors
+                _xml_companion_pdf = None
+                if is_xml_file:
+                    _xml_dir = os.path.dirname(os.path.abspath(file_path))
+                    _xml_stem = os.path.splitext(os.path.basename(file_path))[0]
+                    _cand = os.path.join(_xml_dir, f"{_xml_stem}.pdf")
+                    if os.path.exists(_cand):
+                        _xml_companion_pdf = _cand
+                    else:
+                        # Also search in Downloads/Full File
+                        for _search_dir in [
+                            os.path.join(_xml_dir, "..", "Downloads", "Full File"),
+                            os.path.join(_xml_dir, "..", "Full File"),
+                            os.path.join(_xml_dir, ".."),
+                        ]:
+                            _cand2 = os.path.join(_search_dir, f"{_xml_stem}.pdf")
+                            if os.path.exists(_cand2):
+                                _xml_companion_pdf = os.path.abspath(_cand2)
+                                break
+
+                def _get_plumber_source():
+                    """Return (source, should_close_bytesio) for pdfplumber.open()"""
+                    if is_xml_file:
+                        if _xml_companion_pdf:
+                            return _xml_companion_pdf, False
+                        # Fall back to serializing the fitz doc
+                        return io.BytesIO(doc.tobytes()), True
+                    return file_path, False
+
                 # Subject
                 p1_idx = p_indices.get("form_p1")
-                if p1_idx is not None and not subject_record and os.path.exists(file_path):
+                can_open_pdf = (is_xml_file and doc) or (not is_xml_file and os.path.exists(file_path))
+                if p1_idx is not None and not subject_record and can_open_pdf:
                     try:
-                        with pdfplumber.open(file_path) as pdoc:
-                            p1_res = extract_page_1_fields(pdoc.pages[p1_idx], fitz_page=doc[p1_idx])
-                            sub = p1_res.get("SUBJECT", {})
-                            sub_st = sub.get("Property Address") or ""
-                            sub_city = re.sub(r'^(?:City|City:)\s*', '', sub.get("City") or "", flags=re.I).strip()
-                            sub_state = re.sub(r'^(?:State|State:)\s*', '', sub.get("State") or "", flags=re.I).strip()
-                            sub_zip = re.sub(r'^(?:Zip|Zip\s*Code|Code|Zip:)\s*', '', sub.get("Zip Code") or "", flags=re.I).strip()
-                            if sub_st:
-                                subject_record = {
-                                    "street": sub_st,
-                                    "city": sub_city,
-                                    "state": sub_state,
-                                    "zipcode": sub_zip,
-                                    "address": f"{sub_st}, {sub_city}, {sub_state} {sub_zip}".strip(", ") if (sub_city and sub_state) else sub_st
-                                }
+                        p_source, _ = _get_plumber_source()
+                        import warnings
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore")
+                            with pdfplumber.open(p_source) as pdoc:
+                                p1_res = extract_page_1_fields(pdoc.pages[p1_idx], fitz_page=doc[p1_idx])
+                                sub = p1_res.get("SUBJECT", {})
+                                sub_st = sub.get("Property Address") or ""
+                                sub_city = re.sub(r'^(?:City|City:)\s*', '', sub.get("City") or "", flags=re.I).strip()
+                                sub_state = re.sub(r'^(?:State|State:)\s*', '', sub.get("State") or "", flags=re.I).strip()
+                                sub_zip = re.sub(r'^(?:Zip|Zip\s*Code|Code|Zip:)\s*', '', sub.get("Zip Code") or "", flags=re.I).strip()
+                                if sub_st:
+                                    subject_record = {
+                                        "street": sub_st,
+                                        "city": sub_city,
+                                        "state": sub_state,
+                                        "zipcode": sub_zip,
+                                        "address": f"{sub_st}, {sub_city}, {sub_state} {sub_zip}".strip(", ") if (sub_city and sub_state) else sub_st
+                                    }
                     except Exception as e_p1:
                         print(f"Notice: Page 1 Subject extraction: {e_p1}")
 
                 # Sales Comps (Comps 1..N)
                 p2_idx = p_indices.get("form_p2")
                 extra_indices = p_indices.get("extra_comp_pages") or []
-                if p2_idx is not None and os.path.exists(file_path):
+                if p2_idx is not None and can_open_pdf:
                     try:
-                        with pdfplumber.open(file_path) as pdoc:
-                            extra_plumbs = [pdoc.pages[i] for i in extra_indices if i < len(pdoc.pages)]
-                            extra_fitz = [doc[i] for i in extra_indices if i < len(doc)]
-                            sg_res, _ = extract_page_2_sales_grid_and_reconciliation(
-                                pdoc.pages[p2_idx],
-                                page_extra_comps=extra_plumbs if extra_plumbs else None,
-                                fitz_page=doc[p2_idx],
-                                fitz_extra_pages=extra_fitz if extra_fitz else None
-                            )
-                            for i in range(1, 13):
-                                k = f"COMPARABLE SALE #{i}"
-                                c_dict = sg_res.get(k) or sg_res.get(f"COMPARABLE SALE # {i}") or sg_res.get(f"Comparable {i}") or sg_res.get(f"Comparable Sale {i}")
-                                if c_dict and isinstance(c_dict, dict):
-                                    c_addr = c_dict.get("Address") or ""
-                                    c_prox = c_dict.get("Proximity to Subject") or ""
-                                    c_price = c_dict.get("Sale Price") or ""
-                                    full_c_addr = c_addr
-                                    if c_addr and not re.search(r'[A-Za-z]{2}\s+[0-9]{5}', c_addr) and sub_city and sub_state:
-                                        full_c_addr = f"{c_addr}, {sub_city}, {sub_state} {sub_zip}".strip(", ")
-                                    m_st = re.match(r'^([^,]+)', c_addr)
-                                    st = m_st.group(1).strip() if m_st else c_addr
-                                    if not any(sc["comp_num"] == i for sc in sales_comps):
-                                        sales_comps.append({
-                                            "comp_num": i,
-                                            "street": st,
-                                            "address": full_c_addr or st,
-                                            "city": sub_city,
-                                            "state": sub_state,
-                                            "zipcode": sub_zip,
-                                            "proximity": c_prox,
-                                            "sale_price": c_price
-                                        })
+                        p_source, _ = _get_plumber_source()
+                        import warnings
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore")
+                            with pdfplumber.open(p_source) as pdoc:
+                                extra_plumbs = [pdoc.pages[i] for i in extra_indices if i < len(pdoc.pages)]
+                                extra_fitz = [doc[i] for i in extra_indices if i < len(doc)]
+                                sg_res, _ = extract_page_2_sales_grid_and_reconciliation(
+                                    pdoc.pages[p2_idx],
+                                    page_extra_comps=extra_plumbs if extra_plumbs else None,
+                                    fitz_page=doc[p2_idx],
+                                    fitz_extra_pages=extra_fitz if extra_fitz else None
+                                )
+                                for i in range(1, 13):
+                                    k = f"COMPARABLE SALE #{i}"
+                                    c_dict = sg_res.get(k) or sg_res.get(f"COMPARABLE SALE # {i}") or sg_res.get(f"Comparable {i}") or sg_res.get(f"Comparable Sale {i}")
+                                    if c_dict and isinstance(c_dict, dict):
+                                        c_addr = c_dict.get("Address") or ""
+                                        c_prox = c_dict.get("Proximity to Subject") or ""
+                                        c_price = c_dict.get("Sale Price") or ""
+                                        full_c_addr = c_addr
+                                        if c_addr and not re.search(r'[A-Za-z]{2}\s+[0-9]{5}', c_addr) and sub_city and sub_state:
+                                            full_c_addr = f"{c_addr}, {sub_city}, {sub_state} {sub_zip}".strip(", ")
+                                        m_st = re.match(r'^([^,]+)', c_addr)
+                                        st = m_st.group(1).strip() if m_st else c_addr
+                                        if not any(sc["comp_num"] == i for sc in sales_comps):
+                                            sales_comps.append({
+                                                "comp_num": i,
+                                                "street": st,
+                                                "address": full_c_addr or st,
+                                                "city": sub_city,
+                                                "state": sub_state,
+                                                "zipcode": sub_zip,
+                                                "proximity": c_prox,
+                                                "sale_price": c_price
+                                            })
                     except Exception as e_p2:
                         print(f"Notice: Page 2 Sales Grid extraction: {e_p2}")
 
@@ -2133,7 +2740,8 @@ class MapExtractor:
         return {
             "subject": subject_record,
             "sales_comps": sales_comps,
-            "rental_comps": rental_comps
+            "rental_comps": rental_comps,
+            "xml_sketches": xml_sketches if 'xml_sketches' in locals() else []
         }
 
     def is_uad36_xml(self, file_path: str) -> bool:
@@ -2220,14 +2828,16 @@ class MapExtractor:
         doc, is_xml_embedded = self.get_pdf_doc(file_path)
         ex_type = (exhibit_type or "").lower().strip()
 
-        # Load reference records (Sales Grid & Rental Schedule)
-        refs = self.extract_document_reference_records(doc, file_path)
-        self.reference_records = refs
-
         process_location = ex_type in ["", "all", "location", "location_map", "location_maps", "comps_map", "location_and_comps"]
         process_aerial = ex_type in ["", "all", "aerial", "aerial_map", "aerial_maps", "satellite"]
         process_sketches = ex_type in ["", "all", "sketch", "sketches", "building_sketch", "floor_plan", "building_sketch_floor_plan"]
         process_rentals = ex_type in ["", "all", "rental", "rentals", "rental_map", "rentals_map", "other_maps", "rentals_other_maps", "plat", "flood"]
+
+        # Load reference records (Sales Grid & Rental Schedule) for location/aerial/rental pin matching
+        refs = {"sales_comps": [], "rental_comps": [], "subject": None}
+        if process_location or process_aerial or process_rentals or ex_type in ["", "all"]:
+            refs = self.extract_document_reference_records(doc, file_path)
+        self.reference_records = refs
 
         all_map_pages = self.detect_map_pages(doc) if (process_location or process_aerial or process_rentals) else []
         dedicated_rental_maps = [mp for mp in all_map_pages if re.search(r'rental', mp.get("map_type", ""), re.IGNORECASE)]
@@ -2277,6 +2887,24 @@ class MapExtractor:
             b64_str = base64.b64encode(pix.tobytes("jpeg")).decode("utf-8")
 
             sub = next((p for p in pins if p.get("item_type") == "Subject"), None)
+            if not sub and refs.get("subject"):
+                ref_sub = refs["subject"]
+                sub = {
+                    "item_type": "Subject",
+                    "label": "Subject",
+                    "street": ref_sub.get("street") or "",
+                    "city": ref_sub.get("city") or "",
+                    "state": ref_sub.get("state") or "",
+                    "zipcode": ref_sub.get("zipcode") or "",
+                    "address": ref_sub.get("address") or ref_sub.get("street") or "",
+                    "proximity": "Subject",
+                    "price": "",
+                    "map_type": mp["map_type"],
+                    "page_number": mp["page_number"],
+                    "source_file": os.path.basename(file_path),
+                    "status": "Verified Subject Property"
+                }
+                pins.insert(0, sub)
             comps = [p for p in pins if p.get("item_type") in ("Comparable", "Rental", "Listing")]
 
             # Pair each comparable / rental pin with its matching Photo Addendum and Grid records
@@ -2490,6 +3118,10 @@ class MapExtractor:
             sketch_info = self.process_sketch_page(sp["page_obj"], sp["page_number"], sp["sketch_type"], file_path)
             sketches_data.append(sketch_info)
 
+        # Fallback to XML pre-extracted sketches if detect_sketch_pages found none
+        if not sketches_data and is_xml_embedded and refs.get("xml_sketches"):
+            sketches_data = refs.get("xml_sketches")
+
         return {
             "status": "success",
             "file_name": os.path.basename(file_path),
@@ -2501,7 +3133,11 @@ class MapExtractor:
             "sketches": sketches_data,
             "comparable_photos": comp_photos,
             "all_pins": all_pins,
-            "reference_records": refs
+            "reference_records": {
+                "subject": refs.get("subject"),
+                "sales_comps": refs.get("sales_comps", []),
+                "rental_comps": refs.get("rental_comps", [])
+            }
         }
 
     def export_results(self, all_pins: List[Dict[str, Any]]):

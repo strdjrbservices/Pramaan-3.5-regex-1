@@ -1,21 +1,151 @@
 import { parseDesignStyle } from './improvementsValidation';
 import { is1004And1007Form } from './form1004And1007Validation';
 
-export const parseMMDDYYYY = (str) => {
+export const isValidLeaseDateFormat = (str) => {
+    if (!str || typeof str !== 'string') return false;
+    const trimmed = str.trim();
+    if (!trimmed) return false;
+
+    // 1. MM/dd/yyyy or MM-dd-yyyy
+    const m1 = trimmed.match(/^(0?[1-9]|1[0-2])[-/](0?[1-9]|[12]\d|3[01])[-/](\d{4})$/);
+    if (m1) {
+        const month = parseInt(m1[1], 10);
+        const day = parseInt(m1[2], 10);
+        const year = parseInt(m1[3], 10);
+        const d = new Date(year, month - 1, day);
+        return d.getFullYear() === year && d.getMonth() === month - 1 && d.getDate() === day;
+    }
+
+    // 2. yyyy/mm/dd or yyyy-mm-dd
+    const m2 = trimmed.match(/^(\d{4})[-/](0?[1-9]|1[0-2])[-/](0?[1-9]|[12]\d|3[01])$/);
+    if (m2) {
+        const year = parseInt(m2[1], 10);
+        const month = parseInt(m2[2], 10);
+        const day = parseInt(m2[3], 10);
+        const d = new Date(year, month - 1, day);
+        return d.getFullYear() === year && d.getMonth() === month - 1 && d.getDate() === day;
+    }
+
+    // 3. mm/yyyy or mm-yyyy
+    const m3 = trimmed.match(/^(0?[1-9]|1[0-2])[-/](\d{4})$/);
+    if (m3) {
+        const month = parseInt(m3[1], 10);
+        const year = parseInt(m3[2], 10);
+        return month >= 1 && month <= 12 && year >= 1900 && year <= 2100;
+    }
+
+    // 4. yyyy/yyyy or yyyy-yyyy
+    const m4 = trimmed.match(/^(\d{4})[-/](\d{4})$/);
+    if (m4) {
+        const y1 = parseInt(m4[1], 10);
+        const y2 = parseInt(m4[2], 10);
+        return y1 >= 1900 && y1 <= 2100 && y2 >= 1900 && y2 <= 2100;
+    }
+
+    return false;
+};
+
+export const parseMMDDYYYY = (str, isExpiry = false) => {
     if (!str || typeof str !== 'string') return null;
     const trimmed = str.trim();
-    const dateRegex = /^(0?[1-9]|1[0-2])\/(0?[1-9]|[12]\d|3[01])\/(\d{4})$/;
-    const match = trimmed.match(dateRegex);
-    if (!match) return null;
+    if (!trimmed) return null;
 
-    const month = parseInt(match[1], 10);
-    const day = parseInt(match[2], 10);
-    const year = parseInt(match[3], 10);
-    const dateObj = new Date(year, month - 1, day);
-    if (dateObj.getFullYear() !== year || dateObj.getMonth() !== month - 1 || dateObj.getDate() !== day) {
+    // 1. MM/dd/yyyy or MM-dd-yyyy
+    const m1 = trimmed.match(/^(0?[1-9]|1[0-2])[-/](0?[1-9]|[12]\d|3[01])[-/](\d{4})$/);
+    if (m1) {
+        const month = parseInt(m1[1], 10);
+        const day = parseInt(m1[2], 10);
+        const year = parseInt(m1[3], 10);
+        const dateObj = new Date(year, month - 1, day);
+        if (dateObj.getFullYear() === year && dateObj.getMonth() === month - 1 && dateObj.getDate() === day) {
+            return dateObj;
+        }
         return null;
     }
-    return dateObj;
+
+    // 2. yyyy/mm/dd or yyyy-mm-dd
+    const m2 = trimmed.match(/^(\d{4})[-/](0?[1-9]|1[0-2])[-/](0?[1-9]|[12]\d|3[01])$/);
+    if (m2) {
+        const year = parseInt(m2[1], 10);
+        const month = parseInt(m2[2], 10);
+        const day = parseInt(m2[3], 10);
+        const dateObj = new Date(year, month - 1, day);
+        if (dateObj.getFullYear() === year && dateObj.getMonth() === month - 1 && dateObj.getDate() === day) {
+            return dateObj;
+        }
+        return null;
+    }
+
+    // 3. mm/yyyy or mm-yyyy
+    const m3 = trimmed.match(/^(0?[1-9]|1[0-2])[-/](\d{4})$/);
+    if (m3) {
+        const month = parseInt(m3[1], 10);
+        const year = parseInt(m3[2], 10);
+        return new Date(year, month - 1, 1);
+    }
+
+    // 4. yyyy/yyyy or yyyy-yyyy
+    const m4 = trimmed.match(/^(\d{4})[-/](\d{4})$/);
+    if (m4) {
+        const y1 = parseInt(m4[1], 10);
+        const y2 = parseInt(m4[2], 10);
+        const targetYear = isExpiry ? y2 : y1;
+        return new Date(targetYear, 0, 1);
+    }
+
+    return null;
+};
+
+export const isLeaseExpired = (str, refDate = new Date()) => {
+    if (!str || typeof str !== 'string') return false;
+    const trimmed = str.trim();
+    if (!trimmed || isNA(trimmed)) return false;
+
+    const today = new Date(refDate);
+    today.setHours(0, 0, 0, 0);
+
+    // 1. MM/dd/yyyy or MM-dd-yyyy
+    const m1 = trimmed.match(/^(0?[1-9]|1[0-2])[-/](0?[1-9]|[12]\d|3[01])[-/](\d{4})$/);
+    if (m1) {
+        const month = parseInt(m1[1], 10);
+        const day = parseInt(m1[2], 10);
+        const year = parseInt(m1[3], 10);
+        const dateObj = new Date(year, month - 1, day);
+        dateObj.setHours(0, 0, 0, 0);
+        return dateObj < today;
+    }
+
+    // 2. yyyy/mm/dd or yyyy-mm-dd
+    const m2 = trimmed.match(/^(\d{4})[-/](0?[1-9]|1[0-2])[-/](0?[1-9]|[12]\d|3[01])$/);
+    if (m2) {
+        const year = parseInt(m2[1], 10);
+        const month = parseInt(m2[2], 10);
+        const day = parseInt(m2[3], 10);
+        const dateObj = new Date(year, month - 1, day);
+        dateObj.setHours(0, 0, 0, 0);
+        return dateObj < today;
+    }
+
+    // 3. mm/yyyy or mm-yyyy (expires at the end of the specified month)
+    const m3 = trimmed.match(/^(0?[1-9]|1[0-2])[-/](\d{4})$/);
+    if (m3) {
+        const month = parseInt(m3[1], 10);
+        const year = parseInt(m3[2], 10);
+        const lastDayOfMonth = new Date(year, month, 0);
+        lastDayOfMonth.setHours(0, 0, 0, 0);
+        return lastDayOfMonth < today;
+    }
+
+    // 4. yyyy/yyyy or yyyy-yyyy (expires at the end of the expiration year)
+    const m4 = trimmed.match(/^(\d{4})[-/](\d{4})$/);
+    if (m4) {
+        const y2 = parseInt(m4[2], 10);
+        const lastDayOfYear = new Date(y2, 11, 31);
+        lastDayOfYear.setHours(0, 0, 0, 0);
+        return lastDayOfYear < today;
+    }
+
+    return false;
 };
 
 export const parseRentalAmount = (val) => {
@@ -226,19 +356,27 @@ export const isBlankOrNA = (val) => {
     return isNA(str);
 };
 
+export const isBlankOrZeroOrNA = (val) => {
+    if (val === undefined || val === null) return true;
+    const str = String(typeof val === 'object' && val !== null ? (val.value ?? '') : val).trim();
+    if (str === '' || isNA(str)) return true;
+    const num = parseRentalAmount(str);
+    return num === 0;
+};
+
 export const checkLeaseDates = (field, text, allData, path, saleName) => {
     if (field !== 'Date Lease Begins' && field !== 'Date Lease Expires') {
         return null;
     }
 
-    const isSubject = saleName === 'Subject' || (path && path[0] === 'Subject') || (!saleName && !path);
-    const isComparable = saleName && saleName.startsWith('COMPARABLE');
+    const activeName = saleName || (path && path[0]) || '';
+    const upperName = String(activeName).toUpperCase();
+    const isSubject = upperName === 'SUBJECT' || (!activeName && !path);
+    const isComparable = upperName.includes('COMPARABLE') || upperName.includes('COMP');
 
     if (!isSubject && !isComparable) {
         return null;
     }
-
-    const dateRegex = /^(0?[1-9]|1[0-2])\/(0?[1-9]|[12]\d|3[01])\/\d{4}$/;
 
     if (isSubject) {
         if (!is1007Active(allData)) {
@@ -280,15 +418,15 @@ export const checkLeaseDates = (field, text, allData, path, saleName) => {
                 };
             }
 
-            if (!dateRegex.test(thisDateStr)) {
+            if (!isValidLeaseDateFormat(thisDateStr)) {
                 return {
                     isError: true,
                     skipBlankFilter: true,
-                    message: `For Subject, '${field}' (${thisDateStr}) must be in MM/DD/YYYY format.`
+                    message: `For Subject, '${field}' (${thisDateStr}) must be in MM/dd/yyyy, yyyy/yyyy, mm/yyyy, or yyyy/mm/dd format.`
                 };
             }
 
-            const thisDateObj = parseMMDDYYYY(thisDateStr);
+            const thisDateObj = parseMMDDYYYY(thisDateStr, field === 'Date Lease Expires');
             if (!thisDateObj) {
                 return {
                     isError: true,
@@ -297,18 +435,16 @@ export const checkLeaseDates = (field, text, allData, path, saleName) => {
                 };
             }
 
-            const beginsDateObj = parseMMDDYYYY(leaseBeginsStr);
-            const expiresDateObj = parseMMDDYYYY(leaseExpiresStr);
+            const beginsDateObj = parseMMDDYYYY(leaseBeginsStr, false);
+            const expiresDateObj = parseMMDDYYYY(leaseExpiresStr, true);
 
-            // Logical check: End date should be greater than current date
+            // Logical check: Date Lease Expires cannot be expired / previous to current date
             if (field === 'Date Lease Expires') {
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                if (thisDateObj <= today) {
+                if (isLeaseExpired(thisDateStr)) {
                     return {
                         isError: true,
                         skipBlankFilter: true,
-                        message: `For Subject, 'Date Lease Expires' (${thisDateStr}) must be greater than current date.`
+                        message: `For Subject, 'Date Lease Expires' (${thisDateStr}) cannot be expired / previous to current date.`
                     };
                 }
             }
@@ -352,9 +488,10 @@ export const checkLeaseDates = (field, text, allData, path, saleName) => {
 
     // Comparable Rental Dates
     const currentVal = String(text ?? '').trim();
-    const compData = allData?.[saleName] ||
-        allData?.['Comparable Rental Data']?.[saleName] ||
-        allData?.clean_data?.['Comparable Rental Data']?.[saleName] || {};
+    const compData = allData?.[activeName] ||
+        allData?.['Comparable Rental Data']?.[activeName] ||
+        allData?.clean_data?.['Comparable Rental Data']?.[activeName] ||
+        allData?.clean_data?.[activeName] || {};
     const storedBegins = String(compData['Date Lease Begins'] || '').trim();
     const storedExpires = String(compData['Date Lease Expires'] || '').trim();
 
@@ -365,35 +502,93 @@ export const checkLeaseDates = (field, text, allData, path, saleName) => {
         if (isNA(currentVal)) {
             return { isMatch: true };
         }
+        if (currentVal) {
+            if (!isValidLeaseDateFormat(currentVal)) {
+                return {
+                    isError: true,
+                    skipBlankFilter: true,
+                    message: `For ${activeName}, '${field}' (${currentVal}) must be in MM/dd/yyyy, yyyy/yyyy, mm/yyyy, or yyyy/mm/dd format.`
+                };
+            }
+            if (field === 'Date Lease Expires') {
+                if (isLeaseExpired(currentVal)) {
+                    return {
+                        isError: true,
+                        skipBlankFilter: true,
+                        message: `For ${activeName}, 'Date Lease Expires' (${currentVal}) cannot be expired / previous to current date.`
+                    };
+                }
+            }
+            return { isMatch: true };
+        }
         return null;
     }
 
-    if (!dateRegex.test(leaseBeginsStr)) {
-        return { isError: true, message: `For ${saleName}, 'Date Lease Begins' (${leaseBeginsStr}) must be in MM/DD/YYYY format.` };
+    if (!isValidLeaseDateFormat(leaseBeginsStr)) {
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: `For ${activeName}, 'Date Lease Begins' (${leaseBeginsStr}) must be in MM/dd/yyyy, yyyy/yyyy, mm/yyyy, or yyyy/mm/dd format.`
+        };
     }
-    if (!dateRegex.test(leaseExpiresStr)) {
-        return { isError: true, message: `For ${saleName}, 'Date Lease Expires' (${leaseExpiresStr}) must be in MM/DD/YYYY format.` };
+    if (!isValidLeaseDateFormat(leaseExpiresStr)) {
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: `For ${activeName}, 'Date Lease Expires' (${leaseExpiresStr}) must be in MM/dd/yyyy, yyyy/yyyy, mm/yyyy, or yyyy/mm/dd format.`
+        };
     }
 
-    const leaseBeginsDate = parseMMDDYYYY(leaseBeginsStr);
-    const leaseExpiresDate = parseMMDDYYYY(leaseExpiresStr);
+    const leaseBeginsDate = parseMMDDYYYY(leaseBeginsStr, false);
+    const leaseExpiresDate = parseMMDDYYYY(leaseExpiresStr, true);
 
     if (!leaseBeginsDate) {
-        return { isError: true, message: `For ${saleName}, 'Date Lease Begins' (${leaseBeginsStr}) is not a valid calendar date.` };
+        return { isError: true, skipBlankFilter: true, message: `For ${activeName}, 'Date Lease Begins' (${leaseBeginsStr}) is not a valid calendar date.` };
     }
     if (!leaseExpiresDate) {
-        return { isError: true, message: `For ${saleName}, 'Date Lease Expires' (${leaseExpiresStr}) is not a valid calendar date.` };
+        return { isError: true, skipBlankFilter: true, message: `For ${activeName}, 'Date Lease Expires' (${leaseExpiresStr}) is not a valid calendar date.` };
+    }
+
+    if (field === 'Date Lease Expires') {
+        if (isLeaseExpired(leaseExpiresStr)) {
+            return {
+                isError: true,
+                skipBlankFilter: true,
+                message: `For ${activeName}, 'Date Lease Expires' (${leaseExpiresStr}) cannot be expired / previous to current date.`
+            };
+        }
     }
 
     if (leaseBeginsDate >= leaseExpiresDate) {
-        return { isError: true, message: `For ${saleName}, 'Date Lease Begins' (${leaseBeginsStr}) must be before 'Date Lease Expires' (${leaseExpiresStr}).` };
+        return { isError: true, skipBlankFilter: true, message: `For ${activeName}, 'Date Lease Begins' (${leaseBeginsStr}) must be before 'Date Lease Expires' (${leaseExpiresStr}).` };
     }
 
-    const diffTime = leaseExpiresDate.getTime() - leaseBeginsDate.getTime();
-    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+    const isYearRange = (s) => /^\d{4}[-/]\d{4}$/.test(String(s || '').trim());
+    const isMonthYear = (s) => /^(0?[1-9]|1[0-2])[-/]\d{4}$/.test(String(s || '').trim());
+    if (!isYearRange(leaseBeginsStr) && !isYearRange(leaseExpiresStr)) {
+        if (isMonthYear(leaseBeginsStr) && isMonthYear(leaseExpiresStr)) {
+            const mBegins = leaseBeginsStr.trim().match(/^(0?[1-9]|1[0-2])[-/](\d{4})$/);
+            const mExpires = leaseExpiresStr.trim().match(/^(0?[1-9]|1[0-2])[-/](\d{4})$/);
+            const monthsDiff = (parseInt(mExpires[2], 10) - parseInt(mBegins[2], 10)) * 12 + (parseInt(mExpires[1], 10) - parseInt(mBegins[1], 10));
+            if (monthsDiff !== 11 && monthsDiff !== 12) {
+                return {
+                    isError: true,
+                    skipBlankFilter: true,
+                    message: `For ${activeName}, the lease duration between 'Date Lease Begins' (${leaseBeginsStr}) and 'Date Lease Expires' (${leaseExpiresStr}) must be one year.`
+                };
+            }
+        } else {
+            const diffTime = leaseExpiresDate.getTime() - leaseBeginsDate.getTime();
+            const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
-    if (diffDays < 364 || diffDays > 366) {
-        return { isError: true, message: `For ${saleName}, the lease duration between 'Date Lease Begins' (${leaseBeginsStr}) and 'Date Lease Expires' (${leaseExpiresStr}) must be one year.` };
+            if (diffDays < 364 || diffDays > 366) {
+                return {
+                    isError: true,
+                    skipBlankFilter: true,
+                    message: `For ${activeName}, the lease duration between 'Date Lease Begins' (${leaseBeginsStr}) and 'Date Lease Expires' (${leaseExpiresStr}) must be one year.`
+                };
+            }
+        }
     }
 
     return { isMatch: true };
@@ -424,6 +619,17 @@ export const checkSubjectMonthlyRental = (field, text, allData, path, saleName) 
         }
         return { isMatch: true };
     }
+
+    if (occupant === 'Owner' || occupant === 'Vacant') {
+        if (!isBlankOrZeroOrNA(text)) {
+            return {
+                isError: true,
+                skipBlankFilter: true,
+                message: `For Subject, 'Monthly Rental' must be blank or zero when Occupant is ${occupant}.`
+            };
+        }
+        return { isMatch: true };
+    }
     return null;
 };
 
@@ -434,25 +640,45 @@ export const checkSubjectUtilities = (field, text, allData, path, saleName) => {
     if (!is1007Active(allData)) return null;
 
     const occupant = getSubjectOccupant(allData);
-    if (occupant === 'Tenant') {
-        const amt = parseRentalAmount(text);
-        if (amt === '' || amt === 0) {
+
+    if (occupant === 'Owner' || occupant === 'Vacant') {
+        if (!isBlankOrZeroOrNA(text)) {
             return {
                 isError: true,
                 skipBlankFilter: true,
-                message: "For Subject, 'Less: Utilities' must be present when Occupant is Tenant (zero allowed)."
-            };
-        }
-        if (isNaN(amt) || amt < 0) {
-            return {
-                isError: true,
-                skipBlankFilter: true,
-                message: "For Subject, 'Less: Utilities' must be a valid amount (0 or greater)."
+                message: `For Subject, 'Less: Utilities' must be blank or zero when Occupant is ${occupant}.`
             };
         }
         return { isMatch: true };
     }
-    return null;
+
+    if (occupant === 'Tenant') {
+        if (isBlankOrZeroOrNA(text)) {
+            return { isMatch: true };
+        }
+        const amt = parseRentalAmount(text);
+        if (isNaN(amt) || amt < 0) {
+            return {
+                isError: true,
+                skipBlankFilter: true,
+                message: "For Subject, 'Less: Utilities' must be a valid amount (0 or greater) or blank."
+            };
+        }
+        return { isMatch: true };
+    }
+
+    if (isBlankOrZeroOrNA(text)) {
+        return { isMatch: true };
+    }
+    const amt = parseRentalAmount(text);
+    if (isNaN(amt) || amt < 0) {
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: "For Subject, 'Less: Utilities' must be a valid amount (0 or greater) or blank."
+        };
+    }
+    return { isMatch: true };
 };
 
 export const checkSubjectFurniture = (field, text, allData, path, saleName) => {
@@ -462,25 +688,45 @@ export const checkSubjectFurniture = (field, text, allData, path, saleName) => {
     if (!is1007Active(allData)) return null;
 
     const occupant = getSubjectOccupant(allData);
-    if (occupant === 'Tenant') {
-        const amt = parseRentalAmount(text);
-        if (amt === '' || amt === 0) {
+
+    if (occupant === 'Owner' || occupant === 'Vacant') {
+        if (!isBlankOrZeroOrNA(text)) {
             return {
                 isError: true,
                 skipBlankFilter: true,
-                message: "For Subject, 'Furniture' must be present when Occupant is Tenant (zero allowed)."
-            };
-        }
-        if (isNaN(amt) || amt < 0) {
-            return {
-                isError: true,
-                skipBlankFilter: true,
-                message: "For Subject, 'Furniture' must be a valid amount (0 or greater)."
+                message: `For Subject, 'Furniture' must be blank or zero when Occupant is ${occupant}.`
             };
         }
         return { isMatch: true };
     }
-    return null;
+
+    if (occupant === 'Tenant') {
+        if (isBlankOrZeroOrNA(text)) {
+            return { isMatch: true };
+        }
+        const amt = parseRentalAmount(text);
+        if (isNaN(amt) || amt < 0) {
+            return {
+                isError: true,
+                skipBlankFilter: true,
+                message: "For Subject, 'Furniture' must be a valid amount (0 or greater) or blank."
+            };
+        }
+        return { isMatch: true };
+    }
+
+    if (isBlankOrZeroOrNA(text)) {
+        return { isMatch: true };
+    }
+    const amt = parseRentalAmount(text);
+    if (isNaN(amt) || amt < 0) {
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: "For Subject, 'Furniture' must be a valid amount (0 or greater) or blank."
+        };
+    }
+    return { isMatch: true };
 };
 
 export const checkSubjectAdjustedMonthlyRent = (field, text, allData, path, saleName) => {
@@ -504,6 +750,17 @@ export const checkSubjectAdjustedMonthlyRent = (field, text, allData, path, sale
                 isError: true,
                 skipBlankFilter: true,
                 message: "For Subject, 'Adjusted Monthly Rent' must be a valid amount greater than 0."
+            };
+        }
+        return { isMatch: true };
+    }
+
+    if (occupant === 'Owner' || occupant === 'Vacant') {
+        if (!isBlankOrZeroOrNA(text)) {
+            return {
+                isError: true,
+                skipBlankFilter: true,
+                message: `For Subject, 'Adjusted Monthly Rent' must be blank or zero when Occupant is ${occupant}.`
             };
         }
         return { isMatch: true };
@@ -1441,7 +1698,7 @@ export const checkRentSubjectRoomCountConsistency = (field, text, allData, field
             return {
                 isError: true,
                 skipBlankFilter: true,
-                message: `Bedroom count mismatch: Sales Grid/Improvements indicates '${targetVal}', but Rental Grid indicates '${valStr}'. Please reconcile and revise.`
+                message: `bath count mismatch: Sales Grid/Improvements indicates '${targetVal}', but Rental Grid indicates '${valStr}'. Please reconcile and revise.`
             };
         }
         if (!isNaN(rentNum)) return { isMatch: true, message: "validated" };
@@ -1521,27 +1778,27 @@ export const checkRentRoomCountAdjustment = (field, text, allData, fieldPath, re
             if (adjStr === '') {
                 return {
                     isError: true,
-                    message: `Room count mismatch (Subject: ${subjTotal}/${subjBdrms}/${subjBaths}, Comp: ${compTotal}/${compBdrms}/${compBaths}). An adjustment is required, even if $0.`
+                    message: `Bath count mismatch (Subject: ${subjTotal}/${subjBdrms}/${subjBaths}, Comp: ${compTotal}/${compBdrms}/${compBaths}). An adjustment is required, even if $0.`
                 };
             }
             const adjVal = parseAdjustmentValue(adjStr);
-            if (compBdrms > subjBdrms && adjVal > 0) {
+            if (compBaths > subjBaths && adjVal > 0) {
                 return {
                     isError: true,
-                    message: `Warning: Comp has more bedrooms (${compBdrms}) than Subject (${subjBdrms}), so a negative adjustment is expected.`
+                    message: `Warning: Comp has more bath (${compBaths}) than Subject (${subjBaths}), so a negative adjustment is expected.`
                 };
             }
-            if (compBdrms < subjBdrms && adjVal < 0) {
+            if (compBaths < subjBaths && adjVal < 0) {
                 return {
                     isError: true,
-                    message: `Warning: Comp has fewer bedrooms (${compBdrms}) than Subject (${subjBdrms}), so a positive adjustment is expected.`
+                    message: `Warning: Comp has fewer barth (${compBaths}) than Subject (${subjBaths}), so a positive adjustment is expected.`
                 };
             }
         } else {
             if (adjStr !== '' && adjStr !== '0' && adjStr !== '$0' && parseAdjustmentValue(adjStr) !== 0) {
                 return {
                     isError: true,
-                    message: `Room count is the same, but adjustment is not $0.`
+                    message: `count is the same, but adjustment is not $0.`
                 };
             }
         }
@@ -1903,6 +2160,152 @@ export const getPresentRentalCompsCount = (allData) => {
     return count;
 };
 
+export const normalizeAddressForDuplicateCheck = (val) => {
+    if (!val) return '';
+    let s = String(val).toLowerCase().trim();
+    s = s.replace(/\bcourt\b/g, 'ct')
+        .replace(/\bstreet\b/g, 'st')
+        .replace(/\broad\b/g, 'rd')
+        .replace(/\bavenue\b/g, 'ave')
+        .replace(/\bdrive\b/g, 'dr')
+        .replace(/\blane\b/g, 'ln')
+        .replace(/\bboulevard\b/g, 'blvd')
+        .replace(/\bcircle\b/g, 'cir')
+        .replace(/\bparkway\b/g, 'pkwy')
+        .replace(/\bterrace\b/g, 'ter')
+        .replace(/\bplace\b/g, 'pl');
+    return s.replace(/[^a-z0-9]/g, '');
+};
+
+export const checkRentalComparableAddressDuplicates = (field, text, allData, fieldPath, saleName) => {
+    let actualText = text;
+    let actualAllData = allData;
+    let actualPath = fieldPath;
+    let actualSaleName = saleName;
+
+    if (text && typeof text === 'object' && !Array.isArray(text) && typeof allData === 'string') {
+        actualAllData = text;
+        actualSaleName = allData;
+        actualText = null;
+        actualPath = fieldPath;
+    }
+
+    if (!actualSaleName && Array.isArray(actualPath)) {
+        actualSaleName = actualPath.find(p => typeof p === 'string' && (
+            p.toUpperCase().includes('RENT') ||
+            p.toUpperCase().startsWith('COMPARABLE NO') ||
+            /^#?\d+$/.test(String(p).trim())
+        ));
+        if (!actualSaleName && actualPath.length >= 2 && String(actualPath[actualPath.length - 1]).toLowerCase() === 'address') {
+            actualSaleName = actualPath[actualPath.length - 2];
+        }
+    }
+
+    const normField = String(field || '').trim().toLowerCase();
+    if (normField !== 'address' && normField !== 'property address') {
+        return null;
+    }
+
+    if (!actualSaleName || String(actualSaleName).trim().toLowerCase() === 'subject' ||
+        (Array.isArray(actualPath) && String(actualPath[0] || '').trim().toLowerCase() === 'subject')) {
+        return null;
+    }
+
+    const normSale = String(actualSaleName || '').toUpperCase();
+    if (normSale.includes('SALE') && !normSale.includes('RENT')) {
+        return null;
+    }
+
+    let currentAddr = '';
+    if (actualText !== null && actualText !== undefined) {
+        currentAddr = String(typeof actualText === 'object' ? (actualText.value ?? '') : actualText).trim();
+    } else if (actualAllData) {
+        currentAddr = getRentalCompAddress(actualAllData, actualSaleName);
+    }
+
+    if (!currentAddr || currentAddr === '-' || currentAddr.toLowerCase() === 'n/a') {
+        return null;
+    }
+
+    const normCurrent = normalizeAddressForDuplicateCheck(currentAddr);
+    if (!normCurrent) return null;
+
+    const currentMatch = String(actualSaleName).match(/\d+/);
+    const currentCompNum = currentMatch ? parseInt(currentMatch[0], 10) : null;
+
+    const matchingComps = [];
+    const seenCompNums = new Set();
+    if (currentCompNum !== null) seenCompNums.add(currentCompNum);
+
+    for (let i = 1; i <= 20; i++) {
+        if (i === currentCompNum) continue;
+        const otherAddr = getRentalCompAddress(actualAllData, i);
+        if (!otherAddr || otherAddr === '-' || otherAddr.toLowerCase() === 'n/a') continue;
+
+        const normOther = normalizeAddressForDuplicateCheck(otherAddr);
+        if (normOther && normOther === normCurrent) {
+            seenCompNums.add(i);
+            matchingComps.push({
+                num: i,
+                label: `COMPARABLE NO. ${i}`,
+                address: otherAddr
+            });
+        }
+    }
+
+    const containers = [
+        actualAllData?.['Comparable Rent Schedule'],
+        actualAllData?.clean_data?.['Comparable Rent Schedule'],
+        actualAllData?.['RENT_SCHEDULE_GRID'],
+        actualAllData?.clean_data?.['RENT_SCHEDULE_GRID'],
+        actualAllData?.['Comparable Rental Data'],
+        actualAllData?.clean_data?.['Comparable Rental Data'],
+        actualAllData?.['Single Family Rent Schedule'],
+        actualAllData?.clean_data?.['Single Family Rent Schedule'],
+        actualAllData?.RENTAL_GRID,
+        actualAllData?.clean_data?.RENTAL_GRID
+    ];
+    containers.forEach(container => {
+        if (container && typeof container === 'object') {
+            Object.entries(container).forEach(([k, v]) => {
+                if (!v || typeof v !== 'object') return;
+                if (k.toLowerCase().trim() === 'subject') return;
+                const m = k.match(/\d+/);
+                const n = m ? parseInt(m[0], 10) : null;
+                if (n !== null && seenCompNums.has(n)) return;
+                if (k.toLowerCase() === String(actualSaleName).toLowerCase()) return;
+
+                const raw = v['Address'] ?? v['Street Address'] ?? v['Property Address'];
+                const addr = String(typeof raw === 'object' && raw !== null ? (raw.value ?? '') : (raw ?? '')).trim();
+                if (!addr || addr === '-' || addr.toLowerCase() === 'n/a') return;
+
+                const normOther = normalizeAddressForDuplicateCheck(addr);
+                if (normOther && normOther === normCurrent) {
+                    if (n !== null) seenCompNums.add(n);
+                    matchingComps.push({
+                        num: n,
+                        label: k,
+                        address: addr
+                    });
+                }
+            });
+        }
+    });
+
+    if (matchingComps.length > 0) {
+        const matchesDesc = matchingComps.map(c => `${c.label} ('${c.address}')`).join(', ');
+        return {
+            isError: true,
+            message: `Rental comparable address cannot match another comparable. Matches ${matchesDesc}.`
+        };
+    }
+
+    return {
+        isMatch: true,
+        message: 'Valid: Rental comparable address is unique across comparables.'
+    };
+};
+
 export const checkMinimumRentalComparables = (field, text, allData, fieldPath, saleName, formType) => {
     if (!is1007Active(allData, formType)) {
         return null;
@@ -1925,6 +2328,11 @@ export const checkMinimumRentalComparables = (field, text, allData, fieldPath, s
                 skipBlankFilter: true
             };
         }
+    }
+
+    const dupCheck = checkRentalComparableAddressDuplicates(field, text, allData, fieldPath, saleName, formType);
+    if (dupCheck && dupCheck.isError) {
+        return dupCheck;
     }
 
     return {

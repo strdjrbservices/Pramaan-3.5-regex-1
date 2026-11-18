@@ -104,6 +104,7 @@ import * as infoOfSalesValidation from '../../validations/infoOfSalesValidation'
 import * as costApproachValidation from '../../validations/costApproachValidation';
 import * as version1Validation from './Version1/version1Validation';
 import * as form1004And1007Validation from '../../validations/form1004And1007Validation';
+import * as generalValidation from '../../validations/generalValidation';
 import { checkUnpaidLenderStatus } from '../../utils/unpaidLenders';
 
 import PremiumLogo from '../auth/logo';
@@ -374,6 +375,8 @@ function Subject({ defaultFormType }) {
         if (valLog.aduCheck) setADUResponse(valLog.aduCheck);
       }
 
+      const isRealFileName = (fn) => Boolean(fn && !/^(?:n\/?a|none|null|undefined|false|\[object object\])$/i.test(String(fn).trim()));
+
       if (pdfFile) {
         setNotification({ open: true, message: 'Restoring PDF file...', severity: 'info' });
         fetch(pdfFile)
@@ -386,11 +389,14 @@ function Subject({ defaultFormType }) {
           .catch(err => {
             console.error("Error restoring PDF:", err);
             setNotification({ open: true, message: 'Report data loaded, but failed to restore PDF file.', severity: 'warning' });
-            if (fileName) setSelectedFile({ name: fileName });
+            if (isRealFileName(fileName)) setSelectedFile({ name: fileName });
+            else setSelectedFile(null);
           });
       } else {
-        if (fileName) {
+        if (isRealFileName(fileName)) {
           setSelectedFile({ name: fileName });
+        } else {
+          setSelectedFile(null);
         }
         setNotification({ open: true, message: 'Report data loaded from history.', severity: 'success' });
       }
@@ -511,8 +517,8 @@ function Subject({ defaultFormType }) {
       'HOA $': [subjectValidation.checkHOA],
       'Offered for Sale in Last 12 Months': [subjectValidation.checkOfferedForSale],
       'ANSI': [subjectValidation.checkAnsi],
-      'Property Address': [htmlDataValidation.checkPropertyAddressHtmlConsistency, subjectValidation.checkSubjectFieldsNotBlank, salesComparisonValidation.checkSubjectAddressInconsistency],
-      'PROPERTY ADDRESS': [htmlDataValidation.checkPropertyAddressHtmlConsistency, subjectValidation.checkSubjectFieldsNotBlank, salesComparisonValidation.checkSubjectAddressInconsistency],
+      'Property Address': [htmlDataValidation.checkPropertyAddressHtmlConsistency, subjectValidation.checkSubjectFieldsNotBlank, salesComparisonValidation.checkSubjectAddressInconsistency, salesComparisonValidation.checkComparableAddressDuplicates, rentScheduleValidation.checkRentalComparableAddressDuplicates],
+      'PROPERTY ADDRESS': [htmlDataValidation.checkPropertyAddressHtmlConsistency, subjectValidation.checkSubjectFieldsNotBlank, salesComparisonValidation.checkSubjectAddressInconsistency, salesComparisonValidation.checkComparableAddressDuplicates, rentScheduleValidation.checkRentalComparableAddressDuplicates],
       'County': [htmlDataValidation.checkCountyHtmlConsistency, subjectValidation.checkSubjectFieldsNotBlank],
       'COUNTY': [htmlDataValidation.checkCountyHtmlConsistency, subjectValidation.checkSubjectFieldsNotBlank],
       'Property County': [htmlDataValidation.checkCountyHtmlConsistency],
@@ -696,7 +702,7 @@ function Subject({ defaultFormType }) {
       'Vehicle Storage Spaces': [version1Validation.checkVersion1VehicleStorageAdjustmentConsistency],
       'Vehicle Storage Adjustment': [version1Validation.checkVersion1VehicleStorageAdjustmentConsistency],
 
-      'Address': [salesComparisonValidation.checkSubjectAddressInconsistency, rentScheduleValidation.checkMinimumRentalComparables],
+      'Address': [salesComparisonValidation.checkSubjectAddressInconsistency, salesComparisonValidation.checkComparableAddressDuplicates, rentScheduleValidation.checkMinimumRentalComparables, rentScheduleValidation.checkRentalComparableAddressDuplicates],
       'Condition': [salesComparisonValidation.checkConditionAdjustment], 'Condition Adjustment': [salesComparisonValidation.checkConditionAdjustment],
       'Bedrooms': [salesComparisonValidation.checkBedroomsAdjustment], 'Bedrooms Adjustment': [salesComparisonValidation.checkBedroomsAdjustment],
       'Baths': [salesComparisonValidation.checkBathsAdjustment], 'Baths Adjustment': [salesComparisonValidation.checkBathsAdjustment],
@@ -1130,11 +1136,22 @@ function Subject({ defaultFormType }) {
       registry[f] = [costApproachValidation.checkRemainingEconomicLife];
     });
 
+    const costReplicationFields = [
+      "Provide adequate information for the lender/client to replicate the below cost figures and calculations.",
+      "Provide adequate information for the lender/client to replicate the below cost figures and calculations",
+      "Comments on Cost Approach (gross living area calculations, depreciation, etc.)",
+      "Support for the opinion of site value (summary of comparable land sales or other methods for estimating site value)"
+    ];
+    costReplicationFields.forEach(f => {
+      if (!registry[f]) registry[f] = [];
+      registry[f].push(costApproachValidation.checkBplCostApproachReplication);
+    });
+
     return registry;
   };
 
   const rentScheduleValidationRegistry = {
-    'Address': [rentScheduleValidation.checkMinimumRentalComparables],
+    'Address': [rentScheduleValidation.checkMinimumRentalComparables, rentScheduleValidation.checkRentalComparableAddressDuplicates],
     'Proximity to Subject': [rentScheduleValidation.checkRentProximityToSubject],
     'Date Lease Begins': [rentScheduleValidation.checkLeaseDates],
     'Date Lease Expires': [rentScheduleValidation.checkLeaseDates],
@@ -1523,6 +1540,21 @@ function Subject({ defaultFormType }) {
         return;
       }
 
+      if (!isFieldValBlank(value)) {
+        const disallowedRes = generalValidation.checkDisallowedPhrases(lookupField, rawValue);
+        if (disallowedRes && disallowedRes.isError) {
+          const properSection = disallowedRes.section || getProperSectionName(path, sectionName);
+          const actualFieldName = disallowedRes.field || fieldName;
+          const formattedFieldName = `${actualFieldName}${saleName && saleName !== 'Subject' ? ` (${saleName})` : ''}`;
+          const errKey = `${properSection.toLowerCase()}|${actualFieldName.toLowerCase()}|${disallowedRes.message.toLowerCase()}`;
+          if (!seenErrorKeys.has(errKey)) {
+            seenErrorKeys.add(errKey);
+            errors.push([properSection, formattedFieldName, disallowedRes.message, path]);
+          }
+          return;
+        }
+      }
+
       const lookupKey = Object.keys(customRegistry).find(k => k.toLowerCase() === String(lookupField).toLowerCase()) || lookupField;
       const validationFns = customRegistry[lookupKey] || [];
       for (const fn of validationFns) {
@@ -1876,6 +1908,13 @@ function Subject({ defaultFormType }) {
         const properSection = getProperSectionName(path, sectionName);
         successes.push([properSection, `${fieldName}${saleName ? ` (${saleName})` : ''}`, 'Passed (Manually Validated)', path]);
         return;
+      }
+
+      if (!isFieldValBlank(value)) {
+        const disallowedRes = generalValidation.checkDisallowedPhrases(lookupField, rawValue);
+        if (disallowedRes && disallowedRes.isError) {
+          return;
+        }
       }
 
       const lookupKey = Object.keys(customRegistry).find(k => k.toLowerCase() === String(lookupField).toLowerCase()) || lookupField;

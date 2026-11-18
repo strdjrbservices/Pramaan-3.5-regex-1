@@ -5923,15 +5923,33 @@ def extract_photos_and_captions(doc, pdf_path=None):
             pix = page.get_pixmap(clip=clip_rect, dpi=180)
             img_bytes = pix.tobytes("jpeg")
             b64_str = base64.b64encode(img_bytes).decode("utf-8")
+
+            # Dynamic sketch extraction directly from the sketch page canvas
+            sk_details = {}
+            try:
+                from map_extractor_cli import MapExtractor
+                _ext = MapExtractor(save_images=False)
+                sk_details = _ext.process_sketch_page(page, page_idx + 1, "Building Sketch", "pdf_doc")
+            except Exception:
+                pass
+
             photos.append({
                 "page": page_idx + 1,
-                "category": "Sketch",
+                "category": "Building Sketch",
                 "caption": caption,
                 "format": "jpeg",
                 "width": round(clip_rect.width, 1),
                 "height": round(clip_rect.height, 1),
                 "rect": [round(clip_rect.x0, 1), round(clip_rect.y0, 1), round(clip_rect.x1, 1), round(clip_rect.y1, 1)],
-                "base64_preview": f"data:image/jpeg;base64,{b64_str}"
+                "base64_preview": f"data:image/jpeg;base64,{b64_str}",
+                "gla": sk_details.get("gla"),
+                "areas": sk_details.get("areas", []),
+                "room_labels": sk_details.get("room_labels", []),
+                "rooms_by_category": sk_details.get("rooms_by_category", {}),
+                "rooms_by_level": sk_details.get("rooms_by_level", {}),
+                "room_summary": sk_details.get("room_summary", {}),
+                "dimensions": sk_details.get("dimensions", []),
+                "raw_text": text
             })
             continue
 
@@ -7463,6 +7481,40 @@ def extract_fields_from_pdf_offline(pdf_path):
             clean_data["EXTRACTED_PHOTOS"] = extracted_photos
             clean_data["MATHEMATICAL_VERIFICATION"] = math_invariants
 
+            # Build structured MAP_EXHIBITS_ANALYSIS directly from dynamically extracted sketch and map photos
+            sketch_items = [p for p in (extracted_photos or []) if p.get("category") == "Building Sketch" or "sketch" in str(p.get("caption", "")).lower() or "floor" in str(p.get("caption", "")).lower()]
+            map_items = [p for p in (extracted_photos or []) if p.get("category") in ["Maps & Aerials", "Map"] or "map" in str(p.get("caption", "")).lower()]
+
+            sketches_list = []
+            for sk in sketch_items:
+                sketches_list.append({
+                    "sketch_type": sk.get("caption") or "Building Sketch",
+                    "page_number": sk.get("page", 1),
+                    "gla": sk.get("gla") or "",
+                    "areas": sk.get("areas") or [],
+                    "room_labels": sk.get("room_labels") or [],
+                    "room_summary": sk.get("room_summary") or {},
+                    "rooms_by_category": sk.get("rooms_by_category") or {},
+                    "rooms_by_level": sk.get("rooms_by_level") or {},
+                    "dimensions": sk.get("dimensions") or [],
+                    "image_preview": sk.get("base64_preview") or sk.get("image_data") or "",
+                    "raw_text_sample": (sk.get("raw_text") or "")[:500]
+                })
+
+            map_exhibits_analysis = {
+                "status": "success",
+                "total_maps": len(map_items),
+                "total_sketches": len(sketches_list),
+                "total_comparable_photos": 0,
+                "maps": [],
+                "sketches": sketches_list,
+                "comparable_photos": [],
+                "all_pins": []
+            }
+
+            clean_data["MAP_EXHIBITS_ANALYSIS"] = map_exhibits_analysis
+            clean_data["map_exhibits_analysis"] = map_exhibits_analysis
+
             unified_fields: Dict[str, Any] = {}
             for cat_name, cat_dict in clean_data.items():
                 unified_fields[cat_name] = cat_dict
@@ -7627,6 +7679,8 @@ def extract_fields_from_pdf_offline(pdf_path):
                 "raw": raw_json_str,
                 "pages_detected": page_indices,
                 "extracted_photos": extracted_photos,
+                "MAP_EXHIBITS_ANALYSIS": map_exhibits_analysis,
+                "map_exhibits_analysis": map_exhibits_analysis,
                 "mathematical_verification": math_invariants,
                 "status": "success"
             }

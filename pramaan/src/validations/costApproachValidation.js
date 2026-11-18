@@ -1,33 +1,371 @@
 import { checkCostApproachMatchConsistency } from './form1004And1007Validation';
 
-export const checkCostNew = (field, text) => {
-    if (field !== 'ESTIMATED/REPRODUCTION / REPLACEMENT COST NEW') return null;
+export const isBplClient = (data) => {
+    if (!data || typeof data !== 'object') return false;
+
+    const checkString = (val) => {
+        if (!val || typeof val !== 'string') return false;
+        return /\bBPL\b/i.test(val) || /bpl\s*mortgage/i.test(val) || /\bcoast\s*2\s*coast\b/i.test(val) || /\bcoast2coast\b/i.test(val);
+    };
+
+    const candidates = [
+        data.selectedClient,
+        data.client,
+        data.Client,
+        data['Client Name'],
+        data.client_name,
+        data['Lender/Client'],
+        data['LENDER/CLIENT'],
+        data['Lender / Client'],
+        data['Lender/Client Company Name'],
+        data['LENDER/CLIENT Name'],
+        data['Client/Lender Company Name'],
+        data['Client/Lender on Report'],
+        data['CLIENT/LENDER ON REPORT'],
+        data['Lender Name'],
+        data['Lender'],
+        data.Subject?.['Lender/Client'],
+        data.Subject?.['LENDER/CLIENT'],
+        data.Subject?.['Lender / Client'],
+        data.Subject?.['Lender/Client Company Name'],
+        data.Subject?.['LENDER/CLIENT Name'],
+        data.Subject?.['Client / Lender'],
+        data.Subject?.['Client/Lender'],
+        data.Subject?.['Client Name'],
+        data.Subject?.['Client'],
+        data.SUBJECT?.['Lender/Client'],
+        data.SUBJECT?.['LENDER/CLIENT'],
+        data.SUBJECT?.['Lender/Client Company Name'],
+        data.SUBJECT?.['LENDER/CLIENT Name'],
+        data.CERTIFICATION?.['Lender/Client Company Name'],
+        data.CERTIFICATION?.['Lender/Client'],
+        data.CERTIFICATION?.['LENDER/CLIENT Name'],
+        data.clean_data?.selectedClient,
+        data.clean_data?.client,
+        data.clean_data?.['Lender/Client'],
+        data.clean_data?.['Lender/Client Company Name'],
+        data.clean_data?.Subject?.['Lender/Client'],
+        data.clean_data?.Subject?.['Lender/Client Company Name'],
+        data.html_data?.['Client/Lender on Report'],
+        data.html_data?.['CLIENT/LENDER ON REPORT'],
+        data.html_data?.['Client/Lender Company Name'],
+        data.html_data?.['Lender/Client'],
+        data.html_data?.['Client Name'],
+        data.html_data?.['Client'],
+        data.order_data?.client,
+        data.order_data?.Client,
+        data.order_data?.lender,
+        data.order_data?.Lender,
+        data.order_data?.['Lender/Client'],
+        data.allData?.selectedClient,
+        data.allData?.client,
+        data.allData?.['Lender/Client'],
+        data.allData?.Subject?.['Lender/Client']
+    ];
+
+    for (const cand of candidates) {
+        if (checkString(cand)) return true;
+    }
+
+    return false;
+};
+
+export const checkCostNew = (field, text, data) => {
+    const validFields = [
+        'ESTIMATED/REPRODUCTION / REPLACEMENT COST NEW',
+        'Estimated',
+        'ESTIMATED COST NEW TYPE'
+    ];
+    if (!validFields.includes(field)) return null;
 
     const value = String(text || '').trim().toLowerCase();
+    const isBpl = isBplClient(data);
+
     if (!value) {
-        return { isError: true, message: "'ESTIMATED/REPRODUCTION / REPLACEMENT COST NEW' cannot be blank. One option must be selected." };
+        return {
+            isError: true,
+            skipBlankFilter: isBpl,
+            message: "'ESTIMATED/REPRODUCTION / REPLACEMENT COST NEW' cannot be blank. One option must be selected."
+        };
     }
 
     const hasReproduction = value.includes('reproduction');
     const hasReplacement = value.includes('replacement');
 
     if (hasReproduction && hasReplacement) {
-        return { isError: true, message: "Only one of 'Reproduction' or 'Replacement' can be selected." };
+        return { isError: true, skipBlankFilter: isBpl, message: "Only one of 'Reproduction' or 'Replacement' can be selected." };
     }
 
     if (!hasReproduction && !hasReplacement) {
-        return { isError: true, message: "Either 'Reproduction' or 'Replacement' must be selected." };
+        return { isError: true, skipBlankFilter: isBpl, message: "Either 'Reproduction' or 'Replacement' must be selected." };
     }
 
-    return { isMatch: true };
+    return { isMatch: true, skipBlankFilter: isBpl, message: "Estimated cost new type is valid." };
 };
 
-export const checkSourceOfCostData = (field, text) => {
-    if (field !== 'Source of cost data') return null;
+export const checkSourceOfCostData = (field, text, data) => {
+    if (field !== 'Source of cost data' && field !== 'Source of Cost Data' && field !== 'Cost Data Source') return null;
+    const isBpl = isBplClient(data);
     if (!text || String(text).trim() === '') {
-        return { isError: true, message: "'Source of cost data' cannot be blank." };
+        return { isError: true, skipBlankFilter: isBpl, message: "'Source of cost data' cannot be blank." };
     }
-    return { isMatch: true };
+    return { isMatch: true, skipBlankFilter: isBpl, message: "'Source of cost data' is present." };
+};
+
+export const isNotDevelopedComment = (val) => {
+    if (!val) return false;
+    const str = String(val).toLowerCase().trim();
+    if (!str) return false;
+
+    if (
+        str.includes('not developed') ||
+        str.includes('not be developed') ||
+        str.includes('was not developed') ||
+        str.includes('is not developed') ||
+        str.includes('not been developed') ||
+        str.includes('cannot be developed') ||
+        str.includes('could not be developed') ||
+        str.includes('not applicable') ||
+        str.includes('not performed') ||
+        str.includes('not completed') ||
+        str.includes('not utilized') ||
+        str.includes('was not utilized') ||
+        str.includes('not analyzed') ||
+        str.includes('limits the reliability') ||
+        str.includes('limits reliability') ||
+        str.includes('unreliable') ||
+        str.includes('less reliable') ||
+        str.includes('why cost approach cannot be developed')
+    ) {
+        return true;
+    }
+
+    const pattern = /\b(?:not\s+(?:being\s+|been\s+|be\s+|was\s+|is\s+|are\s+)?(?:developed|applicable|performed|completed|utilized|analyzed)|cannot\s+be\s+developed|could\s+not\s+be\s+developed|limits\s+(?:the\s+)?reliability|omitted)\b/i;
+    return pattern.test(str);
+};
+
+export const getMissingCostApproachFields = (data) => {
+    if (!data || typeof data !== 'object') {
+        return ['Cost Approach data'];
+    }
+
+    const parseNum = (val) => {
+        if (val === undefined || val === null) return 0;
+        const clean = String(val).replace(/[^0-9.]/g, '');
+        const num = parseFloat(clean);
+        return isNaN(num) ? 0 : num;
+    };
+
+    const hasText = (fieldNames) => {
+        const sources = [
+            data.COST_APPROACH,
+            data['Cost Approach'],
+            data.Cost_Approach,
+            data.clean_data?.COST_APPROACH,
+            data.clean_data?.['Cost Approach'],
+            data.allData?.COST_APPROACH,
+            data.allData?.['Cost Approach'],
+            data.allData,
+            data
+        ];
+        for (const src of sources) {
+            if (!src || typeof src !== 'object') continue;
+            for (const name of fieldNames) {
+                if (src[name] !== undefined && src[name] !== null && String(src[name]).trim() !== '') {
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+
+    const hasNum = (fieldNames) => {
+        const sources = [
+            data.COST_APPROACH,
+            data['Cost Approach'],
+            data.Cost_Approach,
+            data.clean_data?.COST_APPROACH,
+            data.clean_data?.['Cost Approach'],
+            data.RECONCILIATION,
+            data.allData?.COST_APPROACH,
+            data.allData?.['Cost Approach'],
+            data.allData,
+            data
+        ];
+        for (const src of sources) {
+            if (!src || typeof src !== 'object') continue;
+            for (const name of fieldNames) {
+                if (src[name] !== undefined && src[name] !== null) {
+                    const num = parseNum(src[name]);
+                    if (num > 0) return true;
+                }
+            }
+        }
+        return false;
+    };
+
+    const missing = [];
+
+    // 1. Indicated Value by Cost Approach
+    if (!hasNum([
+        "Indicated Value By Cost Approach......................................................=$",
+        "Indicated Value by Cost Approach",
+        "Indicated Value By Cost Approach",
+        "Cost Approach (if developed)",
+        "Cost Approach (if developed) $"
+    ])) {
+        missing.push("Indicated Value by Cost Approach");
+    }
+
+    // 2. Opinion of Site Value
+    if (!hasNum([
+        "OPINION OF SITE VALUE = $ ................................................",
+        "OPINION OF SITE VALUE",
+        "Opinion of Site Value",
+        "Opinion of Site Value $",
+        "OPINION OF SITE VALUE $"
+    ])) {
+        missing.push("Opinion of Site Value");
+    }
+
+    // 3. Dwelling
+    if (!hasNum(["Dwelling", "DWELLING"])) {
+        missing.push("Dwelling");
+    }
+
+    // 4. Total Estimate of Cost-New
+    if (!hasNum([
+        "Total Estimate of Cost-New  = $ ...................",
+        "Total Estimate of Cost-New = $ ...................",
+        "Total Estimate of Cost-New",
+        "Total Estimate Cost-New"
+    ])) {
+        missing.push("Total Estimate of Cost-New");
+    }
+
+    // 5. Source of cost data
+    if (!hasText(["Source of cost data", "Source of Cost Data", "Cost Data Source"])) {
+        missing.push("Source of cost data");
+    }
+
+    // 6. Quality rating from cost service
+    if (!hasText([
+        "Quality rating from cost service ",
+        "Quality rating from cost service",
+        "Quality Rating",
+        "Quality rating"
+    ])) {
+        missing.push("Quality rating");
+    }
+
+    // 7. Effective date of cost data
+    if (!hasText([
+        "Effective date of cost data ",
+        "Effective date of cost data",
+        "Effective Date",
+        "Effective date"
+    ])) {
+        missing.push("Effective date of cost data");
+    }
+
+    // 8. Remaining Economic Life
+    if (!hasNum([
+        "Estimated Remaining Economic Life (HUD and VA only)",
+        "Remaining Economic Life",
+        "Estimated Remaining Economic Life",
+        "Estimated Remaining Economic Life Years"
+    ])) {
+        missing.push("Remaining Economic Life");
+    }
+
+    // 9. Depreciated Cost of Improvements
+    if (!hasNum([
+        "Depreciated Cost of Improvements......................................................=$ ",
+        "Depreciated Cost of Improvements......................................................=$",
+        "Depreciated Cost of Improvements",
+        "Depreciated Cost of Dwellings"
+    ])) {
+        missing.push("Depreciated Cost of Improvements");
+    }
+
+    return missing;
+};
+
+export const isCostApproachFulfilled = (data) => {
+    const missing = getMissingCostApproachFields(data);
+    return missing.length === 0;
+};
+
+export const checkBplCostApproachReplication = (field, text, data) => {
+    const replicationFields = [
+        "Provide adequate information for the lender/client to replicate the below cost figures and calculations.",
+        "Provide adequate information for the lender/client to replicate the below cost figures and calculations"
+    ];
+
+    const isReplicationField = typeof field === 'string' && (
+        replicationFields.includes(field) ||
+        field.toLowerCase().includes('replicate the below cost figures')
+    );
+
+    if (!isReplicationField) return null;
+
+    if (!isBplClient(data)) {
+        return null;
+    }
+
+    let valStr = '';
+    if (text !== undefined && text !== null) {
+        valStr = String(text).trim();
+    } else if (data) {
+        const costData = data.COST_APPROACH || data['Cost Approach'] || data.Cost_Approach || data;
+        const candidate = costData?.[field]
+            ?? costData?.["Provide adequate information for the lender/client to replicate the below cost figures and calculations."]
+            ?? costData?.["Provide adequate information for the lender/client to replicate the below cost figures and calculations"]
+            ?? data?.[field]
+            ?? data?.["Provide adequate information for the lender/client to replicate the below cost figures and calculations."]
+            ?? data?.["Provide adequate information for the lender/client to replicate the below cost figures and calculations"];
+        if (candidate !== undefined && candidate !== null) {
+            valStr = String(candidate).trim();
+        }
+    }
+
+    const comments = String(
+        data?.['Comments on Cost Approach (gross living area calculations, depreciation, etc.)'] || 
+        data?.COST_APPROACH?.['Comments on Cost Approach (gross living area calculations, depreciation, etc.)'] || 
+        data?.clean_data?.COST_APPROACH?.['Comments on Cost Approach (gross living area calculations, depreciation, etc.)'] ||
+        data?.RECONCILIATION?.['Cost Approach (if developed) Comment'] || ''
+    ).toLowerCase();
+
+    if (isNotDevelopedComment(valStr) || isNotDevelopedComment(comments)) {
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: "the take the advise from the team"
+        };
+    }
+
+    const missing = getMissingCostApproachFields(data);
+    if (missing.length > 0) {
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: "Cost Approach section must be full filled for BPL client. All cost approach values must be present."
+        };
+    }
+
+    if (!valStr) {
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: "Provide adequate information for the lender/client to replicate the below cost figures and calculations cannot be blank for BPL client."
+        };
+    }
+
+    return {
+        isMatch: true,
+        skipBlankFilter: true,
+        message: "Cost Approach section is fulfilled for BPL client."
+    };
 };
 
 export const checkIndicatedValueByCostApproach = (field, text, data, path, saleName, formType) => {
@@ -43,11 +381,36 @@ export const checkIndicatedValueByCostApproach = (field, text, data, path, saleN
     }
 
     const value = String(text || '').trim();
+    const cleanNum = parseFloat(value.replace(/[^0-9.]/g, ''));
     const comments = String(
         data?.['Comments on Cost Approach (gross living area calculations, depreciation, etc.)'] || 
         data?.COST_APPROACH?.['Comments on Cost Approach (gross living area calculations, depreciation, etc.)'] || 
         data?.RECONCILIATION?.['Cost Approach (if developed) Comment'] || ''
     ).toLowerCase();
+
+    const replicationComment = String(
+        data?.['Provide adequate information for the lender/client to replicate the below cost figures and calculations.'] ||
+        data?.COST_APPROACH?.['Provide adequate information for the lender/client to replicate the below cost figures and calculations.'] ||
+        data?.['Provide adequate information for the lender/client to replicate the below cost figures and calculations'] ||
+        data?.COST_APPROACH?.['Provide adequate information for the lender/client to replicate the below cost figures and calculations'] || ''
+    ).toLowerCase();
+
+    if (isBplClient(data)) {
+        if (isNotDevelopedComment(replicationComment) || isNotDevelopedComment(comments)) {
+            return {
+                isError: true,
+                skipBlankFilter: true,
+                message: "the take the advise from the team"
+            };
+        }
+        if (!value || isNaN(cleanNum) || cleanNum === 0 || !isCostApproachFulfilled(data)) {
+            return {
+                isError: true,
+                skipBlankFilter: true,
+                message: "Cost Approach section must be full filled for BPL client. All cost approach values must be present."
+            };
+        }
+    }
 
     const hasNotDevelopedComment = comments.includes('why cost approach cannot be developed') || 
         (comments.includes('cost approach') && (comments.includes('not') || comments.includes('omitted') || comments.includes('unreliable') || comments.includes('less reliable') || comments.includes('applicable') || comments.includes('developed') || comments.includes('analyzed')));
@@ -144,13 +507,21 @@ export const checkRemainingEconomicLife = (field, text, data) => {
     };
 };
 
-export const checkCostApproachFieldsNotBlank = (field, text) => {
+export const checkCostApproachFieldsNotBlank = (field, text, data) => {
     const fieldsToCheck = [
         "Estimated", "Source of cost data", "Quality rating from cost service ",
-        "Effective date of cost data ", "Comments on Cost Approach (gross living area calculations, depreciation, etc.)",
-        "Dwelling", "Garage/Carport ",
-        " Total Estimate of Cost-New  = $ ...................", "Depreciation ",
+        "Quality rating from cost service", "Quality Rating",
+        "Effective date of cost data ", "Effective date of cost data", "Effective Date",
+        "Comments on Cost Approach (gross living area calculations, depreciation, etc.)",
+        "Support for the opinion of site value (summary of comparable land sales or other methods for estimating site value)",
+        "Dwelling", "Garage/Carport ", "Garage/Carport",
+        " Total Estimate of Cost-New  = $ ...................",
+        "Total Estimate of Cost-New = $ ...................",
+        "Total Estimate of Cost-New", "Total Estimate Cost-New",
+        "Depreciation ", "Depreciation",
         "Depreciated Cost of Improvements......................................................=$ ",
+        "Depreciated Cost of Improvements......................................................=$",
+        "Depreciated Cost of Improvements",
         "“As-is” Value of Site Improvements......................................................=$",
         "Indicated Value By Cost Approach......................................................=$",
         "Indicated Value by Cost Approach",
@@ -188,6 +559,84 @@ export const checkCostApproachFieldsNotBlank = (field, text) => {
         "Cost Approach Commentary",
         "Cost Approach Exhibits"
     ];
+
+    const isBpl = isBplClient(data);
+    const trimmedText = String(text || '').trim();
+
+    if (isBpl) {
+        if (field === "Comments on Cost Approach (gross living area calculations, depreciation, etc.)" ||
+            field === "Cost Approach Commentary") {
+            if (isNotDevelopedComment(trimmedText)) {
+                return {
+                    isError: true,
+                    skipBlankFilter: true,
+                    message: "the take the advise from the team"
+                };
+            }
+            if (!trimmedText) {
+                return {
+                    isError: true,
+                    skipBlankFilter: true,
+                    message: `'${field}' should not be blank for BPL client.`
+                };
+            }
+            return {
+                isMatch: true,
+                skipBlankFilter: true,
+                message: `'${field}' is present.`
+            };
+        }
+
+        const numericRequiredFields = [
+            "Dwelling",
+            "Total Estimate of Cost-New  = $ ...................",
+            "Total Estimate of Cost-New = $ ...................",
+            "Total Estimate of Cost-New",
+            "Total Estimate Cost-New",
+            "Depreciated Cost of Improvements......................................................=$ ",
+            "Depreciated Cost of Improvements......................................................=$",
+            "Depreciated Cost of Improvements"
+        ];
+
+        if (numericRequiredFields.some(nf => nf.trim().toLowerCase() === field.trim().toLowerCase())) {
+            const cleanNum = parseFloat(trimmedText.replace(/[^0-9.]/g, ''));
+            if (!trimmedText || isNaN(cleanNum) || cleanNum === 0) {
+                return {
+                    isError: true,
+                    skipBlankFilter: true,
+                    message: `'${field.trim()}' is required and must not be blank or zero for BPL client.`
+                };
+            }
+            return {
+                isMatch: true,
+                skipBlankFilter: true,
+                message: `'${field.trim()}' is present.`
+            };
+        }
+
+        const textRequiredFields = [
+            "Estimated", "Source of cost data", "Quality rating from cost service ",
+            "Quality rating from cost service", "Quality Rating",
+            "Effective date of cost data ", "Effective date of cost data", "Effective Date",
+            "Support for the opinion of site value (summary of comparable land sales or other methods for estimating site value)"
+        ];
+
+        if (textRequiredFields.some(tf => tf.trim().toLowerCase() === field.trim().toLowerCase())) {
+            if (!trimmedText) {
+                return {
+                    isError: true,
+                    skipBlankFilter: true,
+                    message: `'${field.trim()}' should not be blank for BPL client.`
+                };
+            }
+            return {
+                isMatch: true,
+                skipBlankFilter: true,
+                message: `'${field.trim()}' is present.`
+            };
+        }
+    }
+
     if (fieldsToCheck.includes(field) && (!text || String(text).trim() === '')) {
         return { isError: true, message: `'${field}' should not be blank.` };
     }
@@ -195,4 +644,3 @@ export const checkCostApproachFieldsNotBlank = (field, text) => {
 };
 
 export { checkCostApproachMatchConsistency } from './form1004And1007Validation';
-

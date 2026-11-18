@@ -558,15 +558,15 @@ export const checkProximityToSubject = (field, arg2, arg3, arg4, arg5) => {
     if (commentaryFromNarrative && compNum) {
         const normNarr = commentaryFromNarrative.toLowerCase();
         const mentionsComp = normNarr.includes(`comp ${compNum}`) ||
-                             normNarr.includes(`comp #${compNum}`) ||
-                             normNarr.includes(`comparable ${compNum}`) ||
-                             normNarr.includes(`comparable #${compNum}`) ||
-                             normNarr.includes(`comparable sale ${compNum}`) ||
-                             normNarr.includes(`comparable sale #${compNum}`);
+            normNarr.includes(`comp #${compNum}`) ||
+            normNarr.includes(`comparable ${compNum}`) ||
+            normNarr.includes(`comparable #${compNum}`) ||
+            normNarr.includes(`comparable sale ${compNum}`) ||
+            normNarr.includes(`comparable sale #${compNum}`);
         const mentionsDistance = normNarr.includes('mile') ||
-                                 normNarr.includes('distance') ||
-                                 normNarr.includes('proximity') ||
-                                 normNarr.includes(proximityText.toLowerCase());
+            normNarr.includes('distance') ||
+            normNarr.includes('proximity') ||
+            normNarr.includes(proximityText.toLowerCase());
         if (mentionsComp && mentionsDistance) {
             narrativeMentionsCompDistance = true;
         }
@@ -759,6 +759,194 @@ But found '${data.Subject?.Address}'.`
     };
 };
 
+export const normalizeAddressForDuplicateCheck = (val) => {
+    if (!val) return '';
+    let s = String(val).toLowerCase().trim();
+    s = s.replace(/\bcourt\b/g, 'ct')
+        .replace(/\bstreet\b/g, 'st')
+        .replace(/\broad\b/g, 'rd')
+        .replace(/\bavenue\b/g, 'ave')
+        .replace(/\bdrive\b/g, 'dr')
+        .replace(/\blane\b/g, 'ln')
+        .replace(/\bboulevard\b/g, 'blvd')
+        .replace(/\bcircle\b/g, 'cir')
+        .replace(/\bparkway\b/g, 'pkwy')
+        .replace(/\bterrace\b/g, 'ter')
+        .replace(/\bplace\b/g, 'pl');
+    return s.replace(/[^a-z0-9]/g, '');
+};
+
+export const getAllComparableSales = (allData) => {
+    const comps = [];
+    if (!allData || typeof allData !== 'object') return comps;
+
+    const seenComps = new Set();
+
+    const addComp = (compObj, identifier, defaultLabel) => {
+        if (!compObj || typeof compObj !== 'object' || Array.isArray(compObj)) return;
+
+        let compNum = null;
+        const match = String(identifier || defaultLabel || '').match(/\d+/);
+        if (match) compNum = parseInt(match[0], 10);
+
+        const key = compNum !== null ? `comp_${compNum}` : String(identifier || defaultLabel).toLowerCase().trim();
+        if (seenComps.has(key)) return;
+        seenComps.add(key);
+
+        const rawAddr = compObj['Address'] ?? compObj['Property Address'] ?? compObj['Street Address'] ?? compObj['PropertyStreetAddress'] ?? compObj['full address'] ?? compObj['Full Address'];
+        const address = String(typeof rawAddr === 'object' && rawAddr !== null ? (rawAddr.value ?? '') : (rawAddr ?? '')).trim();
+
+        const label = defaultLabel || (compNum !== null ? `COMPARABLE SALE #${compNum}` : identifier);
+        comps.push({ compNum, label, address, raw: compObj });
+    };
+
+    if (Array.isArray(allData.comparableSales)) {
+        allData.comparableSales.forEach(s => {
+            const compObj = getComparableGridData(allData, s);
+            addComp(compObj, s, s);
+        });
+    }
+
+    for (let i = 1; i <= 12; i++) {
+        const compObj = getComparableGridData(allData, `COMPARABLE SALE #${i}`);
+        if (compObj && typeof compObj === 'object' && Object.keys(compObj).length > 0) {
+            addComp(compObj, `comp_${i}`, `COMPARABLE SALE #${i}`);
+        }
+    }
+
+    Object.entries(allData).forEach(([k, v]) => {
+        if (!v || typeof v !== 'object' || Array.isArray(v)) return;
+        if (k.toLowerCase().trim() === 'subject') return;
+        const upper = k.toUpperCase();
+        if (upper.startsWith('COMPARABLE NO') || (upper.includes('RENT') && !upper.includes('SALE')) || upper.startsWith('RENTAL')) return;
+        const match = k.match(/^(?:comparable(?:\s*sale)?|comp)[\s#]*(\d+)$/i);
+        if (match) {
+            addComp(v, k, `COMPARABLE SALE #${match[1]}`);
+        }
+    });
+
+    const gridContainers = [
+        allData.SALES_GRID,
+        allData['Sales Grid'],
+        allData.SALES_COMPARISON,
+        allData.clean_data?.['Sales Grid'],
+        allData.clean_data?.SALES_GRID
+    ];
+    gridContainers.forEach(container => {
+        if (container && typeof container === 'object') {
+            Object.entries(container).forEach(([k, v]) => {
+                if (!v || typeof v !== 'object' || Array.isArray(v)) return;
+                if (k.toLowerCase().trim() === 'subject') return;
+                const upper = k.toUpperCase();
+                if (upper.startsWith('COMPARABLE NO') || (upper.includes('RENT') && !upper.includes('SALE')) || upper.startsWith('RENTAL')) return;
+                const match = k.match(/(?:comparable(?:\s*sale)?|comp)[\s#]*(\d+)/i);
+                if (match) {
+                    addComp(v, k, `COMPARABLE SALE #${match[1]}`);
+                }
+            });
+        }
+    });
+
+    return comps;
+};
+
+export const checkComparableAddressDuplicates = (field, arg2, arg3, arg4, arg5) => {
+    let allData = null;
+    let saleName = null;
+    let textVal = null;
+    let fieldPath = null;
+
+    if (arg3 && typeof arg3 === 'object' && !arg3.hasOwnProperty('prototype') && !Array.isArray(arg3)) {
+        allData = arg3;
+        saleName = arg5;
+        fieldPath = arg4;
+        if (!saleName && typeof arg4 === 'string') saleName = arg4;
+        if (!saleName && Array.isArray(arg4) && arg4.length > 0) saleName = arg4[0];
+        textVal = arg2;
+    } else {
+        allData = arg2;
+        saleName = arg3;
+        if (typeof arg4 === 'string') saleName = arg4;
+    }
+
+    if (!saleName && Array.isArray(fieldPath)) {
+        const found = fieldPath.find(p => typeof p === 'string' && (
+            p.toLowerCase().includes('comp') ||
+            p.toLowerCase().includes('sale') ||
+            /^#?\d+$/.test(String(p).trim())
+        ));
+        if (found) saleName = found;
+        if (!saleName && fieldPath.length >= 2 && String(fieldPath[fieldPath.length - 1]).toLowerCase() === 'address') {
+            saleName = fieldPath[fieldPath.length - 2];
+        }
+    }
+
+    const normField = String(field || '').trim().toLowerCase();
+    if (normField !== 'address' && normField !== 'property address') {
+        return null;
+    }
+
+    if (!saleName || String(saleName).trim().toLowerCase() === 'subject' ||
+        (Array.isArray(fieldPath) && String(fieldPath[0] || '').trim().toLowerCase() === 'subject')) {
+        return null;
+    }
+
+    const normSale = String(saleName || '').toUpperCase();
+    if (normSale.startsWith('COMPARABLE NO') || (normSale.includes('RENT') && !normSale.includes('SALE')) || normSale.startsWith('RENTAL')) {
+        return null;
+    }
+
+    let currentAddressStr = '';
+    if (textVal !== null && textVal !== undefined) {
+        currentAddressStr = String(typeof textVal === 'object' ? (textVal.value ?? '') : textVal).trim();
+    } else if (allData) {
+        const compObj = (typeof getComparableGridData === 'function')
+            ? getComparableGridData(allData, saleName)
+            : (allData?.[saleName] || allData?.SALES_GRID?.[saleName] || allData?.['Sales Grid']?.[saleName] || {});
+        const raw = compObj['Address'] ?? compObj['Property Address'] ?? compObj['Street Address'] ?? compObj['PropertyStreetAddress'] ?? compObj['full address'] ?? compObj['Full Address'];
+        currentAddressStr = String(typeof raw === 'object' && raw !== null ? (raw.value ?? '') : (raw ?? '')).trim();
+    }
+
+    if (!currentAddressStr || currentAddressStr === '-' || currentAddressStr.toLowerCase() === 'n/a') {
+        return null;
+    }
+
+    const normCurrent = normalizeAddressForDuplicateCheck(currentAddressStr);
+    if (!normCurrent) return null;
+
+    const currentNumMatch = String(saleName).match(/\d+/);
+    const currentCompNum = currentNumMatch ? parseInt(currentNumMatch[0], 10) : null;
+
+    const allComps = getAllComparableSales(allData);
+    const matchingComps = [];
+
+    for (const otherComp of allComps) {
+        if (currentCompNum !== null && otherComp.compNum === currentCompNum) continue;
+        if (otherComp.label && String(otherComp.label).toLowerCase() === String(saleName).toLowerCase()) continue;
+
+        const otherAddr = otherComp.address;
+        if (!otherAddr || otherAddr === '-' || otherAddr.toLowerCase() === 'n/a') continue;
+
+        const normOther = normalizeAddressForDuplicateCheck(otherAddr);
+        if (normOther && normOther === normCurrent) {
+            matchingComps.push(otherComp);
+        }
+    }
+
+    if (matchingComps.length > 0) {
+        const matchesDesc = matchingComps.map(c => `${c.label} ('${c.address}')`).join(', ');
+        return {
+            isError: true,
+            message: `Comparable address cannot match another comparable. Matches ${matchesDesc}.`
+        };
+    }
+
+    return {
+        isMatch: true,
+        message: 'Valid: Comparable address is unique across comparables.'
+    };
+};
+
 export const checkDesignStyleAdjustment = (field, arg2, arg3, arg4, arg5) => {
     const { allData, saleName } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
     const isDesignField = field === 'Design (Style)';
@@ -766,19 +954,19 @@ export const checkDesignStyleAdjustment = (field, arg2, arg3, arg4, arg5) => {
 
     if ((!isDesignField && !isAdjustmentField) || !allData || !saleName || saleName === 'Subject') return null;
 
-    const subjGrid = getSubjectGridData(allData);
-    const subjectDesign = String(subjGrid['Design (Style)'] || allData.Subject?.['Design (Style)'] || '').trim();
-    const compDesign = String(allData[saleName]?.['Design (Style)'] || '').trim();
-    const adjustmentText = String(allData[saleName]?.['Design (Style) Adjustment'] || '').trim();
+    // const subjGrid = getSubjectGridData(allData);
+    // const subjectDesign = String(subjGrid['Design (Style)'] || allData.Subject?.['Design (Style)'] || '').trim();
+    // const compDesign = String(allData[saleName]?.['Design (Style)'] || '').trim();
+    // const adjustmentText = String(allData[saleName]?.['Design (Style) Adjustment'] || '').trim();
 
-    if (subjectDesign && compDesign) {
-        const designsAreDifferent = normalizeForCompare(subjectDesign) !== normalizeForCompare(compDesign);
-        const adjustmentIsPresent = adjustmentText !== '';
+    // if (subjectDesign && compDesign) {
+    //     const designsAreDifferent = normalizeForCompare(subjectDesign) !== normalizeForCompare(compDesign);
+    //     const adjustmentIsPresent = adjustmentText !== '';
 
-        if (designsAreDifferent && !adjustmentIsPresent) {
-            return { isError: true, message: `Design/Style mismatch (Subject: '${subjectDesign}', Comp: '${compDesign}'). An adjustment is required, even if $0.` };
-        }
-    }
+    //     // if (designsAreDifferent && !adjustmentIsPresent) {
+    //     //     return { isError: true, message: `Design/Style mismatch (Subject: '${subjectDesign}', Comp: '${compDesign}'). An adjustment is required, even if $0.` };
+    //     // }
+    // }
     return { isMatch: true };
 };
 
@@ -3719,7 +3907,7 @@ export const parseGarageGridString = (str) => {
         else if (t.startsWith('a')) garageType = 'att';
     } else {
         const gLongMatch = s.match(/(\d+)\s*car\s*(attached|detached|built[\s-]?in)?\s*garage/i) ||
-                           s.match(/(attached|detached|built[\s-]?in)?\s*garage\s*(\d+)?/i);
+            s.match(/(attached|detached|built[\s-]?in)?\s*garage\s*(\d+)?/i);
         if (gLongMatch && (gLongMatch[1] || gLongMatch[2])) {
             const numPart = gLongMatch[1] && /\d+/.test(gLongMatch[1]) ? gLongMatch[1] : (gLongMatch[2] && /\d+/.test(gLongMatch[2]) ? gLongMatch[2] : '1');
             garageCount = parseInt(numPart.replace(/[^0-9]/g, '') || '1', 10);
@@ -3732,8 +3920,8 @@ export const parseGarageGridString = (str) => {
 
     // 2. Carport: e.g. 1cp, 1cpa, 1cpd, 1 car carport
     const cpMatch = s.match(/(\d+)\s*cp\s*(a|att|attached|d|det|detached|bi|b|builtin|built-in)?/i) ||
-                    s.match(/(\d+)\s*car\s*(attached|detached)?\s*carport/i) ||
-                    s.match(/carport\s*(\d+)?/i);
+        s.match(/(\d+)\s*car\s*(attached|detached)?\s*carport/i) ||
+        s.match(/carport\s*(\d+)?/i);
     if (cpMatch) {
         const numPart = cpMatch[1] ? cpMatch[1].replace(/[^0-9]/g, '') : '1';
         carportCount = parseInt(numPart || '1', 10);

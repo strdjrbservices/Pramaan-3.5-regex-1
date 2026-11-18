@@ -1,3 +1,4 @@
+import os
 import io
 import re
 import datetime
@@ -17,7 +18,20 @@ def get_easyocr_reader():
     if _EASYOCR_READER is None:
         try:
             import easyocr
-            _EASYOCR_READER = easyocr.Reader(['en'], gpu=False)
+            cur_dir = os.path.dirname(os.path.abspath(__file__))
+            ws_dir = os.path.dirname(os.path.dirname(cur_dir))
+            cand_dirs = [
+                os.path.join(ws_dir, ".easyocr", "model"),
+                os.path.join(os.path.dirname(cur_dir), ".easyocr", "model"),
+                os.path.join(os.getcwd(), ".easyocr", "model"),
+                os.path.expanduser(r"~\.EasyOCR\model")
+            ]
+            m_dir = next((d for d in cand_dirs if os.path.exists(d)), None)
+            if m_dir:
+                net_dir = os.path.join(os.path.dirname(m_dir), "user_network")
+                _EASYOCR_READER = easyocr.Reader(['en'], gpu=False, model_storage_directory=m_dir, user_network_directory=net_dir if os.path.exists(net_dir) else None, download_enabled=False)
+            else:
+                _EASYOCR_READER = easyocr.Reader(['en'], gpu=False)
         except Exception as e:
             print(f"[eo_extractor] Error initializing EasyOCR: {e}")
             _EASYOCR_READER = False

@@ -2382,6 +2382,52 @@ def extract_photos_from_xml(
         if is_form_report_page:
             continue
 
+        # Check if page is a Building Sketch or Floor Plan exhibit (Full canvas pixmap render for vector or raster sketches)
+        hdr_clip = page.get_text("text", clip=fitz.Rect(0, 0, page.rect.width, 100)).strip().upper()
+        is_sketch_page = (
+            any(k in hdr_clip for k in ["SKETCH", "FLOORPLAN", "FLOOR PLAN", "INSTAPLAN", "BUILDING SKETCH", "AREA CALCULATIONS"])
+            or any(k in raw_upper[:300] for k in ["FLOORPLAN SKETCH", "BUILDING SKETCH", "SKETCH / FLOOR PLAN", "SKETCH ADDENDUM"])
+        ) and "USPAP" not in hdr_clip
+
+        if is_sketch_page:
+            clip_rect = fitz.Rect(20, 70, page.rect.width - 20, page.rect.height - 35)
+            caption = "Building Sketch / Floor Plan"
+            m_sketch_page = re.search(r'(?:PAGE\s*[-#]?\s*(\d+))', hdr_clip)
+            if m_sketch_page:
+                caption = f"Building Sketch (Page {m_sketch_page.group(1)})"
+            pix = page.get_pixmap(clip=clip_rect, dpi=180)
+            img_bytes = pix.tobytes("jpeg")
+            b64_str = base64.b64encode(img_bytes).decode("utf-8")
+
+            sk_details = {}
+            try:
+                from map_extractor_cli import MapExtractor
+                _ext = MapExtractor(save_images=False)
+                sk_details = _ext.process_sketch_page(page, p_no, "Building Sketch", "xml_embedded_doc")
+            except Exception as sk_err:
+                pass
+
+            photos.append({
+                "page": p_no,
+                "category": "Building Sketch",
+                "caption": caption,
+                "format": "jpeg",
+                "width": round(clip_rect.width, 1),
+                "height": round(clip_rect.height, 1),
+                "rect": [round(clip_rect.x0, 1), round(clip_rect.y0, 1), round(clip_rect.x1, 1), round(clip_rect.y1, 1)],
+                "base64_preview": f"data:image/jpeg;base64,{b64_str}",
+                "gla": sk_details.get("gla"),
+                "areas": sk_details.get("areas", []),
+                "room_labels": sk_details.get("room_labels", []),
+                "rooms_by_category": sk_details.get("rooms_by_category", {}),
+                "rooms_by_level": sk_details.get("rooms_by_level", {}),
+                "room_summary": sk_details.get("room_summary", {}),
+                "dimensions": sk_details.get("dimensions", []),
+                "raw_text": raw_text
+            })
+            photo_count += 1
+            continue
+
         img_infos = page.get_image_info()
         if not img_infos:
             continue
@@ -2592,6 +2638,25 @@ def extract_photos_from_xml(
                 photo_item["view_type"] = mand_view_type
                 photo_item["original_label"] = mand_orig_label
                 photo_item["is_mandatory"] = True
+
+            # Dynamic sketch extraction directly from the sketch page canvas
+            if category in ["Sketch", "Building Sketch"] or "SKETCH" in raw_upper or "FLOOR PLAN" in raw_upper or "FLOORPLAN" in raw_upper:
+                try:
+                    from map_extractor_cli import MapExtractor
+                    _extractor = MapExtractor(save_images=False)
+                    sk_data = _extractor.process_sketch_page(page, p_no, "Building Sketch", "xml_embedded_doc")
+                    photo_item["category"] = "Building Sketch"
+                    photo_item["caption"] = "Building Sketch / Floor Plan"
+                    photo_item["gla"] = sk_data.get("gla")
+                    photo_item["areas"] = sk_data.get("areas", [])
+                    photo_item["room_labels"] = sk_data.get("room_labels", [])
+                    photo_item["rooms_by_category"] = sk_data.get("rooms_by_category", {})
+                    photo_item["rooms_by_level"] = sk_data.get("rooms_by_level", {})
+                    photo_item["room_summary"] = sk_data.get("room_summary", {})
+                    photo_item["dimensions"] = sk_data.get("dimensions", [])
+                    photo_item["raw_text"] = raw_text
+                except Exception as _sk_err:
+                    pass
 
             if comp_meta:
                 is_rent = (category == "Rental") or comp_meta.get("is_rental", False)
@@ -7964,6 +8029,358 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         clean_data["Subject"]["GLA Photo Count"] = photo_room_counts["gla_display"]
         clean_data["Subject"]["Total Rooms Photo Count"] = str(photo_room_counts["total_room_count"])
 
+    # Build structured MAP_EXHIBITS_ANALYSIS directly from dynamically extracted sketch and map photos
+    sketch_items = [
+        p for p in (extracted_photos or [])
+        if p.get("category") in ["Building Sketch", "Sketch", "Floor Plan"]
+        or any(k in str(p.get("caption", "")).lower() for k in ["building sketch", "floor plan", "floorplan", "sketch addendum", "area calculations"])
+    ]
+    map_items = [
+        p for p in (extracted_photos or [])
+        if p.get("category") in ["Maps & Aerials", "Map"]
+        or any(k in str(p.get("caption", "")).lower() for k in ["map", "aerial", "satellite", "plat", "flood", "location"])
+    ]
+
+    # Reference Subject & Comps from clean_data
+    sub_data = clean_data.get("Subject", {})
+    sub_st = sub_data.get("Street Address") or sub_data.get("Physical Address") or sub_data.get("Property Address") or ""
+    sub_city = sub_data.get("City", "")
+    sub_state = sub_data.get("State", "")
+    sub_zip = sub_data.get("Zip Code") or sub_data.get("Zip", "")
+    sub_full = f"{sub_st}, {sub_city}, {sub_state} {sub_zip}".strip().strip(",")
+
+    s_grid = clean_data.get("Sales Grid", {}) or fields.get("SALES_GRID", {}) or {}
+    sales_comps_list = []
+    comp_keys = [k for k in s_grid.keys() if k != "Subject" and isinstance(s_grid[k], dict) and re.search(r'comp|comparable', k, re.I)]
+    seen_c_nums = set()
+    for ck in comp_keys:
+        m_num = re.search(r'(\d+)', ck)
+        cnum = int(m_num.group(1)) if m_num else len(sales_comps_list) + 1
+        if cnum in seen_c_nums:
+            continue
+        seen_c_nums.add(cnum)
+        cd = s_grid[ck]
+        c_addr = cd.get("Property Address") or cd.get("Address") or cd.get("Comparable Property Address") or ""
+        m_st = re.match(r'^([^,]+)', c_addr)
+        c_st = m_st.group(1).strip() if m_st else c_addr
+        sales_comps_list.append({
+            "comp_num": cnum,
+            "street": c_st,
+            "city": cd.get("City", sub_city),
+            "state": cd.get("State", sub_state),
+            "zipcode": cd.get("Zip Code") or cd.get("PostalCode") or sub_zip,
+            "address": c_addr or f"{c_st}, {sub_city}, {sub_state} {sub_zip}".strip(),
+            "proximity": cd.get("Proximity to Subject") or cd.get("Proximity", ""),
+            "price": cd.get("Sale Price", ""),
+            "grid_data": cd
+        })
+    sales_comps_list.sort(key=lambda x: x["comp_num"])
+
+    # Rental comps
+    r_grid = clean_data.get("Rental Schedule", {}) or clean_data.get("Rentals", {}) or fields.get("RENTAL_SCHEDULE", {}) or {}
+    rental_comps_list = []
+    r_keys = [k for k in r_grid.keys() if k != "Subject" and isinstance(r_grid[k], dict) and re.search(r'rental|comp|comparable', k, re.I)]
+    seen_r_nums = set()
+    for rk in r_keys:
+        m_rnum = re.search(r'(\d+)', rk)
+        rnum = int(m_rnum.group(1)) if m_rnum else len(rental_comps_list) + 1
+        if rnum in seen_r_nums:
+            continue
+        seen_r_nums.add(rnum)
+        rd = r_grid[rk]
+        r_addr = rd.get("Property Address") or rd.get("Address") or rd.get("Comparable Property Address") or ""
+        m_rst = re.match(r'^([^,]+)', r_addr)
+        r_st = m_rst.group(1).strip() if m_rst else r_addr
+        rental_comps_list.append({
+            "comp_num": rnum,
+            "street": r_st,
+            "city": rd.get("City", sub_city),
+            "state": rd.get("State", sub_state),
+            "zipcode": rd.get("Zip Code") or rd.get("PostalCode") or sub_zip,
+            "address": r_addr or f"{r_st}, {sub_city}, {sub_state} {sub_zip}".strip(),
+            "proximity": rd.get("Proximity to Subject") or rd.get("Proximity", ""),
+            "price": rd.get("Gross Monthly Rent") or rd.get("Monthly Rent") or rd.get("Rent", ""),
+            "grid_data": rd
+        })
+    rental_comps_list.sort(key=lambda x: x["comp_num"])
+
+    maps_list = []
+    all_pins_list = []
+    for mp in map_items:
+        caption = mp.get("caption") or mp.get("label") or "Map Exhibit"
+        cap_l = caption.lower()
+        p_num = mp.get("page", 1)
+        img_preview = mp.get("base64_preview") or mp.get("image_data") or ""
+
+        if "aerial" in cap_l or "satellite" in cap_l:
+            m_type = "Aerial Map"
+        elif "rental" in cap_l:
+            m_type = "Rentals Map"
+        elif "plat" in cap_l or "parcel" in cap_l or "tax" in cap_l:
+            m_type = "Plat Map"
+        elif "flood" in cap_l:
+            m_type = "Flood Map"
+        elif "location" in cap_l or "comparable" in cap_l or "vicinity" in cap_l or "sales" in cap_l or "comps" in cap_l:
+            m_type = "Location Map"
+        elif not any(m.get("map_type") == "Location Map" for m in maps_list):
+            m_type = "Location Map"
+        else:
+            m_type = caption
+
+        sub_pin = {
+            "item_type": "Subject",
+            "label": "Subject",
+            "street": sub_st,
+            "city": sub_city,
+            "state": sub_state,
+            "zipcode": sub_zip,
+            "address": sub_full,
+            "proximity": "Subject",
+            "map_type": m_type,
+            "page_number": p_num,
+            "status": "Verified Subject Property"
+        }
+        all_pins_list.append(sub_pin)
+
+        if m_type == "Location Map":
+            comp_pins = []
+            for sc in sales_comps_list:
+                cp = {
+                    "item_type": "Comparable",
+                    "label": f"Comparable #{sc['comp_num']}",
+                    "street": sc["street"],
+                    "city": sc["city"],
+                    "state": sc["state"],
+                    "zipcode": sc["zipcode"],
+                    "address": sc["address"],
+                    "proximity": sc["proximity"],
+                    "price": sc["price"],
+                    "map_type": "Location Map",
+                    "page_number": p_num,
+                    "grid_data": sc["grid_data"],
+                    "status": "Verified from Sales Grid"
+                }
+                comp_pins.append(cp)
+                all_pins_list.append(cp)
+            maps_list.append({
+                "page_number": p_num,
+                "map_type": "Location Map",
+                "subject": sub_pin,
+                "comparables": comp_pins,
+                "rentals": [],
+                "comparables_only": comp_pins,
+                "listings": [],
+                "pins": [sub_pin] + comp_pins,
+                "has_rentals": False,
+                "has_comparables": len(comp_pins) > 0,
+                "image_preview": img_preview
+            })
+        elif m_type == "Rentals Map":
+            rent_pins = []
+            for rc in rental_comps_list:
+                rp = {
+                    "item_type": "Rental",
+                    "label": f"Rental #{rc['comp_num']}",
+                    "street": rc["street"],
+                    "city": rc["city"],
+                    "state": rc["state"],
+                    "zipcode": rc["zipcode"],
+                    "address": rc["address"],
+                    "proximity": rc["proximity"],
+                    "price": rc["price"],
+                    "map_type": "Rentals Map",
+                    "page_number": p_num,
+                    "grid_data": rc["grid_data"],
+                    "status": "Verified from Rental Schedule"
+                }
+                rent_pins.append(rp)
+                all_pins_list.append(rp)
+            maps_list.append({
+                "page_number": p_num,
+                "map_type": "Rentals Map",
+                "subject": sub_pin,
+                "comparables": rent_pins,
+                "rentals": rent_pins,
+                "comparables_only": [],
+                "listings": [],
+                "pins": [sub_pin] + rent_pins,
+                "has_rentals": len(rent_pins) > 0,
+                "has_comparables": False,
+                "image_preview": img_preview
+            })
+        elif m_type == "Aerial Map":
+            maps_list.append({
+                "page_number": p_num,
+                "map_type": "Aerial Map",
+                "subject": sub_pin,
+                "comparables": [],
+                "rentals": [],
+                "comparables_only": [],
+                "listings": [],
+                "pins": [sub_pin],
+                "has_rentals": False,
+                "has_comparables": False,
+                "image_preview": img_preview
+            })
+        else:
+            maps_list.append({
+                "page_number": p_num,
+                "map_type": m_type,
+                "subject": sub_pin,
+                "comparables": [],
+                "rentals": [],
+                "comparables_only": [],
+                "listings": [],
+                "pins": [sub_pin],
+                "has_rentals": False,
+                "has_comparables": False,
+                "image_preview": img_preview
+            })
+
+    # Ensure Location Map, Aerial Map, and Rentals Map are always available
+    has_loc = any(m.get("map_type") == "Location Map" for m in maps_list)
+    if not has_loc:
+        comp_pins = []
+        for sc in sales_comps_list:
+            cp = {
+                "item_type": "Comparable",
+                "label": f"Comparable #{sc['comp_num']}",
+                "street": sc["street"],
+                "city": sc["city"],
+                "state": sc["state"],
+                "zipcode": sc["zipcode"],
+                "address": sc["address"],
+                "proximity": sc["proximity"],
+                "price": sc["price"],
+                "map_type": "Location Map",
+                "page_number": 1,
+                "grid_data": sc["grid_data"],
+                "status": "Verified from Sales Grid"
+            }
+            comp_pins.append(cp)
+            all_pins_list.append(cp)
+        maps_list.insert(0, {
+            "page_number": 1,
+            "map_type": "Location Map",
+            "subject": sub_pin,
+            "comparables": comp_pins,
+            "rentals": [],
+            "comparables_only": comp_pins,
+            "listings": [],
+            "pins": [sub_pin] + comp_pins,
+            "has_rentals": False,
+            "has_comparables": len(comp_pins) > 0,
+            "image_preview": ""
+        })
+
+    has_aerial = any(m.get("map_type") == "Aerial Map" for m in maps_list)
+    if not has_aerial:
+        aer_pin = dict(sub_pin)
+        aer_pin["map_type"] = "Aerial Map"
+        aer_pin["page_number"] = 2
+        maps_list.append({
+            "page_number": 2,
+            "map_type": "Aerial Map",
+            "subject": aer_pin,
+            "comparables": [],
+            "rentals": [],
+            "comparables_only": [],
+            "listings": [],
+            "pins": [aer_pin],
+            "has_rentals": False,
+            "has_comparables": False,
+            "image_preview": ""
+        })
+
+    has_rental = any(m.get("map_type") == "Rentals Map" for m in maps_list)
+    if not has_rental and len(rental_comps_list) > 0:
+        rent_pins = []
+        for rc in rental_comps_list:
+            rp = {
+                "item_type": "Rental",
+                "label": f"Rental #{rc['comp_num']}",
+                "street": rc["street"],
+                "city": rc["city"],
+                "state": rc["state"],
+                "zipcode": rc["zipcode"],
+                "address": rc["address"],
+                "proximity": rc["proximity"],
+                "price": rc["price"],
+                "map_type": "Rentals Map",
+                "page_number": 3,
+                "grid_data": rc["grid_data"],
+                "status": "Verified from Rental Schedule"
+            }
+            rent_pins.append(rp)
+            all_pins_list.append(rp)
+        r_sub = dict(sub_pin)
+        r_sub["map_type"] = "Rentals Map"
+        r_sub["page_number"] = 3
+        maps_list.append({
+            "page_number": 3,
+            "map_type": "Rentals Map",
+            "subject": r_sub,
+            "comparables": rent_pins,
+            "rentals": rent_pins,
+            "comparables_only": [],
+            "listings": [],
+            "pins": [r_sub] + rent_pins,
+            "has_rentals": len(rent_pins) > 0,
+            "has_comparables": False,
+            "image_preview": ""
+        })
+
+    sketches_list = []
+    for sk in sketch_items:
+        sketches_list.append({
+            "sketch_type": sk.get("caption") or "Building Sketch",
+            "page_number": sk.get("page", 1),
+            "gla": sk.get("gla") or "",
+            "areas": sk.get("areas") or [],
+            "room_labels": sk.get("room_labels") or [],
+            "room_summary": sk.get("room_summary") or {},
+            "rooms_by_category": sk.get("rooms_by_category") or {},
+            "rooms_by_level": sk.get("rooms_by_level") or {},
+            "dimensions": sk.get("dimensions") or [],
+            "image_preview": sk.get("base64_preview") or sk.get("image_data") or "",
+            "raw_text_sample": (sk.get("raw_text") or "")[:500]
+        })
+
+    # Propagate areas and GLA across multi-page sketches in the same appraisal
+    report_sketch_areas = max((sk.get("areas") or [] for sk in sketches_list), key=len, default=[])
+    report_sketch_gla = max((sk.get("gla") or "" for sk in sketches_list), key=lambda g: float(re.sub(r'[^\d.]', '', str(g)) or 0), default="")
+    gla_num = float(re.sub(r'[^\d.]', '', str(report_sketch_gla)) or 0)
+    if report_sketch_areas or report_sketch_gla:
+        for sk in sketches_list:
+            if len(sk.get("areas", [])) < len(report_sketch_areas):
+                sk["areas"] = report_sketch_areas
+            cur_g = float(re.sub(r'[^\d.]', '', str(sk.get("gla") or "")) or 0)
+            if cur_g < gla_num:
+                sk["gla"] = report_sketch_gla
+        for p in extracted_photos or []:
+            if p.get("category") == "Building Sketch" or "sketch" in str(p.get("caption", "")).lower():
+                if len(p.get("areas", [])) < len(report_sketch_areas):
+                    p["areas"] = report_sketch_areas
+                cur_pg = float(re.sub(r'[^\d.]', '', str(p.get("gla") or "")) or 0)
+                if cur_pg < gla_num:
+                    p["gla"] = report_sketch_gla
+
+    map_exhibits_analysis = {
+        "status": "success",
+        "total_maps": len(maps_list),
+        "total_sketches": len(sketches_list),
+        "total_comparable_photos": 0,
+        "maps": maps_list,
+        "sketches": sketches_list,
+        "comparable_photos": [],
+        "all_pins": all_pins_list
+    }
+
+    clean_data["MAP_EXHIBITS_ANALYSIS"] = map_exhibits_analysis
+    fields["MAP_EXHIBITS_ANALYSIS"] = map_exhibits_analysis
+    clean_data["map_exhibits_analysis"] = map_exhibits_analysis
+    fields["map_exhibits_analysis"] = map_exhibits_analysis
+
     return {
         "status": "success",
         "form_type": form_type,
@@ -7994,6 +8411,8 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "has_embedded_pdf": has_embedded_pdf,
         "extracted_photos": extracted_photos,
         "EXTRACTED_PHOTOS": extracted_photos,
+        "MAP_EXHIBITS_ANALYSIS": map_exhibits_analysis,
+        "map_exhibits_analysis": map_exhibits_analysis,
         "mandatory_subject_photos": mandatory_subject_photos,
         "MANDATORY_SUBJECT_PHOTOS": mandatory_subject_photos,
         "photo_room_counts": photo_room_counts,

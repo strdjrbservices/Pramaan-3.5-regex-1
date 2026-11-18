@@ -51,241 +51,38 @@ import {
   Fullscreen as FullscreenIcon
 } from '@mui/icons-material';
 import { API_BASE_URL } from '../utils/utils.js';
+import {
+  ROOM_THEMES,
+  DEFAULT_ROOM_THEME,
+  classifyRoomLabel,
+  getRoomTheme,
+  getSketchGLA,
+  getSketchAreasBreakdown,
+  parseSketchRooms,
+  extractSketchFromBase64
+} from '../utils/sketchPdfExtractor.js';
 
-const ROOM_THEMES = {
-  bedrooms: { label: 'Bedrooms', color: '#4338ca', bg: '#eef2ff', border: '#c7d2fe' },
-  bathrooms: { label: 'Bathrooms', color: '#0e7490', bg: '#ecfeff', border: '#a5f3fc' },
-  living: { label: 'Living Areas', color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
-  kitchen_dining: { label: 'Kitchen & Dining', color: '#047857', bg: '#ecfdf5', border: '#a7f3d0' },
-  utility_laundry: { label: 'Utility & Laundry', color: '#334155', bg: '#f8fafc', border: '#cbd5e1' },
-  garage_parking: { label: 'Garage & Parking', color: '#6d28d9', bg: '#f5f3ff', border: '#ddd6fe' },
-  openings_outdoor: { label: 'Openings & Outdoor', color: '#0369a1', bg: '#f0f9ff', border: '#bae6fd' }
-};
-
-const DEFAULT_ROOM_THEME = { label: 'Room', color: '#334155', bg: '#f1f5f9', border: '#cbd5e1' };
-
-const parseSketchRooms = (sketchItem) => {
-  if (sketchItem?.room_labels && sketchItem.room_labels.length > 0) {
-    const rawSum = sketchItem.room_summary || {};
-    const bedCount = rawSum.bedroom_count ?? (sketchItem.rooms_by_category?.bedrooms?.length || 0);
-    const bathCount = rawSum.bathroom_count ?? (sketchItem.rooms_by_category?.bathrooms?.length ? String(sketchItem.rooms_by_category.bathrooms.length) : '0');
-    const bathDisplay = rawSum.bathroom_display || (bathCount && bathCount !== '0' ? `${bathCount} Bath(s)` : '');
-    const livingCount = rawSum.living_rooms_count ?? (sketchItem.rooms_by_category?.living?.length || 0);
-    const kitchenCount = rawSum.has_kitchen ? 1 : 0;
-    const diningCount = rawSum.has_dining ? 1 : 0;
-    const totalRooms = rawSum.total_rooms ?? (bedCount + livingCount + kitchenCount + diningCount);
-
-    return {
-      labels: sketchItem.room_labels,
-      byCategory: sketchItem.rooms_by_category || {},
-      byLevel: sketchItem.rooms_by_level || {},
-      summary: {
-        ...rawSum,
-        bedroom_count: bedCount,
-        bathroom_count: bathCount,
-        bathroom_display: bathDisplay,
-        living_rooms_count: livingCount,
-        total_rooms: totalRooms
-      }
-    };
+const getRoomIconComponent = (category) => {
+  switch (category) {
+    case 'bedrooms':
+      return <BedIcon sx={{ fontSize: '14px !important' }} />;
+    case 'bathrooms':
+      return <BathIcon sx={{ fontSize: '14px !important' }} />;
+    case 'living':
+      return <LivingIcon sx={{ fontSize: '14px !important' }} />;
+    case 'kitchen_dining':
+      return <KitchenIcon sx={{ fontSize: '14px !important' }} />;
+    case 'garage_parking':
+      return <GarageIcon sx={{ fontSize: '14px !important' }} />;
+    case 'utility_laundry':
+      return <LaundryIcon sx={{ fontSize: '14px !important' }} />;
+    case 'openings_outdoor':
+      return <ArchitectureIcon sx={{ fontSize: '14px !important' }} />;
+    case 'basement':
+      return <HomeIcon sx={{ fontSize: '14px !important' }} />;
+    default:
+      return <RoomIcon sx={{ fontSize: '14px !important' }} />;
   }
-
-  if (sketchItem?.room_summary && (sketchItem.room_summary.bedroom_count || sketchItem.room_summary.bathroom_count || sketchItem.room_summary.total_rooms)) {
-    const rawSum = sketchItem.room_summary;
-    return {
-      labels: sketchItem.room_labels || [],
-      byCategory: sketchItem.rooms_by_category || {},
-      byLevel: sketchItem.rooms_by_level || {},
-      summary: {
-        ...rawSum,
-        bedroom_count: rawSum.bedroom_count || 0,
-        bathroom_count: rawSum.bathroom_count || '0',
-        bathroom_display: rawSum.bathroom_display || (rawSum.bathroom_count && rawSum.bathroom_count !== '0' ? `${rawSum.bathroom_count} Bath(s)` : ''),
-        living_rooms_count: rawSum.living_rooms_count || 1,
-        total_rooms: rawSum.total_rooms || 0
-      }
-    };
-  }
-
-  // Fallback: parse from raw_text_sample or areas
-  const LEVEL_PATS = [
-    { regex: /\blower\s*level\b/i, name: 'Lower Level' },
-    { regex: /\bmain\s*level\b/i, name: 'Main Level' },
-    { regex: /\bupper\s*level\b/i, name: 'Upper Level' },
-    { regex: /\b(?:first|1st)\s*(?:floor|flcor|level)\b/i, name: '1st Floor' },
-    { regex: /\b(?:second|2nd)\s*(?:floor|flcor|foor|level)\b/i, name: '2nd Floor' },
-    { regex: /\b(?:third|3rd)\s*(?:floor|flcor|level)\b/i, name: '3rd Floor' },
-    { regex: /\bbasement\b/i, name: 'Basement' }
-  ];
-
-  const CATEGORY_RULES = {
-    bedrooms: [
-      { regex: /\b(?:main|master|primary)\s+bed(?:room)?\b/i, name: 'Main Bedroom' },
-      { regex: /\bguest\s+bed(?:room)?\b/i, name: 'Guest Bedroom' },
-      { regex: /\bbed(?:room)?\s*\d*\b/i, name: 'Bedroom' },
-      { regex: /\b(?:be[cd]r[oc0-9]+m|eedroom|bacroom|becrcem|becrc-m)\b/i, name: 'Bedroom' },
-      { regex: /\b(?:br|bdrm)\b/i, name: 'Bedroom' },
-      { regex: /\bbed\s*\d+\b/i, name: 'Bedroom' }
-    ],
-    bathrooms: [
-      { regex: /(?:^|[\s\b])(?:half[\s-]*(?:bath(?:room)?|ba)|1\/2[\s-]*(?:bath(?:room)?|ba)|0?\.5[\s-]*(?:bath(?:room)?|ba)|(?:bath(?:room)?|ba)\s*(?:\(\s*)?(?:half|1\/2|0?\.5)(?:\s*\))?|powder(?:\s*room)?|lav(?:atory)?|wc)\b/i, name: 'Half Bath' },
-      { regex: /\b(?:main|master|primary)\s+bath(?:room)?\b/i, name: 'Main Bath' },
-      { regex: /\b(?:full\s+)?bath(?:room)?\s*\d*\b/i, name: 'Bath' },
-      { regex: /\bba\b/i, name: 'Bath' },
-      { regex: /\blav(?:atory)?\b/i, name: 'Half Bath' },
-      { regex: /\bwc\b/i, name: 'Half Bath' }
-    ],
-    living: [
-      { regex: /\bliving(?:\s*room|\s*rm|\s*area)?\b/i, name: 'Living Room' },
-      { regex: /\blivira\b/i, name: 'Living Room' },
-      { regex: /\bfamily(?:\s*room|\s*rm)?\b/i, name: 'Family Room' },
-      { regex: /\bgreat\s*room\b/i, name: 'Great Room' },
-      { regex: /\brec(?:reation)?(?:\s*room)?\b/i, name: 'Rec Room' },
-      { regex: /\b(?:den|study|office|loft)\b/i, name: 'Den / Study' },
-      { regex: /\bsitting(?:\s*room|\s*area)?\b/i, name: 'Sitting Area' },
-      { regex: /\bsun\s*room|sunroom\b/i, name: 'Sun Room' },
-      { regex: /\bbonus\s*room\b/i, name: 'Bonus Room' }
-    ],
-    kitchen_dining: [
-      { regex: /\bkitchen|kitch|kteten\b/i, name: 'Kitchen' },
-      { regex: /\bdining(?:\s*room|\s*rm|\s*area)?|diring\b/i, name: 'Dining Room' },
-      { regex: /\bbreakfast(?:\s*nook|\s*area|\s*room)?\b/i, name: 'Breakfast Nook' },
-      { regex: /\b(?:nook|dinette)\b/i, name: 'Dining Nook' },
-      { regex: /\bpantry\b/i, name: 'Pantry' },
-      { regex: /\bwet\s*bar|bar\b/i, name: 'Bar' }
-    ],
-    openings_outdoor: [
-      { regex: /\bopen\s+to\s+below\b/i, name: 'Open to Below' },
-      { regex: /\b(?:closed\s*porch|uncover\s*porch|screened?\s*porch|porch)\b/i, name: 'Porch' },
-      { regex: /\bdeck\b/i, name: 'Deck' },
-      { regex: /\bpatio\b/i, name: 'Patio' },
-      { regex: /\bbalcony\b/i, name: 'Balcony' },
-      { regex: /\bterrace|veranda|lanai\b/i, name: 'Terrace / Lanai' }
-    ],
-    garage_parking: [
-      { regex: /\b\d+[\s-]*car\s*(?:\/|\s+)?(?:attached|detached)?\s*(?:carport|garage)?\b/i, name: 'Carport / Garage' },
-      { regex: /\b\d+\s*car\s*(?:attached|detached)?(?:\s*garage)?\b/i, name: 'Car Garage' },
-      { regex: /\b1\s*car\s*attached\b/i, name: '1 Car Attached' },
-      { regex: /\b2\s*car\s*attached\b/i, name: '2 Car Attached' },
-      { regex: /\b(?:attached|detached)?\s*garage\b/i, name: 'Garage' },
-      { regex: /\bcarport\b/i, name: 'Carport' }
-    ],
-    utility_laundry: [
-      { regex: /\blaundry(?:\s*room|\s*rm|\s*area)?\b/i, name: 'Laundry' },
-      { regex: /\butility(?:\s*room|\s*rm)?\b/i, name: 'Utility' },
-      { regex: /\bmud\s*room|mudroom\b/i, name: 'Mud Room' },
-      { regex: /\b(?:foyer|entry(?:way)?|vestibule)\b/i, name: 'Foyer / Entry' },
-      { regex: /\b(?:stairs|stairway)\b/i, name: 'Stairs' },
-      { regex: /\bwalk[\s-]*in\s*closet|wic\b/i, name: 'Walk-in Closet' },
-      { regex: /\bcl(?:o)?se[td](?!\s*porch)\b/i, name: 'Closet' },
-      { regex: /\b(?:mechanical|furnace|hvac|storage)\b/i, name: 'Storage / Mech' }
-    ]
-  };
-
-  const rawCandidates = [];
-  if (sketchItem?.raw_text_sample) {
-    rawCandidates.push(...sketchItem.raw_text_sample.split('|').map(s => s.trim()));
-  }
-  if (Array.isArray(sketchItem?.areas)) {
-    sketchItem.areas.forEach(a => {
-      if (a?.name) rawCandidates.push(a.name.trim());
-    });
-  }
-
-  const byCategory = {
-    bedrooms: [],
-    bathrooms: [],
-    living: [],
-    kitchen_dining: [],
-    utility_laundry: [],
-    garage_parking: [],
-    openings_outdoor: []
-  };
-  const byLevel = {};
-  const allLabels = [];
-  let currentLevel = 'Main Level';
-
-  const mergedCandidates = [];
-  let ci = 0;
-  const cn = rawCandidates.length;
-  while (ci < cn) {
-    const curr = (rawCandidates[ci] || '').trim();
-    const nxt = ci + 1 < cn ? (rawCandidates[ci + 1] || '').trim() : '';
-
-    const isCurrHalf = /^(?:1\/2|0?\.5|half)$/i.test(curr);
-    const isNxtBath = /^(?:bath(?:room)?|ba)$/i.test(nxt);
-    const isCurrBath = /^(?:bath(?:room)?|ba)$/i.test(curr);
-    const isNxtHalf = /^(?:1\/2|0?\.5|half)$/i.test(nxt);
-
-    if ((isCurrHalf && isNxtBath) || (isCurrBath && isNxtHalf)) {
-      mergedCandidates.push(`${curr} ${nxt}`);
-      ci += 2;
-      continue;
-    }
-
-    mergedCandidates.push(curr);
-    ci += 1;
-  }
-
-  mergedCandidates.forEach(cand => {
-    const cleaned = cand.replace(/\[?\s*-?\d+(?:\.\d+)?\s*sq\s*ft\s*\]?/gi, '').trim();
-    if (!cleaned || /^[\d.\s'"x=\-+/\\]+$/.test(cleaned)) return;
-
-    let isLevel = false;
-    for (const lvl of LEVEL_PATS) {
-      if (lvl.regex.test(cleaned)) {
-        currentLevel = lvl.name;
-        if (!byLevel[currentLevel]) byLevel[currentLevel] = [];
-        isLevel = true;
-        break;
-      }
-    }
-    if (isLevel) return;
-
-    for (const [catKey, rules] of Object.entries(CATEGORY_RULES)) {
-      let matched = false;
-      for (const r of rules) {
-        if (r.regex.test(cleaned)) {
-          const item = { label: cand, standard_name: r.name, category: catKey, level: currentLevel };
-          byCategory[catKey].push(item);
-          if (!byLevel[currentLevel]) byLevel[currentLevel] = [];
-          byLevel[currentLevel].push(item);
-          allLabels.push(cand);
-          matched = true;
-          break;
-        }
-      }
-      if (matched) break;
-    }
-  });
-
-  const fullBaths = byCategory.bathrooms.filter(b => b.standard_name !== 'Half Bath').length;
-  const halfBaths = byCategory.bathrooms.filter(b => b.standard_name === 'Half Bath').length;
-  const bathCount = fullBaths + 0.5 * halfBaths;
-  const bathDisplay = `${fullBaths} Full${halfBaths > 0 ? `, ${halfBaths} Half` : ''}`;
-  const bedCount = byCategory.bedrooms.length;
-  const livingCount = byCategory.living.length;
-  const hasKitchen = byCategory.kitchen_dining.some(k => /kitchen/i.test(k.label));
-  const hasDining = byCategory.kitchen_dining.some(k => /dining|nook/i.test(k.label));
-  const totalRooms = bedCount + livingCount + (hasKitchen ? 1 : 0) + (hasDining ? 1 : 0);
-
-  return {
-    labels: allLabels,
-    byCategory,
-    byLevel,
-    summary: {
-      bedroom_count: bedCount,
-      bathroom_count: bathCount,
-      bathroom_display: bathDisplay,
-      living_rooms_count: livingCount,
-      has_kitchen: hasKitchen,
-      has_dining: hasDining,
-      has_laundry: byCategory.utility_laundry.some(u => /laundry/i.test(u.label)),
-      garage: byCategory.garage_parking[0]?.label || null,
-      total_rooms: totalRooms,
-      total_room_labels: allLabels.length
-    }
-  };
 };
 
 const cleanAddressArtifacts = (str) => {
@@ -919,51 +716,6 @@ const getSalesGridSubjectRoomCounts = (data, allData) => {
     aboveGradeRoomCount: rawAboveGrade,
     gla: rawGLA
   };
-};
-
-const getSketchGLA = (sketchItem) => {
-  if (sketchItem?.gla) return String(sketchItem.gla).replace(/,/g, '').trim();
-
-  // Check sketchItem.areas
-  const areas = sketchItem?.areas || [];
-  if (areas.length > 0) {
-    for (const ar of areas) {
-      const nm = (ar?.name || '').toLowerCase();
-      if (/total\s*(?:sketch|living|area)|gross\s*living\s*area|\bgla\b/i.test(nm)) {
-        const m = String(ar?.area || '').replace(/,/g, '').match(/([0-9]+(?:\.[0-9]+)?)/);
-        if (m) return m[1];
-      }
-    }
-
-    let livingSum = 0;
-    let foundLiving = false;
-    for (const ar of areas) {
-      const nm = (ar?.name || '').toLowerCase();
-      if (
-        /first|second|third|1st|2nd|3rd|floor|level|main|upper|living/i.test(nm) &&
-        !/garage|carport|porch|deck|patio|basement|non-living/i.test(nm)
-      ) {
-        const m = String(ar?.area || '').replace(/,/g, '').match(/([0-9]+(?:\.[0-9]+)?)/);
-        if (m) {
-          livingSum += parseFloat(m[1]);
-          foundLiving = true;
-        }
-      }
-    }
-    if (foundLiving && livingSum > 0) {
-      return String(Math.round(livingSum));
-    }
-
-    const firstM = String(areas[0]?.area || '').replace(/,/g, '').match(/([0-9]+(?:\.[0-9]+)?)/);
-    if (firstM) return firstM[1];
-  }
-
-  if (sketchItem?.raw_text_sample) {
-    const m = sketchItem.raw_text_sample.replace(/,/g, '').match(/(?:total\s*(?:living\s*area|sketch|area)|gross\s*living\s*area|\bgla\b)\s*[:=-]?\s*([0-9]+(?:\.[0-9]+)?)/i);
-    if (m) return m[1];
-  }
-
-  return '';
 };
 
 const getPhotoRoomCounts = (data, allData) => {
@@ -1982,12 +1734,51 @@ const synthesizeUad36Exhibits = (data, allData) => {
   });
   compsList.sort((a, b) => a.comp_num - b.comp_num);
 
+  // Rental comps from Rental Schedule / Rental Grid
+  const rSched = root.RENTAL_SCHEDULE || root['Rental Schedule'] || root.rental_schedule || root.Rentals || root['Rentals'] || root.RENTAL_GRID || root.clean_data?.['Rental Schedule'] || root.fields?.['Rental Schedule'] || {};
+  const rentalsList = [];
+  const rentKeys = Object.keys(rSched).filter(k => k !== 'Subject' && typeof rSched[k] === 'object' && /rental|comp|comparable/i.test(k));
+  const seenRentNums = new Set();
+  rentKeys.forEach(rk => {
+    const m = rk.match(/(\d+)/);
+    const rnum = m ? parseInt(m[1], 10) : rentalsList.length + 1;
+    if (seenRentNums.has(rnum)) return;
+    seenRentNums.add(rnum);
+    const rd = rSched[rk] || {};
+    const rawRAddr = rd['Property Address'] || rd['Address'] || rd['Comparable Property Address'] || '';
+    const rAddr = cleanAddressArtifacts(rawRAddr);
+    const mSt = rAddr.match(/^([^,]+)/);
+    const rSt = mSt ? mSt[1].trim() : rAddr;
+    rentalsList.push({
+      comp_num: rnum,
+      street: rSt,
+      city: rd['City'] || subjCity,
+      state: rd['State'] || subjState,
+      zipcode: rd['Zip Code'] || rd['PostalCode'] || subjZip,
+      address: rAddr || `${rSt}, ${subjCity}, ${subjState} ${subjZip}`.trim(),
+      proximity: rd['Proximity to Subject'] || rd['Proximity'] || '',
+      price: rd['Gross Monthly Rent'] || rd['Monthly Rent'] || rd['Rent'] || '',
+      grid_data: rd
+    });
+  });
+  rentalsList.sort((a, b) => a.comp_num - b.comp_num);
+
   // Maps
-  const locPhoto = photos.find(p => (p.category === 'Maps & Aerials' || /map/i.test(p.category || '')) && (/sales|location|vicinity/i.test(p.label || '') || /sales|location/i.test(p.caption || '') || p.cat_type === 'SalesComparableMap')) ||
-                   photos.find(p => (p.category === 'Maps & Aerials' || /map/i.test(p.category || '')) && !/aerial|ariel|satellite|flood|plat/i.test((p.label || '') + ' ' + (p.caption || '')));
-  const aerialPhoto = photos.find(p => (p.category === 'Maps & Aerials' || /map/i.test(p.category || '')) && (/aerial|ariel|satellite/i.test((p.label || '') + ' ' + (p.caption || '')) || p.cat_type === 'AerialMap'));
-  const sketchPhoto = photos.find(p => p.category === 'Building Sketch' || p.category === 'Sketch' || p.category === 'Floor Plan' || /sketch|floor\s*plan|blueprint/i.test((p.label || '') + ' ' + (p.caption || '')) || p.cat_type === 'SubjectPropertyImprovementSketch');
-  const otherMapPhotos = photos.filter(p => (p.category === 'Maps & Aerials' || /map/i.test(p.category || '')) && p !== locPhoto && p !== aerialPhoto);
+  const isMapPhoto = (p) => {
+    if (!p) return false;
+    const cat = (p.category || '').toLowerCase();
+    const cap = ((p.caption || '') + ' ' + (p.label || '')).toLowerCase();
+    return cat === 'maps & aerials' || cat === 'map' || cat === 'maps' ||
+           /map|aerial|satellite|plat|flood|parcel|vicinity|location|exhibit/.test(cap) ||
+           p.cat_type === 'SalesComparableMap' || p.cat_type === 'AerialMap';
+  };
+
+  const locPhoto = photos.find(p => isMapPhoto(p) && (/sales|location|vicinity/i.test(p.label || '') || /sales|location|vicinity/i.test(p.caption || '') || p.cat_type === 'SalesComparableMap')) ||
+                   photos.find(p => isMapPhoto(p) && !/aerial|ariel|satellite|flood|plat|parcel|rental/i.test((p.label || '') + ' ' + (p.caption || '')));
+  const aerialPhoto = photos.find(p => isMapPhoto(p) && (/aerial|ariel|satellite/i.test((p.label || '') + ' ' + (p.caption || '')) || p.cat_type === 'AerialMap' || /aerial/i.test(p.category || '')));
+  const rentalPhoto = photos.find(p => isMapPhoto(p) && /rental/i.test((p.label || '') + ' ' + (p.caption || '')));
+  const sketchPhoto = photos.find(p => p.category === 'Building Sketch' || p.category === 'Sketch' || p.category === 'Floor Plan' || /building\s*sketch|floor\s*plan|blueprint/i.test((p.label || '') + ' ' + (p.caption || '')) || p.cat_type === 'SubjectPropertyImprovementSketch');
+  const otherMapPhotos = photos.filter(p => isMapPhoto(p) && p !== locPhoto && p !== aerialPhoto && p !== rentalPhoto);
 
   const locPage = locPhoto?.page || 1;
   const subPin = {
@@ -2043,7 +1834,7 @@ const synthesizeUad36Exhibits = (data, allData) => {
     is_vector_exhibit: isVectorLoc
   });
 
-  if (aerialPhoto || photos.length > 0) {
+  if (aerialPhoto || photos.length > 0 || subjFull) {
     const aerPreview = getPhotoSrc(aerialPhoto) || generateVectorMapPreview('Aerial Map Exhibit', subjFull, []);
     mapsData.push({
       page_number: aerialPhoto?.page || 2,
@@ -2061,8 +1852,43 @@ const synthesizeUad36Exhibits = (data, allData) => {
     });
   }
 
+  const rentPins = rentalsList.map(rc => ({
+    item_type: 'Rental',
+    label: `Rental #${rc.comp_num}`,
+    street: rc.street,
+    city: rc.city,
+    state: rc.state,
+    zipcode: rc.zipcode,
+    address: rc.address,
+    proximity: rc.proximity,
+    price: rc.price,
+    map_type: 'Rentals Map',
+    page_number: rentalPhoto?.page || (otherMapPhotos[0]?.page || 3),
+    grid_data: rc.grid_data,
+    status: 'Verified from Rental Schedule'
+  }));
+
+  if (rentalPhoto || rentalsList.length > 0) {
+    const rentPage = rentalPhoto?.page || (otherMapPhotos[0]?.page || 3);
+    const rentPreview = getPhotoSrc(rentalPhoto) || generateVectorMapPreview('Rentals Map & Comparables', subjFull, rentPins);
+    mapsData.push({
+      page_number: rentPage,
+      map_type: 'Rentals Map',
+      subject: { ...subPin, map_type: 'Rentals Map', page_number: rentPage },
+      comparables: rentPins,
+      rentals: rentPins,
+      comparables_only: [],
+      listings: [],
+      pins: [{ ...subPin, map_type: 'Rentals Map', page_number: rentPage }, ...rentPins],
+      has_rentals: rentPins.length > 0,
+      has_comparables: false,
+      image_preview: rentPreview,
+      is_vector_exhibit: !getPhotoSrc(rentalPhoto)
+    });
+  }
+
   otherMapPhotos.forEach((omp, omIdx) => {
-    const omLbl = omp.label || omp.caption || 'Other Map';
+    const omLbl = omp.caption || omp.label || 'Other Map';
     const omPage = omp.page || (3 + omIdx);
     mapsData.push({
       page_number: omPage,
@@ -2085,79 +1911,38 @@ const synthesizeUad36Exhibits = (data, allData) => {
   const gridCounts = getSalesGridSubjectRoomCounts(data, allData);
 
   const glaVal = imp['Above Grade Finished Area'] || imp['GLA / GBA'] || imp['Square Feet of Gross Living Area Above Grade'] || impCounts.gla || gridCounts.gla || '';
-  const areas = [];
-  for (let rIdx = 1; rIdx <= 8; rIdx++) {
-    const lvl = imp[`Level in Unit Row ${rIdx}`];
-    if (!lvl) break;
-    const grd = imp[`Grade Level Detail Row ${rIdx}`] || '';
-    const fin = imp[`Finish Row ${rIdx}`] || 'Finished';
-    const aStr = imp[`Area Row ${rIdx}`] || '';
-    const mSf = aStr.match(/([\d,]+)/);
-    const sfNum = mSf ? parseInt(mSf[1].replace(/,/g, ''), 10) : 0;
-    areas.push({
-      label: `${lvl} (${grd}) - ${fin}`.replace(/^ -| -$/g, ''),
-      name: lvl,
-      sqft: sfNum,
-      factor: '1.0'
-    });
-  }
 
-  const allRoomLabels = [];
-  const roomsByCat = { bedrooms: [], bathrooms: [], living: [], kitchen_dining: [] };
-  const roomsByLvl = {};
-  for (let rIdx = 1; rIdx <= 8; rIdx++) {
-    const lvl = imp[`Level in Unit Row ${rIdx}`];
-    if (!lvl) break;
-    const rSum = imp[`Room Summary Row ${rIdx}`] || '';
-    const lvlRooms = [];
-    if (rSum) {
-      rSum.split(',').forEach(pt => {
-        const ptTrim = pt.trim();
-        if (!ptTrim) return;
-        const mCnt = ptTrim.match(/(\d+)\s*-\s*(.*)/);
-        const cnt = mCnt ? parseInt(mCnt[1], 10) : 1;
-        const rName = mCnt ? mCnt[2].trim() : ptTrim;
-        for (let ci = 0; ci < cnt; ci++) {
-          const lItem = cnt > 1 ? `${rName} ${ci + 1}` : rName;
-          lvlRooms.push(lItem);
-          allRoomLabels.push(lItem);
-          const rLow = rName.toLowerCase();
-          if (rLow.includes('bed')) roomsByCat.bedrooms.push(lItem);
-          else if (rLow.includes('bath')) roomsByCat.bathrooms.push(lItem);
-          else if (/living|family|great|rec/i.test(rLow)) roomsByCat.living.push(lItem);
-          else if (/kitchen|dining|nook/i.test(rLow)) roomsByCat.kitchen_dining.push(lItem);
-        }
-      });
-    }
-    roomsByLvl[lvl] = lvlRooms;
-  }
+  // Dynamic architectural sketch area breakdown directly from sketchPhoto or report
+  const sketchSourceItem = sketchPhoto || { gla: glaVal };
+  const dynamicGla = sketchPhoto?.gla || glaVal;
+  const areasBreakdown = getSketchAreasBreakdown(sketchSourceItem, data, allData);
+  const areas = areasBreakdown.areas && areasBreakdown.areas.length > 0 ? areasBreakdown.areas : (sketchPhoto?.areas || []);
 
-  const bedCount = roomsByCat.bedrooms.length ||
-    parseInt(impCounts.bedrooms || gridCounts.bedrooms || imp['Total Bedrooms'] || imp['Bedrooms'] || '0', 10) || 0;
+  // Dynamic room and floor breakdown directly from sketchPhoto or report
+  const parsedRooms = parseSketchRooms(sketchSourceItem, data, allData);
+  const allRoomLabels = parsedRooms.labels && parsedRooms.labels.length > 0 ? parsedRooms.labels : (sketchPhoto?.room_labels || []);
+  const roomsByCat = parsedRooms.byCategory || sketchPhoto?.rooms_by_category || { bedrooms: [], bathrooms: [], living: [], kitchen_dining: [], garage_parking: [], openings_outdoor: [], utility_laundry: [], basement: [] };
+  const roomsByLvl = parsedRooms.byLevel || sketchPhoto?.rooms_by_level || {};
 
-  const bathCount = roomsByCat.bathrooms.length ? String(roomsByCat.bathrooms.length) : (impCounts.bathrooms || gridCounts.bathrooms || '0');
-  const bathDisplay = roomsByCat.bathrooms.length
-    ? `${roomsByCat.bathrooms.length} Bath`
-    : (impCounts.bathrooms ? `${impCounts.bathrooms} Bath(s)` : (gridCounts.bathrooms ? `${gridCounts.bathrooms} Bath(s)` : '0 Full'));
-
-  const livingCount = roomsByCat.living.length || 1;
-  const hasKitchen = roomsByCat.kitchen_dining.length > 0 || allRoomLabels.some(l => /kitchen/i.test(l)) || true;
-  const hasDining = allRoomLabels.some(l => /dining/i.test(l));
-  const totRooms = allRoomLabels.length ||
-    parseInt(impCounts.totalRooms || gridCounts.totalRooms || '0', 10) ||
-    (bedCount + livingCount + (hasKitchen ? 1 : 0) + (hasDining ? 1 : 0));
+  const bedCount = parsedRooms.summary.bedroom_count;
+  const bathCount = parsedRooms.summary.bathroom_count;
+  const bathDisplay = parsedRooms.summary.bathroom_display;
+  const livingCount = parsedRooms.summary.living_rooms_count;
+  const hasKitchen = parsedRooms.summary.has_kitchen;
+  const hasDining = parsedRooms.summary.has_dining;
+  const totRooms = parsedRooms.summary.total_rooms;
 
   let isVectorSketch = false;
   let sketchImg = getPhotoSrc(sketchPhoto);
   if (!sketchImg) {
-    sketchImg = generateVectorSketchPreview(sketchPhoto?.label || 'Building Sketch', glaVal, areas, { bedroom_count: bedCount, bathroom_count: bathCount, bathroom_display: bathDisplay, total_rooms: totRooms });
+    sketchImg = generateVectorSketchPreview(sketchPhoto?.label || 'Building Sketch', dynamicGla, areas, { bedroom_count: bedCount, bathroom_count: bathCount, bathroom_display: bathDisplay, total_rooms: totRooms });
     isVectorSketch = true;
   }
 
   sketchesData.push({
     sketch_type: sketchPhoto?.label || 'Building Sketch',
     page_number: sketchPhoto?.page || 1,
-    gla: glaVal,
+    gla: dynamicGla,
     areas: areas,
     room_labels: allRoomLabels,
     room_summary: {
@@ -2171,7 +1956,7 @@ const synthesizeUad36Exhibits = (data, allData) => {
     },
     rooms_by_category: roomsByCat,
     rooms_by_level: roomsByLvl,
-    dimensions: [],
+    dimensions: sketchPhoto?.dimensions || [],
     image_preview: sketchImg,
     is_vector_exhibit: isVectorSketch
   });
@@ -2214,11 +1999,35 @@ const synthesizeUad36Exhibits = (data, allData) => {
 };
 
 const EXHIBIT_STAGES = [
-  { key: 'building_sketch', label: 'Building Sketch & Floor Plan', shortLabel: 'Building Sketch', tabIndex: 2 },
-  { key: 'aerial_map', label: 'Aerial Map', shortLabel: 'Aerial Map', tabIndex: 1 },
   { key: 'location_map', label: 'Location Map & Comps', shortLabel: 'Location Map', tabIndex: 0 },
+  { key: 'aerial_map', label: 'Aerial Map', shortLabel: 'Aerial Map', tabIndex: 1 },
+  { key: 'building_sketch', label: 'Building Sketch & Floor Plan', shortLabel: 'Building Sketch', tabIndex: 2 },
   { key: 'rental_map', label: 'Rentals & Other Maps', shortLabel: 'Rentals / Other', tabIndex: 3 }
 ];
+
+// Helper to detect invalid or placeholder file paths
+const isInvalidPath = (p) => !p || /^(?:n\/?a|none|null|undefined|false|\[object object\])$/i.test(String(p).trim());
+
+// Helper to extract embedded document base64 from report data structures
+const extractDocumentBase64 = (d, a) => {
+  const sources = [
+    d?.DOCUMENT, a?.DOCUMENT,
+    d?.EMBEDDED_FILE, a?.EMBEDDED_FILE,
+    d?.report_data?.DOCUMENT, a?.report_data?.DOCUMENT,
+    d?.data?.DOCUMENT, a?.data?.DOCUMENT
+  ];
+  for (const s of sources) {
+    if (!s) continue;
+    let b = s;
+    if (typeof b === 'object') {
+      b = b._Base64 || b.base64 || b.data || '';
+    }
+    if (typeof b === 'string' && b.length > 50 && !b.startsWith('data:image/svg+xml')) {
+      return b;
+    }
+  }
+  return '';
+};
 
 export const MapAndSketchExhibitsSection = ({
   id = 'map-sketch-exhibits-section',
@@ -2239,32 +2048,109 @@ export const MapAndSketchExhibitsSection = ({
   const [selectedCompPhotoModal, setSelectedCompPhotoModal] = useState(null);
   const [selectedLocMapIdx, setSelectedLocMapIdx] = useState(null);
   const scannedFileRef = useRef('');
+  const initializedReportRef = useRef('');
+  const sketchBase64AttemptedRef = useRef(false);
 
-  // Initial load or check from data / allData
+  // Initial load or check from data / allData (runs once per loaded report)
   useEffect(() => {
-    if (data?.MAP_EXHIBITS_ANALYSIS) {
-      setScanResult(data.MAP_EXHIBITS_ANALYSIS);
-    } else if (allData?.MAP_EXHIBITS_ANALYSIS) {
-      setScanResult(allData.MAP_EXHIBITS_ANALYSIS);
-    } else if (data?.map_exhibits_analysis) {
-      setScanResult(data.map_exhibits_analysis);
-    } else if (allData?.map_exhibits_analysis) {
-      setScanResult(allData.map_exhibits_analysis);
-    } else if (allData?.fields?.MAP_EXHIBITS_ANALYSIS) {
-      setScanResult(allData.fields.MAP_EXHIBITS_ANALYSIS);
-    } else if (allData?.clean_data?.MAP_EXHIBITS_ANALYSIS) {
-      setScanResult(allData.clean_data.MAP_EXHIBITS_ANALYSIS);
-    } else {
-      const syn = synthesizeUad36Exhibits(data, allData);
-      if (syn && (syn.maps.length > 0 || syn.sketches.length > 0)) {
-        setScanResult(syn);
+    const reportKey = data?.id || allData?.id || data?.FILE_NAME || allData?.FILE_NAME || data?.FILE_PATH || allData?.FILE_PATH || '';
+    if (initializedReportRef.current && initializedReportRef.current === reportKey && scanResult && (scanResult.maps?.length > 0 || scanResult.sketches?.length > 0)) {
+      return;
+    }
+    if (reportKey) {
+      initializedReportRef.current = reportKey;
+    }
+
+    const rawMex = data?.MAP_EXHIBITS_ANALYSIS 
+      || allData?.MAP_EXHIBITS_ANALYSIS 
+      || data?.map_exhibits_analysis 
+      || allData?.map_exhibits_analysis 
+      || allData?.fields?.MAP_EXHIBITS_ANALYSIS 
+      || allData?.clean_data?.MAP_EXHIBITS_ANALYSIS;
+
+    const syn = synthesizeUad36Exhibits(data, allData);
+
+    if (rawMex && Array.isArray(rawMex.maps) && rawMex.maps.length > 0) {
+      const mergedMaps = [...rawMex.maps];
+      if (syn?.maps) {
+        syn.maps.forEach(sm => {
+          const hasType = mergedMaps.some(m => {
+            if (/aerial/i.test(sm.map_type)) return /aerial/i.test(m.map_type || '');
+            if (/location|comparable/i.test(sm.map_type)) return /location|comparable/i.test(m.map_type || '');
+            if (/rental/i.test(sm.map_type)) return /rental/i.test(m.map_type || '');
+            return m.map_type === sm.map_type;
+          });
+          if (!hasType) {
+            mergedMaps.push(sm);
+          }
+        });
+      }
+      const rawSketches = rawMex.sketches || [];
+      const hasRealRaw = rawSketches.some(s => s.page_number > 1 || !s.is_vector_exhibit);
+      const cleanSketches = hasRealRaw
+        ? rawSketches.filter(s => s.page_number !== 1 || !s.is_vector_exhibit)
+        : (syn?.sketches || []);
+
+      setScanResult({
+        ...rawMex,
+        maps: mergedMaps,
+        sketches: cleanSketches
+      });
+    } else if (syn && (syn.maps.length > 0 || syn.sketches.length > 0)) {
+      setScanResult(syn);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, allData]);
+
+  // Direct dynamic extraction from base64 if sketch areas or room labels are not yet loaded (runs ONCE per session)
+  useEffect(() => {
+    if (sketchBase64AttemptedRef.current) return;
+    if (!scanResult?.sketches || scanResult.sketches.length === 0) return;
+    const sketch = scanResult.sketches[0];
+    const b64 = sketch?.image_preview || sketch?.base64_preview || '';
+    const hasAreas = Array.isArray(sketch?.areas) && sketch.areas.length > 1;
+    const hasRooms = Array.isArray(sketch?.room_labels) && sketch.room_labels.length > 0;
+
+    if (b64 && (!hasAreas || !hasRooms)) {
+      let docB64 = data?.DOCUMENT || allData?.DOCUMENT || data?.EMBEDDED_FILE || allData?.EMBEDDED_FILE || b64;
+      if (docB64 && typeof docB64 === 'object') {
+        docB64 = docB64._Base64 || docB64.base64 || docB64.data || '';
+      }
+      if (docB64 && typeof docB64 === 'string' && !docB64.startsWith('data:image/svg+xml')) {
+        sketchBase64AttemptedRef.current = true;
+        extractSketchFromBase64(docB64).then(res => {
+          if (res && res.status === 'success' && (res.areas?.length > 0 || res.room_labels?.length > 0)) {
+            setScanResult(prev => {
+              if (!prev) return prev;
+              const updatedSketches = (prev.sketches || []).map((sk, idx) => {
+                if (idx === 0) {
+                  return {
+                    ...sk,
+                    gla: res.gla || sk.gla,
+                    areas: res.areas?.length > 0 ? res.areas : sk.areas,
+                    room_labels: res.room_labels?.length > 0 ? res.room_labels : sk.room_labels,
+                    rooms_by_category: res.rooms_by_category || sk.rooms_by_category,
+                    rooms_by_level: res.rooms_by_level || sk.rooms_by_level,
+                    room_summary: res.room_summary || sk.room_summary,
+                    raw_text_sample: res.raw_text_sample || sk.raw_text_sample
+                  };
+                }
+                return sk;
+              });
+              return {
+                ...prev,
+                sketches: updatedSketches
+              };
+            });
+          }
+        }).catch(() => {});
       }
     }
-  }, [data, allData]);
+  }, [scanResult, data, allData]);
 
   // Resolve the active file object or file name from direct props or parent data
   const effectiveFile = selectedFile || allData?.selectedFile || allData?.xmlFile || allData?.reportFile || null;
-  const effectiveFilePath = (effectiveFile && typeof effectiveFile === 'object' && effectiveFile.name)
+  const rawPath = (effectiveFile && typeof effectiveFile === 'object' && effectiveFile.name)
     ? effectiveFile.name
     : (typeof effectiveFile === 'string' ? effectiveFile : '')
       || data?.FILE_PATH
@@ -2274,11 +2160,12 @@ export const MapAndSketchExhibitsSection = ({
       || data?.FILE_NAME
       || allData?.FILE_NAME
       || '';
+  const effectiveFilePath = isInvalidPath(rawPath) ? '' : rawPath;
 
   // Trigger automated one-by-one sequential scan of map and sketch exhibits
   const handleScanExhibits = useCallback(async () => {
     const fileObj = selectedFile || allData?.selectedFile || allData?.xmlFile || allData?.reportFile || null;
-    const filePath = (fileObj && typeof fileObj === 'object' && fileObj.name)
+    let filePath = (fileObj && typeof fileObj === 'object' && fileObj.name)
       ? fileObj.name
       : (typeof fileObj === 'string' ? fileObj : '')
         || data?.FILE_PATH
@@ -2289,8 +2176,14 @@ export const MapAndSketchExhibitsSection = ({
         || allData?.FILE_NAME
         || '';
 
-    if (!fileObj && !filePath) {
-      setErrorMessage('Please upload or load an appraisal XML or PDF file first to extract visual exhibits.');
+    if (isInvalidPath(filePath)) {
+      filePath = '';
+    }
+
+    const docB64 = extractDocumentBase64(data, allData);
+
+    if (!(fileObj instanceof File) && !filePath && !docB64) {
+      setErrorMessage('Please upload or select an appraisal XML or PDF file first to extract visual exhibits.');
       return;
     }
 
@@ -2298,13 +2191,13 @@ export const MapAndSketchExhibitsSection = ({
     setErrorMessage('');
     setCompletedStages(new Set());
 
-    // Reset scan result so exhibits load progressively in real-time
-    setScanResult({
-      status: 'success',
-      maps: [],
-      sketches: [],
-      comparable_photos: [],
-      all_pins: []
+    // Keep existing synthesized exhibits so tabs never flash 0 or empty during extraction
+    setScanResult(prev => {
+      if (prev && (prev.maps?.length > 0 || prev.sketches?.length > 0)) {
+        return prev;
+      }
+      const syn = synthesizeUad36Exhibits(data, allData);
+      return syn || { status: 'success', maps: [], sketches: [], comparable_photos: [], all_pins: [] };
     });
 
     let cachedServerPath = null;
@@ -2338,7 +2231,7 @@ export const MapAndSketchExhibitsSection = ({
           formData.append('cleanup', isLast ? 'true' : 'false');
           formData.append('save_images', 'true');
           bodyData = formData;
-        } else {
+        } else if (filePath) {
           headers['Content-Type'] = 'application/json';
           bodyData = JSON.stringify({
             file_path: filePath,
@@ -2347,6 +2240,17 @@ export const MapAndSketchExhibitsSection = ({
             cleanup: isLast,
             save_images: true
           });
+        } else if (docB64) {
+          headers['Content-Type'] = 'application/json';
+          bodyData = JSON.stringify({
+            base64: docB64,
+            exhibit_type: stage.key,
+            keep_file: !isLast,
+            cleanup: isLast,
+            save_images: true
+          });
+        } else {
+          continue;
         }
 
         try {
@@ -2363,8 +2267,8 @@ export const MapAndSketchExhibitsSection = ({
               setErrorMessage('The appraisal file could not be found on the server. Please select or re-upload your XML or PDF report file using the file selector above.');
               break;
             } else if (errJson?.message) {
-              setErrorMessage(`Exhibit extraction notice: ${errJson.message}`);
-              break;
+              console.warn(`Exhibit extraction notice for ${stage.key}:`, errJson.message);
+              continue;
             }
             continue;
           }
@@ -2380,7 +2284,16 @@ export const MapAndSketchExhibitsSection = ({
             const newMaps = result.maps || [];
             const mergedMaps = [...existingMaps];
             newMaps.forEach(nm => {
-              const idx = mergedMaps.findIndex(m => m.page_number === nm.page_number && m.map_type === nm.map_type);
+              let idx = mergedMaps.findIndex(m => m.page_number === nm.page_number && m.map_type === nm.map_type);
+              if (idx < 0) {
+                if (/aerial|satellite/i.test(nm.map_type || '')) {
+                  idx = mergedMaps.findIndex(m => /aerial|satellite/i.test(m.map_type || '') && (m.is_vector_exhibit || !m.image_preview));
+                } else if (/location|comparable/i.test(nm.map_type || '')) {
+                  idx = mergedMaps.findIndex(m => /location|comparable/i.test(m.map_type || '') && (m.is_vector_exhibit || !m.image_preview));
+                } else if (/rental/i.test(nm.map_type || '')) {
+                  idx = mergedMaps.findIndex(m => /rental/i.test(m.map_type || '') && (m.is_vector_exhibit || !m.image_preview));
+                }
+              }
               if (idx >= 0) {
                 mergedMaps[idx] = nm;
               } else {
@@ -2388,8 +2301,12 @@ export const MapAndSketchExhibitsSection = ({
               }
             });
 
-            const existingSketches = prev?.sketches || [];
             const newSketches = result.sketches || [];
+            const hasRealNew = newSketches.some(ns => ns.page_number > 1 || !ns.is_vector_exhibit);
+            const existingSketches = (prev?.sketches || []).filter(s => {
+              if (hasRealNew && (s.is_vector_exhibit || s.page_number === 1)) return false;
+              return true;
+            });
             const mergedSketches = [...existingSketches];
             newSketches.forEach(ns => {
               const idx = mergedSketches.findIndex(s => s.page_number === ns.page_number);
@@ -2459,20 +2376,37 @@ export const MapAndSketchExhibitsSection = ({
   // Automatically trigger scan once if not already scanned and file is present
   useEffect(() => {
     const fileIdentifier = (effectiveFile instanceof File ? effectiveFile.name : effectiveFilePath) || '';
-    const needsScan = !scanResult || scanResult.isSynthesizedPlaceholder || (scanResult.maps && scanResult.maps.length === 0 && scanResult.sketches && scanResult.sketches.length === 0);
-    if (fileIdentifier && scannedFileRef.current !== fileIdentifier && needsScan && !loading) {
-      scannedFileRef.current = fileIdentifier;
+    const docB64 = extractDocumentBase64(data, allData);
+    const identifier = fileIdentifier || (docB64 ? 'embedded_doc_b64' : '');
+    const needsScan = !scanResult || scanResult.isSynthesizedPlaceholder || (scanResult.maps && scanResult.maps.length === 0);
+
+    if (identifier && scannedFileRef.current !== identifier && needsScan && !loading) {
+      scannedFileRef.current = identifier;
       handleScanExhibits();
     }
-  }, [effectiveFile, effectiveFilePath, scanResult, loading, handleScanExhibits]);
+  }, [effectiveFile, effectiveFilePath, scanResult, loading, handleScanExhibits, data, allData]);
 
   // Extracted Location / Comp Maps (maps that show location / comps)
   const locationMaps = useMemo(() => {
     if (!scanResult?.maps) return [];
-    return scanResult.maps.filter(m =>
-      /location|comparable|sales\s*map/i.test(m.map_type || '') &&
-      !/rental/i.test(m.map_type || '')
-    );
+    const directLocs = scanResult.maps.filter(m => {
+      const mt = (m.map_type || '').toLowerCase();
+      const isAer = /aerial|satellite/.test(mt);
+      const isRent = /rental/.test(mt);
+      if (isAer || isRent) return false;
+      const isExplicitLoc = /location|comparable|sales\s*map|subject.*comp|map\s*exhibit|map\s*addendum/.test(mt);
+      const hasComps = ((m.comparables_only?.length || 0) > 0 || (m.comparables?.length || 0) > 0);
+      return isExplicitLoc || hasComps;
+    });
+
+    if (directLocs.length > 0) return directLocs;
+
+    // Fallback: if no direct match, take any map that isn't aerial, rental, plat, flood
+    const fallbackLocs = scanResult.maps.filter(m => {
+      const mt = (m.map_type || '').toLowerCase();
+      return !/aerial|satellite|rental|plat|flood|parcel|hazard/.test(mt);
+    });
+    return fallbackLocs;
   }, [scanResult]);
 
   // Among location maps, identify the primary map (the one with the most comparables)
@@ -2503,17 +2437,51 @@ export const MapAndSketchExhibitsSection = ({
   // Extracted Rentals & Other Maps (dedicated rental maps OR location maps with rental pins)
   const rentalMaps = useMemo(() => {
     if (!scanResult?.maps) return [];
-    return scanResult.maps.filter(m =>
-      /rental/i.test(m.map_type || '') ||
-      (m.rentals && m.rentals.length > 0) ||
-      /plat|flood|parcel|hazard/i.test(m.map_type || '') ||
-      (!/location|comparable|sales\s*map/i.test(m.map_type || '') && !/aerial|satellite/i.test(m.map_type || ''))
-    );
+    return scanResult.maps.filter(m => {
+      const mt = (m.map_type || '').toLowerCase();
+      const isAer = /aerial|satellite/.test(mt);
+      if (isAer) return false;
+      const isDedicatedRent = /rental/.test(mt);
+      const hasRentals = (m.rentals && m.rentals.length > 0);
+      const isPlatFlood = /plat|flood|parcel|hazard|tax/.test(mt);
+      if (isDedicatedRent || hasRentals || isPlatFlood) return true;
+      const isLoc = /location|comparable|sales\s*map|subject.*comp|map\s*exhibit|map\s*addendum/.test(mt) ||
+                    ((m.comparables_only?.length || 0) > 0 || (m.comparables?.length || 0) > 0);
+      return !isLoc;
+    });
   }, [scanResult]);
 
-  // Extracted Building Sketches
+  // Total Verified Location Comps count across maps or Sales Grid
+  const totalLocationCompsCount = useMemo(() => {
+    const fromMaps = locationMaps.reduce((acc, m) => acc + ((m.comparables_only || m.comparables || []).filter(c => c.item_type !== 'Subject' && c.item_type !== 'Rental').length || 0), 0);
+    if (fromMaps > 0) return fromMaps;
+    const sGrid = data?.SALES_GRID || allData?.SALES_GRID || data?.['Sales Grid'] || allData?.['Sales Grid'] || data?.clean_data?.['Sales Grid'] || allData?.clean_data?.['Sales Grid'] || {};
+    const gridKeys = Object.keys(sGrid).filter(k => k !== 'Subject' && typeof sGrid[k] === 'object' && /comp|comparable/i.test(k));
+    return gridKeys.length;
+  }, [locationMaps, data, allData]);
+
+  // Extracted Building Sketches (prioritizes real scanned architectural exhibits over synthetic Page 1 placeholders)
   const sketches = useMemo(() => {
-    return scanResult?.sketches || [];
+    const raw = scanResult?.sketches || [];
+    const hasRealSketch = raw.some(s =>
+      s.page_number > 1 || !s.is_vector_exhibit || (s.room_labels && s.room_labels.length > 0)
+    );
+
+    const candidateList = hasRealSketch
+      ? raw.filter(s => {
+          const isPage1Placeholder = (s.page_number === 1 || s.is_vector_exhibit) &&
+            (!s.room_labels || s.room_labels.length === 0 || !s.image_preview || s.image_preview.startsWith('data:image/svg+xml') || raw.some(other => other.page_number > 1));
+          return !isPage1Placeholder;
+        })
+      : raw;
+
+    const seen = new Set();
+    return candidateList.filter(s => {
+      const pKey = s.page_number || s.sketch_type || 'default';
+      if (seen.has(pKey)) return false;
+      seen.add(pKey);
+      return true;
+    });
   }, [scanResult]);
 
   // Copy helper
@@ -2763,7 +2731,7 @@ export const MapAndSketchExhibitsSection = ({
             iconPosition="start"
             label={
               <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}>
-                <span>Location Map & Comps ({locationMaps.reduce((acc, m) => acc + ((m.comparables_only || m.comparables || []).filter(c => c.item_type !== 'Rental').length || 0), 0)} Comps)</span>
+                <span>Location Map & Comps ({totalLocationCompsCount} Comps)</span>
                 {extractingStage === 'location_map' && <CircularProgress size={12} sx={{ color: '#0284c7' }} />}
               </Box>
             }
@@ -2810,9 +2778,36 @@ export const MapAndSketchExhibitsSection = ({
         <Stack spacing={2.5}>
           {locationMaps.length > 0 ? (() => {
             const mapItem = locationMaps[activeLocMapIdx] || locationMaps[0];
-            const rawSourceList = (mapItem.comparables_only && mapItem.comparables_only.length > 0)
+            let rawSourceList = (mapItem.comparables_only && mapItem.comparables_only.length > 0)
               ? mapItem.comparables_only
               : (mapItem.comparables || []).filter(c => c.item_type !== 'Rental');
+
+            if (!rawSourceList || rawSourceList.length === 0) {
+              const sGrid = data?.SALES_GRID || allData?.SALES_GRID || data?.['Sales Grid'] || allData?.['Sales Grid'] || data?.clean_data?.['Sales Grid'] || allData?.clean_data?.['Sales Grid'] || {};
+              const compKeys = Object.keys(sGrid).filter(k => k !== 'Subject' && typeof sGrid[k] === 'object' && /comp|comparable/i.test(k));
+              rawSourceList = compKeys.map(ck => {
+                const mNum = ck.match(/(\d+)/);
+                const cnum = mNum ? parseInt(mNum[1], 10) : 1;
+                const cd = sGrid[ck] || {};
+                const cAddr = cleanAddressArtifacts(cd['Property Address'] || cd['Address'] || cd['Comparable Property Address'] || '');
+                return {
+                  item_type: 'Comparable',
+                  label: `Comparable #${cnum}`,
+                  comp_num: cnum,
+                  address: cAddr,
+                  street: cd['Street Address'] || cAddr.split(',')[0],
+                  city: cd['City'] || '',
+                  state: cd['State'] || '',
+                  zipcode: cd['Zip Code'] || '',
+                  proximity: cd['Proximity to Subject'] || cd['Proximity'] || '',
+                  price: cd['Sale Price'] || '',
+                  map_type: mapItem.map_type || 'Location Map',
+                  page_number: mapItem.page_number || 1,
+                  grid_data: cd,
+                  status: 'Verified from Sales Grid'
+                };
+              });
+            }
 
             const {
               sortedRows,
@@ -3632,11 +3627,11 @@ export const MapAndSketchExhibitsSection = ({
             </Box>
           );
         })() : (
-            extractingStage === 'location_map' ? (
+            (loading && extractingStage) ? (
               <Paper variant="outlined" sx={{ p: 4, textAlign: 'center', bgcolor: '#f8fafc', borderRadius: 2 }}>
                 <CircularProgress size={32} sx={{ color: '#0284c7', mb: 1.5 }} />
                 <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#0f172a' }}>
-                  Extracting Location Map & Sales Comparables...
+                  {extractingStage === 'location_map' ? 'Extracting Location Map & Sales Comparables...' : 'Location Map & Sales Comparables Queued...'}
                 </Typography>
                 <Typography variant="body2" sx={{ color: '#64748b', mt: 0.5 }}>
                   Detecting subject pin, comparable pins, and cross-referencing addresses with the Sales Grid.
@@ -3770,8 +3765,13 @@ export const MapAndSketchExhibitsSection = ({
         <Stack spacing={2.5}>
           {sketches.length > 0 ? (
             sketches.map((sketchItem, sIdx) => {
-              const roomDetails = parseSketchRooms(sketchItem);
+              const roomDetails = parseSketchRooms(sketchItem, data, allData);
               const { labels: roomLabels, byCategory: roomCats, byLevel: roomLevels, summary: roomSum } = roomDetails;
+              const areasBreakdown = getSketchAreasBreakdown(sketchItem, data, allData);
+              const effectiveAreaList = areasBreakdown.areas && areasBreakdown.areas.length > 0
+                ? areasBreakdown.areas
+                : (sketchItem.areas && sketchItem.areas.length > 0 ? sketchItem.areas : []);
+              const effectiveGLA = getSketchGLA(sketchItem, data, allData);
 
               return (
                 <Grid container spacing={2.5} key={sIdx}>
@@ -4097,90 +4097,187 @@ export const MapAndSketchExhibitsSection = ({
                             );
                           })()}
 
-                          {/* Floor-by-Floor (Level Breakdown) */}
-                          {Object.keys(roomLevels).length > 0 ? (
-                            <Box sx={{ mb: 2 }}>
-                              <Typography variant="caption" sx={{ fontWeight: 700, color: '#475569', display: 'block', mb: 1, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                                Layout By Level / Floor:
-                              </Typography>
-                              <Stack spacing={1}>
-                                {Object.entries(roomLevels).map(([levelName, items], lIdx) => (
-                                  <Paper key={lIdx} variant="outlined" sx={{ p: 1.25, bgcolor: '#ffffff', borderRadius: 1.5 }}>
-                                    <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" gap={0.75}>
-                                      <Chip
-                                        label={levelName}
-                                        size="small"
-                                        sx={{ fontWeight: 700, bgcolor: '#0f172a', color: '#ffffff' }}
-                                      />
-                                      {items.map((item, itmIdx) => {
-                                        const theme = ROOM_THEMES[item.category] || DEFAULT_ROOM_THEME;
+                          {/* Detected Room & Feature Labels AND GLA Section */}
+                          <Box sx={{ mt: 2.5, pt: 2, borderTop: '1px solid #e2e8f0' }}>
+                            {/* SECTION A: DETECTED ROOM & FEATURE LABELS */}
+                            <Box sx={{ mb: 2.5 }}>
+                              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.25 }} flexWrap="wrap" gap={1}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                                  <RoomIcon fontSize="small" sx={{ color: '#4f46e5' }} /> Detected Room & Feature Labels:
+                                </Typography>
+                                <Chip
+                                  label={`${roomLabels.length} Detected Labels`}
+                                  size="small"
+                                  sx={{ fontWeight: 700, fontSize: '0.72rem', bgcolor: '#e0e7ff', color: '#3730a3', border: '1px solid #c7d2fe' }}
+                                />
+                              </Stack>
+
+                              {/* Layout By Level / Floor breakdown */}
+                              {Object.keys(roomLevels).length > 0 ? (
+                                <Stack spacing={1}>
+                                  {Object.entries(roomLevels).map(([levelName, items], lIdx) => (
+                                    <Paper key={lIdx} variant="outlined" sx={{ p: 1.25, bgcolor: '#ffffff', borderRadius: 1.5, borderColor: '#e2e8f0' }}>
+                                      <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" gap={0.75}>
+                                        <Chip
+                                          label={levelName}
+                                          size="small"
+                                          sx={{ fontWeight: 700, bgcolor: '#0f172a', color: '#ffffff' }}
+                                        />
+                                        {items.map((item, itmIdx) => {
+                                          const theme = ROOM_THEMES[item.category] || DEFAULT_ROOM_THEME;
+                                          return (
+                                            <Chip
+                                              key={itmIdx}
+                                              icon={getRoomIconComponent(item.category)}
+                                              label={item.label}
+                                              size="small"
+                                              sx={{
+                                                bgcolor: theme.bg,
+                                                color: theme.color,
+                                                border: `1px solid ${theme.border}`,
+                                                fontWeight: 600,
+                                                '& .MuiChip-icon': { color: `${theme.color} !important`, fontSize: '14px' }
+                                              }}
+                                            />
+                                          );
+                                        })}
+                                      </Stack>
+                                    </Paper>
+                                  ))}
+                                </Stack>
+                              ) : (
+                                <Paper variant="outlined" sx={{ p: 1.5, bgcolor: '#ffffff', borderRadius: 1.5, borderColor: '#e2e8f0' }}>
+                                  <Stack direction="row" spacing={0.75} flexWrap="wrap" gap={0.75}>
+                                    {roomLabels.map((lbl, rIdx) => {
+                                      const theme = getRoomTheme(null, lbl);
+                                      const classified = classifyRoomLabel(lbl);
+                                      return (
+                                        <Chip
+                                          key={rIdx}
+                                          icon={getRoomIconComponent(classified.category)}
+                                          label={lbl}
+                                          size="small"
+                                          sx={{
+                                            bgcolor: theme.bg,
+                                            color: theme.color,
+                                            border: `1px solid ${theme.border}`,
+                                            fontWeight: 600,
+                                            '& .MuiChip-icon': { color: `${theme.color} !important`, fontSize: '14px' }
+                                          }}
+                                        />
+                                      );
+                                    })}
+                                  </Stack>
+                                </Paper>
+                              )}
+                            </Box>
+
+                            {/* SECTION B: GROSS LIVING AREA (GLA) & AREA CALCULATIONS */}
+                            <Box sx={{ mt: 2, pt: 2, borderTop: '1px dashed #cbd5e1' }}>
+                              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.25 }} flexWrap="wrap" gap={1}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                                  <ArchitectureIcon fontSize="small" sx={{ color: '#059669' }} /> Gross Living Area (GLA) & Area Calculations:
+                                </Typography>
+                                <Stack direction="row" spacing={1} alignItems="center">
+                                  {effectiveGLA && (
+                                    <Chip
+                                      label={`${Number(effectiveGLA).toLocaleString()} Sq Ft Total Finished GLA`}
+                                      size="small"
+                                      sx={{ bgcolor: '#ecfdf5', color: '#047857', fontWeight: 700, border: '1px solid #a7f3d0' }}
+                                    />
+                                  )}
+                                  <Chip
+                                    label="ANSI Z765 Standard"
+                                    size="small"
+                                    variant="outlined"
+                                    sx={{ fontWeight: 600, fontSize: '0.68rem', color: '#475569', borderColor: '#cbd5e1' }}
+                                  />
+                                </Stack>
+                              </Stack>
+
+                              {/* Area Calculations Breakdown Table */}
+                              {effectiveAreaList.length > 0 ? (
+                                <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1.5, overflow: 'hidden', bgcolor: '#ffffff', borderColor: '#e2e8f0' }}>
+                                  <Table size="small">
+                                    <TableHead sx={{ bgcolor: '#f8fafc' }}>
+                                      <TableRow>
+                                        <TableCell sx={{ fontWeight: 700, color: '#475569', py: 0.75 }}>Area Level / Section</TableCell>
+                                        <TableCell sx={{ fontWeight: 700, color: '#475569', py: 0.75 }}>Calculated Square Footage</TableCell>
+                                        <TableCell sx={{ fontWeight: 700, color: '#475569', py: 0.75 }}>Category</TableCell>
+                                      </TableRow>
+                                    </TableHead>
+                                    <TableBody>
+                                      {effectiveAreaList.map((ar, aIdx) => {
+                                        const nm = (ar.name || '').toLowerCase();
+                                        const isBsmt = nm.includes('basement');
+                                        const isGar = nm.includes('garage') || nm.includes('car');
+                                        const isPorch = nm.includes('porch') || nm.includes('patio') || nm.includes('balcony') || nm.includes('deck');
+
+                                        const catLabel = ar.isTotalGLA
+                                          ? 'Total Finished GLA'
+                                          : ar.isGLA
+                                            ? 'Finished Living Area (GLA)'
+                                            : isBsmt
+                                              ? 'Basement (Non-GLA)'
+                                              : isGar
+                                                ? 'Garage (Non-GLA)'
+                                                : isPorch
+                                                  ? 'Outdoor / Porch (Non-GLA)'
+                                                  : 'Non-Living Area';
+
+                                        const catBg = ar.isTotalGLA ? '#dcfce7' : ar.isGLA ? '#e0f2fe' : isBsmt ? '#f8fafc' : '#f1f5f9';
+                                        const catColor = ar.isTotalGLA ? '#166534' : ar.isGLA ? '#0369a1' : isBsmt ? '#334155' : '#475569';
+                                        const catBorder = ar.isTotalGLA ? '#bbf7d0' : ar.isGLA ? '#bae6fd' : '#cbd5e1';
+
                                         return (
-                                          <Chip
-                                            key={itmIdx}
-                                            label={item.label}
-                                            size="small"
-                                            sx={{
-                                              bgcolor: theme.bg,
-                                              color: theme.color,
-                                              border: `1px solid ${theme.border}`,
-                                              fontWeight: 600
-                                            }}
-                                          />
+                                          <TableRow key={aIdx} hover sx={{ bgcolor: ar.isTotalGLA ? '#f0fdf4' : 'inherit' }}>
+                                            <TableCell sx={{ fontWeight: ar.isTotalGLA ? 700 : 600, color: ar.isTotalGLA ? '#166534' : '#1e293b', py: 0.75 }}>
+                                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                                                {ar.isTotalGLA ? (
+                                                  <CheckCircleIcon sx={{ fontSize: 16, color: '#16a34a' }} />
+                                                ) : isGar ? (
+                                                  <GarageIcon sx={{ fontSize: 16, color: '#64748b' }} />
+                                                ) : isBsmt ? (
+                                                  <LayersIcon sx={{ fontSize: 16, color: '#475569' }} />
+                                                ) : isPorch ? (
+                                                  <HomeIcon sx={{ fontSize: 16, color: '#0284c7' }} />
+                                                ) : (
+                                                  <ArchitectureIcon sx={{ fontSize: 16, color: '#059669' }} />
+                                                )}
+                                                {ar.name}
+                                              </Box>
+                                            </TableCell>
+                                            <TableCell sx={{ fontWeight: 700, color: ar.isTotalGLA ? '#15803d' : '#0f172a', py: 0.75 }}>
+                                              {ar.area || (ar.sqft ? `${Number(ar.sqft).toLocaleString()} Sq Ft` : '—')}
+                                            </TableCell>
+                                            <TableCell sx={{ py: 0.75 }}>
+                                              <Chip
+                                                label={catLabel}
+                                                size="small"
+                                                sx={{
+                                                  fontSize: '0.68rem',
+                                                  fontWeight: 700,
+                                                  bgcolor: catBg,
+                                                  color: catColor,
+                                                  border: `1px solid ${catBorder}`
+                                                }}
+                                              />
+                                            </TableCell>
+                                          </TableRow>
                                         );
                                       })}
-                                    </Stack>
-                                  </Paper>
-                                ))}
-                              </Stack>
+                                    </TableBody>
+                                  </Table>
+                                </TableContainer>
+                              ) : (
+                                <Paper variant="outlined" sx={{ p: 1.5, bgcolor: '#f0fdf4', borderRadius: 1.5, borderColor: '#bbf7d0' }}>
+                                  <Typography variant="body2" sx={{ fontWeight: 600, color: '#166534' }}>
+                                    Total Finished Above Grade GLA: {effectiveGLA ? `${Number(effectiveGLA).toLocaleString()} Sq Ft` : 'Refer to Improvements'}
+                                  </Typography>
+                                </Paper>
+                              )}
                             </Box>
-                          ) : (
-                            <Box sx={{ mt: 1 }}>
-                              <Typography variant="caption" sx={{ fontWeight: 700, color: '#475569', display: 'block', mb: 1 }}>
-                                Detected Room & Feature Labels:
-                              </Typography>
-                              <Stack direction="row" spacing={0.75} flexWrap="wrap" gap={0.75}>
-                                {roomLabels.map((lbl, rIdx) => (
-                                  <Chip
-                                    key={rIdx}
-                                    label={lbl}
-                                    size="small"
-                                    sx={{ bgcolor: '#e0e7ff', color: '#3730a3', fontWeight: 600 }}
-                                  />
-                                ))}
-                              </Stack>
-                            </Box>
-                          )}
-                        </Box>
-                      )}
-
-                      {/* Living / Non-Living Area Calculations Table */}
-                      {sketchItem.areas && sketchItem.areas.length > 0 && (
-                        <Box sx={{ mb: 2.5 }}>
-                          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, color: '#0f172a' }}>
-                            Living / Non-Living Area Calculations:
-                          </Typography>
-                          <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1.5, overflow: 'hidden' }}>
-                            <Table size="small">
-                              <TableHead sx={{ bgcolor: '#f8fafc' }}>
-                                <TableRow>
-                                  <TableCell sx={{ fontWeight: 700, color: '#475569' }}>Area Level / Section</TableCell>
-                                  <TableCell sx={{ fontWeight: 700, color: '#475569' }}>Calculated Square Footage</TableCell>
-                                </TableRow>
-                              </TableHead>
-                              <TableBody>
-                                {sketchItem.areas.map((ar, aIdx) => (
-                                  <TableRow key={aIdx} hover>
-                                    <TableCell sx={{ fontWeight: 600, color: '#1e293b' }}>
-                                      {ar.name || 'Living Area'}
-                                    </TableCell>
-                                    <TableCell sx={{ fontWeight: 700, color: '#0f172a' }}>
-                                      {ar.area}
-                                    </TableCell>
-                                  </TableRow>
-                                ))}
-                              </TableBody>
-                            </Table>
-                          </TableContainer>
+                          </Box>
                         </Box>
                       )}
 
@@ -4845,7 +4942,7 @@ export const MapAndSketchExhibitsSection = ({
                   Rentals & Other Maps Extraction Queued (Stage 4/4)
                 </Typography>
                 <Typography variant="body2" sx={{ color: '#64748b', mt: 0.5 }}>
-                  Will extract automatically once Building Sketch completes.
+                  Will extract automatically once Location Map completes.
                 </Typography>
               </Paper>
             ) : (

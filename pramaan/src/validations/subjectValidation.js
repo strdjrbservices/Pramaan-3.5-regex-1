@@ -1,4 +1,4 @@
-import { getSubjectRentFieldVal, parseMMDDYYYY, is1007Active, isBlankOrNA, isNA } from './rentScheduleValidation';
+import { getSubjectRentFieldVal, parseMMDDYYYY, is1007Active, isBlankOrNA, isNA, isLeaseExpired, isBlankOrZeroOrNA } from './rentScheduleValidation';
 
 const checkNotBlank = (field, text, fieldName) => {
     if (field === fieldName) {
@@ -440,13 +440,24 @@ export const checkOccupancy = (field, text, allData) => {
         const leaseBegins = getSubjectRentFieldVal(allData, 'Date Lease Begins');
         const leaseExpires = getSubjectRentFieldVal(allData, 'Date Lease Expires');
 
-        // If occupant is owner or vacant, lease dates must be blank or N/A and vice versa
+        // If occupant is owner or vacant, lease dates and rents must be blank or N/A
         if (matchedOption === 'owner' || matchedOption === 'vacant') {
             if (!isBlankOrNA(leaseBegins) || !isBlankOrNA(leaseExpires)) {
                 return {
                     isError: true,
                     skipBlankFilter: true,
                     message: `Occupant is '${value}', but lease dates are present in Rental Grid. Lease start and end dates must be blank or N/A.`
+                };
+            }
+            const monthlyRental = getSubjectRentFieldVal(allData, 'Monthly Rental');
+            const adjRent = getSubjectRentFieldVal(allData, 'Adjusted Monthly Rent');
+            const utilities = getSubjectRentFieldVal(allData, 'Less: Utilities');
+            const furniture = getSubjectRentFieldVal(allData, 'Furniture');
+            if (!isBlankOrZeroOrNA(monthlyRental) || !isBlankOrZeroOrNA(adjRent) || !isBlankOrZeroOrNA(utilities) || !isBlankOrZeroOrNA(furniture)) {
+                return {
+                    isError: true,
+                    skipBlankFilter: true,
+                    message: `Occupant is '${value}', but in Rental Grid 'Monthly Rental', 'Adjusted Monthly Rent', 'Less: Utilities' and 'Furniture' must be blank or zero.`
                 };
             }
         } else if (matchedOption === 'tenant') {
@@ -459,16 +470,14 @@ export const checkOccupancy = (field, text, allData) => {
                 };
             }
 
-            const beginsDateObj = parseMMDDYYYY(leaseBegins);
-            const expiresDateObj = parseMMDDYYYY(leaseExpires);
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
+            const beginsDateObj = parseMMDDYYYY(leaseBegins, false);
+            const expiresDateObj = parseMMDDYYYY(leaseExpires, true);
 
             if (!beginsDateObj || !expiresDateObj) {
                 return {
                     isError: true,
                     skipBlankFilter: true,
-                    message: `Occupant is 'Tenant', but lease dates in Rental Grid must be valid dates in MM/DD/YYYY format.`
+                    message: `Occupant is 'Tenant', but lease dates in Rental Grid must be valid dates in MM/dd/yyyy, yyyy/yyyy, mm/yyyy, or yyyy/mm/dd format.`
                 };
             }
 
@@ -481,25 +490,21 @@ export const checkOccupancy = (field, text, allData) => {
                 };
             }
 
-            // Logical: end date should be greater than current date
-            if (expiresDateObj <= today) {
+            // Logical: end date cannot be expired / previous to current date
+            if (isLeaseExpired(leaseExpires)) {
                 return {
                     isError: true,
                     skipBlankFilter: true,
-                    message: `Occupant is 'Tenant', but in Rental Grid 'Date Lease Expires' (${leaseExpires}) must be greater than current date.`
+                    message: `Occupant is 'Tenant', but in Rental Grid 'Date Lease Expires' (${leaseExpires}) cannot be expired / previous to current date.`
                 };
             }
 
-            // Monthly Rental, Less: Utilities (zero allowed), Furniture (zero allowed), Adjusted Monthly Rent should be present
+            // Monthly Rental and Adjusted Monthly Rent should be present; Utilities & Furniture can be blank or zero
             const monthlyRental = getSubjectRentFieldVal(allData, 'Monthly Rental');
-            const utilities = getSubjectRentFieldVal(allData, 'Less: Utilities');
-            const furniture = getSubjectRentFieldVal(allData, 'Furniture');
             const adjRent = getSubjectRentFieldVal(allData, 'Adjusted Monthly Rent');
 
             const missing = [];
             if (!monthlyRental) missing.push('Monthly Rental');
-            if (utilities === '' || utilities === undefined || utilities === null) missing.push('Less: Utilities (zero allowed)');
-            if (furniture === '' || furniture === undefined || furniture === null) missing.push('Furniture (zero allowed)');
             if (!adjRent) missing.push('Adjusted Monthly Rent');
 
             if (missing.length > 0) {

@@ -2,7 +2,8 @@ import {
   getNeighborhoodTwelveMonthSalesRange,
   checkCompSalePriceWithinNeighborhoodRange,
   checkSalePrice,
-  checkProximityToSubject
+  checkProximityToSubject,
+  checkComparableAddressDuplicates
 } from '../salesComparisonValidation';
 
 describe('Neighborhood 12-Month Comparable Sales Range Extraction', () => {
@@ -349,6 +350,152 @@ describe('Proximity to Subject (Miles) Validation', () => {
       const res = checkProximityToSubject('Proximity to Subject', data, 'COMPARABLE SALE #1');
       expect(res).not.toBeNull();
       expect(res.isMatch).toBe(true);
+    });
+  });
+
+  describe('Comparable Sale Address Duplicate Validation (checkComparableAddressDuplicates)', () => {
+    const fiveDistinctCompsData = {
+      'Subject': { 'Address': '10 Parkside Ct, Wayne, NJ 07470' },
+      'COMPARABLE SALE #1': { 'Address': '11 Parkside Ct, Wayne, NJ 07470' },
+      'COMPARABLE SALE #2': { 'Address': '13 Parkside Ct, Wayne, NJ 07470' },
+      'COMPARABLE SALE #3': { 'Address': '20 Parkside Ct, Wayne, NJ 07470' },
+      'COMPARABLE SALE #4': { 'Address': '45 Parkside Ct, Wayne, NJ 07470' },
+      'COMPARABLE SALE #5': { 'Address': '324 Brittany Dr, Wayne, NJ 07470' }
+    };
+
+    const duplicateCompsData = {
+      'Subject': { 'Address': '10 Parkside Ct, Wayne, NJ 07470' },
+      'COMPARABLE SALE #1': { 'Address': '11 Parkside Ct, Wayne, NJ 07470' },
+      'COMPARABLE SALE #2': { 'Address': '11 Parkside Ct, Wayne, NJ 07470' },
+      'COMPARABLE SALE #3': { 'Address': '20 Parkside Ct, Wayne, NJ 07470' }
+    };
+
+    test('passes (isMatch: true) when all comps have distinct addresses (like Image 1)', () => {
+      const res1 = checkComparableAddressDuplicates(
+        'Address',
+        '11 Parkside Ct, Wayne, NJ 07470',
+        fiveDistinctCompsData,
+        ['COMPARABLE SALE #1', 'Address'],
+        'COMPARABLE SALE #1'
+      );
+      expect(res1).toEqual(expect.objectContaining({ isMatch: true }));
+      expect(res1.message).toContain('Valid');
+
+      const res2 = checkComparableAddressDuplicates(
+        'Address',
+        '13 Parkside Ct, Wayne, NJ 07470',
+        fiveDistinctCompsData,
+        ['COMPARABLE SALE #2', 'Address'],
+        'COMPARABLE SALE #2'
+      );
+      expect(res2).toEqual(expect.objectContaining({ isMatch: true }));
+    });
+
+    test('fails (isError: true) when two comparable sales share the same address', () => {
+      const resComp1 = checkComparableAddressDuplicates(
+        'Address',
+        '11 Parkside Ct, Wayne, NJ 07470',
+        duplicateCompsData,
+        ['COMPARABLE SALE #1', 'Address'],
+        'COMPARABLE SALE #1'
+      );
+      expect(resComp1).toEqual(expect.objectContaining({
+        isError: true,
+        message: expect.stringContaining('COMPARABLE SALE #2')
+      }));
+
+      const resComp2 = checkComparableAddressDuplicates(
+        'Address',
+        '11 Parkside Ct, Wayne, NJ 07470',
+        duplicateCompsData,
+        ['COMPARABLE SALE #2', 'Address'],
+        'COMPARABLE SALE #2'
+      );
+      expect(resComp2).toEqual(expect.objectContaining({
+        isError: true,
+        message: expect.stringContaining('COMPARABLE SALE #1')
+      }));
+
+      const resComp3 = checkComparableAddressDuplicates(
+        'Address',
+        '20 Parkside Ct, Wayne, NJ 07470',
+        duplicateCompsData,
+        ['COMPARABLE SALE #3', 'Address'],
+        'COMPARABLE SALE #3'
+      );
+      expect(resComp3).toEqual(expect.objectContaining({ isMatch: true }));
+    });
+
+    test('detects duplicates with differences in newlines, spacing, and punctuation', () => {
+      const data = {
+        'COMPARABLE SALE #1': { 'Address': '11 Parkside Ct, Wayne,\nNJ 07470' },
+        'COMPARABLE SALE #2': { 'Address': '11  Parkside  Ct.  Wayne, NJ 07470' }
+      };
+      const res = checkComparableAddressDuplicates(
+        'Address',
+        '11 Parkside Ct, Wayne,\nNJ 07470',
+        data,
+        ['COMPARABLE SALE #1', 'Address'],
+        'COMPARABLE SALE #1'
+      );
+      expect(res).toEqual(expect.objectContaining({ isError: true }));
+    });
+
+    test('detects duplicates when street suffix is spelled out (Court vs Ct)', () => {
+      const data = {
+        'COMPARABLE SALE #1': { 'Address': '11 Parkside Court, Wayne, NJ 07470' },
+        'COMPARABLE SALE #2': { 'Address': '11 Parkside Ct, Wayne, NJ 07470' }
+      };
+      const res = checkComparableAddressDuplicates(
+        'Address',
+        '11 Parkside Court, Wayne, NJ 07470',
+        data,
+        ['COMPARABLE SALE #1', 'Address'],
+        'COMPARABLE SALE #1'
+      );
+      expect(res).toEqual(expect.objectContaining({ isError: true }));
+    });
+
+    test('skips Subject property (returns null)', () => {
+      const res = checkComparableAddressDuplicates(
+        'Address',
+        '10 Parkside Ct, Wayne, NJ 07470',
+        fiveDistinctCompsData,
+        ['Subject', 'Address'],
+        'Subject'
+      );
+      expect(res).toBeNull();
+    });
+
+    test('skips rental comps (returns null)', () => {
+      const res = checkComparableAddressDuplicates(
+        'Address',
+        '4 Parkside Ct, Wayne, NJ 07470',
+        fiveDistinctCompsData,
+        ['COMPARABLE NO. 1', 'Address'],
+        'COMPARABLE NO. 1'
+      );
+      expect(res).toBeNull();
+    });
+
+    test('returns null when address is blank or empty', () => {
+      const res = checkComparableAddressDuplicates(
+        'Address',
+        '',
+        fiveDistinctCompsData,
+        ['COMPARABLE SALE #1', 'Address'],
+        'COMPARABLE SALE #1'
+      );
+      expect(res).toBeNull();
+    });
+
+    test('works with fallback call signature (field, allData, saleName)', () => {
+      const res = checkComparableAddressDuplicates(
+        'Address',
+        fiveDistinctCompsData,
+        'COMPARABLE SALE #1'
+      );
+      expect(res).toEqual(expect.objectContaining({ isMatch: true }));
     });
   });
 });

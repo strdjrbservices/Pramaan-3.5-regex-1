@@ -1622,6 +1622,12 @@ def extract_photos_view(request):
     uploaded_file = request.FILES.get("file") or request.FILES.get("pdf_file") or request.FILES.get("xml_file")
     companion_file = request.FILES.get("companion_pdf") or request.FILES.get("pdf")
     file_path = request.data.get("file_path") or request.data.get("path")
+    if file_path:
+        file_path_str = str(file_path).strip()
+        if not file_path_str or file_path_str.upper() in ["N/A", "NONE", "NULL", "UNDEFINED", "FALSE", "[OBJECT OBJECT]"]:
+            file_path = None
+        else:
+            file_path = file_path_str
     try:
         max_photos = int(request.data.get("max_photos", 60))
     except (TypeError, ValueError):
@@ -1661,6 +1667,11 @@ def extract_photos_view(request):
                 logger.warning(f"Could not save companion PDF for photo extraction: {c_err}")
     else:
         tmp_path = file_path
+        if not tmp_path or not os.path.exists(tmp_path):
+            return Response(
+                {"status": "error", "message": f"File not found: {tmp_path}"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
     try:
         photos = extract_photos_from_xml(
@@ -1677,6 +1688,11 @@ def extract_photos_view(request):
             "categories": cats,
             "photos": photos
         })
+    except FileNotFoundError as fnf_err:
+        return Response(
+            {"status": "error", "message": str(fnf_err)},
+            status=status.HTTP_404_NOT_FOUND
+        )
     except Exception as exc:
         traceback.print_exc()
         return Response(
@@ -1702,14 +1718,48 @@ def extract_maps_view(request):
     """
     uploaded_file = request.FILES.get("file") or request.FILES.get("pdf_file") or request.FILES.get("xml_file")
     file_path = request.data.get("file_path") or request.data.get("filePath") or request.data.get("path")
+    if file_path:
+        file_path_str = str(file_path).strip()
+        if not file_path_str or file_path_str.upper() in ["N/A", "NONE", "NULL", "UNDEFINED", "FALSE", "[OBJECT OBJECT]"]:
+            file_path = None
+        else:
+            file_path = file_path_str
+
+    b64_input = request.data.get("base64") or request.data.get("image_base64") or request.data.get("pdf_base64")
+    if isinstance(b64_input, dict):
+        b64_input = b64_input.get("_Base64") or b64_input.get("base64") or b64_input.get("data") or ""
+    if isinstance(b64_input, str) and b64_input.startswith("data:image/svg+xml"):
+        b64_input = ""
+
     save_images = str(request.data.get("save_images", "true")).lower() in ["true", "1", "yes"]
     exhibit_type = request.data.get("exhibit_type") or request.data.get("exhibitType") or request.data.get("category")
     keep_file = str(request.data.get("keep_file", "false")).lower() in ["true", "1", "yes"]
     cleanup = str(request.data.get("cleanup", "false")).lower() in ["true", "1", "yes"]
 
-    if not uploaded_file and not file_path:
+    # Direct Base64 extraction shortcut for sketch exhibit
+    if b64_input and str(exhibit_type or "").lower() in ["sketch", "sketches", "building_sketch", "floor_plan"]:
+        try:
+            from map_extractor_cli import MapExtractor
+            extractor = MapExtractor(save_images=save_images)
+            sk_res = extractor.extract_sketch_from_base64(b64_input)
+            return Response({
+                "status": "success",
+                "file_name": "base64_stream",
+                "exhibit_type": "sketch",
+                "total_maps": 0,
+                "total_sketches": 1 if sk_res.get("status") == "success" else 0,
+                "total_comparable_photos": 0,
+                "maps": [],
+                "sketches": [sk_res] if sk_res.get("status") == "success" else [],
+                "comparable_photos": [],
+                "all_pins": []
+            })
+        except Exception as b64_err:
+            traceback.print_exc()
+
+    if not uploaded_file and not file_path and not b64_input:
         return Response(
-            {"status": "error", "message": "No file or file_path provided"},
+            {"status": "error", "message": "No file, file_path, or base64 provided"},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -1722,12 +1772,44 @@ def extract_maps_view(request):
                 tmp.write(chunk)
             tmp_path = tmp.name
             is_temp_file = True
+    elif b64_input:
+        clean_b64 = b64_input.split(",", 1)[1] if "," in b64_input else b64_input
+        try:
+            b_bytes = base64.b64decode(clean_b64.strip())
+            header_peek = b_bytes.lstrip()[:100]
+            if b_bytes.startswith(b"%PDF"):
+                suffix = ".pdf"
+            elif header_peek.startswith(b"<?xml") or header_peek.startswith(b"<") or b"<VALUATION_RESPONSE" in b_bytes[:500] or b"<MESSAGE" in b_bytes[:500]:
+                suffix = ".xml"
+            elif b_bytes.startswith(b"\x89PNG"):
+                suffix = ".png"
+            else:
+                suffix = ".jpg"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                tmp.write(b_bytes)
+                tmp_path = tmp.name
+                is_temp_file = True
+        except Exception as b_dec_err:
+            return Response({"status": "error", "message": f"Invalid base64 payload: {b_dec_err}"}, status=status.HTTP_400_BAD_REQUEST)
     else:
         curr_dir = os.path.dirname(os.path.abspath(__file__))
         workspace_root = os.path.dirname(os.path.dirname(curr_dir))
         if not os.path.isabs(file_path):
-            file_path = os.path.join(workspace_root, file_path)
+            resolved_p = os.path.join(workspace_root, file_path)
+            if not os.path.exists(resolved_p):
+                cand_sample = os.path.join(workspace_root, "sample_xmls", os.path.basename(file_path))
+                cand_temp = os.path.join(tempfile.gettempdir(), os.path.basename(file_path))
+                if os.path.exists(cand_sample):
+                    resolved_p = cand_sample
+                elif os.path.exists(cand_temp):
+                    resolved_p = cand_temp
+            file_path = resolved_p
         tmp_path = file_path
+        if not tmp_path or not os.path.exists(tmp_path):
+            return Response(
+                {"status": "error", "message": f"File not found: {tmp_path}"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
         # Check if file_path is inside temp dir to treat as temp
         try:
             temp_dir = tempfile.gettempdir()
@@ -1769,6 +1851,11 @@ def extract_maps_view(request):
         if is_temp_file and tmp_path:
             exhibits_result["file_path"] = tmp_path
         return Response(exhibits_result)
+    except FileNotFoundError as fnf_err:
+        return Response(
+            {"status": "error", "message": str(fnf_err)},
+            status=status.HTTP_404_NOT_FOUND
+        )
     except Exception as exc:
         traceback.print_exc()
         return Response(
@@ -1784,6 +1871,60 @@ def extract_maps_view(request):
                     pass
 
 
+
+
+@api_view(["POST"])
+@parser_classes([JSONParser, MultiPartParser, FormParser])
+def extract_sketch_base64_view(request):
+    """
+    Direct API endpoint to extract building sketch GLA, square footages, room labels,
+    and level breakdowns directly from a base64 string (either PDF or image) or uploaded file.
+    100% dynamic - no hardcoded values or synthetic defaults.
+    """
+    b64_str = (
+        request.data.get("base64")
+        or request.data.get("image_base64")
+        or request.data.get("pdf_base64")
+        or request.data.get("image_preview")
+        or request.data.get("base64_preview")
+        or ""
+    )
+    if isinstance(b64_str, dict):
+        b64_str = b64_str.get("_Base64") or b64_str.get("base64") or b64_str.get("data") or ""
+    if isinstance(b64_str, str) and b64_str.startswith("data:image/svg+xml"):
+        return Response({"status": "error", "message": "SVG placeholder image, waiting for raster or PDF sketch"}, status=status.HTTP_400_BAD_REQUEST)
+
+    uploaded_file = request.FILES.get("file") or request.FILES.get("image") or request.FILES.get("pdf")
+    if not b64_str and uploaded_file:
+        try:
+            b64_str = base64.b64encode(uploaded_file.read()).decode("ascii")
+        except Exception:
+            pass
+
+    if not b64_str:
+        return Response(
+            {"status": "error", "message": "No base64 string or file provided"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        curr_dir = os.path.dirname(os.path.abspath(__file__))
+        backend_dir = os.path.dirname(curr_dir)
+        workspace_root = os.path.dirname(backend_dir)
+        for p in [workspace_root, backend_dir, curr_dir]:
+            if p and p not in sys.path:
+                sys.path.insert(0, p)
+
+        from map_extractor_cli import MapExtractor
+        extractor = MapExtractor(save_images=False)
+        result = extractor.extract_sketch_from_base64(b64_str)
+        return Response(result)
+    except Exception as exc:
+        traceback.print_exc()
+        return Response(
+            {"status": "error", "message": str(exc)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
 @api_view(["POST"])
