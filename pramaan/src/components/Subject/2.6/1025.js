@@ -12,8 +12,6 @@ import SalesComparisonSection from '../components/SalesComparisonSection';
 
 import ActionButtons from '../components/ActionButtons';
 
-import PhotosGallerySection from '../components/PhotosGallerySection';
-
 import MapAndSketchExhibitsSection from '../components/MapAndSketchExhibitsSection';
 
 const defaultRentAdjustments = [
@@ -772,8 +770,6 @@ const Form1025 = ({
 
 
         <MapAndSketchExhibitsSection id="map-sketch-exhibits-section" data={data} allData={allData} selectedFile={selectedFile} />
-
-        <PhotosGallerySection id="photos-exhibits-section" data={data} allData={allData} extractedPhotos={allData?.EXTRACTED_PHOTOS || data?.EXTRACTED_PHOTOS || []} />
 
     </>
 

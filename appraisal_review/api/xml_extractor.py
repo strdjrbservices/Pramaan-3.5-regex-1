@@ -5855,18 +5855,30 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
     recon_elem = root.find(".//_RECONCILIATION")
     coa = root.find(".//_CONDITION_OF_APPRAISAL")
     reconcil_status = "As Is"
-    if coa is not None and "subject" in coa.attrib.get("_Type", "").lower():
-        coa_type_str = coa.attrib.get("_Type", "")
-        if "repair" in coa_type_str.lower():
+    if coa is not None and coa.attrib.get("_Type"):
+        coa_type_str = coa.attrib.get("_Type", "").strip()
+        coa_lower = coa_type_str.lower()
+        if "repair" in coa_lower:
             reconcil_status = "Subject to repairs"
-        elif "completion" in coa_type_str.lower():
+        elif "completion" in coa_lower:
             reconcil_status = "Subject to completion"
-        elif "inspection" in coa_type_str.lower():
+        elif "inspection" in coa_lower:
             reconcil_status = "Subject to inspection"
-        else:
+        elif "subject" in coa_lower:
             reconcil_status = "Subject To"
-    elif recon_elem is not None and "subject" in recon_elem.attrib.get("_ConditionsComment", "").lower() and not ("as is" in recon_elem.attrib.get("_ConditionsComment", "").lower() or "as-is" in recon_elem.attrib.get("_ConditionsComment", "").lower()):
-        reconcil_status = "Subject To"
+        else:
+            reconcil_status = "As Is"
+    elif recon_elem is not None and recon_elem.attrib.get("_ConditionsComment"):
+        cond_text = recon_elem.attrib.get("_ConditionsComment", "").lower()
+        if re.search(r'\bsubject\s+to\b', cond_text) and not re.search(r'\b(?:as\s+is|as-is)\b', cond_text):
+            if re.search(r'subject\s+to\s+(?:the\s+following\s+)?repairs?', cond_text):
+                reconcil_status = "Subject to repairs"
+            elif re.search(r'subject\s+to\s+completion', cond_text):
+                reconcil_status = "Subject to completion"
+            elif re.search(r'subject\s+to\s+(?:the\s+following\s+)?(?:required\s+)?inspection', cond_text):
+                reconcil_status = "Subject to inspection"
+            else:
+                reconcil_status = "Subject To"
 
     conditions_comment = ""
     if recon_elem is not None:

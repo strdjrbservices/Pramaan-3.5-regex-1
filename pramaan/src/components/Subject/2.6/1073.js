@@ -2,7 +2,6 @@ import React from 'react';
 import { SubjectInfoCard, GridInfoCard, MarketConditionsTable } from '../components/FormComponents';
 import { CondoCoopProjectsTable } from '../components/tables';
 import ActionButtons from '../components/ActionButtons';
-import PhotosGallerySection from '../components/PhotosGallerySection';
 import MapAndSketchExhibitsSection from '../components/MapAndSketchExhibitsSection';
 import SalesComparisonSection from '../components/SalesComparisonSection';
 import ComparableRentScheduleSection from '../components/ComparableRentScheduleSection';
@@ -484,7 +483,6 @@ const Form1073 = ({
 
 
       <MapAndSketchExhibitsSection id="map-sketch-exhibits-section" data={data} allData={allData} selectedFile={selectedFile} />
-      <PhotosGallerySection id="photos-exhibits-section" data={data} allData={allData} extractedPhotos={allData?.EXTRACTED_PHOTOS || data?.EXTRACTED_PHOTOS || []} />
     </>
   );
 };

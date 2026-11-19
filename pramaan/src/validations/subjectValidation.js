@@ -386,7 +386,7 @@ export const checkPriorServicesDisclosure = (field, text) => {
 
     if (isPositive) {
         return {
-            isMatch: true,
+            isError: true,
             message: "Prior services were performed on subject within 3 years ('I HAVE performed services') - verify supporting explanation in report comments."
         };
     }

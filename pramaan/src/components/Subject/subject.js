@@ -72,6 +72,7 @@ import Form1025 from './2.6/1025';
 import Form1004D from './2.6/1004D';
 import Version1 from './Version1/Version1';
 import ECR from './ECR';
+import PhotosGallerySection from './components/PhotosGallerySection';
 import { EditableField, GridInfoCard } from './components/FormComponents';
 import StateRequirementCheck, { STATE_REQUIREMENTS_PROMPT } from '../check/StateRequirementCheck';
 import UnpaidOkCheck, { UNPAID_OK_PROMPT } from '../check/UnpaidOkCheck';
@@ -5810,6 +5811,8 @@ function Subject({ defaultFormType }) {
     setIsSidebarOpen(prev => !prev);
   };
 
+  const activeReportFile = (extractionSource === 'xml' ? (xmlFile || selectedFile) : (selectedFile || xmlFile)) || selectedFile || xmlFile;
+
   const renderForm = () => {
     const revisionHandlers = createRevisionHandlers(data, setNotification, setNotes, {
       setPropertyAddressRevisionLangDialogOpen,
@@ -5830,7 +5833,6 @@ function Subject({ defaultFormType }) {
       setLenderClientRevisionLangDialogOpen,
     });
 
-    const activeReportFile = (extractionSource === 'xml' ? (xmlFile || selectedFile) : (selectedFile || xmlFile)) || selectedFile || xmlFile;
     const props = {
       data,
       allData: {
@@ -7074,30 +7076,39 @@ function Subject({ defaultFormType }) {
                       </Grid>
 
                       {/* Prior Service Comment - Compulsory Extraction Check */}
-                      <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-                        <Paper
-                          variant="outlined"
-                          sx={{
-                            p: 1.5,
-                            height: '100%',
-                            borderColor: ((data['Prior service comment'] || data['Prior Service Comment'] || data?.Subject?.['Prior service comment'] || data?.SUBJECT?.['Prior service comment']) && !String(data['Prior service comment'] || data['Prior Service Comment'] || '').toLowerCase().includes('not present')) ? 'success.main' : 'warning.main',
-                            bgcolor: ((data['Prior service comment'] || data['Prior Service Comment'] || data?.Subject?.['Prior service comment'] || data?.SUBJECT?.['Prior service comment']) && !String(data['Prior service comment'] || data['Prior Service Comment'] || '').toLowerCase().includes('not present')) ? '#f0fdf4' : '#fffbeb'
-                          }}
-                        >
-                          <Typography variant="caption" color="secondary.main" fontWeight="bold" display="block" noWrap>
-                            Prior Service Comment
-                          </Typography>
-                          <EditableField
-                            fieldPath={['Prior service comment']}
-                            value={data['Prior service comment'] || data['Prior Service Comment'] || data?.Subject?.['Prior service comment'] || data?.Subject?.['Prior Service Comment'] || data?.SUBJECT?.['Prior service comment'] || data?.SUBJECT?.['Prior Service Comment'] || 'Not Present'}
-                            onDataChange={handleDataChange}
-                            editingField={editingField}
-                            setEditingField={setEditingField}
-                            isEditable={isEditable}
-                            allData={data}
-                          />
-                        </Paper>
-                      </Grid>
+                      {(() => {
+                        const priorVal = data['Prior service comment'] || data['Prior Service Comment'] || data?.Subject?.['Prior service comment'] || data?.Subject?.['Prior Service Comment'] || data?.SUBJECT?.['Prior service comment'] || data?.SUBJECT?.['Prior Service Comment'] || '';
+                        const priorValidation = subjectValidation.checkPriorServicesDisclosure('Prior service comment', priorVal);
+                        const isPriorError = Boolean(priorVal && priorValidation?.isError);
+                        const isPriorValid = Boolean(priorVal && priorValidation?.isMatch);
+
+                        return (
+                          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+                            <Paper
+                              variant="outlined"
+                              sx={{
+                                p: 1.5,
+                                height: '100%',
+                                borderColor: isPriorError ? 'error.main' : (isPriorValid ? 'success.main' : 'warning.main'),
+                                bgcolor: isPriorError ? '#fff5f5' : (isPriorValid ? '#f0fdf4' : '#fffbeb')
+                              }}
+                            >
+                              <Typography variant="caption" color={isPriorError ? "error.main" : "secondary.main"} fontWeight="bold" display="block" noWrap>
+                                Prior Service Comment
+                              </Typography>
+                              <EditableField
+                                fieldPath={['Prior service comment']}
+                                value={priorVal || 'Not Present'}
+                                onDataChange={handleDataChange}
+                                editingField={editingField}
+                                setEditingField={setEditingField}
+                                isEditable={isEditable}
+                                allData={data}
+                              />
+                            </Paper>
+                          </Grid>
+                        );
+                      })()}
 
                       {/* E&O - Insurance Compliance Check */}
                       <Grid size={{ xs: 12, sm: 6, md: 4 }}>
@@ -7450,6 +7461,21 @@ function Subject({ defaultFormType }) {
                 error={promptAnalysisError}
                 submittedPrompt={submittedPrompt}
                 onAddendumRevisionButtonClick={() => setAddendumRevisionLangDialogOpen(true)}
+              />
+
+              <PhotosGallerySection
+                id="photos-exhibits-section"
+                data={data}
+                allData={{
+                  ...data,
+                  comparisonData,
+                  formType: selectedFormType,
+                  selectedFile: activeReportFile,
+                  xmlFile: xmlFile,
+                  reportFile: activeReportFile,
+                  FILE_PATH: activeReportFile?.name || data?.FILE_PATH || ''
+                }}
+                extractedPhotos={data?.EXTRACTED_PHOTOS || []}
               />
 
               {(rawExtractedData || Object.keys(data).length > 0) && (

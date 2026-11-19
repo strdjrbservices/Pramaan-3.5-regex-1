@@ -5,7 +5,7 @@ describe('Prior Services (3-Year Period Disclosure) Validation', () => {
     const fullNegative = "I have not performed services, as an appraiser or in another capacity, regarding the property that is the subject of this report within the three-year period immediately preceding acceptance of this assignment.";
     const standardNoServices = "Unless otherwise indicated, I have performed no services, as an appraiser or in any other capacity, regarding the property that is the subject of this report within the three-year";
 
-    describe('Valid disclosures ("I have not performed" and "I HAVE performed")', () => {
+    describe('Valid disclosures ("I have not performed" and standard negative / no services)', () => {
         test('validates standard full negative statement (most common compliant USPAP disclosure)', () => {
             const res = checkPriorServicesDisclosure('Prior Service Statement', fullNegative);
             expect(res.isMatch).toBe(true);
@@ -18,29 +18,31 @@ describe('Prior Services (3-Year Period Disclosure) Validation', () => {
             expect(res.isMatch).toBe(true);
             expect(res.isError).toBeUndefined();
         });
+    });
 
-        test('validates standard full positive statement when services were performed', () => {
+    describe('Disclosures when services were performed ("I HAVE performed") - flags as error/red', () => {
+        test('flags standard full positive statement when services were performed as error', () => {
             const res = checkPriorServicesDisclosure('Prior Service Statement', fullPositive);
-            expect(res.isMatch).toBe(true);
-            expect(res.isError).toBeUndefined();
+            expect(res.isError).toBe(true);
+            expect(res.isMatch).toBeUndefined();
             expect(res.message).toContain('Prior services were performed');
         });
 
-        test('validates case-insensitive "i have performed"', () => {
+        test('flags case-insensitive "i have performed" as error', () => {
             const res = checkPriorServicesDisclosure('Prior service comment', 'i have performed services on this property');
-            expect(res.isMatch).toBe(true);
-            expect(res.isError).toBeUndefined();
+            expect(res.isError).toBe(true);
+            expect(res.isMatch).toBeUndefined();
         });
 
-        test('validates appraiser has performed / have performed', () => {
+        test('flags appraiser has performed / have performed as error', () => {
             const res1 = checkPriorServicesDisclosure('Prior Services (3-Year Period Disclosure)', 'Appraiser has performed prior services');
-            expect(res1.isMatch).toBe(true);
+            expect(res1.isError).toBe(true);
 
             const res2 = checkPriorServicesDisclosure('Prior Services (3-Year Period Disclosure):', 'I have performed');
-            expect(res2.isMatch).toBe(true);
+            expect(res2.isError).toBe(true);
 
             const res3 = checkPriorServicesDisclosure('Prior Service Statement', 'performed prior services within the last 3 years');
-            expect(res3.isMatch).toBe(true);
+            expect(res3.isError).toBe(true);
         });
     });
 
