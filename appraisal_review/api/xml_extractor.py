@@ -950,6 +950,153 @@ def _detect_uad_pages_presence(root: ET.Element, embedded_doc: Optional[ET.Eleme
     return has_uad, desc, uad_pages, details
 
 
+def _detect_eo_in_xml_tags(root: ET.Element, raw_xml_text: str = "") -> Dict[str, Any]:
+    """
+    Scans XML <FORM>, <ATTACHED_IMAGE>, <IMAGE>, <PHOTO>, <ATTACHMENT>, and <EMBEDDED_FILE>
+    elements (handling all MISMO 2.6, 3.6, and UAD namespaces) for E&O (Errors & Omissions) indicators.
+    """
+    try:
+        from api.eo_extractor import parse_eo_text
+    except ImportError:
+        try:
+            from .eo_extractor import parse_eo_text  # type: ignore
+        except Exception:
+            parse_eo_text = lambda txt: {}
+
+    result: Dict[str, Any] = {
+        "is_present": False,
+        "reason": "",
+        "E&O": "Absent",
+        "E&O Present": "Absent",
+        "E&O Insurance": "",
+        "Policy Period From": "",
+        "Policy Period To": "",
+        "E&O Insured": "",
+        "E&O Carrier": "",
+        "E&O Limit": "",
+        "E&O Deductible": ""
+    }
+
+    if root is None:
+        return result
+
+    eo_pattern = re.compile(
+        r'\b(?:E\s*[\/&_\-]\s*O|E\s+and\s+O)(?:[\s_\-]*(?:Insurance|Coverage|Policy|Cert(?:ificate)?))?\b|'
+        r'\bEO[\s_\-]*(?:Insurance|Coverage|Policy|Cert(?:ificate)?)\b|'
+        r'\bEO_INSURANCE\b|'
+        r'Errors\s*(?:and|&)\s*Omissions(?:\s*(?:Insurance|Coverage|Policy))?|'
+        r'Certificate\s*of\s*(?:Liability\s*)?Insurance|'
+        r'Professional\s*Liability(?:\s*Insurance)?|'
+        r'Appraisers\s*Advantage|'
+        r'\b(?:Appraiser(?:\'s)?\s+)?Insurance\s*(?:Policy|Cert(?:ificate)?|Coverage)?\b|'
+        r'\b(?:E\s*[\/&_\-]\s*O|E\s+and\s+O|EO)\s*Policy\s*(?:#|Number|No\.?|:)?',
+        re.I
+    )
+
+    # 1. Iterate over all XML elements regardless of namespaces
+    for elem in root.iter():
+        tag = elem.tag.split("}")[-1].upper()
+
+        # A. <FORM> elements (standard in MISMO XML)
+        if "FORM" in tag:
+            attr_vals = [
+                str(elem.attrib.get(k, ""))
+                for k in [
+                    "AppraisalReportContentName", "AppraisalReportContentIdentifier",
+                    "AppraisalReportContentType", "Title", "Name", "FormName", "FormIdentifier"
+                ]
+                if elem.attrib.get(k)
+            ]
+            addendum_txt = elem.attrib.get("AppraisalAddendumText") or ""
+            form_text = elem.text or ""
+            combined = " ".join(attr_vals + [addendum_txt, form_text]).strip()
+
+            if eo_pattern.search(combined):
+                result["is_present"] = True
+                result["E&O"] = "Present"
+                result["E&O Present"] = "Present"
+                result["reason"] = f"FORM tag: {' '.join(attr_vals) or 'E&O Form'}"
+                parsed = parse_eo_text(combined)
+                for k, v in parsed.items():
+                    if v and not result.get(k):
+                        result[k] = v
+                return result
+
+        # B. <ATTACHED_IMAGE>, <IMAGE>, <PHOTO>, <ATTACHMENT>, <EMBEDDED_IMAGE>
+        elif any(t in tag for t in ["IMAGE", "PHOTO", "ATTACHMENT", "EMBEDDED_IMAGE"]):
+            attr_vals = [
+                str(elem.attrib.get(k, ""))
+                for k in [
+                    "ImageTitle", "ImageName", "ImageDescription", "Title", "Name",
+                    "Description", "Type", "ImageFile", "AppraisalReportContentName"
+                ]
+                if elem.attrib.get(k)
+            ]
+            child_texts = [
+                str(child.text or "")
+                for child in elem
+                if child.tag.split("}")[-1].upper() in ["TITLE", "NAME", "DESCRIPTION", "TYPE", "IMAGETITLE"]
+                and child.text
+            ]
+            combined = " ".join(attr_vals + child_texts).strip()
+
+            if eo_pattern.search(combined):
+                result["is_present"] = True
+                result["E&O"] = "Present"
+                result["E&O Present"] = "Present"
+                result["reason"] = f"Image tag: {combined[:60]}"
+                parsed = parse_eo_text(combined)
+                for k, v in parsed.items():
+                    if v and not result.get(k):
+                        result[k] = v
+                return result
+
+        # C. <EMBEDDED_FILE> attributes or child tags
+        elif "EMBEDDED_FILE" in tag:
+            attr_vals = [
+                str(elem.attrib.get(k, ""))
+                for k in ["Name", "Description", "DocumentType", "MIMEType", "Title", "Type"]
+                if elem.attrib.get(k)
+            ]
+            child_texts = [
+                str(child.text or "")
+                for child in elem
+                if child.tag.split("}")[-1].upper() in ["NAME", "DESCRIPTION", "DOCUMENTTYPE", "TITLE", "TYPE"]
+                and child.text
+            ]
+            combined = " ".join(attr_vals + child_texts).strip()
+
+            if eo_pattern.search(combined):
+                result["is_present"] = True
+                result["E&O"] = "Present"
+                result["E&O Present"] = "Present"
+                result["reason"] = f"Embedded file: {combined[:60]}"
+                parsed = parse_eo_text(combined)
+                for k, v in parsed.items():
+                    if v and not result.get(k):
+                        result[k] = v
+                return result
+
+    # 2. Check raw XML text regex if elements loop did not hit
+    if raw_xml_text and eo_pattern.search(raw_xml_text):
+        m_tag = re.search(
+            r'<(?:[A-Za-z0-9_]+:)?(?:FORM|ATTACHED_IMAGE|IMAGE|PHOTO|ATTACHMENT|EMBEDDED_FILE)[^>]*\b(?:Errors\s*(?:and|&)\s*Omissions|E\s*[\/&]\s*O(?:\s*Insurance)?|Certificate\s*of\s*(?:Liability\s*)?Insurance|Professional\s*Liability)[^>]*>',
+            raw_xml_text,
+            re.I
+        )
+        if m_tag:
+            result["is_present"] = True
+            result["E&O"] = "Present"
+            result["E&O Present"] = "Present"
+            result["reason"] = "Raw XML tag match"
+            parsed = parse_eo_text(m_tag.group(0))
+            for k, v in parsed.items():
+                if v and not result.get(k):
+                    result[k] = v
+
+    return result
+
+
 def find_comparable_rent_schedule_pages(doc) -> List[int]:
     """
     Finds page index(es) containing the Form 1007 Comparable Rent Schedule table.
@@ -2707,16 +2854,25 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
     Parses a MISMO 2.6 XML appraisal file and returns the full structured fields dictionary.
     All data is extracted dynamically from the XML DOM and attributes.
     """
+    raw_xml_text = ""
     try:
         if isinstance(xml_path_or_bytes, (str, bytes, bytearray, os.PathLike)) and isinstance(xml_path_or_bytes, str) and os.path.exists(xml_path_or_bytes):
+            try:
+                with open(xml_path_or_bytes, "r", encoding="utf-8", errors="ignore") as f:
+                    raw_xml_text = f.read()
+            except Exception:
+                pass
             tree = ET.parse(xml_path_or_bytes)
             root = tree.getroot()
-        elif isinstance(xml_path_or_bytes, bytes):
+        elif isinstance(xml_path_or_bytes, (bytes, bytearray)):
+            raw_xml_text = xml_path_or_bytes.decode("utf-8", errors="ignore")
             root = ET.fromstring(xml_path_or_bytes)
         elif isinstance(xml_path_or_bytes, str):
+            raw_xml_text = xml_path_or_bytes
             root = ET.fromstring(xml_path_or_bytes.encode("utf-8"))
         else:
-            root = ET.parse(xml_path_or_bytes).getroot()
+            tree = ET.parse(xml_path_or_bytes)
+            root = tree.getroot()
     except Exception as e:
         return {"status": "error", "message": f"XML parse error: {str(e)}", "fields": {}}
 
@@ -6499,141 +6655,173 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "AMC Name": amc_name,
     }
 
-    # Extract E&O Insurance details and USPAP / Report Identification from embedded PDF document if present
-    emb_doc_elem = None
-    for cand in [root.find(".//DOCUMENT"), root.find(".//EMBEDDED_FILE/DOCUMENT"), root.find(".//EMBEDDED_FILE")]:
-        if cand is not None and (cand.text or "").strip():
-            emb_doc_elem = cand
-            break
+    # Extract E&O Insurance details and USPAP / Report Identification from embedded PDF document(s) if present
+    candidate_doc_texts: List[str] = []
 
-    emb_doc_text = (emb_doc_elem.text or "").strip() if emb_doc_elem is not None else ""
-    if emb_doc_text:
+    # 1. Namespace-agnostic element search for all embedded files/documents
+    for elem in root.iter():
+        tag_u = elem.tag.split("}")[-1].upper()
+        if tag_u in ["DOCUMENT", "EMBEDDED_FILE", "OBJECTDATA", "ATTACHMENT"]:
+            raw_t = (elem.text or "").strip()
+            if len(raw_t) > 500 and raw_t not in candidate_doc_texts:
+                candidate_doc_texts.append(raw_t)
+
+    # 2. Regex fallback on raw_xml_text if XML element search didn't find any or was incomplete
+    if not candidate_doc_texts and raw_xml_text:
+        for m in re.finditer(r"<(?:[A-Za-z0-9_]+:)?(?:DOCUMENT|EMBEDDED_FILE|ObjectData)[^>]*>([A-Za-z0-9+/=\s]{1000,})</", raw_xml_text):
+            raw_t = m.group(1).strip()
+            if raw_t not in candidate_doc_texts:
+                candidate_doc_texts.append(raw_t)
+
+    emb_pdf = None
+    largest_pdf_len = 0
+    eo_found = False
+
+    for doc_b64 in candidate_doc_texts:
         try:
-            pdf_bytes = base64.b64decode(emb_doc_text)
-            emb_pdf = None
+            clean_b64 = re.sub(r"\s+", "", doc_b64)
+            pdf_bytes = base64.b64decode(clean_b64)
+            if not pdf_bytes or len(pdf_bytes) < 100 or not pdf_bytes.startswith(b"%PDF"):
+                continue
+
+            cand_pdf = None
             if fitz is not None:
                 try:
-                    emb_pdf = fitz.open(stream=pdf_bytes, filetype="pdf")
+                    cand_pdf = fitz.open(stream=pdf_bytes, filetype="pdf")
                 except Exception:
-                    emb_pdf = None
+                    cand_pdf = None
 
-            if emb_pdf is not None:
-                eo_info = extract_eo_insurance_from_doc(emb_pdf, use_ocr=extract_images)
-                if eo_info.get("E&O"):
-                    certification_section["E&O"] = eo_info["E&O"]
-                    certification_section["E&O Present"] = eo_info.get("E&O Present", eo_info["E&O"])
-                    certification_section["E/O"] = eo_info["E&O"]
-                    certification_section["E/O Present"] = eo_info.get("E&O Present", eo_info["E&O"])
-                if eo_info.get("E&O Insurance"):
-                    certification_section["E&O Insurance"] = eo_info["E&O Insurance"]
-                    certification_section["E/O Insurance"] = eo_info["E&O Insurance"]
-                if eo_info.get("Policy Period From"):
-                    certification_section["Policy Period From"] = eo_info["Policy Period From"]
-                if eo_info.get("Policy Period To"):
-                    certification_section["Policy Period To"] = eo_info["Policy Period To"]
-                if eo_info.get("E&O Insured"):
-                    certification_section["E&O Insured"] = eo_info["E&O Insured"]
-                if eo_info.get("E&O Carrier"):
-                    certification_section["E&O Carrier"] = eo_info["E&O Carrier"]
-                if eo_info.get("E&O Limit"):
-                    certification_section["E&O Limit"] = eo_info["E&O Limit"]
-                if eo_info.get("E&O Deductible"):
-                    certification_section["E&O Deductible"] = eo_info["E&O Deductible"]
+            if cand_pdf is not None and len(cand_pdf) > 0:
+                if len(cand_pdf) > largest_pdf_len:
+                    largest_pdf_len = len(cand_pdf)
+                    emb_pdf = cand_pdf
 
-                # Extract distinct USPAP / Report Identification section from embedded PDF's USPAP page
-                try:
-                    from .pdf_extractor_offline import extract_uspap_identification_details
-                    uspap_pdf_details = extract_uspap_identification_details(emb_pdf)
-                    if uspap_pdf_details and uspap_pdf_details.get("has_uspap_identification"):
-                        metadata_keys = {
-                            "UAD pages present in the report", "UAD Pages Present in the Report",
-                            "UAD Pages Present", "UAD Pages", "UAD Definitions Addendum",
-                            "UAD Dataset Pages", "has_uad_pages", "uad_pages", "uad_details",
-                            "Limiting Conditions", "Statement of Assumptions and Limiting Conditions",
-                            "limiting_conditions_pages", "limiting_conditions_presence",
-                            "Appraiser's Certification", "Appraiser Certification",
-                            "certification_pages", "certification_presence", "UAD Details"
-                        }
-                        if "has_appraiser_inspection" in uspap_pdf_details:
-                            uspap_identification_section["has_appraiser_inspection"] = uspap_pdf_details["has_appraiser_inspection"]
-                        
-                        # Authoritative comments: if PDF has comments box and extract_uspap_identification_details evaluated it,
-                        # overwrite Comments on Appraisal and Report Identification (even if blank)
-                        if "Comments on Appraisal and Report Identification" in uspap_pdf_details:
-                            uspap_identification_section["Comments on Appraisal and Report Identification"] = uspap_pdf_details["Comments on Appraisal and Report Identification"]
-                            uspap_identification_section["Restricted Appraisal Report Comment"] = uspap_pdf_details["Comments on Appraisal and Report Identification"]
+                if not eo_found:
+                    eo_info = extract_eo_insurance_from_doc(cand_pdf, use_ocr=extract_images)
+                    if eo_info.get("E&O") == "Present":
+                        eo_found = True
+                        certification_section["E&O"] = "Present"
+                        certification_section["E&O Present"] = "Present"
+                        certification_section["E/O"] = "Present"
+                        certification_section["E/O Present"] = "Present"
+                        for k in ["E&O Insurance", "Policy Period From", "Policy Period To", "E&O Insured", "E&O Carrier", "E&O Limit", "E&O Deductible"]:
+                            if eo_info.get(k):
+                                certification_section[k] = eo_info[k]
+                        if eo_info.get("E&O Insurance"):
+                            certification_section["E/O Insurance"] = eo_info["E&O Insurance"]
+        except Exception as e:
+            print(f"[xml_extractor] Embedded document decode notice: {e}")
 
-                        for k, v in uspap_pdf_details.items():
-                            if k not in metadata_keys and v is not None and v != "":
-                                # Never overwrite clean XML Appraiser credentials with noisy PDF text
-                                if k in ["Name", "Appraiser Name"] and appraiser_name.strip():
-                                    continue
-                                if k in ["State Certification #"] and state_cert_no.strip():
-                                    continue
-                                if k in ["or State License #"] and state_lic_no.strip():
-                                    continue
-                                if k in ["State"] and (lic_state or appr_state).strip():
-                                    continue
-                                if k in ["Expiration Date of Certification or License"] and lic_exp.strip():
-                                    continue
-                                # Never overwrite clean XML Supervisory credentials if present in XML
-                                if k in ["Supervisory Name"] and sup_name.strip():
-                                    continue
-                                if k in ["Supervisory State Certification #"] and sup_cert_no.strip():
-                                    continue
-                                if k in ["Supervisory or State License #"] and sup_lic_no.strip():
-                                    continue
-                                if k in ["Supervisory State"] and sup_lic_state.strip():
-                                    continue
-                                if k in ["Supervisory Expiration Date of Certification or License"] and sup_lic_exp.strip():
-                                    continue
-                                uspap_identification_section[k] = v
+    # Fallback to XML <FORM>, <ATTACHED_IMAGE>, <IMAGE>, <ATTACHMENT>, and <EMBEDDED_FILE> tag metadata
+    if not eo_found or certification_section.get("E&O") != "Present":
+        eo_xml_info = _detect_eo_in_xml_tags(root, raw_xml_text)
+        if eo_xml_info.get("is_present") or eo_xml_info.get("E&O") == "Present":
+            certification_section["E&O"] = "Present"
+            certification_section["E&O Present"] = "Present"
+            certification_section["E/O"] = "Present"
+            certification_section["E/O Present"] = "Present"
+            for k in ["E&O Insurance", "Policy Period From", "Policy Period To", "E&O Insured", "E&O Carrier", "E&O Limit", "E&O Deductible"]:
+                if eo_xml_info.get(k) and not certification_section.get(k):
+                    certification_section[k] = eo_xml_info[k]
+            if eo_xml_info.get("E&O Insurance") and not certification_section.get("E/O Insurance"):
+                certification_section["E/O Insurance"] = eo_xml_info["E&O Insurance"]
 
-                        # If supervisor is not present in XML and not in PDF, ensure all supervisory fields are explicitly empty
-                        if not sup_name.strip() and not uspap_pdf_details.get("Supervisory Name", "").strip():
-                            uspap_identification_section["Supervisory Signature"] = ""
-                            uspap_identification_section["Supervisory Signature Image"] = ""
-                            uspap_identification_section["Supervisory Name"] = ""
-                            uspap_identification_section["Supervisory Date Signed"] = ""
-                            uspap_identification_section["Supervisory Date of Signature"] = ""
-                            uspap_identification_section["Supervisory State Certification #"] = ""
-                            uspap_identification_section["Supervisory or State License #"] = ""
-                            uspap_identification_section["Supervisory State"] = ""
-                            uspap_identification_section["Supervisory Expiration Date of Certification or License"] = ""
-                            uspap_identification_section["Did not inspect subject property"] = ""
-                            uspap_identification_section["Supervisory Did not inspect subject property"] = ""
-                            uspap_identification_section["Did inspect exterior of subject property from street"] = ""
-                            uspap_identification_section["Supervisory Did inspect exterior of subject property from street"] = ""
-                            uspap_identification_section["Subject Property Date of Inspection (Exterior)"] = ""
-                            uspap_identification_section["Did inspect interior and exterior of subject property"] = ""
-                            uspap_identification_section["Supervisory Did inspect interior and exterior of subject property"] = ""
-                            uspap_identification_section["Subject Property Date of Inspection (Interior/Exterior)"] = ""
-                            uspap_identification_section["has_supervisory_inspection"] = False
+    if emb_pdf is not None:
+        try:
+            # Extract distinct USPAP / Report Identification section from embedded PDF's USPAP page
+            try:
+                from .pdf_extractor_offline import extract_uspap_identification_details
+                uspap_pdf_details = extract_uspap_identification_details(emb_pdf)
+                if uspap_pdf_details and uspap_pdf_details.get("has_uspap_identification"):
+                    metadata_keys = {
+                        "UAD pages present in the report", "UAD Pages Present in the Report",
+                        "UAD Pages Present", "UAD Pages", "UAD Definitions Addendum",
+                        "UAD Dataset Pages", "has_uad_pages", "uad_pages", "uad_details",
+                        "Limiting Conditions", "Statement of Assumptions and Limiting Conditions",
+                        "limiting_conditions_pages", "limiting_conditions_presence",
+                        "Appraiser's Certification", "Appraiser Certification",
+                        "certification_pages", "certification_presence", "UAD Details"
+                    }
+                    if "has_appraiser_inspection" in uspap_pdf_details:
+                        uspap_identification_section["has_appraiser_inspection"] = uspap_pdf_details["has_appraiser_inspection"]
+                    
+                    # Authoritative comments: if PDF has comments box and extract_uspap_identification_details evaluated it,
+                    # overwrite Comments on Appraisal and Report Identification (even if blank)
+                    if "Comments on Appraisal and Report Identification" in uspap_pdf_details:
+                        uspap_identification_section["Comments on Appraisal and Report Identification"] = uspap_pdf_details["Comments on Appraisal and Report Identification"]
+                        uspap_identification_section["Restricted Appraisal Report Comment"] = uspap_pdf_details["Comments on Appraisal and Report Identification"]
 
-                        if not uspap_pdf_details.get("has_appraiser_inspection", False):
-                            # Ensure appraiser inspection checkboxes are populated with Interior and Exterior checked
-                            uspap_identification_section["has_appraiser_inspection"] = True
-                            uspap_identification_section["Appraiser Did inspect interior and exterior of subject property"] = appr_insp_int_ext or "Yes"
-                            uspap_identification_section["Did inspect interior and exterior of subject property (Appraiser)"] = appr_insp_int_ext or "Yes"
-                            uspap_identification_section["Appraiser Did Inspect Interior and Exterior"] = appr_insp_int_ext or "Yes"
-                            uspap_identification_section["Appraiser Did not inspect subject property"] = appr_insp_none or "No"
-                            uspap_identification_section["Did not inspect subject property (Appraiser)"] = appr_insp_none or "No"
-                            uspap_identification_section["Appraiser Did Not Inspect"] = appr_insp_none or "No"
-                            uspap_identification_section["Appraiser Did inspect exterior of subject property from street"] = appr_insp_ext or "No"
-                            uspap_identification_section["Did inspect exterior of subject property from street (Appraiser)"] = appr_insp_ext or "No"
-                            uspap_identification_section["Appraiser Did Inspect Exterior"] = appr_insp_ext or "No"
-                            insp_d = appr_insp_int_ext_date or appr_insp_ext_date or insp_date or effective_date
-                            uspap_identification_section["Appraiser Date of Inspection"] = insp_d
-                            uspap_identification_section["Appraiser Subject Property Date of Inspection"] = insp_d
-                            uspap_identification_section["Date of Inspection (if applicable)"] = insp_d
+                    for k, v in uspap_pdf_details.items():
+                        if k not in metadata_keys and v is not None and v != "":
+                            # Never overwrite clean XML Appraiser credentials with noisy PDF text
+                            if k in ["Name", "Appraiser Name"] and appraiser_name.strip():
+                                continue
+                            if k in ["State Certification #"] and state_cert_no.strip():
+                                continue
+                            if k in ["or State License #"] and state_lic_no.strip():
+                                continue
+                            if k in ["State"] and (lic_state or appr_state).strip():
+                                continue
+                            if k in ["Expiration Date of Certification or License"] and lic_exp.strip():
+                                continue
+                            # Never overwrite clean XML Supervisory credentials if present in XML
+                            if k in ["Supervisory Name"] and sup_name.strip():
+                                continue
+                            if k in ["Supervisory State Certification #"] and sup_cert_no.strip():
+                                continue
+                            if k in ["Supervisory or State License #"] and sup_lic_no.strip():
+                                continue
+                            if k in ["Supervisory State"] and sup_lic_state.strip():
+                                continue
+                            if k in ["Supervisory Expiration Date of Certification or License"] and sup_lic_exp.strip():
+                                continue
+                            uspap_identification_section[k] = v
 
-                        # Sanitize comments field from leaked credentials or boilerplate
-                        c_curr = uspap_identification_section.get("Comments on Appraisal and Report Identification", "")
-                        if any(k in c_curr.lower() for k in ["rl139943", "rd8685", "appraiser (only if required)", "supervisory appraiser"]) or len(re.findall(r'\b\d{1,2}/\d{1,2}/\d{4}\b', c_curr)) >= 2:
-                            uspap_identification_section["Comments on Appraisal and Report Identification"] = ""
-                            uspap_identification_section["Restricted Appraisal Report Comment"] = ""
-                except Exception:
-                    pass
+                    # If supervisor is not present in XML and not in PDF, ensure all supervisory fields are explicitly empty
+                    if not sup_name.strip() and not uspap_pdf_details.get("Supervisory Name", "").strip():
+                        uspap_identification_section["Supervisory Signature"] = ""
+                        uspap_identification_section["Supervisory Signature Image"] = ""
+                        uspap_identification_section["Supervisory Name"] = ""
+                        uspap_identification_section["Supervisory Date Signed"] = ""
+                        uspap_identification_section["Supervisory Date of Signature"] = ""
+                        uspap_identification_section["Supervisory State Certification #"] = ""
+                        uspap_identification_section["Supervisory or State License #"] = ""
+                        uspap_identification_section["Supervisory State"] = ""
+                        uspap_identification_section["Supervisory Expiration Date of Certification or License"] = ""
+                        uspap_identification_section["Did not inspect subject property"] = ""
+                        uspap_identification_section["Supervisory Did not inspect subject property"] = ""
+                        uspap_identification_section["Did inspect exterior of subject property from street"] = ""
+                        uspap_identification_section["Supervisory Did inspect exterior of subject property from street"] = ""
+                        uspap_identification_section["Subject Property Date of Inspection (Exterior)"] = ""
+                        uspap_identification_section["Did inspect interior and exterior of subject property"] = ""
+                        uspap_identification_section["Supervisory Did inspect interior and exterior of subject property"] = ""
+                        uspap_identification_section["Subject Property Date of Inspection (Interior/Exterior)"] = ""
+                        uspap_identification_section["has_supervisory_inspection"] = False
+
+                    if not uspap_pdf_details.get("has_appraiser_inspection", False):
+                        # Ensure appraiser inspection checkboxes are populated with Interior and Exterior checked
+                        uspap_identification_section["has_appraiser_inspection"] = True
+                        uspap_identification_section["Appraiser Did inspect interior and exterior of subject property"] = appr_insp_int_ext or "Yes"
+                        uspap_identification_section["Did inspect interior and exterior of subject property (Appraiser)"] = appr_insp_int_ext or "Yes"
+                        uspap_identification_section["Appraiser Did Inspect Interior and Exterior"] = appr_insp_int_ext or "Yes"
+                        uspap_identification_section["Appraiser Did not inspect subject property"] = appr_insp_none or "No"
+                        uspap_identification_section["Did not inspect subject property (Appraiser)"] = appr_insp_none or "No"
+                        uspap_identification_section["Appraiser Did Not Inspect"] = appr_insp_none or "No"
+                        uspap_identification_section["Appraiser Did inspect exterior of subject property from street"] = appr_insp_ext or "No"
+                        uspap_identification_section["Did inspect exterior of subject property from street (Appraiser)"] = appr_insp_ext or "No"
+                        uspap_identification_section["Appraiser Did Inspect Exterior"] = appr_insp_ext or "No"
+                        insp_d = appr_insp_int_ext_date or appr_insp_ext_date or insp_date or effective_date
+                        uspap_identification_section["Appraiser Date of Inspection"] = insp_d
+                        uspap_identification_section["Appraiser Subject Property Date of Inspection"] = insp_d
+                        uspap_identification_section["Date of Inspection (if applicable)"] = insp_d
+
+                    # Sanitize comments field from leaked credentials or boilerplate
+                    c_curr = uspap_identification_section.get("Comments on Appraisal and Report Identification", "")
+                    if any(k in c_curr.lower() for k in ["rl139943", "rd8685", "appraiser (only if required)", "supervisory appraiser"]) or len(re.findall(r'\b\d{1,2}/\d{1,2}/\d{4}\b', c_curr)) >= 2:
+                        uspap_identification_section["Comments on Appraisal and Report Identification"] = ""
+                        uspap_identification_section["Restricted Appraisal Report Comment"] = ""
+            except Exception:
+                pass
         except Exception as e:
             pass
 
@@ -7779,6 +7967,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "CONDO_COOP_PROJECTS": condo_coop_section,
         "CONDO_FORECLOSURE": condo_foreclosure_section,
         "CERTIFICATION": certification_section,
+        "Certification": certification_section,
         "USPAP_IDENTIFICATION": uspap_identification_section,
         "USPAP_REPORT_IDENTIFICATION": uspap_identification_section,
         "USPAP / Report Identification": uspap_identification_section,
@@ -8265,6 +8454,19 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
 
     maps_list = []
     all_pins_list = []
+    sub_pin = {
+        "item_type": "Subject",
+        "label": "Subject",
+        "street": sub_st,
+        "city": sub_city,
+        "state": sub_state,
+        "zipcode": sub_zip,
+        "address": sub_full,
+        "proximity": "Subject",
+        "map_type": "Location Map",
+        "page_number": 1,
+        "status": "Verified Subject Property"
+    }
     for mp in map_items:
         caption = mp.get("caption") or mp.get("label") or "Map Exhibit"
         cap_l = caption.lower()
@@ -8559,6 +8761,14 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "certification_presence": uad_details.get("certification_presence", "Not Present"),
         "UAD Details": uad_details.get("details_summary", ""),
         "Present Land Use for other": other_land_use_desc,
+        "E&O": certification_section.get("E&O", "Absent"),
+        "E&O Present": certification_section.get("E&O Present", "Absent"),
+        "E/O": certification_section.get("E/O", certification_section.get("E&O", "Absent")),
+        "E/O Present": certification_section.get("E/O Present", certification_section.get("E&O Present", "Absent")),
+        "E&O Insurance": certification_section.get("E&O Insurance", ""),
+        "E/O Insurance": certification_section.get("E/O Insurance", certification_section.get("E&O Insurance", "")),
+        "Certification": certification_section,
+        "CERTIFICATION": certification_section,
         "fields": fields,
         "unified_fields": fields,
         "clean_data": clean_data,

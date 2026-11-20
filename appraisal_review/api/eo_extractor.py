@@ -12,6 +12,17 @@ warnings.filterwarnings("ignore", message=".*pin_memory.*")
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.*")
 
 _EASYOCR_READER = None
+_PYTESSERACT_AVAILABLE = None
+
+def _get_pytesseract():
+    global _PYTESSERACT_AVAILABLE
+    if _PYTESSERACT_AVAILABLE is None:
+        try:
+            import pytesseract
+            _PYTESSERACT_AVAILABLE = pytesseract
+        except Exception:
+            _PYTESSERACT_AVAILABLE = False
+    return _PYTESSERACT_AVAILABLE if _PYTESSERACT_AVAILABLE is not False else None
 
 def get_easyocr_reader():
     global _EASYOCR_READER
@@ -164,17 +175,17 @@ def parse_eo_text(text: str) -> Dict[str, str]:
             if is_valid_policy_number(cand):
                 res['E&O Insurance'] = cand
 
-    # Policy Number on same line or next line: "Policy Number: L3D-J571342-02" or "Policy Number\nL3D-J571342-02"
+    # Policy Number on same line or next line: "Policy Number: L3D-J571342-02", "Policy: PL-778899" or "Policy Number\nL3D-J571342-02"
     if not res['E&O Insurance']:
-        m_pol = re.search(r'Policy\s*(?:Number|No\.?|#)\s*[:\-]?\s*[\n\r\s]*([A-Za-z0-9\-_/]{5,30})', text, re.I)
+        m_pol = re.search(r'Policy\s*(?:(?:Number|No\.?|#)\s*[:\-]?|[:\-])\s*[\n\r\s]*([A-Za-z0-9\-_/]{5,30})', text, re.I)
         if m_pol:
             cand = m_pol.group(1).strip()
             if is_valid_policy_number(cand):
                 res['E&O Insurance'] = cand
 
-    # Certificate Number: "Certificate Number: N9PL096192"
+    # Certificate Number: "Certificate Number: N9PL096192" or "Certificate: ..."
     if not res['E&O Insurance']:
-        m_cert = re.search(r'Certificate\s*(?:Number|No\.?|#)\s*[:\-]?\s*[\n\r\s]*([A-Za-z0-9\-_/]{5,30})', text, re.I)
+        m_cert = re.search(r'Certificate\s*(?:(?:Number|No\.?|#)\s*[:\-]?|[:\-])\s*[\n\r\s]*([A-Za-z0-9\-_/]{5,30})', text, re.I)
         if m_cert:
             cand = m_cert.group(1).strip()
             if is_valid_policy_number(cand):
@@ -183,7 +194,7 @@ def parse_eo_text(text: str) -> Dict[str, str]:
     # Explicit E&O / E/O / E&O Insurance policy number pattern: "E&O Policy #", "E/O Policy: ...", "E&O Insurance: ..."
     if not res['E&O Insurance']:
         m_eo_pol = re.search(
-            r'(?:E\s*[\/&]\s*O|E\s+and\s+O)\s*(?:Insurance)?\s*(?:Policy)?\s*(?:Number|No\.?|#)?\s*[:\-]?\s*[\n\r\s]*([A-Za-z0-9\-_/]{5,30})',
+            r'(?:E\s*[\/&_\-]\s*O|E\s+and\s+O|EO)\s*(?:Insurance|Coverage)?\s*(?:Policy)?\s*(?:(?:Number|No\.?|#)\s*[:\-]?|[:\-])\s*[\n\r\s]*([A-Za-z0-9\-_/]{5,30})',
             text,
             re.I
         )
@@ -238,7 +249,13 @@ def parse_eo_text(text: str) -> Dict[str, str]:
 
     # Determine E&O Present vs Absent
     is_eo_doc = bool(re.search(
-        r'\b(?:E\s*[\/&]\s*O|E\s+and\s+O|E-O)(?:\s*Insurance)?\b|Errors\s*(?:and|&)\s*Omissions(?:\s*Insurance)?|Certificate\s*of\s*(?:Liability\s*)?Insurance|Appraisers\s*Advantage|Professional\s*Liability',
+        r'\b(?:E\s*[\/&]\s*O|E\s+and\s+O|E-O)(?:\s*(?:Insurance|Coverage|Policy))?\b|'
+        r'Errors\s*(?:and|&)\s*Omissions(?:\s*(?:Insurance|Coverage|Policy))?|'
+        r'Certificate\s*of\s*(?:Liability\s*)?Insurance|'
+        r'Professional\s*Liability(?:\s*Insurance)?|'
+        r'Appraisers\s*Advantage|'
+        r'E\s*[\/&]\s*O\s*Coverage|'
+        r'E\s*[\/&]\s*O\s*Policy',
         text,
         re.I
     ))
@@ -293,10 +310,10 @@ def extract_eo_insurance_from_doc(doc: pymupdf.Document, use_ocr: bool = True) -
         is_eo_page = False
         for hl in header_lines:
             hl_upper = hl.upper()
-            if re.search(r'^\s*(?:E\s*[\/&]\s*O|E\s+and\s+O|ERRORS\s*(?:AND|&)\s*OMISSIONS)(?:\s*INSURANCE)?\s*$', hl, re.I):
+            if re.search(r'^\s*(?:E\s*[\/&]\s*O|E\s+and\s+O|E-O|ERRORS\s*(?:AND|&)\s*OMISSIONS)(?:\s*(?:INSURANCE|COVERAGE|POLICY))?\s*$', hl, re.I):
                 is_eo_page = True
                 break
-            if re.search(r'\b(?:E\s*[\/&]\s*O|E\s+and\s+O)(?:\s*INSURANCE)?\b', hl_upper):
+            if re.search(r'\b(?:E\s*[\/&]\s*O|E\s+and\s+O|E-O)(?:\s*(?:INSURANCE|COVERAGE|POLICY))?\b', hl_upper):
                 is_eo_page = True
                 break
             if 'ERRORS & OMISSIONS' in hl_upper or 'ERRORS AND OMISSIONS' in hl_upper:
@@ -305,13 +322,13 @@ def extract_eo_insurance_from_doc(doc: pymupdf.Document, use_ocr: bool = True) -
             if 'CERTIFICATE OF' in hl_upper and 'INSURANCE' in hl_upper:
                 is_eo_page = True
                 break
-            if 'APPRAISERS ADVANTAGE' in hl_upper or 'PROFESSIONAL LIABILITY' in hl_upper:
+            if 'APPRAISERS ADVANTAGE' in hl_upper or 'PROFESSIONAL LIABILITY' in hl_upper or 'E&O COVERAGE' in hl_upper:
                 is_eo_page = True
                 break
 
-        if not is_eo_page and re.search(r'\b(?:E\s*[\/&]\s*O|E\s+and\s+O)(?:\s*Insurance)?\b', t, re.I):
+        if not is_eo_page and re.search(r'\b(?:E\s*[\/&]\s*O|E\s+and\s+O|E-O)(?:\s*(?:Insurance|Coverage|Policy))?\b', t, re.I):
             is_eo_page = True
-        if not is_eo_page and re.search(r'Errors\s*(?:and|&)\s*Omissions(?:\s*Insurance)?', t, re.I):
+        if not is_eo_page and re.search(r'Errors\s*(?:and|&)\s*Omissions(?:\s*(?:Insurance|Coverage|Policy))?', t, re.I):
             is_eo_page = True
         if not is_eo_page and re.search(r'Certificate\s+of\s+(?:Liability\s+)?Insurance', t, re.I):
             is_eo_page = True
@@ -327,9 +344,51 @@ def extract_eo_insurance_from_doc(doc: pymupdf.Document, use_ocr: bool = True) -
         for idx in range(len(doc)):
             p = doc[idx]
             t = p.get_text('text')
-            if re.search(r'\b(?:E\s*[\/&]\s*O|E\s+and\s+O)(?:\s*Insurance)?\b|\bErrors\s*(?:and|&)\s*Omissions(?:\s*Insurance)?\b|Certificate\s+of\s+(?:Liability\s+)?Insurance|Professional\s+Liability', t, re.I):
+            if re.search(r'\b(?:E\s*[\/&]\s*O|E\s+and\s+O|E-O)(?:\s*(?:Insurance|Coverage|Policy))?\b|\bErrors\s*(?:and|&)\s*Omissions(?:\s*(?:Insurance|Coverage|Policy))?\b|Certificate\s+of\s+(?:Liability\s+)?Insurance|Professional\s+Liability|Appraisers\s+Advantage', t, re.I):
                 eo_page_idx = idx
                 break
+
+    # Step 1.5: If still not found and use_ocr is True, check candidate scanned exhibit pages
+    if eo_page_idx is None and use_ocr:
+        candidate_indices = []
+        for idx in range(len(doc) - 1, -1, -1):
+            p = doc[idx]
+            if len(p.get_images()) > 0 and len(p.get_text('text').strip()) < 350:
+                candidate_indices.append(idx)
+            if len(candidate_indices) >= 20:
+                break
+
+        reader = get_easyocr_reader()
+        pytess = _get_pytesseract()
+
+        for c_idx in candidate_indices:
+            p = doc[c_idx]
+            try:
+                rect = p.rect
+                clip_rect = pymupdf.Rect(rect.x0, rect.y0, rect.x1, rect.y0 + rect.height * 0.45)
+                pix = p.get_pixmap(dpi=120, clip=clip_rect)
+                img = Image.open(io.BytesIO(pix.tobytes('png')))
+
+                header_ocr_text = ""
+                if reader is not None:
+                    res_boxes = reader.readtext(np.array(img), detail=0)
+                    header_ocr_text = " ".join(res_boxes)
+                elif pytess is not None:
+                    header_ocr_text = pytess.image_to_string(img)
+
+                if header_ocr_text and re.search(
+                    r'\b(?:E\s*[\/&]\s*O|E\s+and\s+O|E-O)(?:\s*(?:Insurance|Coverage|Policy))?\b|'
+                    r'Errors\s*(?:and|&)\s*Omissions|'
+                    r'Certificate\s*of\s*(?:Liability\s*)?Insurance|'
+                    r'Professional\s*Liability|'
+                    r'Appraisers\s*Advantage',
+                    header_ocr_text,
+                    re.I
+                ):
+                    eo_page_idx = c_idx
+                    break
+            except Exception:
+                pass
 
     if eo_page_idx is None:
         result['E&O'] = 'Absent'
@@ -356,6 +415,7 @@ def extract_eo_insurance_from_doc(doc: pymupdf.Document, use_ocr: bool = True) -
     # Step 3: If native text is incomplete and page has images, run OCR (only if use_ocr is True)
     if use_ocr and len(page.get_images()) > 0:
         reader = get_easyocr_reader()
+        pytess = _get_pytesseract()
         if reader is not None:
             try:
                 pix = page.get_pixmap(dpi=150)
@@ -417,6 +477,17 @@ def extract_eo_insurance_from_doc(doc: pymupdf.Document, use_ocr: bool = True) -
 
             except Exception as e:
                 print(f"[eo_extractor] OCR extraction error: {e}")
+        elif pytess is not None:
+            try:
+                pix = page.get_pixmap(dpi=150)
+                img = Image.open(io.BytesIO(pix.tobytes('png')))
+                tess_text = pytess.image_to_string(img)
+                tess_parsed = parse_eo_text(tess_text)
+                for k, v in tess_parsed.items():
+                    if not result.get(k) and v:
+                        result[k] = v
+            except Exception as e:
+                print(f"[eo_extractor] PyTesseract extraction error: {e}")
 
     # Ensure E&O is marked Present if we found an E&O page or an E&O Insurance policy number
     if result.get('E&O Insurance') or eo_page_idx is not None:

@@ -4102,16 +4102,27 @@ def evaluate_client_requirements(pdf_path: str, extracted_data: Optional[Dict[st
     # 22. Champions Funding
     elif "CHAMPIONS FUNDING" in lender_upper:
         eo_page, _ = _find_keyword_in_pages(pages_text, [
-            r"Errors\s*(?:and|&)\s*Omissions(?:\s*Insurance)?",
-            r"\bE\s*[\/&]\s*O(?:\s*Insurance)?\b",
+            r"Errors\s*(?:and|&)\s*Omissions(?:\s*(?:Insurance|Coverage|Policy))?",
+            r"\bE\s*[\/&]\s*O(?:\s*(?:Insurance|Coverage|Policy))?\b",
             r"\bE\s+and\s+O\b",
+            r"\bE-O\b",
             r"Certificate\s*of\s*(?:Liability\s*)?Insurance",
-            r"Professional\s*Liability"
+            r"Professional\s*Liability(?:\s*Insurance)?",
+            r"Appraisers\s*Advantage",
+            r"E\s*[\/&]\s*O\s*Policy"
         ])
+        is_eo_present = bool(
+            eo_page or
+            str(_get_field_val(data, "Certification", "E&O") or "").lower() == "present" or
+            str(_get_field_val(data, "Certification", "E&O Present") or "").lower() == "present" or
+            str(data.get("E&O") or "").lower() == "present" or
+            str(data.get("E&O Present") or "").lower() == "present" or
+            bool(data.get("E&O Insurance") or _get_field_val(data, "Certification", "E&O Insurance"))
+        )
         details.append({
             "requirement": "Appraiser E&O Insurance Attached",
-            "status": "Fulfilled" if eo_page else "Not Fulfilled",
-            "value_or_comment": f"E&O Insurance verified on Page {eo_page}." if eo_page else "Per client instructions for their assignments, please attach appraiser's E&O to the report."
+            "status": "Fulfilled" if is_eo_present else "Not Fulfilled",
+            "value_or_comment": f"E&O Insurance verified{' on Page ' + str(eo_page) if eo_page else '.'}" if is_eo_present else "Per client instructions for their assignments, please attach appraiser's E&O to the report."
         })
 
     # 23. GFL Capital Mortgage
