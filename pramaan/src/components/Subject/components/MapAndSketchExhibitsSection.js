@@ -115,7 +115,9 @@ const generateVectorSketchPreview = (title = 'Building Sketch & Floor Plan', gla
   const safeTitle = (title || 'Building Sketch & Floor Plan').slice(0, 45);
   const safeGla = gla ? `${Number(String(gla).replace(/,/g, '')).toLocaleString()} Sq Ft GLA` : 'Floor Plan Layout';
   const beds = roomSummary?.bedroom_count ? `${roomSummary.bedroom_count} Bed${roomSummary.bedroom_count > 1 ? 's' : ''}` : '';
-  const baths = roomSummary?.bathroom_display || (roomSummary?.bathroom_count ? `${roomSummary.bathroom_count} Bath` : '');
+  const baths = (roomSummary?.bathroom_display && roomSummary.bathroom_display !== '0' && roomSummary.bathroom_display !== '—')
+    ? roomSummary.bathroom_display
+    : (roomSummary?.bathroom_count && roomSummary.bathroom_count !== '0' && roomSummary.bathroom_count > 0 ? `${roomSummary.bathroom_count} Bath` : '');
   const areaBoxes = (areas || []).slice(0, 4).map((a, idx) => {
     const col = ['#38bdf8', '#818cf8', '#34d399', '#fbbf24'][idx % 4];
     const lbl = (a.name || a.label || `Level ${idx + 1}`).slice(0, 22);
@@ -3910,20 +3912,27 @@ export const MapAndSketchExhibitsSection = ({
                             const photoCounts = getPhotoRoomCounts(data, allData);
                             const sketchGLA = getSketchGLA(sketchItem);
 
-                            const activeBedCount = (roomSum.bedroom_count !== undefined && roomSum.bedroom_count !== null && roomSum.bedroom_count > 0)
-                              ? roomSum.bedroom_count
-                              : (impCounts.bedrooms || gridCounts.bedrooms || 0);
-                            const activeBathCount = (roomSum.bathroom_count && roomSum.bathroom_count !== '0')
-                              ? roomSum.bathroom_count
-                              : (impCounts.bathrooms || gridCounts.bathrooms || '0');
-                            const activeTotRooms = (roomSum.total_rooms !== undefined && roomSum.total_rooms !== null && roomSum.total_rooms > 0)
-                              ? roomSum.total_rooms
-                              : (impCounts.totalRooms || gridCounts.totalRooms || 0);
+                            const parseRoomNum = (val) => {
+                              if (val === null || val === undefined) return null;
+                              const m = String(val).replace(/,/g, '').match(/([0-9]+(?:\.[0-9]+)?)/);
+                              if (!m) return null;
+                              const num = parseFloat(m[1]);
+                              return num > 0 ? num : null;
+                            };
+
+                            const activeBedCount = parseRoomNum(roomSum.bedroom_count);
+                            const activeBathCount = parseRoomNum(roomSum.bathroom_count);
+                            const activeTotRooms = parseRoomNum(roomSum.total_rooms);
 
                             const glaEval = evaluateRoomMatch(sketchGLA, impCounts.gla, gridCounts.gla, false, true, null);
                             const bedEval = evaluateRoomMatch(activeBedCount, impCounts.bedrooms, gridCounts.bedrooms, false, false, photoCounts.bedroom_count);
                             const bathEval = evaluateRoomMatch(activeBathCount, impCounts.bathrooms, gridCounts.bathrooms, true, false, photoCounts.bathroom_count);
                             const totEval = evaluateRoomMatch(activeTotRooms, impCounts.totalRooms, gridCounts.totalRooms, false, false, photoCounts.total_room_count);
+
+                            const rawBathDisp = roomSum.bathroom_display;
+                            const validBathDisp = (rawBathDisp && rawBathDisp !== '0' && rawBathDisp !== '—' && rawBathDisp !== '0 Bath(s)' && !/^0(\.0)?$/.test(String(rawBathDisp).trim()))
+                              ? rawBathDisp
+                              : (activeBathCount ? `${activeBathCount} Bath(s)` : null);
 
                             const rows = [
                               {
@@ -3940,9 +3949,10 @@ export const MapAndSketchExhibitsSection = ({
                               {
                                 metric: 'Bedrooms',
                                 icon: <BedIcon fontSize="small" sx={{ color: '#4338ca' }} />,
-                                sketchDisplay: (roomSum.bedroom_count !== undefined && roomSum.bedroom_count !== null && roomSum.bedroom_count > 0)
-                                  ? `${roomSum.bedroom_count} Bed${roomSum.bedroom_count !== 1 ? 's' : ''}`
-                                  : (impCounts.bedrooms ? `${impCounts.bedrooms} Bedrooms` : (gridCounts.bedrooms ? `${gridCounts.bedrooms} Bedrooms` : '—')),
+                                sketchDisplay: activeBedCount
+                                  ? `${activeBedCount} Bed${activeBedCount !== 1 ? 's' : ''}`
+                                  : '—',
+                                sketchDetail: activeBedCount ? 'Identified on Floor Plan' : 'Not labeled on sketch',
                                 impDisplay: impCounts.bedrooms ? `${impCounts.bedrooms} Bedrooms` : '—',
                                 gridDisplay: gridCounts.bedrooms ? `${gridCounts.bedrooms} Bedrooms` : '—',
                                 photoDisplay: photoCounts.bedroom_display || (photoCounts.bedroom_count ? `${photoCounts.bedroom_count} Bed${photoCounts.bedroom_count !== 1 ? 's' : ''}` : '—'),
@@ -3952,9 +3962,8 @@ export const MapAndSketchExhibitsSection = ({
                               {
                                 metric: 'Bathrooms',
                                 icon: <BathIcon fontSize="small" sx={{ color: '#0e7490' }} />,
-                                sketchDisplay: roomSum.bathroom_display || ((roomSum.bathroom_count && roomSum.bathroom_count !== '0')
-                                  ? `${roomSum.bathroom_count} Bath`
-                                  : (impCounts.bathrooms ? `${impCounts.bathrooms} Bath(s)` : (gridCounts.bathrooms ? `${gridCounts.bathrooms} Bath(s)` : '—'))),
+                                sketchDisplay: validBathDisp || '—',
+                                sketchDetail: validBathDisp ? 'Identified on Floor Plan' : 'Not labeled on sketch',
                                 impDisplay: impCounts.bathrooms ? `${impCounts.bathrooms} Bath(s)` : '—',
                                 gridDisplay: gridCounts.bathrooms ? `${gridCounts.bathrooms} Bath(s)` : '—',
                                 photoDisplay: photoCounts.bathroom_display || (photoCounts.bathroom_count ? `${photoCounts.bathroom_count} Bath(s)` : '—'),
@@ -3964,8 +3973,8 @@ export const MapAndSketchExhibitsSection = ({
                               {
                                 metric: 'Total Rooms',
                                 icon: <HomeIcon fontSize="small" sx={{ color: '#5b21b6' }} />,
-                                sketchDisplay: `${activeTotRooms} Rooms`,
-                                sketchDetail: '(Bedrooms + Living + Dining + Kitchen)',
+                                sketchDisplay: activeTotRooms ? `${activeTotRooms} Rooms` : '—',
+                                sketchDetail: activeTotRooms ? '(Bedrooms + Living + Dining + Kitchen)' : 'Not labeled on sketch',
                                 impDisplay: impCounts.totalRooms ? `${impCounts.totalRooms} Rooms` : '—',
                                 gridDisplay: gridCounts.totalRooms ? `${gridCounts.totalRooms} Rooms` : '—',
                                 photoDisplay: photoCounts.total_room_display || (photoCounts.total_room_count ? `${photoCounts.total_room_count} Rooms` : '—'),

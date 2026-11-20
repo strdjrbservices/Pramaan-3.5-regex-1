@@ -772,7 +772,7 @@ class MapExtractor:
         full_baths = sum(1 for b in by_category['bathrooms'] if b['standard_name'] != 'Half Bath')
         half_baths = sum(1 for b in by_category['bathrooms'] if b['standard_name'] == 'Half Bath')
         bath_count = full_baths + (0.5 * half_baths)
-        bath_display = f"{full_baths} Full" + (f", {half_baths} Half" if half_baths else "") if bath_count > 0 else "0"
+        bath_display = f"{full_baths} Full" + (f", {half_baths} Half" if half_baths else "") if bath_count > 0 else "—"
 
         garage_labels = [g['label'] for g in by_category['garage_parking']]
 

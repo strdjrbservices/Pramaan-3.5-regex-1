@@ -572,18 +572,20 @@ export const parseSketchRooms = (sketchItem, data = null, allData = null) => {
   }
 
   const uniqueLabels = Array.from(new Set(directLabels));
-  const bedCount = rawSum.bedroom_count ?? byCategory.bedrooms.length;
+  const bedCount = rawSum.bedroom_count ?? (byCategory.bedrooms.length > 0 ? byCategory.bedrooms.length : null);
   const fullBaths = byCategory.bathrooms.filter(b => b.standard_name !== 'Half Bath').length;
   const halfBaths = byCategory.bathrooms.filter(b => b.standard_name === 'Half Bath').length;
   const calcBathCount = fullBaths + (0.5 * halfBaths);
-  const calcBathDisplay = calcBathCount > 0 ? `${fullBaths} Full${halfBaths ? `, ${halfBaths} Half` : ''}` : '0';
-  const bathCount = rawSum.bathroom_count ?? calcBathCount;
-  const bathDisplay = rawSum.bathroom_display || (calcBathCount > 0 ? calcBathDisplay : (bathCount ? `${bathCount} Bath(s)` : ''));
+  const calcBathDisplay = calcBathCount > 0 ? `${fullBaths} Full${halfBaths ? `, ${halfBaths} Half` : ''}` : '';
+  const bathCount = rawSum.bathroom_count ?? (calcBathCount > 0 ? calcBathCount : null);
+  const bathDisplay = (rawSum.bathroom_display && rawSum.bathroom_display !== '0' && rawSum.bathroom_display !== '—')
+    ? rawSum.bathroom_display
+    : (calcBathCount > 0 ? calcBathDisplay : (bathCount ? `${bathCount} Bath(s)` : ''));
   const livingCount = rawSum.living_rooms_count ?? byCategory.living.length;
   const hasKitchen = rawSum.has_kitchen ?? (byCategory.kitchen_dining.some(k => /kitchen/i.test(k.label || k.standard_name)));
   const hasDining = rawSum.has_dining ?? (byCategory.kitchen_dining.some(k => /dining|nook|breakfast|brk/i.test(k.label || k.standard_name)));
   const garageName = rawSum.garage || byCategory.garage_parking[0]?.label || null;
-  const totalRooms = rawSum.total_rooms ?? (bedCount + livingCount + (hasKitchen ? 1 : 0) + (hasDining ? 1 : 0) || uniqueLabels.length);
+  const totalRooms = rawSum.total_rooms ?? ((bedCount || 0) + livingCount + (hasKitchen ? 1 : 0) + (hasDining ? 1 : 0) || (uniqueLabels.length > 0 ? uniqueLabels.length : null));
 
   return {
     labels: uniqueLabels,
@@ -592,7 +594,7 @@ export const parseSketchRooms = (sketchItem, data = null, allData = null) => {
     summary: {
       bedroom_count: bedCount,
       bathroom_count: bathCount,
-      bathroom_display: bathDisplay || `${bathCount} Bath(s)`,
+      bathroom_display: bathDisplay || (bathCount ? `${bathCount} Bath(s)` : '—'),
       living_rooms_count: livingCount,
       has_kitchen: hasKitchen,
       has_dining: hasDining,
