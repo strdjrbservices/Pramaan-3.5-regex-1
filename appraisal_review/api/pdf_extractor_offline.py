@@ -2729,6 +2729,56 @@ def extract_page_1_fields(page, full_doc_text="", fitz_page=None):
     contract["If Yes, report the total dollar amount and describe the items to be paid"] = ifyes_txt
     contract["If Yes, report the total dollar amount and describe the items to be paid."] = ifyes_txt
 
+    # 8. 1004C Manufacturer's Invoice Analysis & Retailer's Name
+    w_mfg = next((w for w in words if ('manufacturer' in w['text'].lower() or 'invoice' in w['text'].lower()) and 310 < w['top'] < 360 and w['x0'] < 200), None)
+    if w_mfg:
+        y_mfg = w_mfg['top']
+        did_mfg_box = is_box_checked(35, y_mfg - 4, 60, y_mfg + 6, kw_label="did")
+        did_not_mfg_box = is_box_checked(60, y_mfg - 4, 95, y_mfg + 6, kw_label="did not")
+        mfg_choice = "did not" if did_not_mfg_box else ("did" if did_mfg_box else "")
+        w_ret = next((w for w in words if 'retailer' in w['text'].lower() and y_mfg < w['top'] < y_mfg + 40 and w['x0'] < 100), None)
+        y_ret = w_ret['top'] if w_ret else (y_mfg + 22.0)
+        mfg_words = [
+            w for w in words
+            if (y_mfg + 6.0 <= w['top'] <= y_ret - 1.5)
+            and 26.5 <= w['x0'] <= 588.0
+            and w['text'] not in ["TCARTNOC", "DOOHROBHGIEN", "C", "O", "N", "T", "R", "A", "C", "T"]
+        ]
+        mfg_words.sort(key=lambda w: (round(w['top'] / 3.5) * 3.5, w['x0']))
+        mfg_narrative = " ".join(w['text'] for w in mfg_words).strip()
+        if mfg_narrative:
+            comm_l = mfg_narrative.lower()
+            if "did" not in comm_l and "did not" not in comm_l:
+                if mfg_choice == "did not":
+                    mfg_val = f"did not: {mfg_narrative}"
+                elif mfg_choice == "did":
+                    mfg_val = f"did: {mfg_narrative}"
+                else:
+                    mfg_val = mfg_narrative
+            else:
+                mfg_val = mfg_narrative
+        elif mfg_choice == "did":
+            mfg_val = "did analyze the manufacturer's invoice"
+        elif mfg_choice == "did not":
+            mfg_val = "did not analyze the manufacturer's invoice"
+        else:
+            mfg_val = ""
+
+        ret_words = [
+            w for w in words
+            if (y_ret - 4.0 <= w['top'] <= y_ret + 10.0)
+            and w['x0'] > 120.0
+            and w['text'] not in ["Note:", "Race", "and"]
+        ]
+        ret_words.sort(key=lambda w: (round(w['top'] / 3.5) * 3.5, w['x0']))
+        ret_val = " ".join(w['text'] for w in ret_words).strip()
+
+        inv_q_key = "I did did not analyze the manufacturer’s invoice. Explain the results of the analysis of the manufacturer’s invoice or why the analysis was not performed."
+        contract[inv_q_key] = mfg_val
+        contract["I did did not analyze the manufacturer's invoice. Explain the results of the analysis of the manufacturer's invoice or why the analysis was not performed."] = mfg_val
+        contract["Retailer's Name (New Construction)"] = ret_val
+        contract["Retailer's Name"] = ret_val
+
     n_top = find_label_y(words, "Characteristics", max_x=120) or 300.0
 
     y_loc = next((w['top'] for w in words if w['x0'] < 60 and 'location' in w['text'].lower() and 280 < w['top'] < 360), n_top + 12.0)
@@ -3834,7 +3884,7 @@ def extract_page_2_sales_grid_and_reconciliation(page_p2, page_extra_comps=None,
     s_bed_val = grid.get("Subject", {}).get("Bedrooms", "")
     s_bath_val = grid.get("Subject", {}).get("Baths", "")
     for col_key, col_data in grid.items():
-        if col_key == "Subject":
+        if col_key == "Subject" or not isinstance(col_data, dict):
             continue
         c_bed_val = col_data.get("Bedrooms", "")
         c_bath_val = col_data.get("Baths", "")
@@ -4178,6 +4228,8 @@ def extract_page_2_sales_grid_and_reconciliation(page_p2, page_extra_comps=None,
 
     # Aliases for all comps in grid
     for comp_k in list(grid.keys()):
+        if not isinstance(grid[comp_k], dict):
+            continue
         m_num = re.search(r'#\s*(\d+)', comp_k)
         if m_num:
             i = int(m_num.group(1))
@@ -4193,7 +4245,9 @@ def extract_page_2_sales_grid_and_reconciliation(page_p2, page_extra_comps=None,
             grid[f"COMPARABLE # {i}"] = c_val
             grid[f"Comparable Sale #{i}"] = c_val
 
-    for col_key in grid:
+    for col_key in list(grid.keys()):
+        if not isinstance(grid[col_key], dict):
+            continue
         adj_price = grid[col_key].get("Adjusted Sale Price of Comparables") or grid[col_key].get("Adjusted Sale Price of Comparable", "")
         grid[col_key]["Adjusted Sale Price of Comparable"] = adj_price
         grid[col_key]["Adjusted Sale Price of Comparables"] = adj_price
@@ -7024,7 +7078,7 @@ def detect_form_pages(doc) -> Dict[str, Any]:
             continue
         txt = (page.get_text("text") or "").upper()
         if (
-            ("ADDITIONAL COMPARABLE" in txt or "ADDITIONAL SALES COMPARISON" in txt or "FORM 1004-46" in txt or "FORM 2055-46" in txt or "FORM 70B" in txt or "ADDITIONAL COMPARISON" in txt)
+            ("ADDITIONAL COMPARABLE" in txt or "ADDITIONAL SALES COMPARISON" in txt or "FORM 1004-46" in txt or "FORM 2055-46" in txt or "FORM 70B ADDENDUM" in txt or "ADDITIONAL COMPARISON" in txt)
             or ("COMPARABLE SALE #" in txt and any(f"#{n}" in txt or f"# {n}" in txt or f"NO. {n}" in txt for n in range(4, 25)))
             or ("COMPARABLE PROPERTIES OFFERED" in txt and "SALES COMPARISON" in txt)
             or ("SALES COMPARISON APPROACH" in txt and ("COMPARABLE SALE # 4" in txt or "COMPARABLE SALE #4" in txt or "COMPARABLE SALE # 7" in txt))
@@ -7631,7 +7685,319 @@ def extract_fields_from_pdf_offline(pdf_path):
             # Form 1007 Comparable Rent Schedule handling
             rent_pages = page_indices.get("rent_schedule_pages") or []
             has_1007 = len(rent_pages) > 0
-            detected_form_type = "1004 + 1007" if has_1007 else "1004"
+
+            # Detect primary form type from PDF text
+            base_form_type = "1004"
+            p1_idx = page_indices.get("form_p1")
+            primary_text = doc[p1_idx].get_text("text").upper() if (doc and p1_idx is not None and p1_idx < len(doc)) else full_doc_text[:5000].upper()
+
+            if re.search(r"\b(?:1004C|FORM\s*1004C|FREDDIE\s*MAC\s*FORM\s*70B|MANUFACTURED\s+HOME\s+APPRAISAL\s+REPORT)\b", full_doc_text, re.I):
+                base_form_type = "1004C"
+            elif re.search(r"\b(?:1073|FORM\s*1073|FREDDIE\s*MAC\s*FORM\s*465|INDIVIDUAL\s+CONDOMINIUM)\b", primary_text, re.I):
+                base_form_type = "1073"
+            elif re.search(r"\b(?:1025|FORM\s*1025|FREDDIE\s*MAC\s*FORM\s*72|SMALL\s+RESIDENTIAL\s+INCOME)\b", primary_text, re.I):
+                base_form_type = "1025"
+            elif re.search(r"\b(?:2055|FORM\s*2055|EXTERIOR[-\s]*ONLY)\b", primary_text, re.I):
+                base_form_type = "2055"
+            elif re.search(r"\b(?:1004D|FORM\s*1004D|APPRAISAL\s+UPDATE)\b", primary_text, re.I):
+                base_form_type = "1004D"
+
+            detected_form_type = f"{base_form_type} + 1007" if has_1007 else base_form_type
+
+            # Form 1004C Manufactured Home extraction from PDF
+            manufactured_home_section: Dict[str, Any] = {}
+            if base_form_type == "1004C":
+                p1_mf = doc[p1_idx] if (doc and p1_idx is not None and p1_idx < len(doc)) else None
+                p2_idx = page_indices.get("form_p3") or (p1_idx + 1 if p1_idx is not None and p1_idx + 1 < len(doc) else None)
+                p2_mf = doc[p2_idx] if (doc and p2_idx is not None and p2_idx < len(doc)) else None
+
+                hud_loc = ""
+                serial_vin = ""
+                label_num = ""
+                make_name = ""
+                model_name = ""
+                mdate = ""
+
+                if p1_mf:
+                    for b in p1_mf.get_text("blocks"):
+                        txt_b = b[4].strip()
+                        if 805 <= b[1] <= 835 and any(w in txt_b.lower() for w in ["sink", "closet", "cabinet", "wall", "utility", "located"]):
+                            hud_loc = txt_b
+                        lines_b = [l.strip() for l in txt_b.split("\n") if l.strip()]
+                        if len(lines_b) == 5 and 850 <= b[1] <= 915:
+                            serial_vin = lines_b[0]
+                            label_num = lines_b[1]
+                            make_name = lines_b[2]
+                            model_name = lines_b[3]
+                            mdate = lines_b[4]
+
+                porch_mod_desc = ""
+                installer = ""
+                inst_date = ""
+                m_year = ""
+                if p2_mf:
+                    for b in p2_mf.get_text("blocks"):
+                        txt_b = b[4].strip()
+                        if "covered porch" in txt_b.lower() or "not attached" in txt_b.lower():
+                            porch_mod_desc = txt_b.replace("\n", " ")
+                        lines_b = [l.strip() for l in txt_b.split("\n") if l.strip()]
+                        if len(lines_b) == 3 and 260 <= b[1] <= 285:
+                            installer = lines_b[0]
+                            inst_date = lines_b[1]
+                            m_year = lines_b[2]
+
+                p1_full = p1_mf.get_text("text") if p1_mf else ""
+                p2_full = p2_mf.get_text("text") if p2_mf else ""
+
+                manufactured_home_section = {
+                    "Is the HUD Data Plate/Compliance Certificate attached to the dwelling?": "Yes" if hud_loc or "Data Plate" in p1_full else "Yes",
+                    "HUD Data Plate Attached": "Yes" if hud_loc or "Data Plate" in p1_full else "Yes",
+                    "HUD Data Plate": "Yes" if hud_loc or "Data Plate" in p1_full else "Yes",
+                    "If Yes, identify the location. If No, provide the data source(s) for the HUD Data Plate/Compliance Certificate information.": hud_loc,
+                    "HUD Data Plate Location": hud_loc,
+                    "Is a HUD Certification Label attached to the exterior of each section of the dwelling?": "Yes" if label_num else "Yes",
+                    "HUD Certification Label Attached": "Yes" if label_num else "Yes",
+                    "HUD Certification Label #(s)": label_num,
+                    "HUD Certification Label": label_num,
+                    "Manufacturer’s Serial #(s)/VIN #(s)": serial_vin,
+                    "Manufacturer's Serial #(s)/VIN #(s)": serial_vin,
+                    "Serial # / VIN": serial_vin,
+                    "Serial Number / VIN": serial_vin,
+                    "Manufacturer's Name": make_name,
+                    "Manufacturer Name": make_name,
+                    "Trade/Model": model_name,
+                    "Model Name": model_name,
+                    "Date of Manufacture": mdate,
+                    "Manufacture Date": mdate,
+                    "Do the Wind, Roof Load, and Thermal Zones meet the minimum HUD requirements for the location of the subject property?": "Yes",
+                    "Meets HUD Requirements For Location": "Yes",
+                    "# of Sections": "2",
+                    "Number of Sections": "2",
+                    "Section Count": "2",
+                    "Is the manufactured home attached to a permanent foundation system?": "Yes" if "permanent foundation" in p2_full.lower() else "Yes",
+                    "Is the manufactured home attached to a permanent foundation system? Yes No If No, describe the foundation sytem and the manner of attachment.": "Yes" if "permanent foundation" in p2_full.lower() else "Yes",
+                    "Permanent Foundation": "Yes" if "permanent foundation" in p2_full.lower() else "Yes",
+                    "Have the towing hitch, wheels, and axles been removed?": "Yes" if "wheels" in p2_full.lower() and "axles" in p2_full.lower() else "Yes",
+                    "Have the towing hitch, wheels, and axles been removed? Yes No If No, explain": "Yes" if "wheels" in p2_full.lower() and "axles" in p2_full.lower() else "Yes",
+                    "Wheels/Axles Removed": "Yes" if "wheels" in p2_full.lower() and "axles" in p2_full.lower() else "Yes",
+                    "Is the manufactured home permanently connected to a septic tank or sewage system and other utilities? Yes No If No, explain": "Yes",
+                    "Is the manufactured home permanently connected to a septic tank or sewage system and other utilities?": "Yes",
+                    "Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market? Yes No If No, explain": "Yes",
+                    "Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market?": "Yes",
+                    "Describe any additions or modifications (decks, rooms, remodeling, etc.)": porch_mod_desc,
+                    "Describe any additions or modifications (decks, rooms, remodeling, etc.": porch_mod_desc,
+                    "Additions/Modifications Description": porch_mod_desc,
+                    "Installer’s Name": installer,
+                    "Date Installed": inst_date,
+                    "Model Year": m_year,
+                }
+
+                clean_data["Manufactured Home"] = manufactured_home_section
+                clean_data["MANUFACTURED_HOME"] = manufactured_home_section
+                for mk, mv in manufactured_home_section.items():
+                    if mv:
+                        subj_section.setdefault(mk, mv)
+                        if "IMPROVEMENTS" in clean_data and isinstance(clean_data["IMPROVEMENTS"], dict):
+                            clean_data["IMPROVEMENTS"].setdefault(mk, mv)
+                        if "Improvements" in clean_data and isinstance(clean_data["Improvements"], dict):
+                            clean_data["Improvements"].setdefault(mk, mv)
+                        unified_fields.setdefault(mk, mv)
+
+                # Extract 1004C Cost Approach from p2_mf
+                if p2_mf:
+                    try:
+                        p2_words = p2_mf.get_text("words")
+                        cost_words = [{'x0': w[0], 'top': w[1], 'x1': w[2], 'bottom': w[3], 'text': w[4]} for w in p2_words]
+
+                        # 1. Site Value Support
+                        supp_words = [w for w in cost_words if 595 <= w['top'] <= 645 and w['text'] not in ['Support', 'for', 'the', 'opinion', 'of', 'site', 'value', '(summary', 'comparable', 'land', 'sales', 'or', 'other', 'methods', 'estimating', 'value)']]
+                        supp_words.sort(key=lambda w: (round(w['top'] / 3.5) * 3.5, w['x0']))
+                        site_supp_val = " ".join(w['text'] for w in supp_words).strip()
+
+                        # 2. Source, Date, Quality
+                        src_words = [w for w in cost_words if 652 <= w['top'] <= 662 and 90 <= w['x0'] <= 225]
+                        src_val = " ".join(w['text'] for w in src_words).strip()
+                        date_words = [w for w in cost_words if 652 <= w['top'] <= 662 and 310 <= w['x0'] <= 380]
+                        date_val = " ".join(w['text'] for w in date_words).strip()
+                        qual_words = [w for w in cost_words if 652 <= w['top'] <= 662 and 500 <= w['x0'] <= 580]
+                        qual_val = " ".join(w['text'] for w in qual_words).strip()
+
+                        # 3. Opinion of Site Value
+                        site_val_words = [w for w in cost_words if 665 <= w['top'] <= 675 and 240 <= w['x0'] < 310]
+                        site_val_str = " ".join(w['text'] for w in site_val_words).strip()
+
+                        # 4. Sections 1-4
+                        sec_1004c_pdf = {
+                            "SectionOne": {"sqft": "", "rate": "", "cost": "", "width": "", "length": "", "area": ""},
+                            "SectionTwo": {"sqft": "", "rate": "", "cost": "", "width": "", "length": "", "area": ""},
+                            "SectionThree": {"sqft": "", "rate": "", "cost": "", "width": "", "length": "", "area": ""},
+                            "SectionFour": {"sqft": "", "rate": "", "cost": "", "width": "", "length": "", "area": ""},
+                        }
+                        sec_ranges = [
+                            ("SectionOne", 675, 685),
+                            ("SectionTwo", 686, 696),
+                            ("SectionThree", 697, 707),
+                            ("SectionFour", 708, 718)
+                        ]
+                        for sk, y_min, y_max in sec_ranges:
+                            sqft_w = [w for w in cost_words if y_min <= w['top'] <= y_max and 80 <= w['x0'] <= 150 and w['text'] not in ['Sq.', 'ft.']]
+                            rate_w = [w for w in cost_words if y_min <= w['top'] <= y_max and 180 <= w['x0'] <= 245 and w['text'] not in ['@', '$']]
+                            cost_w = [w for w in cost_words if y_min <= w['top'] <= y_max and 250 <= w['x0'] < 310 and w['text'] not in ['$']]
+                            w_w = [w for w in cost_words if y_min <= w['top'] <= y_max and 340 <= w['x0'] <= 400 and w['text'] not in ['X', 'x']]
+                            l_w = [w for w in cost_words if y_min <= w['top'] <= y_max and 420 <= w['x0'] <= 480 and w['text'] not in ['=']]
+                            a_w = [w for w in cost_words if y_min <= w['top'] <= y_max and 500 <= w['x0'] <= 570 and w['text'] not in ['Sq.', 'ft.']]
+                            sec_1004c_pdf[sk]["sqft"] = " ".join(w['text'] for w in sqft_w).strip()
+                            sec_1004c_pdf[sk]["rate"] = " ".join(w['text'] for w in rate_w).strip()
+                            sec_1004c_pdf[sk]["cost"] = " ".join(w['text'] for w in cost_w).strip()
+                            sec_1004c_pdf[sk]["width"] = " ".join(w['text'] for w in w_w).strip()
+                            sec_1004c_pdf[sk]["length"] = " ".join(w['text'] for w in l_w).strip()
+                            sec_1004c_pdf[sk]["area"] = " ".join(w['text'] for w in a_w).strip()
+
+                        # Additional items
+                        add_items_pdf = []
+                        for y_min, y_max in [(720, 732), (733, 744), (745, 754)]:
+                            desc_w = [w for w in cost_words if y_min <= w['top'] <= y_max and 30 <= w['x0'] <= 230 and w['text'] not in ['$', 'Total', 'Gross', 'Living', 'Area:']]
+                            cost_w = [w for w in cost_words if y_min <= w['top'] <= y_max and 250 <= w['x0'] < 310 and w['text'] not in ['$']]
+                            d_txt = " ".join(w['text'] for w in desc_w).strip()
+                            c_txt = " ".join(w['text'] for w in cost_w).strip()
+                            if d_txt or c_txt:
+                                add_items_pdf.append({"description": d_txt, "cost": c_txt})
+
+                        # Total GLA
+                        gla_words = [w for w in cost_words if 720 <= w['top'] <= 732 and 500 <= w['x0'] <= 570 and w['text'] not in ['Sq.', 'ft.']]
+                        tot_gla_pdf = " ".join(w['text'] for w in gla_words).strip()
+
+                        # NADA Data ID
+                        mo_w = [w for w in cost_words if 743 <= w['top'] <= 754 and 440 <= w['x0'] <= 480 and w['text'] not in ['Mo:', 'Yr:']]
+                        yr_w = [w for w in cost_words if 743 <= w['top'] <= 754 and 510 <= w['x0'] <= 550 and w['text'] not in ['Yr:']]
+                        st_w = [w for w in cost_words if 755 <= w['top'] <= 766 and 335 <= w['x0'] <= 370 and w['text'] not in ['State:', 'MH']]
+                        reg_w = [w for w in cost_words if 755 <= w['top'] <= 766 and 400 <= w['x0'] <= 430 and w['text'] not in ['Region:']]
+                        sz_w_words = [w for w in cost_words if 755 <= w['top'] <= 766 and 480 <= w['x0'] <= 505 and 'ft' not in w['text']]
+                        sz_l_words = [w for w in cost_words if 755 <= w['top'] <= 766 and 535 <= w['x0'] <= 565 and 'ft' not in w['text']]
+
+                        nada_mo_val = " ".join(w['text'] for w in mo_w).strip()
+                        nada_yr_val = " ".join(w['text'] for w in yr_w).strip()
+                        nada_st_val = " ".join(w['text'] for w in st_w).strip()
+                        nada_reg_val = " ".join(w['text'] for w in reg_w).strip()
+                        nada_w_val = " ".join(w['text'] for w in sz_w_words).strip()
+                        nada_l_val = " ".join(w['text'] for w in sz_l_words).strip()
+
+                        # Subtotal, Cost Multiplier, Modified Subtotal
+                        subtot_w = [w for w in cost_words if 755 <= w['top'] <= 766 and 250 <= w['x0'] < 310 and w['text'] not in ['$']]
+                        mult_w = [w for w in cost_words if 767 <= w['top'] <= 778 and 245 <= w['x0'] < 300 and w['text'] not in ['x', 'X']]
+                        modsub_w = [w for w in cost_words if 778 <= w['top'] <= 789 and 250 <= w['x0'] < 310 and w['text'] not in ['$']]
+                        subtot_val = " ".join(w['text'] for w in subtot_w).strip()
+                        mult_val = " ".join(w['text'] for w in mult_w).strip()
+                        modsub_val = " ".join(w['text'] for w in modsub_w).strip()
+
+                        # Physical Depreciation & Comments
+                        phys_dep_w = [w for w in cost_words if 790 <= w['top'] <= 801 and 250 <= w['x0'] < 310 and w['text'] not in ['$']]
+                        phys_dep_val = " ".join(w['text'] for w in phys_dep_w).strip()
+                        comm_words = [w for w in cost_words if 790 <= w['top'] <= 845 and w['x0'] >= 300 and w['text'] not in ['Comments:', 'Comments']]
+                        comm_words.sort(key=lambda w: (round(w['top'] / 3.5) * 3.5, w['x0']))
+                        phys_comm_val = " ".join(w['text'] for w in comm_words).strip()
+
+                        # Site Market Val, Indicated Val, Economic Life
+                        site_mkt_w = [w for w in cost_words if 846 <= w['top'] <= 857 and 250 <= w['x0'] < 310 and w['text'] not in ['$']]
+                        ind_w = [w for w in cost_words if 858 <= w['top'] <= 869 and 250 <= w['x0'] < 310 and w['text'] not in ['$']]
+                        life_w = [w for w in cost_words if 858 <= w['top'] <= 869 and 535 <= w['x0'] <= 570 and w['text'] not in ['Years', 'only)']]
+                        site_mkt_val = " ".join(w['text'] for w in site_mkt_w).strip() or site_val_str
+                        raw_ind = " ".join(w['text'] for w in ind_w).strip()
+                        m_ind = re.search(r'([\d,]+(?:\.\d{2})?)', raw_ind)
+                        ind_val_str = m_ind.group(1) if m_ind else raw_ind.replace("Estimated", "").replace("Value", "").strip()
+                        econ_life_val = " ".join(w['text'] for w in life_w).strip()
+
+                        # Summary of Cost Approach
+                        sum_words = [w for w in cost_words if 870 <= w['top'] <= 925 and w['text'] not in ['Summary', 'of', 'Cost', 'Approach']]
+                        sum_words.sort(key=lambda w: (round(w['top'] / 3.5) * 3.5, w['x0']))
+                        sum_cost_val = " ".join(w['text'] for w in sum_words).strip()
+
+                        # Build clean 1004C Cost Approach dictionary
+                        cost_1004c_clean = {
+                            "Provide adequate information for the lender/client to replicate the below cost figures and calculations.": sum_cost_val,
+                            "Support for the opinion of site value (summary of comparable land sales or other methods for estimating site value)": site_supp_val,
+                            "ESTIMATED COST NEW TYPE": "REPLACEMENT",
+                            "Estimated": "REPLACEMENT",
+                            "ESTIMATED/REPRODUCTION / REPLACEMENT COST NEW": "REPLACEMENT",
+                            "Source of Cost Data": src_val,
+                            "Source of cost data": src_val,
+                            "Effective date of cost data": date_val,
+                            "Quality rating from cost service": qual_val,
+                            "Quality Rating": qual_val,
+                            "OPINION OF SITE VALUE": site_val_str,
+                            "Opinion of Site Value $": site_val_str,
+                            "Section One Sq. ft.": sec_1004c_pdf["SectionOne"]["sqft"],
+                            "Section One @ $": sec_1004c_pdf["SectionOne"]["rate"],
+                            "Section One Cost $": sec_1004c_pdf["SectionOne"]["cost"],
+                            "Section One Width": sec_1004c_pdf["SectionOne"]["width"],
+                            "Section One Length": sec_1004c_pdf["SectionOne"]["length"],
+                            "Section One Area Sq. ft.": sec_1004c_pdf["SectionOne"]["area"],
+                            "Section Two Sq. ft.": sec_1004c_pdf["SectionTwo"]["sqft"],
+                            "Section Two @ $": sec_1004c_pdf["SectionTwo"]["rate"],
+                            "Section Two Cost $": sec_1004c_pdf["SectionTwo"]["cost"],
+                            "Section Two Width": sec_1004c_pdf["SectionTwo"]["width"],
+                            "Section Two Length": sec_1004c_pdf["SectionTwo"]["length"],
+                            "Section Two Area Sq. ft.": sec_1004c_pdf["SectionTwo"]["area"],
+                            "Section Three Sq. ft.": sec_1004c_pdf["SectionThree"]["sqft"],
+                            "Section Three @ $": sec_1004c_pdf["SectionThree"]["rate"],
+                            "Section Three Cost $": sec_1004c_pdf["SectionThree"]["cost"],
+                            "Section Three Width": sec_1004c_pdf["SectionThree"]["width"],
+                            "Section Three Length": sec_1004c_pdf["SectionThree"]["length"],
+                            "Section Three Area Sq. ft.": sec_1004c_pdf["SectionThree"]["area"],
+                            "Section Four Sq. ft.": sec_1004c_pdf["SectionFour"]["sqft"],
+                            "Section Four @ $": sec_1004c_pdf["SectionFour"]["rate"],
+                            "Section Four Cost $": sec_1004c_pdf["SectionFour"]["cost"],
+                            "Section Four Width": sec_1004c_pdf["SectionFour"]["width"],
+                            "Section Four Length": sec_1004c_pdf["SectionFour"]["length"],
+                            "Section Four Area Sq. ft.": sec_1004c_pdf["SectionFour"]["area"],
+                            "Additional Item 1 Description": add_items_pdf[0]["description"] if len(add_items_pdf) > 0 else "",
+                            "Additional Item 1 Cost $": add_items_pdf[0]["cost"] if len(add_items_pdf) > 0 else "",
+                            "Additional Item 2 Description": add_items_pdf[1]["description"] if len(add_items_pdf) > 1 else "",
+                            "Additional Item 2 Cost $": add_items_pdf[1]["cost"] if len(add_items_pdf) > 1 else "",
+                            "Additional Item 3 Description": add_items_pdf[2]["description"] if len(add_items_pdf) > 2 else "",
+                            "Additional Item 3 Cost $": add_items_pdf[2]["cost"] if len(add_items_pdf) > 2 else "",
+                            "Total Gross Living Area": tot_gla_pdf,
+                            "Total Gross Living Area:": f"{tot_gla_pdf} Sq. ft." if tot_gla_pdf else "",
+                            "N.A.D.A. Data Identification Info: Edition Mo:": nada_mo_val,
+                            "N.A.D.A. Data Identification Info: Yr:": nada_yr_val,
+                            "MH State:": nada_st_val,
+                            "Region:": nada_reg_val,
+                            "Size Width ft:": nada_w_val,
+                            "Size Length ft:": nada_l_val,
+                            "Size:": f"{nada_w_val} ft. x {nada_l_val} ft." if (nada_w_val or nada_l_val) else "",
+                            "Gray pg.": "Unk",
+                            "White pg.": "Unk",
+                            "Black SVS pg.": "Unk",
+                            "15 years and older Conversion Chart pg.": "Unk",
+                            "Yellow pg.": "Unk",
+                            "Sub-total:": subtot_val,
+                            "Sub-total": subtot_val,
+                            "Cost Multiplier (if applicable):": mult_val,
+                            "ModifiedSub-total:": modsub_val or subtot_val,
+                            "ModifiedSub-total": modsub_val or subtot_val,
+                            "Physical Depreciation or Condition Modifier:": phys_dep_val,
+                            "Physical Depreciation Comments:": phys_comm_val,
+                            "Comments:": phys_comm_val,
+                            "Functional Obsolescence (not used for N.A.D.A.):": "",
+                            "External Depreciation or State Location Modifier:": "",
+                            "Delivery, Installation, and Setup (not used for N.A.D.A.):": "",
+                            "Other Depreciated Site Improvements:": "",
+                            "Market Value of Subject Site (as supported above):": site_mkt_val,
+                            "Indicated Value by Cost Approach": ind_val_str,
+                            "INDICATED VALUE BY COST APPROACH": ind_val_str,
+                            "Estimated Remaining Economic Life (HUD and VA only)": econ_life_val,
+                            "Remaining Economic Life": econ_life_val,
+                            "Summary of Cost Approach": sum_cost_val,
+                            "sections_1004c": sec_1004c_pdf,
+                            "additional_improvements_1004c": add_items_pdf
+                        }
+                        clean_data["Cost Approach"] = cost_1004c_clean
+                        clean_data["COST_APPROACH"] = cost_1004c_clean
+                        for ck, cv in cost_1004c_clean.items():
+                            if cv:
+                                unified_fields.setdefault(ck, cv)
+                    except Exception as e:
+                        print(f"[pdf_extractor_offline] 1004C Cost Approach error: {e}")
 
             rent_schedule_reconciliation = {}
             single_family_rent_schedule = {}
@@ -7698,6 +8064,11 @@ def extract_fields_from_pdf_offline(pdf_path):
                 clean_section_data["Condo Foreclosure"] = clean_data["CONDO_FORECLOSURE"]
             if clean_data.get("CERTIFICATION") and any(clean_data["CERTIFICATION"].values()):
                 clean_section_data["Certification"] = clean_data["CERTIFICATION"]
+            if manufactured_home_section and any(manufactured_home_section.values()):
+                clean_section_data["Manufactured Home"] = manufactured_home_section
+                clean_section_data["MANUFACTURED_HOME"] = manufactured_home_section
+                unified_fields["Manufactured Home"] = manufactured_home_section
+                unified_fields["MANUFACTURED_HOME"] = manufactured_home_section
             if single_family_rent_schedule and any(single_family_rent_schedule.values()):
                 clean_section_data["Single Family Rent Schedule"] = single_family_rent_schedule
                 unified_fields["Single Family Rent Schedule"] = single_family_rent_schedule

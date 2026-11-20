@@ -44,8 +44,8 @@ export const detectFormTypeFromXmlString = (xmlString) => {
     if (combined.includes('1073') || combined.includes('CONDOMINIUM') || combined.includes('FRE465')) {
       return has1007 ? '1073 + 1007' : '1073';
     }
-    if (combined.includes('1004C') || combined.includes('MANUFACTURED')) {
-      return '1004C';
+    if (combined.includes('1004C') || combined.includes('MANUFACTURED') || combined.includes('70B') || combined.includes('FRE70B') || combined.includes('FRE 70B')) {
+      return has1007 ? '1004C + 1007' : '1004C';
     }
     if (combined.includes('1004D')) {
       return '1004D';
@@ -91,12 +91,13 @@ export const normalizeExtractedFormType = (raw) => {
   if (!raw) return null;
   const s = String(raw).trim();
   const upper = s.toUpperCase();
+  if ((upper.includes('1004C') && upper.includes('1007')) || upper === '1004C + 1007') return '1004C + 1007';
   if ((upper.includes('1004') && upper.includes('1007')) || upper === '1004 + 1007') return '1004 + 1007';
   if ((upper.includes('1025') && upper.includes('1007')) || upper === '1025 + 1007') return '1025 + 1007';
   if ((upper.includes('1073') && upper.includes('1007')) || upper === '1073 + 1007') return '1073 + 1007';
   if (upper.includes('1025') || upper.includes('SMALL RESIDENTIAL')) return '1025';
   if (upper.includes('1073') || upper.includes('465') || upper.includes('CONDOMINIUM')) return '1073';
-  if (upper.includes('1004C') || upper.includes('MANUFACTURED')) return '1004C';
+  if (upper.includes('1004C') || upper.includes('MANUFACTURED') || upper.includes('70B') || upper.includes('FRE70B') || upper.includes('FRE 70B')) return '1004C';
   if (upper.includes('1004D')) return '1004D';
   if (upper.includes('2055')) return '2055';
   if (upper.includes('1075')) return '1075';

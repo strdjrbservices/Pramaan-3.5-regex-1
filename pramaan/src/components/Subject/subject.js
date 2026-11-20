@@ -65,6 +65,7 @@ import { SalesComparisonSection, ComparisonResultTable, SubjectRentScheduleTable
 import { getComparisonStyle, playSound, API_BASE_URL } from './utils/utils.js';
 
 import Form1004 from './2.6/1004';
+import Form1004C from './2.6/1004C';
 import Form1007 from './2.6/1007';
 import Form1004And1007 from './2.6/1004And1007';
 import Form1073 from './2.6/1073';
@@ -1221,10 +1222,10 @@ function Subject({ defaultFormType }) {
     if (comparableSales.includes(key)) return 'Sales Comparison';
     if (comparableRents.includes(key) || ComparableRentAdjustments.includes(key)) return 'Rent Schedule';
 
-    if (summaryFields.includes(fieldToCheck)) return 'Subject Information';
-    if (contractFields.includes(fieldToCheck)) return 'Contract Section';
+    if (summaryFields.includes(fieldToCheck) || (typeof fieldToCheck === 'string' && fieldToCheck.includes('Project Type'))) return 'Subject Information';
+    if (contractFields.includes(fieldToCheck) || (typeof fieldToCheck === 'string' && (fieldToCheck.includes('manufacturer’s invoice') || fieldToCheck.includes("manufacturer's invoice") || fieldToCheck.includes("Retailer's Name")))) return 'Contract Section';
     if (neighborhoodFields.includes(fieldToCheck)) return 'Neighborhood Section';
-    if (siteFields.includes(fieldToCheck) || siteFieldsVersion1.includes(fieldToCheck)) return 'Site Section';
+    if (siteFields.includes(fieldToCheck) || siteFieldsVersion1.includes(fieldToCheck) || (typeof fieldToCheck === 'string' && (fieldToCheck.includes('topography generally conforming') || fieldToCheck.includes('adequate vehicular access') || fieldToCheck.includes('street properly maintained')))) return 'Site Section';
     if (improvementsFields.includes(fieldToCheck)) return 'Improvements Section';
     if (reconciliationFields.includes(fieldToCheck)) return 'Reconciliation';
     if (incomeApproachFields.includes(fieldToCheck)) return 'Income Approach';
@@ -3888,7 +3889,7 @@ function Subject({ defaultFormType }) {
     },
     'GLA': { 'Improvements': 'GLA Improvements Count', 'Grid': 'GLA Sales Comparison Approach Count', 'Photo': 'GLA Photo Count', 'Floorplan': 'GLA Floorplan Count' }
   };
-  const formTypes = ['1004', '1004C', '1004D', '1025', '1073', '2090', '203k-FHA', '2055', '1075', '2095', '1007', '216', '1025 + 1007', '1073 + 1007', '1004 + 1007', '1004MC', 'Appraisal Version #1', 'ERC'];
+  const formTypes = ['1004', '1004C', '1004C + 1007', '1004D', '1025', '1073', '2090', '203k-FHA', '2055', '1075', '2095', '1007', '216', '1025 + 1007', '1073 + 1007', '1004 + 1007', '1004MC', 'Appraisal Version #1', 'ERC'];
 
   const sections = useMemo(() => [
     ...(engagementLetterFile ? [{ id: 'engagement-letter-section', title: 'Engagement Letter', category: 'ENGAGEMENT_LETTER', icon: <AssignmentIcon /> }] : []),
@@ -3900,6 +3901,7 @@ function Subject({ defaultFormType }) {
     { id: 'project-analysis-section', title: 'Project Analysis', category: 'PROJECT_ANALYSIS', icon: <AnalyticsIcon /> },
     { id: 'unit-descriptions-section', title: 'Unit Descriptions', category: 'UNIT_DESCRIPTIONS', icon: <MeetingRoomIcon /> },
     { id: 'site-section', title: 'Site', category: 'SITE', icon: <TerrainIcon /> },
+    ...((selectedFormType === '1004C' || selectedFormType === '1004C + 1007') ? [{ id: 'manufactured-home-section', title: 'Manufactured Home', category: 'MANUFACTURED_HOME', icon: <BuildIcon /> }] : []),
     { id: 'improvements-section', title: 'Improvements', category: 'IMPROVEMENTS', icon: <BuildIcon /> },
     { id: 'comparable-rental-data', title: 'COMPARABLE RENTAL DATA', category: 'COMPARABLE_RENTAL_DATA', icon: <ApartmentIcon /> },
     { id: 'subject-rent-schedule', title: 'SUBJECT RENT SCHEDULE', category: 'SUBJECT_RENT_SCHEDULE', icon: <RequestQuoteIcon /> },
@@ -3920,7 +3922,7 @@ function Subject({ defaultFormType }) {
     { id: 'map-sketch-exhibits-section', title: 'Map & Sketch Analysis', category: 'MAP_SKETCH_ANALYSIS', icon: <MapIcon /> },
     { id: 'photos-exhibits-section', title: 'Photos & Exhibits', category: 'EXTRACTED_PHOTOS', icon: <PhotoLibraryIcon /> },
     { id: 'raw-output', title: 'Raw Output', icon: <CodeIcon /> },
-  ], [engagementLetterFile]);
+  ], [engagementLetterFile, selectedFormType]);
 
   const salesGridRows = [
     { label: "Address", valueKey: "Address", subjectValueKey: "Property Address" },
@@ -4801,6 +4803,14 @@ function Subject({ defaultFormType }) {
       normalizedFields["Improvements"] = normalizedFields["IMPROVEMENTS"];
       normalizedFields["Dwelling Exterior"] = normalizedFields["IMPROVEMENTS"];
       Object.assign(normalizedFields, impSec);
+    }
+
+    // Unpack MANUFACTURED_HOME section
+    const mhSec = result.fields?.['Manufactured Home'] || result.fields?.MANUFACTURED_HOME || result.clean_data?.['Manufactured Home'] || result.clean_data?.MANUFACTURED_HOME;
+    if (mhSec && typeof mhSec === 'object') {
+      normalizedFields["Manufactured Home"] = { ...(normalizedFields["Manufactured Home"] || {}), ...mhSec };
+      normalizedFields["MANUFACTURED_HOME"] = normalizedFields["Manufactured Home"];
+      Object.assign(normalizedFields, mhSec);
     }
 
     // Unpack UNIT_DESCRIPTIONS section (Form 1073 Condo)
@@ -6013,6 +6023,12 @@ function Subject({ defaultFormType }) {
       case '1004':
         visibleSectionIds = baseSections.filter(id => !['comparable-rental-data', 'subject-rent-schedule', 'rent-schedule-section', 'prior-sale-history-section', 'rent-schedule-reconciliation-section', 'project-site-section', 'project-info-section', 'project-analysis-section', 'unit-descriptions-section'].includes(id));
         break;
+      case '1004C':
+        visibleSectionIds = baseSections.filter(id => !['comparable-rental-data', 'subject-rent-schedule', 'rent-schedule-section', 'prior-sale-history-section', 'rent-schedule-reconciliation-section', 'project-site-section', 'project-info-section', 'project-analysis-section', 'unit-descriptions-section'].includes(id));
+        break;
+      case '1004C + 1007':
+        visibleSectionIds = baseSections.filter(id => !['comparable-rental-data', 'subject-rent-schedule', 'project-site-section', 'prior-sale-history-section', 'project-info-section', 'project-analysis-section', 'unit-descriptions-section'].includes(id));
+        break;
       case 'Appraisal Version #1':
         return [
           { id: 'summary-section', title: 'Summary', category: 'SUMMARY', icon: <DescriptionIcon /> },
@@ -6155,6 +6171,10 @@ function Subject({ defaultFormType }) {
     switch (selectedFormType) {
       case '1004':
         formComponent = <Form1004 {...props} allData={{ ...data, comparisonData, formType: selectedFormType, selectedFile: activeReportFile, xmlFile, reportFile: activeReportFile, FILE_PATH: activeReportFile?.name || data?.FILE_PATH || '' }} selectedFile={activeReportFile} />;
+        break;
+      case '1004C':
+      case '1004C + 1007':
+        formComponent = <Form1004C {...props} allData={{ ...data, comparisonData, formType: selectedFormType, selectedFile: activeReportFile, xmlFile, reportFile: activeReportFile, FILE_PATH: activeReportFile?.name || data?.FILE_PATH || '' }} selectedFile={activeReportFile} />;
         break;
       case 'Appraisal Version #1':
         formComponent = <Version1 {...props} siteFields={siteFieldsVersion1} allData={{ ...data, comparisonData, formType: selectedFormType, selectedFile: activeReportFile, xmlFile, reportFile: activeReportFile, FILE_PATH: activeReportFile?.name || data?.FILE_PATH || '' }} selectedFile={activeReportFile} />;

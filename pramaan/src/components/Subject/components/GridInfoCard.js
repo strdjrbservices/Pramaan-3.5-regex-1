@@ -961,6 +961,38 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
     }
 
+    if (typeof field === 'string' && (field.includes('manufacturer’s invoice') || field.includes("manufacturer's invoice"))) {
+      const invVal = data?.[field]
+        ?? data?.["I did did not analyze the manufacturer’s invoice. Explain the results of the analysis of the manufacturer’s invoice or why the analysis was not performed."]
+        ?? data?.["I did did not analyze the manufacturer's invoice. Explain the results of the analysis of the manufacturer's invoice or why the analysis was not performed."]
+        ?? data?.CONTRACT?.[field]
+        ?? data?.CONTRACT?.["I did did not analyze the manufacturer’s invoice. Explain the results of the analysis of the manufacturer’s invoice or why the analysis was not performed."]
+        ?? data?.CONTRACT?.["I did did not analyze the manufacturer's invoice. Explain the results of the analysis of the manufacturer's invoice or why the analysis was not performed."]
+        ?? data?.Contract?.[field]
+        ?? allData?.CONTRACT?.[field]
+        ?? allData?.CONTRACT?.["I did did not analyze the manufacturer’s invoice. Explain the results of the analysis of the manufacturer’s invoice or why the analysis was not performed."]
+        ?? allData?.CONTRACT?.["I did did not analyze the manufacturer's invoice. Explain the results of the analysis of the manufacturer's invoice or why the analysis was not performed."]
+        ?? allData?.Contract?.[field]
+        ?? data?.ManufacturerInvoiceAnalysis
+        ?? allData?.ManufacturerInvoiceAnalysis;
+      if (invVal !== undefined && invVal !== null) return renderValue(invVal);
+    }
+
+    if (typeof field === 'string' && field.includes("Retailer's Name")) {
+      const retVal = data?.[field]
+        ?? data?.["Retailer's Name (New Construction)"]
+        ?? data?.["Retailer's Name"]
+        ?? data?.CONTRACT?.[field]
+        ?? data?.CONTRACT?.["Retailer's Name (New Construction)"]
+        ?? data?.CONTRACT?.["Retailer's Name"]
+        ?? data?.Contract?.[field]
+        ?? allData?.CONTRACT?.[field]
+        ?? allData?.CONTRACT?.["Retailer's Name (New Construction)"]
+        ?? allData?.CONTRACT?.["Retailer's Name"]
+        ?? allData?.Contract?.[field];
+      if (retVal !== undefined && retVal !== null) return renderValue(retVal);
+    }
+
     const val = data?.[field]
 
       ?? data?.SUMMARY?.[field]
@@ -1305,11 +1337,11 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
           setEditingField={setEditingField}
 
-          usePre={usePre}
+          usePre={usePre || (typeof field === 'string' && (field.includes('manufacturer’s invoice') || field.includes("manufacturer's invoice")))}
 
           isMissing={isItemMissing}
 
-          inputClassName={`form-control form-control-sm ${usePre ? "field-value-pre" : "field-value"}`}
+          inputClassName={`form-control form-control-sm ${(usePre || (typeof field === 'string' && (field.includes('manufacturer’s invoice') || field.includes("manufacturer's invoice")))) ? "field-value-pre" : "field-value"}`}
 
           isEditable={true}
 
@@ -1321,7 +1353,7 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
           showBlankValidation={showBlankValidation || id === 'info-of-sales-section' || id === 'project-info-section' || id === 'project-analysis-section' || id === 'unit-descriptions-section' || id === 'prior-sale-history-section' || title === 'Project Information' || title === 'Project Analysis' || title === 'Unit Descriptions' || title === 'Prior Sale History'}
 
-          inputStyle={{ width: '100%', border: 'none', background: 'transparent', padding: 0, height: 'auto', resize: usePre ? 'vertical' : 'none' }}
+          inputStyle={{ width: '100%', border: 'none', background: 'transparent', padding: 0, height: 'auto', resize: (usePre || (typeof field === 'string' && (field.includes('manufacturer’s invoice') || field.includes("manufacturer's invoice")))) ? 'vertical' : 'none' }}
 
         />
 

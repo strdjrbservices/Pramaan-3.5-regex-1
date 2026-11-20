@@ -1588,7 +1588,7 @@ def _detect_form_type_from_xml(root: ET.Element) -> str:
         
     # Check Manufactured Home 1004C
     if "1004C" in ct or "MANUFACTURED" in ct:
-        return "1004C"
+        return "1004C + 1007" if has_1007 else "1004C"
         
     # Check Update / Completion 1004D
     if "1004D" in ct:
@@ -3224,15 +3224,36 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
                 if not fe.attrib or fe.attrib.get("_ExistsIndicator", "Y") == "N":
                     continue
                 ft_cand = fe.attrib.get("_Type", "")
+                mat_cand = fe.attrib.get("_MaterialType", "")
+                other_cand = fe.attrib.get("_OtherDescription", "")
+                comb_cand = f"{ft_cand} {mat_cand}".lower()
                 cond_cand = fe.attrib.get("_ConditionDescription", "")
-                if "partial" in ft_cand.lower() or "partial" in cond_cand.lower() or fe.attrib.get("_PartialBasementIndicator") == "Y":
+                if "runner" in comb_cand or fe.attrib.get("_ConcreteRunnersIndicator") == "Y":
+                    foundation_type = "Concrete Runners"
+                    break
+                elif "poured" in comb_cand or fe.attrib.get("_PouredConcreteIndicator") == "Y":
+                    foundation_type = "Poured Concrete"
+                    break
+                elif "block" in comb_cand or "pier" in comb_cand or fe.attrib.get("_BlockAndPierIndicator") == "Y":
+                    foundation_type = "Block & Pier"
+                    break
+                elif "slab" in comb_cand or fe.attrib.get("_ConcreteSlabIndicator") == "Y":
+                    foundation_type = "Concrete Slab"
+                    break
+                elif "crawl" in comb_cand or fe.attrib.get("_CrawlSpaceIndicator") == "Y":
+                    foundation_type = "Crawl Space"
+                    break
+                elif "partial" in comb_cand or "partial" in cond_cand.lower() or fe.attrib.get("_PartialBasementIndicator") == "Y":
                     foundation_type = "Partial Basement"
                     break
-                elif "full" in ft_cand.lower() or "full" in cond_cand.lower() or fe.attrib.get("_FullBasementIndicator") == "Y" or ft_cand.lower() == "basement":
+                elif "full" in comb_cand or "full" in cond_cand.lower() or fe.attrib.get("_FullBasementIndicator") == "Y" or "basement" in comb_cand:
                     foundation_type = "Full Basement"
                     break
-                elif ft_cand:
-                    foundation_type = ft_cand
+                elif other_cand:
+                    foundation_type = f"Other: {other_cand}"
+                    break
+                elif ft_cand or mat_cand:
+                    foundation_type = ft_cand or mat_cand
                     break
 
     # Site
@@ -3402,6 +3423,10 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
     alley_val = ""
     street_desc = ""
     street_types = []
+    street_access = ""
+    street_access_desc = ""
+    street_maintained = ""
+    street_maintained_desc = ""
     for osi in root.findall(".//_OFF_SITE_IMPROVEMENT"):
         otype = osi.attrib.get("_Type", "")
         odesc = osi.attrib.get("_Description", "").strip()
@@ -3422,6 +3447,26 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
                 alley_val = "None"
             elif oexists == "N" and not alley_val:
                 alley_val = "None"
+        elif otype in ("StreetAccess", "VehicularAccess"):
+            if oexists == "Y":
+                street_access = "Yes"
+                street_access_desc = "Yes"
+            elif oexists == "N":
+                street_access = "No"
+                street_access_desc = f"No: {odesc}" if odesc else "No"
+            elif oexists:
+                street_access = oexists
+                street_access_desc = oexists
+        elif otype in ("StreetMaintenance", "ProperlyMaintained"):
+            if oexists == "Y":
+                street_maintained = "Yes"
+                street_maintained_desc = "Yes"
+            elif oexists == "N":
+                street_maintained = "No"
+                street_maintained_desc = f"No: {odesc}" if odesc else "No"
+            elif oexists:
+                street_maintained = oexists
+                street_maintained_desc = oexists
 
     if street_types:
         s_own = "/".join(street_types)
@@ -3456,33 +3501,51 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
     # Dynamic Typical Utilities & Adverse Site Conditions from PROPERTY_ANALYSIS
     util_typical = ""
     util_typical_desc = ""
+    util_typical_comment = ""
     adverse_site = ""
     adverse_site_desc = ""
+    adverse_site_comment = ""
+    site_conforming = ""
+    site_conforming_desc = ""
+    site_conforming_comment = ""
     for pa in root.findall(".//PROPERTY_ANALYSIS"):
         ptype = pa.attrib.get("_Type", "")
         pind = pa.attrib.get("_ExistsIndicator", "").upper()
         pcomm = pa.attrib.get("_Comment", "").strip()
 
         if ptype == "UtilitiesAndOffSiteImprovementsConformToNeighborhood":
+            util_typical_comment = pcomm
             if pind == "Y":
                 util_typical = "Yes"
-                util_typical_desc = "Yes"
+                util_typical_desc = f"Yes: {pcomm}" if pcomm else "Yes"
             elif pind == "N":
                 util_typical = "No"
                 util_typical_desc = f"No: {pcomm}" if pcomm else "No"
             elif pind:
                 util_typical = pind
-                util_typical_desc = pind
+                util_typical_desc = f"{pind}: {pcomm}" if pcomm else pind
+        elif ptype in ("ConformsToNeighborhoodInTermsOfSizeAndShape", "SiteConformingToMarketArea"):
+            site_conforming_comment = pcomm
+            if pind == "Y":
+                site_conforming = "Yes"
+                site_conforming_desc = f"Yes: {pcomm}" if pcomm else "Yes"
+            elif pind == "N":
+                site_conforming = "No"
+                site_conforming_desc = f"No: {pcomm}" if pcomm else "No"
+            elif pind:
+                site_conforming = pind
+                site_conforming_desc = f"{pind}: {pcomm}" if pcomm else pind
         elif ptype == "AdverseSiteConditions":
+            adverse_site_comment = pcomm
             if pind == "N":
                 adverse_site = "No"
-                adverse_site_desc = "No"
+                adverse_site_desc = f"No: {pcomm}" if pcomm else "No"
             elif pind == "Y":
                 adverse_site = "Yes"
                 adverse_site_desc = f"Yes: {pcomm}" if pcomm else "Yes"
             elif pind:
                 adverse_site = pind
-                adverse_site_desc = pind
+                adverse_site_desc = f"{pind}: {pcomm}" if pcomm else pind
 
     # Neighborhood
     nb_name = ""
@@ -3659,6 +3722,8 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
     concessions_amount = ""
     concessions_desc = ""
     concessions_text = ""
+    invoice_comment = ""
+    retailer_name = ""
 
     sales_contract = property_elem.find("SALES_CONTRACT") if property_elem is not None else None
     if sales_contract is None:
@@ -3720,6 +3785,26 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
             concessions_text = f"${concessions_amount}"
         elif concessions == "No":
             concessions_text = "0"
+
+        # Form 1004C Manufactured Home Contract Analysis & Retailer
+        inv_rev_ind = sales_contract.attrib.get("_InvoiceReviewedIndicator", "").upper()
+        inv_rev_comment = sales_contract.attrib.get("_InvoiceReviewComment", "")
+        retailer_name = sales_contract.attrib.get("_RetailerName", "")
+        if inv_rev_comment:
+            comm_lower = inv_rev_comment.lower()
+            if "did" not in comm_lower and "did not" not in comm_lower:
+                if inv_rev_ind == "N":
+                    invoice_comment = f"did not: {inv_rev_comment}"
+                elif inv_rev_ind == "Y":
+                    invoice_comment = f"did: {inv_rev_comment}"
+                else:
+                    invoice_comment = inv_rev_comment
+            else:
+                invoice_comment = inv_rev_comment
+        elif inv_rev_ind == "Y":
+            invoice_comment = "did analyze the manufacturer's invoice"
+        elif inv_rev_ind == "N":
+            invoice_comment = "did not analyze the manufacturer's invoice"
 
 
 
@@ -3816,12 +3901,36 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         elif cost_ind_raw == "0":
             cost_indicated_val = "0"
 
+        cost_subtotal = _clean_currency(cost_elem.attrib.get("NewImprovementTotalCostAmount", ""))
+        cost_multiplier = cost_elem.attrib.get("NewImprovementCostMultiplierFactor", "")
+        cost_modified_subtotal = _clean_currency(cost_elem.attrib.get("NewImprovementCostLocalizedAmount", "")) or cost_subtotal
+        cost_delivery_setup = _clean_currency(cost_elem.attrib.get("ManufacturedHomeInstallationCostAmount", ""))
+        cost_other_site_imp = _clean_currency(cost_elem.attrib.get("SiteOtherImprovementsAsIsAmount", ""))
+
+        sections_1004c = {
+            "SectionOne": {"sqft": "", "rate": "", "cost": "", "width": "", "length": "", "area": ""},
+            "SectionTwo": {"sqft": "", "rate": "", "cost": "", "width": "", "length": "", "area": ""},
+            "SectionThree": {"sqft": "", "rate": "", "cost": "", "width": "", "length": "", "area": ""},
+            "SectionFour": {"sqft": "", "rate": "", "cost": "", "width": "", "length": "", "area": ""},
+        }
+        additional_improvements_1004c = []
+
         for imp in cost_elem.findall("NEW_IMPROVEMENT"):
             itype = imp.attrib.get("_Type", "")
             iamt = _clean_currency(imp.attrib.get("_CostAmount", ""))
             isqft = imp.attrib.get("SquareFeetCount", "")
             ippsf = imp.attrib.get("PricePerSquareFootAmount", "")
             idesc = imp.attrib.get("_CostDescription", "") or imp.attrib.get("_TypeOtherDescription", "")
+
+            if itype in sections_1004c:
+                sections_1004c[itype]["sqft"] = isqft
+                sections_1004c[itype]["rate"] = ippsf
+                sections_1004c[itype]["cost"] = iamt
+            elif itype == "Additional" or (idesc and itype not in ["Dwelling", "Garage", "Basement", "Deck"]):
+                additional_improvements_1004c.append({
+                    "description": idesc,
+                    "cost": iamt
+                })
 
             if itype in ["Dwelling", "SectionOne"] and not dwelling_cost:
                 dwelling_cost = iamt
@@ -3838,13 +3947,57 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
                 if not deck_cost and any(k in idesc.lower() for k in ["porch", "deck", "patio"]):
                     deck_cost = iamt
 
+        # Section dimensions from MANUFACTURED_HOME
+        mh_elem = root.find(".//MANUFACTURED_HOME")
+        if mh_elem is not None:
+            for s_elem in mh_elem.findall("_SECTION"):
+                stype = s_elem.attrib.get("_Type", "")
+                if stype in sections_1004c:
+                    sections_1004c[stype]["width"] = s_elem.attrib.get("WidthFeetCount", "")
+                    sections_1004c[stype]["length"] = s_elem.attrib.get("DepthFeetCount", "")
+                    sections_1004c[stype]["area"] = s_elem.attrib.get("SquareFeetCount", "")
+
+        # NADA / Data Identification
+        data_ident = cost_elem.find("DATA_IDENTIFICATION")
+        nada_month = ""
+        nada_year = ""
+        nada_state = ""
+        nada_region = ""
+        nada_width = ""
+        nada_length = ""
+        nada_grey_pg = ""
+        nada_white_pg = ""
+        nada_black_pg = ""
+        nada_conversion_pg = ""
+        nada_yellow_pg = ""
+        nada_comment = ""
+        if data_ident is not None:
+            nada_month = data_ident.attrib.get("NADAManufacturedHousingGuideEditionMonth", "")
+            nada_year = data_ident.attrib.get("NADAManufacturedHousingGuideEditionYear", "")
+            nada_state = data_ident.attrib.get("ManufacturedHomeBuiltState", "")
+            nada_region = data_ident.attrib.get("ManufacturedHomeRegionIdentifier", "")
+            nada_width = data_ident.attrib.get("WidthFeetCount", "")
+            nada_length = data_ident.attrib.get("LengthFeetCount", "")
+            nada_grey_pg = data_ident.attrib.get("NADAManufacturedHousingGuideGreyPageIdentifier", "")
+            nada_white_pg = data_ident.attrib.get("NADAManufacturedHousingGuideWhitePageIdentifier", "")
+            nada_black_pg = data_ident.attrib.get("NADAManufacturedHousingGuideBlackPageIdentifier", "")
+            nada_conversion_pg = data_ident.attrib.get("NADAManufacturedHousingGuideConversionChartPageIdentifier", "")
+            nada_yellow_pg = data_ident.attrib.get("NADAManufacturedHousingGuideYellowPageIdentifier", "")
+            nada_comment = data_ident.attrib.get("ManufacturedHomeCostDataComment", "")
+
         deprec_elem = cost_elem.find("DEPRECIATION")
+        deprec_phys_amt = ""
+        deprec_func_amt = ""
+        deprec_ext_amt = ""
         if deprec_elem is not None:
             deprec_tot = _clean_currency(deprec_elem.attrib.get("_TotalAmount", ""))
             deprec_phys = _clean_currency(deprec_elem.attrib.get("_PhysicalAmount", ""))
             deprec_phys_pct = deprec_elem.attrib.get("_PhysicalPercent", "")
             deprec_func_pct = deprec_elem.attrib.get("_FunctionalPercent", "")
             deprec_ext_pct = deprec_elem.attrib.get("_ExteriorPercent", "")
+            deprec_func_amt = _clean_currency(deprec_elem.attrib.get("_FunctionalAmount", ""))
+            deprec_ext_amt = _clean_currency(deprec_elem.attrib.get("_ExteriorAmount", ""))
+            deprec_phys_amt = deprec_phys
             depreciation_cost = deprec_tot or deprec_phys
 
     cost_land_val = cost_site_val
@@ -5497,6 +5650,9 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "Map Reference": map_ref,
         "Census Tract": census,
         "Occupant": prop_occupancy,
+        "Project Type (if applicable):-  PUD  / Condominium / Cooperative / Other (describe)": p_type if p_type else ("PUD" if pud_indicator == "Yes" else ""),
+        "Project Type (if applicable)": p_type if p_type else ("PUD" if pud_indicator == "Yes" else ""),
+        "Project Type": p_type if p_type else ("PUD" if pud_indicator == "Yes" else ""),
         "PUD": pud_indicator,
         "HOA $": hoa_fee,
         "HOA(per month)": pud_fee_month,
@@ -5548,6 +5704,11 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "If Yes, report the total dollar amount and describe the items to be paid": concessions_text,
         "If Yes, report the total dollar amount and describe the items to be paid.": concessions_text,
         "Financial Assistance Comment": concessions_text,
+        "I did did not analyze the manufacturer’s invoice. Explain the results of the analysis of the manufacturer’s invoice or why the analysis was not performed.": invoice_comment,
+        "I did did not analyze the manufacturer's invoice. Explain the results of the analysis of the manufacturer's invoice or why the analysis was not performed.": invoice_comment,
+        "Retailer's Name (New Construction)": retailer_name,
+        "Retailer's Name": retailer_name,
+        "Retailer Name": retailer_name,
     }
 
     if not other_land_use_desc or other_land_use_desc.strip().lower() in ["", "other", "see addendum", "see attached", "see addenda", "n/a", "none", "see narrative", "see comments", "unknown"]:
@@ -5643,13 +5804,23 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "Sanitary Sewer": util_dict.get("Sanitary Sewer", ""),
         "Street": street_val,
         "Alley": alley_val,
+        "Is the site size, shape and topography generally conforming to and acceptable in the market area? Yes No If No, explain": site_conforming_desc,
+        "Is the site size, shape and topography generally conforming to and acceptable in the market area?": site_conforming,
+        "Is there adequate vehicular access to the subject property? Yes No If No, describe": street_access_desc,
+        "Is there adequate vehicular access to the subject property?": street_access,
+        "Is the street properly maintained? Yes No If No, describe": street_maintained_desc,
+        "Is the street properly maintained?": street_maintained,
         "FEMA Special Flood Hazard Area": fema_special,
         "FEMA Flood Zone": fema_zone,
         "FEMA Map #": fema_map_id,
         "FEMA Map Date": fema_map_date,
         "Are the utilities and off-site improvements typical for the market area?": util_typical,
         "Are the utilities and off-site improvements typical for the market area? If No, describe": util_typical_desc,
-        "Are there any adverse site conditions or external factors (easements, encroachments, environmental conditions, land uses, etc.)? If Yes, describe": adverse_site_desc,
+        "Are there any adverse site conditions or external factors (easements, encroachments, environmental conditions, land uses, etc.)? If Yes, describe": adverse_site_comment or adverse_site_desc,
+        "Are there any adverse site conditions or external factors (easements, encroachments, environmental conditions, land uses, etc.)? Yes No If Yes, describe": adverse_site_desc,
+        "Are there any adverse site conditions or external factors (easements, encroachments, environmental conditions, land uses, etc.)?": adverse_site,
+        "Adverse Site Conditions": adverse_site,
+        "Adverse Site Conditions Description": adverse_site_comment or adverse_site_desc,
         "Utilities": utilities_str,
         "Off-site Improvements - Street": street_val,
         "Off-site Improvements - Alley": alley_val,
@@ -5732,8 +5903,24 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
             continue
 
         ft = (f_elem.attrib.get("_Type") or "").strip()
-        ft_lower = ft.lower()
+        mat_type = (f_elem.attrib.get("_MaterialType") or "").strip()
+        other_desc = (f_elem.attrib.get("_OtherDescription") or "").strip()
+        ft_combined = f"{ft} {mat_type}".strip()
+        ft_lower = ft_combined.lower()
         cond_desc = (f_elem.attrib.get("_ConditionDescription") or "").strip().lower()
+
+        # Manufactured Home Foundation Types (Form 1004C)
+        if "runner" in ft_lower or f_elem.attrib.get("_ConcreteRunnersIndicator") == "Y":
+            if "Concrete Runners" not in found_types:
+                found_types.append("Concrete Runners")
+
+        if "poured" in ft_lower or f_elem.attrib.get("_PouredConcreteIndicator") == "Y":
+            if "Poured Concrete" not in found_types:
+                found_types.append("Poured Concrete")
+
+        if "block" in ft_lower or "pier" in ft_lower or f_elem.attrib.get("_BlockAndPierIndicator") == "Y":
+            if "Block & Pier" not in found_types:
+                found_types.append("Block & Pier")
 
         if "slab" in ft_lower or f_elem.attrib.get("_ConcreteSlabIndicator") == "Y":
             if "Concrete Slab" not in found_types:
@@ -5749,10 +5936,16 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         elif "full" in ft_lower or "full" in cond_desc or f_elem.attrib.get("_FullBasementIndicator") == "Y":
             if "Full Basement" not in found_types:
                 found_types.append("Full Basement")
-        elif ft_lower == "basement":
+        elif ft.lower() == "basement" or mat_type.lower() == "basement":
             if not has_partial_declared and cond_desc != "partial":
                 if "Full Basement" not in found_types:
                     found_types.append("Full Basement")
+
+        if "other" in ft_lower or other_desc:
+            desc_text = other_desc or f_elem.attrib.get("_OtherDescription", "")
+            other_label = f"Other: {desc_text}" if desc_text else "Other-att. description"
+            if other_label not in found_types:
+                found_types.append(other_label)
 
     bm_elem = struct_elem.find("BASEMENT") if struct_elem is not None else None
     if bm_elem is None and property_elem is not None:
@@ -5906,6 +6099,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
     # Exterior Features (Material / Condition)
     ext_dict = {ef.attrib.get("_Type", ""): ef.attrib.get("_Description", "") for ef in struct_elem.findall("EXTERIOR_FEATURE")} if struct_elem is not None else {}
     found_walls = _format_mat_cond(ext_dict.get("Foundation", ""))
+    skirting = _format_mat_cond(ext_dict.get("Skirting", ""))
     ext_walls = _format_mat_cond(ext_dict.get("Walls", ""))
     roof_surf = _format_mat_cond(ext_dict.get("RoofSurface", ""))
     gutters = _format_mat_cond(ext_dict.get("GuttersAndDownspouts", ""))
@@ -6173,6 +6367,8 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
 
     improvements_section = {
         # General Description
+        "# of Units": "One with Accessory Unit" if adu_check == "Yes" else living_units,
+        "Number of Units": "One with Accessory Unit" if adu_check == "Yes" else living_units,
         "Units": "One with Accessory Unit" if adu_check == "Yes" else living_units,
         "One with Accessory Unit": adu_check if adu_check else "No",
         "# of Stories": stories,
@@ -6192,6 +6388,10 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         # Foundation
         "Foundation": found_val,
         "Foundation Type": found_val,
+        "Poured Concrete / Concrete Runners / Block & Pier / Other-att. description / Full Basement / Partial Basement": found_val,
+        "Poured Concrete": "Yes" if "Poured Concrete" in found_types else "No",
+        "Concrete Runners": "Yes" if "Concrete Runners" in found_types else "No",
+        "Block & Pier": "Yes" if "Block & Pier" in found_types else "No",
         "Full Basement": "Yes" if "Full Basement" in found_types else "No",
         "Partial Basement": "Yes" if "Partial Basement" in found_types else "No",
         "Concrete Slab": "Yes" if "Concrete Slab" in found_types else "No",
@@ -6219,6 +6419,8 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         # Exterior Description (Material/Condition)
         "Foundation Walls (Material/Condition)": found_walls,
         "Foundation Walls": found_walls,
+        "Skirting (Material/Condition)": skirting,
+        "Skirting": skirting,
         "Exterior Walls (Material/Condition)": ext_walls,
         "Exterior Walls": ext_walls,
         "Roof Surface (Material/Condition)": roof_surf,
@@ -6299,6 +6501,189 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "Over/Under-Improvement Comment": over_under_comment,
         "Predominant Price Commentary": over_under_comment,
     }
+
+    # Manufactured Home (Form 1004C) extraction
+    manuf_elem = root.find(".//MANUFACTURED_HOME")
+    if manuf_elem is None and property_elem is not None:
+        manuf_elem = property_elem.find(".//MANUFACTURED_HOME")
+    data_ident_elem = root.find(".//DATA_IDENTIFICATION")
+
+    hud_data_plate = ""
+    hud_data_plate_loc = ""
+    hud_cert_label = ""
+    hud_cert_label_num = ""
+    serial_vin = ""
+    manufacturer_name = ""
+    model_name = ""
+    manufacture_date = ""
+    meets_hud_req = ""
+    sections_count = ""
+    foundation_attached = ""
+    foundation_manner = ""
+    wheels_removed = ""
+    utilities_connected = ""
+    modifications_desc = ""
+    installer_name = ""
+    installed_date = ""
+    model_year = ""
+    quality_criteria = ""
+    section_one = ""
+    section_two = ""
+    section_three = ""
+    section_four = ""
+    section_dims = []
+
+    if manuf_elem is not None:
+        hud_dp_ind = manuf_elem.attrib.get("_HUDDataPlateAttachedIndicator", "")
+        hud_data_plate = "Yes" if hud_dp_ind.upper() == "Y" else ("No" if hud_dp_ind.upper() == "N" else hud_dp_ind)
+        hud_data_plate_loc = manuf_elem.attrib.get("_HUDDataPlateDataSourceDescription", "")
+
+        hud_cl_ind = manuf_elem.attrib.get("_HUDCertificationLabelAttachedIndicator", "")
+        hud_cert_label = "Yes" if hud_cl_ind.upper() == "Y" else ("No" if hud_cl_ind.upper() == "N" else hud_cl_ind)
+        hud_cert_label_num = manuf_elem.attrib.get("_HUDCertificationLabelIdentifier", "")
+        serial_vin = manuf_elem.attrib.get("_SerialNumberIdentifier", "")
+        manufacturer_name = manuf_elem.attrib.get("_MakeIdentifier", "")
+        model_name = manuf_elem.attrib.get("_ModelIdentifier", "")
+        raw_mdate = manuf_elem.attrib.get("_ManufactureDate", "") or manuf_elem.attrib.get("_ManufacturedYear", "")
+        manufacture_date = _format_date(raw_mdate) if raw_mdate else ""
+
+        m_hud_req = manuf_elem.attrib.get("_MeetsHUDRequirementsForLocationIndicator", "")
+        meets_hud_req = "Yes" if m_hud_req.upper() == "Y" else ("No" if m_hud_req.upper() == "N" else m_hud_req)
+        m_hud_req_desc = (manuf_elem.attrib.get("_MeetsHUDRequirementsForLocationDescription") or "").strip()
+        meets_hud_req_full = f"{meets_hud_req}: {m_hud_req_desc}" if (meets_hud_req and m_hud_req_desc) else (m_hud_req_desc or meets_hud_req)
+        sections_count = manuf_elem.attrib.get("_SectionCount", "")
+
+        m_att_found = manuf_elem.attrib.get("_AttachedToFoundationIndicator", "")
+        foundation_attached = "Yes" if m_att_found.upper() == "Y" else ("No" if m_att_found.upper() == "N" else m_att_found)
+        foundation_manner = (manuf_elem.attrib.get("_AttachedToFoundationDescription") or "").strip()
+
+        m_wh_rem = manuf_elem.attrib.get("_WheelsRemovedIndicator", "")
+        wheels_removed = "Yes" if m_wh_rem.upper() == "Y" else ("No" if m_wh_rem.upper() == "N" else m_wh_rem)
+        wheels_desc = (manuf_elem.attrib.get("_WheelsDescription") or "").strip()
+
+        m_conn_util = manuf_elem.attrib.get("_ConnectedToUtilitiesIndicator", "")
+        utilities_connected = "Yes" if m_conn_util.upper() == "Y" else ("No" if m_conn_util.upper() == "N" else m_conn_util)
+        conn_desc = (manuf_elem.attrib.get("_ConnectionToUtilitiesDescription") or "").strip()
+
+        m_space_acc = manuf_elem.attrib.get("_InteriorSpaceAcceptableToMarketIndicator", "")
+        interior_acceptable = "Yes" if m_space_acc.upper() == "Y" else ("No" if m_space_acc.upper() == "N" else m_space_acc)
+        space_desc = (manuf_elem.attrib.get("_InteriorSpaceAcceptabilityToMarketDescription") or "").strip()
+
+        hud_cl_desc = (manuf_elem.attrib.get("_HUDCertificationLabelDataSourceDescription") or "").strip()
+
+        modifications_desc = manuf_elem.attrib.get("_ModificationsDescription", "")
+        installer_name = manuf_elem.attrib.get("_InstallerName", "")
+        installed_date = manuf_elem.attrib.get("_InstalledDate", "")
+        model_year = manuf_elem.attrib.get("_ModelYear", "")
+
+        q_elem = manuf_elem.find("_QUALITY")
+        if q_elem is not None:
+            q_cond = q_elem.attrib.get("RatingConditionType", "")
+            q_ds = q_elem.attrib.get("DataSourceDescription", "")
+            quality_criteria = f"{q_cond} / {q_ds}".strip(" /")
+
+        for sec in manuf_elem.findall("_SECTION"):
+            s_type = sec.attrib.get("_Type", "")
+            s_w = sec.attrib.get("WidthFeetCount", "").strip()
+            s_d = sec.attrib.get("DepthFeetCount", "").strip()
+            s_sqft = sec.attrib.get("SquareFeetCount", "").strip()
+            if s_w or s_d or s_sqft:
+                sec_str = f"{s_w} x {s_d} ({s_sqft} sq.ft.)" if (s_w and s_d) else (s_sqft or "")
+                section_dims.append(f"{s_type}: {sec_str}")
+                if "one" in s_type.lower(): section_one = sec_str
+                elif "two" in s_type.lower(): section_two = sec_str
+                elif "three" in s_type.lower(): section_three = sec_str
+                elif "four" in s_type.lower(): section_four = sec_str
+
+    nada_edition = ""
+    cost_data_comment = ""
+    if data_ident_elem is not None:
+        nada_m = data_ident_elem.attrib.get("NADAManufacturedHousingGuideEditionMonth", "")
+        nada_y = data_ident_elem.attrib.get("NADAManufacturedHousingGuideEditionYear", "")
+        if nada_m or nada_y:
+            nada_edition = f"{nada_m}/{nada_y}".strip("/")
+        cost_data_comment = data_ident_elem.attrib.get("ManufacturedHomeCostDataComment", "")
+
+    manufactured_home_section = {
+        "Is the HUD Data Plate/Compliance Certificate attached to the dwelling?": hud_data_plate,
+        "HUD Data Plate Attached": hud_data_plate,
+        "HUD Data Plate": hud_data_plate,
+        "If Yes, identify the location. If No, provide the data source(s) for the HUD Data Plate/Compliance Certificate information.": hud_data_plate_loc,
+        "HUD Data Plate Location": hud_data_plate_loc,
+        "Is a HUD Certification Label attached to the exterior of each section of the dwelling?": hud_cert_label,
+        "HUD Certification Label Attached": hud_cert_label,
+        "If No, provide the data source(s) for the HUD Certification Label #’s": hud_cl_desc,
+        "HUD Certification Label #(s)": hud_cert_label_num,
+        "HUD Certification Label": hud_cert_label_num,
+        "Manufacturer’s Serial #(s)/VIN #(s)": serial_vin,
+        "Manufacturer's Serial #(s)/VIN #(s)": serial_vin,
+        "Serial # / VIN": serial_vin,
+        "Serial Number / VIN": serial_vin,
+        "Manufacturer's Name": manufacturer_name,
+        "Manufacturer Name": manufacturer_name,
+        "Trade/Model": model_name,
+        "Model Name": model_name,
+        "Date of Manufacture": manufacture_date,
+        "Manufacture Date": manufacture_date,
+        "Do the Wind, Roof Load, and Thermal Zones meet the minimum HUD requirements for the location of the subject property?": meets_hud_req,
+        "Do the Wind, Roof Load, and Thermal Zones meet the minimum HUD requirements for the location of the subject property? Yes No If No, explain": meets_hud_req_full,
+        "Meets HUD Requirements For Location": meets_hud_req,
+        "Meets HUD Requirements For Location Description": m_hud_req_desc,
+        "If No, explain (Wind, Roof Load, and Thermal Zones)": m_hud_req_desc,
+        "Wind, Roof Load, and Thermal Zones Explanation": m_hud_req_desc,
+        "# of Sections": sections_count,
+        "Number of Sections": sections_count,
+        "Section Count": sections_count,
+        "Is the manufactured home attached to a permanent foundation system?": foundation_attached,
+        "Permanent Foundation": foundation_attached,
+        "Is the manufactured home attached to a permanent foundation system? Yes No If No, describe the foundation sytem and the manner of attachment.": f"{foundation_attached}: {foundation_manner}" if (foundation_manner and foundation_attached == "No") else foundation_attached,
+        "If No, describe the foundation system and the manner of attachment.": foundation_manner,
+        "Foundation Attachment Description": foundation_manner,
+        "Have the towing hitch, wheels, and axles been removed?": wheels_removed,
+        "Have the towing hitch, wheels, and axles been removed? Yes No If No, explain": f"{wheels_removed}: {wheels_desc}" if (wheels_desc and wheels_removed == "No") else wheels_removed,
+        "Have the towing hitch, wheels, and axles been removed? explain": wheels_desc,
+        "Wheels/Axles Removed Comment": wheels_desc,
+        "Wheels Description": wheels_desc,
+        "Wheels/Axles Removed": wheels_removed,
+        "Connected to Utilities": utilities_connected,
+        "Is the manufactured home permanently connected to a septic tank or sewage system and other utilities? Yes No If No, explain": f"{utilities_connected}: {conn_desc}" if (conn_desc and utilities_connected == "No") else utilities_connected,
+        "Is the manufactured home permanently connected to a septic tank or sewage system and other utilities? explain": conn_desc,
+        "Connected to Utilities Comment": conn_desc,
+        "Utilities Connection Description": conn_desc,
+        "Is the manufactured home permanently connected to a septic tank or sewage system and other utilities?": utilities_connected,
+        "Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market? Yes No If No, explain": f"{interior_acceptable}: {space_desc}" if (space_desc and interior_acceptable == "No") else interior_acceptable,
+        "Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market? explain": space_desc,
+        "Market Acceptability Comment": space_desc,
+        "Interior Space Acceptability Description": space_desc,
+        "Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market?": interior_acceptable,
+        "Describe any additions or modifications (decks, rooms, remodeling, etc.)": modifications_desc,
+        "Describe any additions or modifications (decks, rooms, remodeling, etc.": modifications_desc,
+        "Additions/Modifications Description": modifications_desc,
+        "The appraiser must rate the quality of construction for the subject unit based on objective criteria (such as N.A.D.A. Manufactured Housing Appraisal Guide®, Marshall & Swift Residential Cost Handbook, etc.)": quality_criteria,
+        "The appraiser must rate the quality of construction for the subject unit based on objective criteria (such as N.A.D.A. Manufactured Housing Appraisal Guide®, Marshall & Swift Residential Cost Handbook®, or other published cost service).": quality_criteria,
+        "Quality Rating (Cost Service)": quality_criteria,
+        "Quality Poor Fair Average Good Excellent Identify source of quality rating": quality_criteria,
+        "Section One": section_one,
+        "Section Two": section_two,
+        "Section Three": section_three,
+        "Section Four": section_four,
+        "Section Dimensions": ", ".join(section_dims),
+        "Installer’s Name": installer_name,
+        "Date Installed": installed_date,
+        "Model Year": model_year,
+        "N.A.D.A. Guide Edition": nada_edition,
+        "Manufactured Home Cost Data Comment": cost_data_comment,
+        "Poured Concrete / Concrete Runners / Block & Pier / Other-att. description / Full Basement / Partial Basement": found_val,
+        "Foundation Type": found_val,
+        "Foundation": found_val,
+        "Skirting": skirting,
+        "Skirting (Material/Condition)": skirting,
+    }
+
+    if manufactured_home_section and any(manufactured_home_section.values()):
+        for mk, mv in manufactured_home_section.items():
+            if mv:
+                improvements_section.setdefault(mk, mv)
 
     reconciliation_section = {
         "Indicated Value by: Sales Comparison Approach $": sales_comp_ind_val,
@@ -6401,6 +6786,74 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "Indicated Value by Cost Approach": cost_indicated_val,
         "Above Grade Finished Area": gla_sqft_cost,
         "Cost Per Square Foot": price_per_sqft_cost,
+
+        # 1004C Manufactured Home Specific Fields
+        "Section One Sq. ft.": sections_1004c["SectionOne"]["sqft"],
+        "Section One @ $": sections_1004c["SectionOne"]["rate"],
+        "Section One Cost $": sections_1004c["SectionOne"]["cost"],
+        "Section One Width": sections_1004c["SectionOne"]["width"],
+        "Section One Length": sections_1004c["SectionOne"]["length"],
+        "Section One Area Sq. ft.": sections_1004c["SectionOne"]["area"],
+
+        "Section Two Sq. ft.": sections_1004c["SectionTwo"]["sqft"],
+        "Section Two @ $": sections_1004c["SectionTwo"]["rate"],
+        "Section Two Cost $": sections_1004c["SectionTwo"]["cost"],
+        "Section Two Width": sections_1004c["SectionTwo"]["width"],
+        "Section Two Length": sections_1004c["SectionTwo"]["length"],
+        "Section Two Area Sq. ft.": sections_1004c["SectionTwo"]["area"],
+
+        "Section Three Sq. ft.": sections_1004c["SectionThree"]["sqft"],
+        "Section Three @ $": sections_1004c["SectionThree"]["rate"],
+        "Section Three Cost $": sections_1004c["SectionThree"]["cost"],
+        "Section Three Width": sections_1004c["SectionThree"]["width"],
+        "Section Three Length": sections_1004c["SectionThree"]["length"],
+        "Section Three Area Sq. ft.": sections_1004c["SectionThree"]["area"],
+
+        "Section Four Sq. ft.": sections_1004c["SectionFour"]["sqft"],
+        "Section Four @ $": sections_1004c["SectionFour"]["rate"],
+        "Section Four Cost $": sections_1004c["SectionFour"]["cost"],
+        "Section Four Width": sections_1004c["SectionFour"]["width"],
+        "Section Four Length": sections_1004c["SectionFour"]["length"],
+        "Section Four Area Sq. ft.": sections_1004c["SectionFour"]["area"],
+
+        "Additional Item 1 Description": additional_improvements_1004c[0]["description"] if len(additional_improvements_1004c) > 0 else "",
+        "Additional Item 1 Cost $": additional_improvements_1004c[0]["cost"] if len(additional_improvements_1004c) > 0 else "",
+        "Additional Item 2 Description": additional_improvements_1004c[1]["description"] if len(additional_improvements_1004c) > 1 else "",
+        "Additional Item 2 Cost $": additional_improvements_1004c[1]["cost"] if len(additional_improvements_1004c) > 1 else "",
+        "Additional Item 3 Description": additional_improvements_1004c[2]["description"] if len(additional_improvements_1004c) > 2 else "",
+        "Additional Item 3 Cost $": additional_improvements_1004c[2]["cost"] if len(additional_improvements_1004c) > 2 else "",
+
+        "Total Gross Living Area": gba or gla_sqft_cost,
+        "Total Gross Living Area:": f"{gba or gla_sqft_cost} Sq. ft." if (gba or gla_sqft_cost) else "",
+        "N.A.D.A. Data Identification Info: Edition Mo:": nada_month,
+        "N.A.D.A. Data Identification Info: Yr:": nada_year,
+        "MH State:": nada_state,
+        "Region:": nada_region,
+        "Size Width ft:": nada_width,
+        "Size Length ft:": nada_length,
+        "Size:": f"{nada_width} ft. x {nada_length} ft." if (nada_width or nada_length) else "",
+        "Gray pg.": nada_grey_pg,
+        "White pg.": nada_white_pg,
+        "Black SVS pg.": nada_black_pg,
+        "15 years and older Conversion Chart pg.": nada_conversion_pg,
+        "Yellow pg.": nada_yellow_pg,
+
+        "Sub-total:": cost_subtotal,
+        "Sub-total": cost_subtotal,
+        "Cost Multiplier (if applicable):": cost_multiplier,
+        "ModifiedSub-total:": cost_modified_subtotal,
+        "ModifiedSub-total": cost_modified_subtotal,
+        "Physical Depreciation or Condition Modifier:": deprec_phys_amt or depreciation_cost,
+        "Physical Depreciation Comments:": nada_comment,
+        "Comments:": nada_comment,
+        "Functional Obsolescence (not used for N.A.D.A.):": deprec_func_amt,
+        "External Depreciation or State Location Modifier:": deprec_ext_amt,
+        "Delivery, Installation, and Setup (not used for N.A.D.A.):": cost_delivery_setup,
+        "Other Depreciated Site Improvements:": cost_other_site_imp,
+        "Market Value of Subject Site (as supported above):": cost_site_val,
+        "Summary of Cost Approach": cost_comment,
+        "sections_1004c": sections_1004c,
+        "additional_improvements_1004c": additional_improvements_1004c,
     }
 
     insp_elem = appraiser_elem.find("INSPECTION") if appraiser_elem is not None else root.find(".//INSPECTION")
@@ -7049,6 +7502,11 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
     for k, v in subj_grid.items():
         if k not in clean_subject or not clean_subject[k]:
             clean_subject[k] = v
+
+    if manufactured_home_section and any(manufactured_home_section.values()):
+        for mk, mv in manufactured_home_section.items():
+            if mv and (mk not in clean_subject or not clean_subject[mk]):
+                clean_subject[mk] = mv
 
     # Subject rent fields for Form 1007 stay strictly in single_family_rent_schedule (keep Subject and Rent Schedule separate)
     subj_addr_str = str(clean_subject.get("Full Address") or clean_subject.get("Property Address") or prop_addr or "")
@@ -8137,6 +8595,14 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         clean_data["Single Family Rent Schedule"] = single_family_rent_schedule
     if certification_section and any(certification_section.values()):
         clean_data["Certification"] = certification_section
+    if manufactured_home_section and any(manufactured_home_section.values()):
+        clean_data["Manufactured Home"] = manufactured_home_section
+        clean_data["MANUFACTURED_HOME"] = manufactured_home_section
+        fields["Manufactured Home"] = manufactured_home_section
+        fields["MANUFACTURED_HOME"] = manufactured_home_section
+        for mk, mv in manufactured_home_section.items():
+            if mv:
+                fields.setdefault(mk, mv)
     if has_invoice and "INVOICE" in fields:
         clean_data["Invoice"] = fields["INVOICE"]
 

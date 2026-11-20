@@ -15,6 +15,16 @@ export const SubjectInfoCard = ({ id, title, fields, data, extractionAttempted, 
       candidateKeys.push('HOA(per year)', 'HOA (per year)', 'PUD Fees (per year)', 'per year');
     } else if (field === 'PUD') {
       candidateKeys.push('PUD', 'Planned Unit Development (PUD)');
+    } else if (typeof field === 'string' && field.includes('Project Type')) {
+      candidateKeys.push(
+        "Project Type (if applicable):-  PUD  / Condominium / Cooperative / Other (describe)",
+        "Project Type (if applicable):- PUD / Condominium / Cooperative / Other (describe)",
+        "Project Type (if applicable)",
+        "Project Type",
+        "ProjectClassificationType",
+        "_ClassificationType",
+        "PUD"
+      );
     } else if (field === 'HOA $') {
       candidateKeys.push('HOA $', 'HOA', 'PUD Fees $', 'Monthly Amount');
     } else if (field === 'as of' || (typeof field === 'string' && field.trim().toLowerCase() === 'as of')) {
@@ -146,7 +156,7 @@ export const SubjectInfoCard = ({ id, title, fields, data, extractionAttempted, 
 
     const comparisonStyle = getComparisonStyle ? getComparisonStyle(field, displayValue, comparisonData?.[field]) : {};
 
-    const isLongCommentField = ['ANSI', 'Exposure Comment', 'Prior Service Comment'].includes(field);
+    const isLongCommentField = ['ANSI', 'Exposure Comment', 'Prior Service Comment'].includes(field) || (typeof field === 'string' && field.includes('Project Type'));
     const displayLabel = (field === 'HOA(per month)' || field === 'HOA (per month)')
       ? 'HOA (per month)'
       : (field === 'HOA(per year)' || field === 'HOA (per year)')

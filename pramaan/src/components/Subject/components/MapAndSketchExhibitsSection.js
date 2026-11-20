@@ -48,8 +48,11 @@ import {
   LocalLaundryService as LaundryIcon,
   DirectionsCar as GarageIcon,
   MeetingRoom as RoomIcon,
-  Fullscreen as FullscreenIcon
+  Fullscreen as FullscreenIcon,
+  PhotoLibrary as PhotoLibraryIcon,
+  OpenInNew as OpenInNewIcon
 } from '@mui/icons-material';
+import { VERIFY_IMAGES_URL } from './ImageVerificationBanner';
 import { API_BASE_URL } from '../utils/utils.js';
 import {
   ROOM_THEMES,
@@ -2035,8 +2038,22 @@ export const MapAndSketchExhibitsSection = ({
   id = 'map-sketch-exhibits-section',
   data = {},
   allData = {},
-  selectedFile = null
+  selectedFile = null,
+  verifyImagesUrl,
+  onVerifyImagesClick,
 }) => {
+  const handleVerifyImages = () => {
+    if (typeof onVerifyImagesClick === 'function') {
+      onVerifyImagesClick();
+      return;
+    }
+    const targetUrl = verifyImagesUrl || window.VERIFY_IMAGES_URL || VERIFY_IMAGES_URL;
+    if (targetUrl && targetUrl !== '#') {
+      window.open(targetUrl, '_blank', 'noopener,noreferrer');
+    } else {
+      alert('Redirect URL for image verification will be configured shortly.');
+    }
+  };
   const [activeTab, setActiveTab] = useState(0);
   const [loading, setLoading] = useState(false);
   const [extractingStage, setExtractingStage] = useState(null); // 'location_map' | 'aerial_map' | 'building_sketch' | 'rental_map'
@@ -2570,6 +2587,86 @@ export const MapAndSketchExhibitsSection = ({
               Computer Vision Pin Extraction & Sketch Dimension Engine
             </Typography>
           </Box>
+        </Box>
+
+        {/* Verification banner in highlighted header area */}
+        <Box
+          sx={{
+            flex: '1 1 auto',
+            mx: { xs: 0, md: 1.5 },
+            px: 2,
+            py: 0.85,
+            borderRadius: 2,
+            border: '1px solid #bfdbfe',
+            background: 'linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 1.5,
+            flexWrap: { xs: 'wrap', sm: 'nowrap' },
+            boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+            maxWidth: { xl: '680px' },
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
+            <Box
+              sx={{
+                p: 0.6,
+                borderRadius: 1.5,
+                bgcolor: '#dbeafe',
+                color: '#1d4ed8',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}
+            >
+              <PhotoLibraryIcon sx={{ fontSize: '1.25rem' }} />
+            </Box>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography
+                variant="subtitle2"
+                sx={{
+                  fontWeight: 700,
+                  color: '#1e3a8a',
+                  fontSize: '0.82rem',
+                  lineHeight: 1.25
+                }}
+              >
+                To verify images/ photo, blank pages, duplicate photo, etc click below button
+              </Typography>
+              <Typography
+                variant="caption"
+                sx={{ color: '#64748b', fontSize: '0.71rem', display: 'block', lineHeight: 1.15, mt: 0.25 }}
+              >
+                Launch image &amp; photo audit review tools to inspect exhibits, duplicate images, and blank pages.
+              </Typography>
+            </Box>
+          </Box>
+
+          <Button
+            size="small"
+            variant="contained"
+            color="primary"
+            onClick={handleVerifyImages}
+            startIcon={<PhotoLibraryIcon sx={{ fontSize: '1rem' }} />}
+            endIcon={<OpenInNewIcon sx={{ fontSize: '0.95rem' }} />}
+            sx={{
+              textTransform: 'none',
+              fontWeight: 600,
+              fontSize: '0.78rem',
+              py: 0.6,
+              px: 1.75,
+              borderRadius: 1.5,
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+              bgcolor: '#2563eb',
+              boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)',
+              '&:hover': { bgcolor: '#1d4ed8' }
+            }}
+          >
+            Verify the images/ photos
+          </Button>
         </Box>
 
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
