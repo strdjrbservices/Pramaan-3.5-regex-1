@@ -1,4 +1,7 @@
 import { getSubjectRentFieldVal, parseMMDDYYYY, is1007Active, isBlankOrNA, isNA, isLeaseExpired, isBlankOrZeroOrNA } from './rentScheduleValidation';
+import { isPositiveAdu, isNegativeAdu, isUnitsAccessoryChecked, getAduFileCheckValue, getUnitsValue, isAduPresentInSalesGrid, checkAduSalesGridPresence } from './improvementsValidation';
+
+export { checkAduSalesGridPresence };
 
 const checkNotBlank = (field, text, fieldName) => {
     if (field === fieldName) {
@@ -115,11 +118,58 @@ export const checkRETaxes = (field, text) => {
 };
 
 export const checkSpecialAssessments = (field, text) => {
-    if (field !== 'Special Assessments $') return null;
-    const value = parseFloat(String(text || '0').replace(/[^0-9.-]+/g, ""));
-    if (isNaN(value) || value < 0) {
-        return { isError: true, message: 'Special Assessments $ must be at least 0.' };
+    const cleanField = String(field || '').trim().toLowerCase();
+    if (
+        cleanField !== 'special assessments $' &&
+        cleanField !== 'special assessments' &&
+        cleanField !== 'special assessment $' &&
+        cleanField !== 'special assessment'
+    ) {
+        return null;
     }
+
+    const fieldLabel = field || 'Special Assessments $';
+    const rawStr = String(text ?? '').trim();
+    const lowerStr = rawStr.toLowerCase();
+
+    // 0, none, n/a, no, or empty are considered 0 / no special assessment (valid)
+    if (
+        lowerStr === '' ||
+        lowerStr === '0' ||
+        lowerStr === '$0' ||
+        lowerStr === '0.00' ||
+        lowerStr === '$0.00' ||
+        lowerStr === 'none' ||
+        lowerStr === 'n/a' ||
+        lowerStr === 'na' ||
+        lowerStr === 'no'
+    ) {
+        return { isMatch: true };
+    }
+
+    // Explicit affirmative indicates special assessment exists (> 0)
+    if (lowerStr === 'yes' || lowerStr === 'true') {
+        return { isError: true, message: `${fieldLabel} must not be more than 0.` };
+    }
+
+    const cleanNumber = rawStr.replace(/[^0-9.-]+/g, "");
+    if (!cleanNumber) {
+        return { isError: true, message: `${fieldLabel} must only contain numbers and currency symbols.` };
+    }
+
+    const value = parseFloat(cleanNumber);
+    if (isNaN(value)) {
+        return { isError: true, message: `${fieldLabel} must only contain numbers and currency symbols.` };
+    }
+
+    if (value < 0) {
+        return { isError: true, message: `${fieldLabel} must be at least 0.` };
+    }
+
+    if (value > 0) {
+        return { isError: true, message: `${fieldLabel} must not be more than 0.` };
+    }
+
     return { isMatch: true };
 };
 
@@ -350,6 +400,59 @@ export const checkPresence = (field, text) => {
         return { isError: true, message: `${field} is marked as not present.` };
     }
     return { isMatch: true };
+};
+
+export const checkAduFileCheck = (field, text, data = {}) => {
+    const rawVal = text !== undefined && text !== null ? String(text).trim() : '';
+    const aduValue = rawVal || String(getAduFileCheckValue(data) || '').trim();
+
+    if (!aduValue) {
+        return {
+            isError: true,
+            message: "ADU File Check is empty."
+        };
+    }
+
+    const unitsVal = getUnitsValue(data);
+    const hasAccUnit = isUnitsAccessoryChecked(data, unitsVal);
+
+    if (isPositiveAdu(aduValue)) {
+        if (!hasAccUnit) {
+            return {
+                isError: true,
+                message: `ADU is marked 'Yes', but Improvements section must be marked on 'One with Accessory Unit' (currently '${unitsVal || 'One'}').`
+            };
+        }
+        const hasAduInGrid = isAduPresentInSalesGrid(data);
+        if (!hasAduInGrid) {
+            return {
+                isError: true,
+                message: "ADU is marked 'Yes', but 'ADU' or 'Accessory Unit' field is not present in the Sales Comparison Grid."
+            };
+        }
+        return {
+            isMatch: true,
+            message: "Verified: ADU is marked 'Yes', Improvements section is marked on 'One with Accessory Unit', and ADU is present in the Sales Grid."
+        };
+    }
+
+    if (isNegativeAdu(aduValue)) {
+        if (hasAccUnit) {
+            return {
+                isError: true,
+                message: "ADU is marked 'No', but Improvements section is marked on 'One with Accessory Unit'."
+            };
+        }
+        return {
+            isMatch: true,
+            message: "Verified: ADU is marked 'No' and Improvements section is not marked on 'One with Accessory Unit'."
+        };
+    }
+
+    return {
+        isMatch: true,
+        message: `ADU File Check: ${aduValue}`
+    };
 };
 
 export const checkPriorServicesDisclosure = (field, text) => {

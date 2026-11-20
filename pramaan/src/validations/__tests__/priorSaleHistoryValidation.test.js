@@ -2,7 +2,10 @@ import {
     checkPriorSaleHistoryFieldsNotBlank,
     checkSubjectPriorSaleValueIncrease,
     extractYearFromDateStr,
-    getAppraisalCurrentYear
+    getAppraisalCurrentYear,
+    isPriorSaleIncreaseOver15,
+    extractIncreaseComment,
+    hasValidIncreaseComment
 } from '../priorSaleHistoryValidation';
 
 describe('priorSaleHistoryValidation - checkPriorSaleHistoryFieldsNotBlank', () => {
@@ -317,10 +320,9 @@ describe('checkSubjectPriorSaleValueIncrease (15% rule when subject prior sale y
         expect(res).toBeDefined();
         expect(res.isError).toBe(true);
         expect(res.skipBlankFilter).toBe(true);
-        expect(res.message).toContain('Please add comment to check increase in value');
-        expect(res.message).toContain('2026');
-        expect(res.message).toContain('$500,000');
-        expect(res.message).toContain('$400,000');
+        expect(res.message).toBe(
+            'If the subject has "Price of Prior Sale/Transfer" and the year is same as of current year then the "OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $" should not be more than 15%. Please add comment to check increase in value.'
+        );
     });
 
     test('validates successfully when final value exceeds prior sale price by > 15% in same year but an explanatory comment is provided', () => {
@@ -483,5 +485,265 @@ describe('checkSubjectPriorSaleValueIncrease (15% rule when subject prior sale y
         expect(extractYearFromDateStr('N/A')).toBeNull();
 
         expect(getAppraisalCurrentYear(baseCurrentYearData)).toBe(2026);
+    });
+
+    test('dynamically re-evaluates validation when values change manually', () => {
+        // Initial state: Prior sale $400,000, Final value $500,000 in 2026, no comment -> Error
+        let liveData = {
+            ...baseCurrentYearData,
+            'Price of Prior Sale/Transfer': '$400,000',
+            'OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $': '$500,000',
+            'Date of Prior Sale/Transfer': '03/15/2026'
+        };
+
+        let res = checkSubjectPriorSaleValueIncrease(
+            'Price of Prior Sale/Transfer',
+            '$400,000',
+            liveData,
+            ['Subject', 'Price of Prior Sale/Transfer'],
+            'Subject'
+        );
+        expect(res.isError).toBe(true);
+        expect(res.message).toBe(
+            'If the subject has "Price of Prior Sale/Transfer" and the year is same as of current year then the "OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $" should not be more than 15%. Please add comment to check increase in value.'
+        );
+
+        // 1. User manually changes final value to $430,000 (within 15% of $400,000 max $460,000) -> Valid / Match
+        liveData = {
+            ...liveData,
+            'OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $': '$430,000',
+            RECONCILIATION: {
+                'OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $': '$430,000',
+                'Opinion of Market Value': '$430,000'
+            }
+        };
+        res = checkSubjectPriorSaleValueIncrease(
+            'Price of Prior Sale/Transfer',
+            '$400,000',
+            liveData,
+            ['Subject', 'Price of Prior Sale/Transfer'],
+            'Subject'
+        );
+        expect(res.isMatch).toBe(true);
+        expect(res.message).toContain('within 15%');
+
+        // 2. User manually changes prior sale price to $480,000 and final value to $500,000 (within 15%) -> Valid / Match
+        liveData = {
+            ...liveData,
+            'Price of Prior Sale/Transfer': '$480,000',
+            Subject: {
+                ...liveData.Subject,
+                'Price of Prior Sale/Transfer': '$480,000'
+            },
+            'OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $': '$500,000',
+            RECONCILIATION: {
+                'OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $': '$500,000',
+                'Opinion of Market Value': '$500,000'
+            }
+        };
+        res = checkSubjectPriorSaleValueIncrease(
+            'Price of Prior Sale/Transfer',
+            '$480,000',
+            liveData,
+            ['Subject', 'Price of Prior Sale/Transfer'],
+            'Subject'
+        );
+        expect(res.isMatch).toBe(true);
+
+        // 3. User manually lowers prior sale price to $300,000 (> 15% increase to $500,000) -> Error
+        liveData = {
+            ...liveData,
+            'Price of Prior Sale/Transfer': '$300,000',
+            Subject: {
+                ...liveData.Subject,
+                'Price of Prior Sale/Transfer': '$300,000'
+            }
+        };
+        res = checkSubjectPriorSaleValueIncrease(
+            'Price of Prior Sale/Transfer',
+            '$300,000',
+            liveData,
+            ['Subject', 'Price of Prior Sale/Transfer'],
+            'Subject'
+        );
+        expect(res.isError).toBe(true);
+
+        // 4. User adds comment explaining the increase -> Valid / Match
+        liveData = {
+            ...liveData,
+            'Analysis of prior sale or transfer history of the subject property and comparable sales':
+                'Home underwent a full $150k luxury renovation and addition between sales.',
+            PRIOR_SALE_HISTORY: {
+                ...liveData.PRIOR_SALE_HISTORY,
+                'Analysis of prior sale or transfer history of the subject property and comparable sales':
+                    'Home underwent a full $150k luxury renovation and addition between sales.'
+            }
+        };
+        res = checkSubjectPriorSaleValueIncrease(
+            'Price of Prior Sale/Transfer',
+            '$300,000',
+            liveData,
+            ['Subject', 'Price of Prior Sale/Transfer'],
+            'Subject'
+        );
+        expect(res.isMatch).toBe(true);
+        expect(res.message).toContain('supported by explanatory comment');
+
+        // 5. User clears comment -> Error returns
+        liveData = {
+            ...liveData,
+            'Analysis of prior sale or transfer history of the subject property and comparable sales': '',
+            PRIOR_SALE_HISTORY: {
+                ...liveData.PRIOR_SALE_HISTORY,
+                'Analysis of prior sale or transfer history of the subject property and comparable sales': ''
+            }
+        };
+        res = checkSubjectPriorSaleValueIncrease(
+            'Price of Prior Sale/Transfer',
+            '$300,000',
+            liveData,
+            ['Subject', 'Price of Prior Sale/Transfer'],
+            'Subject'
+        );
+        expect(res.isError).toBe(true);
+
+        // 6. User changes date to previous year (2024 instead of 2026) -> Rule no longer applies
+        liveData = {
+            ...liveData,
+            'Date of Prior Sale/Transfer': '05/20/2024',
+            Subject: {
+                ...liveData.Subject,
+                'Date of Prior Sale/Transfer': '05/20/2024'
+            }
+        };
+        res = checkSubjectPriorSaleValueIncrease(
+            'Price of Prior Sale/Transfer',
+            '$300,000',
+            liveData,
+            ['Subject', 'Price of Prior Sale/Transfer'],
+            'Subject'
+        );
+        // 7. When final value is lower than prior sale price (e.g. $875,000 vs $5,800,000 / $500T), rule only checks for MORE than 15% increase, so it is valid
+        liveData = {
+            ...liveData,
+            'Price of Prior Sale/Transfer': '580,0000',
+            Subject: {
+                ...liveData.Subject,
+                'Price of Prior Sale/Transfer': '580,0000',
+                'Date of Prior Sale/Transfer': '05/30/2026'
+            },
+            'Date of Prior Sale/Transfer': '05/30/2026',
+            'OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $': '$875,000',
+            RECONCILIATION: {
+                'OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $': '$875,000',
+                'Opinion of Market Value': '$875,000'
+            }
+        };
+        res = checkSubjectPriorSaleValueIncrease(
+            'Price of Prior Sale/Transfer',
+            '580,0000',
+            liveData,
+            ['Subject', 'Price of Prior Sale/Transfer'],
+            'Subject'
+        );
+        expect(res.isMatch).toBe(true);
+        expect(res.message).toContain('is not more than 15% above prior sale');
+
+        // 8. When final value is more than 15% higher (e.g. $500,000 prior vs $875,000 final = 75% increase) without comment -> Error
+        liveData = {
+            ...liveData,
+            'Price of Prior Sale/Transfer': '$500,000',
+            Subject: {
+                ...liveData.Subject,
+                'Price of Prior Sale/Transfer': '$500,000',
+                'Date of Prior Sale/Transfer': '05/30/2026'
+            },
+            'Date of Prior Sale/Transfer': '05/30/2026',
+            'OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $': '$875,000',
+            RECONCILIATION: {
+                'OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $': '$875,000',
+                'Opinion of Market Value': '$875,000'
+            }
+        };
+        res = checkSubjectPriorSaleValueIncrease(
+            'Price of Prior Sale/Transfer',
+            '$500,000',
+            liveData,
+            ['Subject', 'Price of Prior Sale/Transfer'],
+            'Subject'
+        );
+        expect(res.isError).toBe(true);
+        expect(res.message).toBe(
+            'If the subject has "Price of Prior Sale/Transfer" and the year is same as of current year then the "OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $" should not be more than 15%. Please add comment to check increase in value.'
+        );
+
+        // 9. When Comment on Increase in Value is provided in RECONCILIATION section -> Valid
+        liveData = {
+            ...liveData,
+            RECONCILIATION: {
+                ...liveData.RECONCILIATION,
+                'Comment on Increase in Value': 'Renovation of kitchen, baths, and roof accounts for the increase in value.'
+            }
+        };
+        res = checkSubjectPriorSaleValueIncrease(
+            'Comment on Increase in Value',
+            'Renovation of kitchen, baths, and roof accounts for the increase in value.',
+            liveData,
+            ['RECONCILIATION', 'Comment on Increase in Value']
+        );
+        expect(res.isMatch).toBe(true);
+        expect(res.message).toContain('supported by explanatory comment');
+        expect(res.message).toContain('75.0%');
+    });
+
+    test('isPriorSaleIncreaseOver15 detects >15% increase only', () => {
+        const dataIncrease = {
+            'as of': '11/12/2026',
+            Subject: {
+                'Date of Prior Sale/Transfer': '05/30/2026',
+                'Price of Prior Sale/Transfer': '$500,000'
+            },
+            RECONCILIATION: {
+                'Opinion of Market Value': '$875,000'
+            }
+        };
+        expect(isPriorSaleIncreaseOver15(dataIncrease)).toBe(true);
+
+        const dataDecrease = {
+            'as of': '11/12/2026',
+            Subject: {
+                'Date of Prior Sale/Transfer': '05/30/2026',
+                'Price of Prior Sale/Transfer': '580,0000'
+            },
+            RECONCILIATION: {
+                'Opinion of Market Value': '$875,000'
+            }
+        };
+        expect(isPriorSaleIncreaseOver15(dataDecrease)).toBe(false);
+    });
+
+    test('extractIncreaseComment and hasValidIncreaseComment ignore generic no-sales comments', () => {
+        expect(hasValidIncreaseComment('My research did not reveal any prior sales or transfers of the subject property')).toBe(false);
+        expect(hasValidIncreaseComment('No prior sales')).toBe(false);
+        expect(hasValidIncreaseComment('Subject property underwent complete luxury remodel explaining value increase')).toBe(true);
+
+        const dataWithGenericComment = {
+            'as of': '11/12/2026',
+            Subject: {
+                'Date of Prior Sale/Transfer': '05/30/2026',
+                'Price of Prior Sale/Transfer': '$500,000'
+            },
+            'Analysis of prior sale or transfer history of the subject property and comparable sales':
+                'My research did not reveal any prior sales or transfers of the subject property for the three years prior to the effective date of this appraisal'
+        };
+        expect(extractIncreaseComment(dataWithGenericComment)).toBe('');
+
+        const dataWithRenovationComment = {
+            ...dataWithGenericComment,
+            RECONCILIATION: {
+                'Comment on Increase in Value': 'Property remodeled with new HVAC and kitchen.'
+            }
+        };
+        expect(extractIncreaseComment(dataWithRenovationComment)).toBe('Property remodeled with new HVAC and kitchen.');
     });
 });

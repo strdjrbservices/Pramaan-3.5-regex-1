@@ -1,10 +1,10 @@
 import React from 'react';
 import { checkContractFieldsMandatory, checkFinancialAssistanceInconsistency, checkContractAnalysisConsistency, checkYesNoOnly, checkContractPriceVsFinalValue, checkContractDateVsAsOfDate } from '../../../validations/contractValidation';
-import { checkTaxYear, checkRETaxes, checkSpecialAssessments, checkPUD, checkHOA, checkHOAFrequency, checkOfferedForSale, checkReportDataSourceOfferingPriceDate, checkAnsi, checkFullAddressConsistency, checkPresence, checkAssignmentTypeConsistency, checkSubjectFieldsNotBlank, checkFhaCaseNo, checkOccupancy, checkPriorServicesDisclosure } from '../../../validations/subjectValidation';
+import { checkTaxYear, checkRETaxes, checkSpecialAssessments, checkPUD, checkHOA, checkHOAFrequency, checkOfferedForSale, checkReportDataSourceOfferingPriceDate, checkAnsi, checkFullAddressConsistency, checkPresence, checkAssignmentTypeConsistency, checkSubjectFieldsNotBlank, checkFhaCaseNo, checkOccupancy, checkPriorServicesDisclosure, checkAduFileCheck } from '../../../validations/subjectValidation';
 import { checkZoning, checkNonconformingComment, checkZoningDescription, checkSpecificZoningClassification, checkHighestAndBestUse, checkFemaInconsistency, checkFemaFieldsConsistency, checkSiteSectionBlank, checkArea, checkYesNoWithComment, checkUtilities } from '../../../validations/siteValidation';
 import { checkVersion1UtilitySubfields, checkZoningClassificationDescription, checkSiteSizesConsistency, checkVersion1EffectiveDatesConsistency, checkAboveGradeFinishedAreaConsistency, checkYearBuiltConsistency, checkAppraiserNameConsistency, checkVersion1ComparableListingStatusConsistency, checkVersion1ComparableTransferTermsConsistency, checkVersion1YearBuiltAdjustmentConsistency, checkVersion1ConstructionMethodAdjustmentConsistency, checkVersion1SiteSizeAdjustmentConsistency, checkVersion1LocationAdjustmentConsistency, checkVersion1AttachedDetachedAdjustmentConsistency, checkVersion1HeatingAdjustmentConsistency, checkVersion1AmenitiesAdjustmentConsistency, checkVersion1QualityConditionConsistency, checkVersion1AreaAdjustmentConsistency, checkVersion1OverallQualityConditionAdjustmentConsistency, checkVersion1VehicleStorageAdjustmentConsistency } from '../Version1/version1Validation';
 import { checkHousingPriceAndAge, checkPredominantPriceVsIndicatedValue, checkNeighborhoodUsageConsistency, checkSingleChoiceFields, checkNeighborhoodBoundaries, checkNeighborhoodFieldsNotBlank, checkOtherLandUseComment, checkOtherLandUse, checkSearchCriteriaDescription, checkNeighborhoodListPricesConsistency, checkNeighborhoodSalePricesConsistency, checkLocation, checkBuiltUp, checkGrowth, checkPropertyValues, checkDemandSupply } from '../../../validations/neighborhoodValidation';
-import { checkUnits, checkAccessoryUnit, checkNumberOfStories, checkPropertyType, checkConstructionStatusAndReconciliation, checkExistingProposedUnderConst, checkDesignStyle, checkSubjectDesignStyleConsistency, checkYearBuilt, checkEffectiveAge, checkAdditionalFeatures, checkPhysicalDeficienciesImprovements, checkNeighborhoodConformity, checkFoundationType, checkBasementDetails, checkEvidenceOf, checkMaterialCondition, checkHeatingFuel, checkCarStorage, checkImprovementsFieldsNotBlank } from '../../../validations/improvementsValidation';
+import { checkUnits, checkAccessoryUnit, checkNumberOfStories, checkPropertyType, checkConstructionStatusAndReconciliation, checkExistingProposedUnderConst, checkDesignStyle, checkSubjectDesignStyleConsistency, checkYearBuilt, checkEffectiveAge, checkAdditionalFeatures, checkPhysicalDeficienciesImprovements, checkNeighborhoodConformity, checkFoundationType, checkBasementDetails, checkEvidenceOf, checkMaterialCondition, checkHeatingFuel, checkCarStorage, checkImprovementsFieldsNotBlank, checkAduSalesGridPresence } from '../../../validations/improvementsValidation';
 import { checkComparableAddressDuplicates, checkConditionAdjustment, checkBedroomsAdjustment, checkBathsAdjustment, checkQualityOfConstructionAdjustment, checkProximityToSubject, checkSiteAdjustment, checkGrossLivingAreaAdjustment, checkSubjectAddressInconsistency, checkDesignStyleAdjustment, checkFunctionalUtilityAdjustment, checkEnergyEfficientItemsAdjustment, checkPorchPatioDeckAdjustment, checkHeatingCoolingAdjustment, checkDataSourceDOM, checkActualAgeAdjustment, checkLeaseholdFeeSimpleConsistency, checkDateOfSale, checkLocationConsistency, checkSalePrice, checkSubjectAgeConsistency, checkViewAdjustment, checkCompSalePriceBracketing, checkCompAdjustedSalePriceBracketing, checkSalesConcessions, checkSalesConcessionsAdjustment, checkBasementAdjustment, checkGrossLivingAreaBracketing, checkSiteBracketing, checkBasementAreaBracketing, checkBasementFinishedAreaBracketing, checkGarageCarportAdjustment, checkGarageCarportBracketing, checkCompSalePriceWithinNeighborhoodRange } from '../../../validations/salesComparisonValidation';
 import { checkFinalValueConsistency, checkCostApproachDeveloped, checkAppraisalCondition, checkAsOfDate, checkFinalValueBracketing, checkReconciliationFieldsNotBlank, checkFiveValuesConsistency, checkEffectiveDatesConsistency, checkPropertyQualityConsistency, checkPropertyConditionConsistency, checkHbuConsistency, checkCostApproachConsistency, checkAttachmentTypeConsistency, checkPropertyRightsConsistency, checkAppraiserCredentialLevelConsistency } from '../../../validations/reconciliationValidation';
 import { checkLenderAddressInconsistency, checkLenderNameInconsistency, checkUnpaidLender, checkAppraiserFieldsNotBlank, checkLicenseNumberConsistency as checkAppraiserLicenseConsistency, checkDateGreaterThanToday, checkClientNameHtmlConsistency, checkClientAddressHtmlConsistency, checkBorrowerHtmlConsistency, checkAppraiserVendorNameConsistency, checkSupervisoryAppraiserFields, checkAppraiserLicenseGroup, checkUspapReportingOption, checkReasonableExposureTime, checkAppraiserInspection, checkSignatureDateVsEffectiveDate, checkUadAndCertificationAddenda } from '../../../validations/appraiserLenderValidation';
@@ -169,13 +169,21 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'Prior Services (3-Year Period Disclosure)': [checkPriorServicesDisclosure],
     'Prior Services (3-Year Period Disclosure):': [checkPriorServicesDisclosure],
     'Prior Service': [checkPriorServicesDisclosure],
-    'ADU File Check': [checkPresence],
+    'ADU File Check': [checkAduFileCheck, checkAduSalesGridPresence, checkPresence],
+    'ADU Check': [checkAduFileCheck, checkAduSalesGridPresence, checkPresence],
+    'ADU': [checkAduSalesGridPresence, checkAduFileCheck, checkPresence],
+    'ADU Adjustment': [checkAduSalesGridPresence],
+    'Accessory Unit': [checkAduSalesGridPresence, checkPresence],
+    'Accessory Dwelling Unit': [checkAduSalesGridPresence, checkPresence],
     'FHA Case No.': [checkFhaCaseNo],
     'FHA Case #': [checkFhaCaseNo],
     'FHA Case Number': [checkFhaCaseNo],
     'Tax Year': [checkTaxYear],
     'R.E. Taxes $': [checkRETaxes],
     'Special Assessments $': [checkSpecialAssessments],
+    'Special Assessments': [checkSpecialAssessments],
+    'Special Assessment': [checkSpecialAssessments],
+    'Special Assessment $': [checkSpecialAssessments],
     'PUD': [checkPUD, checkHOA],
     'HOA $': [checkHOA],
     'HOA(per month)': [checkHOAFrequency],
@@ -276,7 +284,7 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'Amenities Adjustment': [checkVersion1AmenitiesAdjustmentConsistency],
 
 
-    'Units': [checkUnits, checkAccessoryUnit],
+    'Units': [checkUnits, checkAccessoryUnit, checkAduSalesGridPresence],
     '# of Stories': [checkNumberOfStories],
     'Type': [checkPropertyType],
     'Existing/Proposed/Under Const.': [checkExistingProposedUnderConst, checkConstructionStatusAndReconciliation],
@@ -576,6 +584,10 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
   validationRegistry['opinion of the market value, as defined, of the real property that is the subject of this report is $'] = [checkFinalValueConsistency, checkFinalValueBracketing, checkSubjectPriorSaleValueIncrease];
   validationRegistry['OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $'] = [checkFinalValueConsistency, checkFinalValueBracketing, checkSubjectPriorSaleValueIncrease];
   validationRegistry['Opinion of Market Value'] = [checkFinalValueConsistency, checkFinalValueBracketing, checkSubjectPriorSaleValueIncrease];
+  validationRegistry['Comment on Increase in Value'] = [checkSubjectPriorSaleValueIncrease];
+  validationRegistry['Prior Sale Increase Comment'] = [checkSubjectPriorSaleValueIncrease];
+  validationRegistry['Comment on Value Increase (>15%)'] = [checkSubjectPriorSaleValueIncrease];
+  validationRegistry['Comment for increase in value'] = [checkSubjectPriorSaleValueIncrease];
   const indicatedValValidators = [checkFinalValueConsistency, checkFinalValueBracketing, checkPredominantPriceVsIndicatedValue, checkSubjectPriorSaleValueIncrease, checkPriorSaleHistoryFieldsNotBlank];
   validationRegistry['Indicated Value by Sales Comparison Approach $'] = indicatedValValidators;
   validationRegistry['Indicated Value by Sales Comparison Approach'] = indicatedValValidators;
@@ -1173,6 +1185,10 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
           checksToRun = [checkReasonableExposureTime];
         } else if (lowerLookup.includes('appraiser did') || lowerLookup.includes('inspect subject property (appraiser)')) {
           checksToRun = [checkAppraiserInspection];
+        } else if (lowerLookup === 'adu file check' || lowerLookup === 'adu check' || lowerLookup === 'adu' || lowerLookup === 'accessory unit' || lowerLookup === 'accessory dwelling unit') {
+          checksToRun = [checkAduFileCheck, checkAduSalesGridPresence, checkPresence];
+        } else if (lowerLookup === 'special assessments' || lowerLookup === 'special assessment' || lowerLookup === 'special assessments $' || lowerLookup === 'special assessment $') {
+          checksToRun = [checkSpecialAssessments];
         }
       }
       if (isSupervisory && !checksToRun.includes(checkSupervisoryAppraiserFields)) {

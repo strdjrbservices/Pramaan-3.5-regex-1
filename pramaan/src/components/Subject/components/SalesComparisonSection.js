@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { EditableField } from './FormComponents';
 import { Tooltip, IconButton, Paper, Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow } from '@mui/material';
 import { getOpinionOfMarketValue, getComparableSalesPrices, evaluateBracketing, getSubjectExpectedActualAge } from '../../../validations/salesComparisonValidation';
@@ -91,6 +91,105 @@ const SalesComparisonSection = ({
     return '';
   };
 
+  const effectiveSalesGridRows = useMemo(() => {
+    if (!Array.isArray(salesGridRows) || salesGridRows.length === 0) return salesGridRows || [];
+
+    // 1. Gather custom rows from backend if present
+    const backendCustomRows = data?.sales_grid_custom_rows ||
+      allData?.sales_grid_custom_rows ||
+      data?.SALES_GRID?.custom_rows ||
+      allData?.SALES_GRID?.custom_rows ||
+      data?.SALES_GRID?.sales_grid_custom_rows ||
+      allData?.SALES_GRID?.sales_grid_custom_rows ||
+      [];
+
+    // 2. Candidate custom features that may appear on appraisal reports
+    const candidateList = [
+      ...backendCustomRows,
+      { label: "Fireplace (s), etc.", valueKey: "Fireplace (s), etc.", adjustmentKey: "Fireplace (s), etc. Adjustment" },
+      { label: "Fence, Pool, etc.", valueKey: "Fence, Pool, etc.", adjustmentKey: "Fence, Pool, etc. Adjustment" },
+      { label: "Other", valueKey: "Other", adjustmentKey: "Other Adjustment" },
+      { label: "ADU", valueKey: "ADU", adjustmentKey: "ADU Adjustment" },
+      { label: "Woodstove", valueKey: "Woodstove", adjustmentKey: "Woodstove Adjustment" },
+      { label: "Additional Description", valueKey: "Additional Description", adjustmentKey: "Additional Adjustment" },
+    ];
+
+    // Deduplicate candidate rows by normalized label
+    const seen = new Set();
+    const uniqueCandidates = [];
+    candidateList.forEach(cand => {
+      if (!cand || !cand.label) return;
+      const norm = cand.label.trim().toLowerCase();
+      if (!seen.has(norm)) {
+        seen.add(norm);
+        uniqueCandidates.push({
+          label: cand.label,
+          valueKey: cand.valueKey || cand.label,
+          adjustmentKey: cand.adjustmentKey || `${cand.label} Adjustment`
+        });
+      }
+    });
+
+    // Check which candidate rows are already in salesGridRows
+    const existingKeys = new Set(salesGridRows.map(r => (r.valueKey || r.label || '').trim().toLowerCase()));
+
+    // Filter to ONLY those candidates that have extracted non-empty data in Subject or any Comparable Sale
+    const extractedCustomRows = uniqueCandidates.filter(cand => {
+      const normVal = (cand.valueKey || cand.label || '').trim().toLowerCase();
+      if (existingKeys.has(normVal)) return false;
+
+      const valKey = cand.valueKey;
+      const adjKey = cand.adjustmentKey;
+
+      // Check Subject
+      const subjVal = subjectObj[valKey] ?? subjectObj[normVal] ?? '';
+      const subjAdj = adjKey ? (subjectObj[adjKey] ?? subjectObj[adjKey.toLowerCase()] ?? '') : '';
+      if (String(subjVal).trim() !== '' || String(subjAdj).trim() !== '') {
+        return true;
+      }
+
+      // Check all Comparable Sales
+      return comparableSales.some(sale => {
+        const comp = getCompData(sale);
+        const compVal = comp[valKey] ?? comp[normVal] ?? '';
+        const compAdj = adjKey ? (comp[adjKey] ?? comp[adjKey.toLowerCase()] ?? '') : '';
+        return String(compVal).trim() !== '' || String(compAdj).trim() !== '';
+      });
+    });
+
+    if (extractedCustomRows.length === 0) {
+      return salesGridRows;
+    }
+
+    // Insert extracted rows right below Porch/Patio/Deck
+    const porchIdx = salesGridRows.findIndex(r =>
+      r.label === "Porch/Patio/Deck" ||
+      r.valueKey === "Porch/Patio/Deck" ||
+      (typeof r.label === 'string' && r.label.toLowerCase().includes("porch"))
+    );
+
+    if (porchIdx !== -1) {
+      const result = [...salesGridRows];
+      result.splice(porchIdx + 1, 0, ...extractedCustomRows);
+      return result;
+    }
+
+    const netIdx = salesGridRows.findIndex(r =>
+      r.label === "Net Adjustment (Total)" ||
+      r.valueKey === "Net Adjustment (Total)" ||
+      r.valueKey === "Net Adjustment Total"
+    );
+
+    if (netIdx !== -1) {
+      const result = [...salesGridRows];
+      result.splice(netIdx, 0, ...extractedCustomRows);
+      return result;
+    }
+
+    return [...salesGridRows, ...extractedCustomRows];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [salesGridRows, data, allData, comparableSales, subjectObj]);
+
   return (
     <>
       <Paper id={id} elevation={3} sx={{ mb: 4, mt: 4, borderRadius: 2, overflow: 'hidden' }}>
@@ -127,7 +226,7 @@ const SalesComparisonSection = ({
               </TableRow>
             </TableHead>
             <TableBody>
-              {salesGridRows.map((row, idx) => {
+              {effectiveSalesGridRows.map((row, idx) => {
                 const isHighlighted = row.label === 'Date of Sale/Time';
                 const isFirstAdjustment = row.valueKey === "Sales or Financing Concessions" || row.valueKey === "Sales Concessions";
                 const isFirstUnitBreakdown = row.isUnitBreakdown && row.unitNumber === 1;

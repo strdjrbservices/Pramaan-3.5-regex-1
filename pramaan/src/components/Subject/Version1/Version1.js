@@ -5,6 +5,7 @@ import SalesComparisonSection from '../components/SalesComparisonSection';
 import MapAndSketchExhibitsSection from '../components/MapAndSketchExhibitsSection';
 import { Tooltip, IconButton, Paper, Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Checkbox } from '@mui/material';
 import LibraryBooksIcon from '@mui/icons-material/LibraryBooks';
+import { isPriorSaleIncreaseOver15, extractIncreaseComment } from '../../../validations/priorSaleHistoryValidation';
 
 const Version1 = ({
   summaryFields,
@@ -2228,6 +2229,27 @@ const Version1 = ({
               </Box>
             </div>
           </div>
+
+          {(isPriorSaleIncreaseOver15(allData || data) || data.RECONCILIATION?.['Comment on Increase in Value']) && (
+            <Paper variant="outlined" sx={{ p: 2, mb: 4, borderRadius: 1, borderColor: '#f59e0b', backgroundColor: '#fffbeb' }}>
+              <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1, color: '#b45309' }}>
+                Comment on Increase in Value
+              </Typography>
+              <EditableField
+                fieldPath={['RECONCILIATION', 'Comment on Increase in Value']}
+                value={data.RECONCILIATION?.['Comment on Increase in Value'] || extractIncreaseComment(allData || data) || ''}
+                onDataChange={handleDataChange}
+                editingField={editingField}
+                setEditingField={setEditingField}
+                isEditable={true}
+                allData={allData}
+                manualValidations={manualValidations}
+                handleManualValidation={handleManualValidation}
+                revisionHandlers={revisionHandlers}
+                showBlankValidation={true}
+              />
+            </Paper>
+          )}
 
           <Paper variant="outlined" sx={{ p: 2, mb: 4, borderRadius: 1 }}>
             <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>Reconciliation of Market Value</Typography>

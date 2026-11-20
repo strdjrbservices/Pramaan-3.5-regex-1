@@ -3667,6 +3667,46 @@ def extract_page_2_sales_grid_and_reconciliation(page_p2, page_extra_comps=None,
     y_conc = find_y("Concessions", 165, 215) or 195.0
     y_date = find_y("Sale/Time", 185, 225) or find_y("Date", 185, 225) or 217.6
 
+    y_porch = find_y("Porch", 395, 432) or 426.0
+    y_net = find_y("Adjustment", 440, 478) or 471.1
+
+    # Find custom feature row labels between Porch and Net Adjustment (e.g. Fireplace (s), etc., Fence, Pool, etc., Other, ADU, Woodstove)
+    custom_rows_p2 = []
+    candidate_labels = [
+        ("Fireplace (s), etc.", ["fireplace", "fireplaces"]),
+        ("Fence, Pool, etc.", ["fence", "pool"]),
+        ("Other", ["other"]),
+        ("ADU", ["adu", "accessory"]),
+        ("Woodstove", ["woodstove", "wood stove"]),
+    ]
+    custom_words_in_band = [w for w in words if w['x1'] <= 110 and (y_porch + 3.0) <= w['top'] <= (y_net - 3.0)]
+    word_clusters = []
+    for w in sorted(custom_words_in_band, key=lambda x: x['top']):
+        assigned = False
+        for cl in word_clusters:
+            if abs(w['top'] - cl['top']) <= 4.0:
+                cl['words'].append(w)
+                cl['top'] = sum(x['top'] for x in cl['words']) / len(cl['words'])
+                assigned = True
+                break
+        if not assigned:
+            word_clusters.append({'top': w['top'], 'words': [w]})
+
+    for cl in word_clusters:
+        cl_words = sorted(cl['words'], key=lambda x: x['x0'])
+        raw_label = " ".join(w['text'] for w in cl_words).strip()
+        raw_label = re.sub(r'[:]+$', '', raw_label).strip()
+        if not raw_label or raw_label.lower() in ["description", "value", "+(-)", "+", "-"]:
+            continue
+        norm_raw = raw_label.lower()
+        matched_label = raw_label
+        for std_lbl, kws in candidate_labels:
+            if any(kw in norm_raw for kw in kws):
+                matched_label = std_lbl
+                break
+        if not any(r[0] == matched_label for r in custom_rows_p2):
+            custom_rows_p2.append((matched_label, cl['top']))
+
     row_anchors = [
         ("Address", find_y("Address", 75, 125) or 108.0),
         ("Proximity to Subject", find_y("Proximity", 95, 135) or 125.5),
@@ -3691,8 +3731,9 @@ def extract_page_2_sales_grid_and_reconciliation(page_p2, page_extra_comps=None,
         ("Heating/Cooling", find_y("Heating", 360, 398) or 390.4),
         ("Energy Efficient Items", find_y("Energy", 370, 410) or 401.9),
         ("Garage/Carport", find_y("Garage", 385, 420) or 413.5),
-        ("Porch/Patio/Deck", find_y("Porch", 395, 432) or 426.0),
-        ("Net Adjustment (Total)", find_y("Adjustment", 440, 478) or 471.1),
+        ("Porch/Patio/Deck", y_porch),
+        *custom_rows_p2,
+        ("Net Adjustment (Total)", y_net),
         ("Adjusted Sale Price of Comparables", find_y("Comparables", 460, 515) or find_y("Adjusted", 455, 505) or 494.1),
     ]
 
@@ -3782,6 +3823,12 @@ def extract_page_2_sales_grid_and_reconciliation(page_p2, page_extra_comps=None,
 
         col_data["Adjusted Sale Price of Comparable"] = col_data.get("Adjusted Sale Price of Comparables", "")
         grid[col_key] = col_data
+
+    if custom_rows_p2:
+        grid["sales_grid_custom_rows"] = [
+            {"label": r[0], "valueKey": r[0], "adjustmentKey": f"{r[0]} Adjustment"}
+            for r in custom_rows_p2
+        ]
 
     # Resolve Bedrooms and Baths adjustments for Comps 1-3
     s_bed_val = grid.get("Subject", {}).get("Bedrooms", "")
@@ -4014,6 +4061,7 @@ def extract_page_2_sales_grid_and_reconciliation(page_p2, page_extra_comps=None,
                 ("Energy Efficient Items", y_energy_ex),
                 ("Garage/Carport", y_garage_ex),
                 ("Porch/Patio/Deck", y_porch_ex),
+                *[(c_lbl, y_porch_ex + ((c_y - y_porch) / max(y_net - y_porch, 1.0)) * (y_net_ex - y_porch_ex)) for c_lbl, c_y in custom_rows_p2],
                 ("Net Adjustment (Total)", y_net_ex),
                 ("Adjusted Sale Price of Comparables", y_adj_sp_ex),
             ]

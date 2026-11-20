@@ -3,6 +3,7 @@ import { Paper, Box, Typography, Tooltip, IconButton, LinearProgress } from '@mu
 import LibraryBooksIcon from '@mui/icons-material/LibraryBooks';
 import { PlaylistAdd as PlaylistAddIcon, CheckCircle as CheckCircleIcon } from '@mui/icons-material';
 import { EditableField } from './EditableField';
+import { isPriorSaleIncreaseOver15, extractIncreaseComment } from '../../../validations/priorSaleHistoryValidation';
 
 
 
@@ -174,6 +175,26 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
         }
 
+      }
+
+      // Dynamic field: Comment on Increase in Value when subject prior sale >15% in same year
+      const effectiveData = allData || data || {};
+      const hasPriorSaleIncrease = isPriorSaleIncreaseOver15(effectiveData);
+      const existingIncComment = effectiveData?.RECONCILIATION?.['Comment on Increase in Value']
+        ?? effectiveData?.['Comment on Increase in Value']
+        ?? data?.['Comment on Increase in Value']
+        ?? data?.RECONCILIATION?.['Comment on Increase in Value']
+        ?? '';
+
+      if (hasPriorSaleIncrease || String(existingIncComment || '').trim() !== '') {
+        if (!dynamicFields.includes('Comment on Increase in Value')) {
+          const opinionIndex = dynamicFields.findIndex(f => typeof f === 'string' && f.toLowerCase().includes('opinion of the market value'));
+          if (opinionIndex !== -1) {
+            dynamicFields.splice(opinionIndex + 1, 0, 'Comment on Increase in Value');
+          } else {
+            dynamicFields.push('Comment on Increase in Value');
+          }
+        }
       }
 
     }
@@ -924,6 +945,22 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
     }
 
+    if (field === 'Comment on Increase in Value' || field === 'Prior Sale Increase Comment' || field === 'Comment on Value Increase (>15%)' || field === 'Comment for increase in value') {
+
+      const incVal = data?.['Comment on Increase in Value']
+        ?? data?.RECONCILIATION?.['Comment on Increase in Value']
+        ?? data?.Reconciliation?.['Comment on Increase in Value']
+        ?? allData?.RECONCILIATION?.['Comment on Increase in Value']
+        ?? allData?.Reconciliation?.['Comment on Increase in Value']
+        ?? allData?.['Comment on Increase in Value']
+        ?? data?.['Prior Sale Increase Comment']
+        ?? data?.RECONCILIATION?.['Prior Sale Increase Comment']
+        ?? extractIncreaseComment(allData || data);
+
+      if (incVal !== undefined && incVal !== null) return renderValue(incVal);
+
+    }
+
     const val = data?.[field]
 
       ?? data?.SUMMARY?.[field]
@@ -1168,6 +1205,74 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
     }
 
+    if (field === 'Comment on Increase in Value' || field === 'Prior Sale Increase Comment' || field === 'Comment on Value Increase (>15%)' || field === 'Comment for increase in value') {
+
+      return (
+
+        <div
+
+          key={field}
+
+          className={`subject-grid-item ${isHighlighted ? 'highlighted-field' : ''}`}
+
+        >
+
+          <span
+
+            className="field-label"
+
+            onClick={() => setEditingField && setEditingField(computedFieldPath)}
+
+            style={{ cursor: 'pointer', userSelect: 'none', color: '#b45309', fontWeight: 'bold', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}
+
+          >
+
+            <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#f59e0b' }}></span>
+
+            Comment on Increase in Value
+
+          </span>
+
+          <EditableField
+
+            fieldPath={computedFieldPath}
+
+            value={renderGridItemValue(field)}
+
+            onDataChange={onDataChange}
+
+            editingField={editingField}
+
+            setEditingField={setEditingField}
+
+            usePre={true}
+
+            isMissing={isItemMissing}
+
+            inputClassName="form-control form-control-sm field-value-pre"
+
+            isEditable={true}
+
+            allData={allData}
+
+            manualValidations={manualValidations}
+
+            handleManualValidation={handleManualValidation}
+
+            revisionHandlers={revisionHandlers}
+
+            showBlankValidation={true}
+
+            inputStyle={{ width: '100%', border: 'none', background: 'transparent', padding: 0, height: 'auto', resize: 'vertical', fontSize: '0.9rem', color: '#1f2937' }}
+
+          />
+
+        </div>
+
+      );
+
+    }
+
 
 
     return (
@@ -1265,8 +1370,6 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
       );
 
     }
-
-
 
     let certVal = data ? renderValue(data[fieldPath]) : '';
 
@@ -1548,8 +1651,6 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
     }
 
-
-
     if (fieldPath === 'Invoice Attached' || fieldPath === 'Invoice Present') {
 
       const isAttached = ['yes', 'true', 'attached', 'included', '1', 'present'].includes(String(certVal || '').trim().toLowerCase());
@@ -1645,8 +1746,6 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
       );
 
     }
-
-
 
     return (
 
@@ -2133,6 +2232,15 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
               {options.map(opt => {
                 const isChecked = checkOptionMatches(valStr, opt);
                 const handleToggle = () => {
+                  const isUnitsField = label === 'Units' || keys.includes('Units');
+                  if (isUnitsField) {
+                    const newVal = isChecked ? '' : opt;
+                    onDataChange(targetPath, newVal);
+                    const isAcc = newVal.toLowerCase().includes('accessory');
+                    onDataChange(getFieldPath('One with Accessory Unit'), isAcc ? 'Yes' : 'No');
+                    return;
+                  }
+
                   let items = valStr ? valStr.split(',').map(s => s.trim()).filter(Boolean) : [];
                   if (isChecked) {
                     items = items.filter(item => !checkOptionMatches(item, opt));
@@ -4449,25 +4557,25 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
     const getPshRawVal = (fieldKey, fallbackKeys = []) => {
       const keys = [fieldKey, ...(Array.isArray(fallbackKeys) ? fallbackKeys : [fallbackKeys])];
       const sources = [
+        allData?.PRIOR_SALE_HISTORY,
+        allData?.['Prior Sale History'],
+        allData?.Subject,
+        allData?.SUBJECT,
+        allData?.SALES_TRANSFER,
+        allData?.SALES_GRID,
+        allData?.RECONCILIATION,
+        allData,
         pshData,
         data?.PRIOR_SALE_HISTORY,
         data?.['Prior Sale History'],
-        data?.clean_data?.['Prior Sale History'],
-        data?.clean_data?.PRIOR_SALE_HISTORY,
         data?.SALES_TRANSFER,
         data?.SALES_GRID,
         data?.RECONCILIATION,
         data,
-        allData?.PRIOR_SALE_HISTORY,
-        allData?.['Prior Sale History'],
         allData?.clean_data?.['Prior Sale History'],
         allData?.clean_data?.PRIOR_SALE_HISTORY,
-        allData?.SALES_TRANSFER,
-        allData?.SALES_GRID,
-        allData?.RECONCILIATION,
-        allData?.Subject,
-        allData?.SUBJECT,
-        allData
+        data?.clean_data?.['Prior Sale History'],
+        data?.clean_data?.PRIOR_SALE_HISTORY
       ];
       for (const src of sources) {
         if (src && typeof src === 'object') {
@@ -4593,17 +4701,21 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
     const getSubjectRowVal = (feature, fallbackKeys = []) => {
       const keys = [feature, ...(Array.isArray(fallbackKeys) ? fallbackKeys : [fallbackKeys])];
       const sources = [
-        data?.Subject,
-        data?.SUBJECT,
         allData?.Subject,
         allData?.SUBJECT,
-        data?.SALES_GRID?.Subject,
+        allData?.PRIOR_SALE_HISTORY,
+        allData?.['Prior Sale History'],
+        allData?.SALES_TRANSFER,
         allData?.SALES_GRID?.Subject,
         allData?.['Sales Grid']?.Subject,
+        allData,
+        data?.Subject,
+        data?.SUBJECT,
         data?.PRIOR_SALE_HISTORY,
         data?.['Prior Sale History'],
-        data,
-        allData
+        data?.SALES_TRANSFER,
+        data?.SALES_GRID?.Subject,
+        data
       ];
       for (const src of sources) {
         if (src && typeof src === 'object') {

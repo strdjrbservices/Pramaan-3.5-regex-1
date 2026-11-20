@@ -1,15 +1,238 @@
 import { checkProjectAndPropertyCondition } from './form1073Validation';
 import { getSubjectExpectedActualAge, getSubjectGridActualAge } from './salesComparisonValidation';
 
-export const checkUnits = (field, text) => {
-    if (field !== 'Units') return null;
+export const isPositiveAdu = (val) => {
+    if (val === undefined || val === null) return false;
+    const s = String(val).trim().toLowerCase();
+    return s === 'yes' || s === 'y' || s === 'true' || s === '1' || s === 'checked' || s === 'x' || s === '[x]' || (s.includes('yes') && !s.includes('no'));
+};
+
+export const isNegativeAdu = (val) => {
+    if (val === undefined || val === null) return false;
+    const s = String(val).trim().toLowerCase();
+    return s === 'no' || s === 'n' || s === 'false' || s === '0' || s === 'none' || (s.includes('no') && !s.includes('yes'));
+};
+
+export const isOneWithAccessoryUnit = (val) => {
+    if (val === undefined || val === null) return false;
+    const s = String(val).trim().toLowerCase();
+    return s.includes('accessory') || s.includes('adu') || s.includes('one with accessory unit');
+};
+
+const unwrapFieldValue = (v) => {
+    if (v && typeof v === 'object') {
+        return v.value !== undefined ? v.value : (v.comment !== undefined ? v.comment : '');
+    }
+    return v ?? '';
+};
+
+export const getAduFileCheckValue = (data = {}) => {
+    if (!data || typeof data !== 'object') return '';
+    return unwrapFieldValue(
+        data['ADU File Check'] ??
+        data?.Subject?.['ADU File Check'] ??
+        data?.IMPROVEMENTS?.['ADU File Check'] ??
+        data?.Improvements?.['ADU File Check'] ??
+        data?.GENERAL_DESCRIPTION?.['ADU File Check'] ??
+        data['ADU Check'] ??
+        data?.Subject?.['ADU Check'] ??
+        data['ADU'] ??
+        data?.Subject?.['ADU'] ??
+        data['Accessory Dwelling Units (ADUs)'] ??
+        data['Accessory Dwelling Units'] ??
+        data['Accessory Dwelling Unit'] ??
+        ''
+    );
+};
+
+export const getUnitsValue = (data = {}) => {
+    if (!data || typeof data !== 'object') return '';
+    return unwrapFieldValue(
+        data['Units'] ??
+        data?.Subject?.['Units'] ??
+        data?.IMPROVEMENTS?.['Units'] ??
+        data?.Improvements?.['Units'] ??
+        data?.GENERAL_DESCRIPTION?.['Units'] ??
+        ''
+    );
+};
+
+export const isUnitsAccessoryChecked = (data = {}, textVal = null) => {
+    const rawToCheck = textVal !== null && textVal !== undefined && String(textVal).trim() !== ''
+        ? String(textVal).trim()
+        : String(getUnitsValue(data) || '').trim();
+
+    if (rawToCheck) {
+        return isOneWithAccessoryUnit(rawToCheck);
+    }
+
+    const accUnitRaw = unwrapFieldValue(
+        data?.['One with Accessory Unit'] ??
+        data?.Subject?.['One with Accessory Unit'] ??
+        data?.IMPROVEMENTS?.['One with Accessory Unit'] ??
+        data?.Improvements?.['One with Accessory Unit'] ??
+        data?.GENERAL_DESCRIPTION?.['One with Accessory Unit'] ??
+        ''
+    );
+    return isPositiveAdu(accUnitRaw) || isOneWithAccessoryUnit(accUnitRaw);
+};
+
+export const isAduPresentInSalesGrid = (data = {}) => {
+    if (!data || typeof data !== 'object') return false;
+
+    const isAduLabel = (lbl) => {
+        if (!lbl) return false;
+        const s = String(lbl).trim().toLowerCase();
+        return s === 'adu' ||
+            s.includes('accessory unit') ||
+            s.includes('accessory dwelling') ||
+            /\badu\b/i.test(s);
+    };
+
+    // 1. Check custom rows arrays
+    const customRows = [
+        ...(Array.isArray(data?.sales_grid_custom_rows) ? data.sales_grid_custom_rows : []),
+        ...(Array.isArray(data?.SALES_GRID?.sales_grid_custom_rows) ? data.SALES_GRID.sales_grid_custom_rows : []),
+        ...(Array.isArray(data?.SALES_GRID?.custom_rows) ? data.SALES_GRID.custom_rows : []),
+        ...(Array.isArray(data?.['Sales Grid']?.sales_grid_custom_rows) ? data['Sales Grid'].sales_grid_custom_rows : []),
+        ...(Array.isArray(data?.['Sales Grid']?.custom_rows) ? data['Sales Grid'].custom_rows : []),
+        ...(Array.isArray(data?.salesGridRows) ? data.salesGridRows : []),
+        ...(Array.isArray(data?.SALES_GRID?.salesGridRows) ? data.SALES_GRID.salesGridRows : []),
+    ];
+
+    if (customRows.some(r => isAduLabel(r?.label) || isAduLabel(r?.valueKey))) {
+        return true;
+    }
+
+    // 2. Helper to check if a sales grid column object (Subject or Comp) contains an ADU field
+    const checkObjHasAduField = (obj) => {
+        if (!obj || typeof obj !== 'object') return false;
+        for (const [k, v] of Object.entries(obj)) {
+            if (isAduLabel(k)) {
+                const valStr = typeof v === 'object' && v !== null ? (v.value ?? v.comment ?? '') : v;
+                if (valStr !== undefined && valStr !== null && String(valStr).trim() !== '') {
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+
+    // Check Subject in sales grid sources
+    if (checkObjHasAduField(data?.SALES_GRID?.Subject)) return true;
+    if (checkObjHasAduField(data?.['Sales Grid']?.Subject)) return true;
+    if (checkObjHasAduField(data?.SALES_GRID?.subject)) return true;
+    if (checkObjHasAduField(data?.Subject)) return true;
+    if (checkObjHasAduField(data?.SALES_GRID)) return true;
+
+    // 3. Check all Comparable Sales
+    const gridSources = [data?.SALES_GRID, data?.['Sales Grid'], data];
+    for (const src of gridSources) {
+        if (src && typeof src === 'object') {
+            for (const [key, compObj] of Object.entries(src)) {
+                if (/^(?:comparable|comp|sale)\s*(?:sale\s*)?#?\d+/i.test(key) || key.startsWith('COMPARABLE SALE')) {
+                    if (checkObjHasAduField(compObj)) return true;
+                }
+            }
+        }
+    }
+
+    // 4. Check comparableSales array
+    const compSales = data?.comparableSales || data?.SALES_GRID?.comparableSales || [];
+    if (Array.isArray(compSales)) {
+        for (const comp of compSales) {
+            if (checkObjHasAduField(comp)) return true;
+        }
+    }
+
+    return false;
+};
+
+export const checkAduSalesGridPresence = (field, arg2, arg3, arg4, arg5) => {
+    let allData = null;
+    let textVal = null;
+
+    if (arg3 && typeof arg3 === 'object' && !arg3.hasOwnProperty('prototype') && !Array.isArray(arg3)) {
+        allData = arg3;
+        textVal = arg2;
+    } else if (arg2 && typeof arg2 === 'object') {
+        allData = arg2;
+    } else {
+        allData = arg3 || {};
+        textVal = arg2;
+    }
+
+    const rawAduVal = (textVal && (isPositiveAdu(textVal) || isNegativeAdu(textVal)))
+        ? textVal
+        : getAduFileCheckValue(allData);
+
+    const isAduYes = isPositiveAdu(rawAduVal) || isUnitsAccessoryChecked(allData, textVal);
+
+    if (isAduYes) {
+        const hasAduInGrid = isAduPresentInSalesGrid(allData);
+        if (hasAduInGrid) {
+            return {
+                isMatch: true,
+                section: "Sales Comparison Approach",
+                field: "ADU",
+                message: "Verified: ADU is marked 'Yes' and 'ADU' or 'Accessory Unit' is present in the Sales Comparison Grid."
+            };
+        }
+        return {
+            isError: true,
+            section: "Sales Comparison Approach",
+            field: "ADU",
+            message: "ADU is marked 'Yes', but 'ADU' or 'Accessory Unit' field is not present in the Sales Comparison Grid."
+        };
+    }
+
+    return { isMatch: true };
+};
+
+export const checkUnits = (field, text, data = {}) => {
+    const fLower = String(field || '').trim().toLowerCase();
+    if (fLower !== 'units') return null;
+
     const value = String(text || '').trim();
     if (!value) {
-        return { isError: true, message: "'Units' cannot be blank. If 1 unit, it should be marked '1'." };
+        return { isError: true, message: "'Units' cannot be blank. If 1 unit, it should be marked '1' or 'One with Accessory Unit'." };
     }
+
+    const aduVal = getAduFileCheckValue(data);
+
+    if (isPositiveAdu(aduVal)) {
+        if (isOneWithAccessoryUnit(value)) {
+            return {
+                isMatch: true,
+                message: "Verified: ADU is marked 'Yes' and Improvements section is correctly marked on 'One with Accessory Unit'."
+            };
+        }
+        return {
+            isError: true,
+            message: `ADU is marked 'Yes', so Improvements section 'Units' must be marked on 'One with Accessory Unit' (currently '${value}').`
+        };
+    }
+
+    if (isNegativeAdu(aduVal)) {
+        if (isOneWithAccessoryUnit(value)) {
+            return {
+                isError: true,
+                message: "Improvements 'Units' is marked on 'One with Accessory Unit', but ADU is marked 'No'."
+            };
+        }
+    }
+
+    if (isOneWithAccessoryUnit(value)) {
+        return {
+            isMatch: true,
+            message: "Verified: One with Accessory Unit."
+        };
+    }
+
     if (value !== '1' && !value.toLowerCase().includes('one')) {
-        return { isError: true, message: "For a single unit property, 'Units' must be '1'." };
+        return { isError: true, message: "For a single unit property, 'Units' must be '1' or 'One with Accessory Unit'." };
     }
+
     return { isMatch: true };
 };
 
@@ -685,13 +908,47 @@ export const checkCarStorage = (field, text, data = {}) => {
     };
 };
 
-export const checkAccessoryUnit = (field, data) => {
-    if (field !== 'Units') return null;
-    const unitValue = String(data['Units'] || '').trim().toLowerCase();
-    if (unitValue.includes('one with accessory unit')) {
-        const additionalFeatures = String(data['Additional features'] || '').toLowerCase();
-        if (!additionalFeatures.includes('adu') && !additionalFeatures.includes('accessory dwelling unit')) {
-            return { isError: true, message: "If 'One with Accessory Unit' is indicated, details about the ADU should be in 'Additional features', grid, photos, and sketches." };
+export const checkAccessoryUnit = (field, textOrData, maybeData) => {
+    const fLower = String(field || '').trim().toLowerCase();
+    if (fLower !== 'units') return null;
+
+    let text = '';
+    let data = {};
+    if (typeof textOrData === 'string') {
+        text = textOrData;
+        data = maybeData || {};
+    } else if (textOrData && typeof textOrData === 'object') {
+        data = textOrData;
+        text = String(getUnitsValue(data) || '').trim();
+    }
+
+    const unitValue = String(text || getUnitsValue(data) || '').trim().toLowerCase();
+    if (isOneWithAccessoryUnit(unitValue)) {
+        const aduVal = getAduFileCheckValue(data);
+        if (isNegativeAdu(aduVal)) {
+            return {
+                isError: true,
+                message: "Improvements 'Units' is marked on 'One with Accessory Unit', but ADU is marked 'No'."
+            };
+        }
+        if (isPositiveAdu(aduVal)) {
+            return {
+                isMatch: true,
+                message: "Verified: ADU is marked 'Yes' and Improvements section is correctly marked on 'One with Accessory Unit'."
+            };
+        }
+        const additionalFeatures = String(
+            data['Additional features'] ??
+            data?.Subject?.['Additional features'] ??
+            data?.IMPROVEMENTS?.['Additional features'] ??
+            data?.Improvements?.['Additional features'] ??
+            ''
+        ).toLowerCase();
+        if (additionalFeatures && (additionalFeatures.includes('adu') || additionalFeatures.includes('accessory'))) {
+            return {
+                isMatch: true,
+                message: "Verified: Accessory unit details noted in Additional Features."
+            };
         }
     }
     return { isMatch: true };

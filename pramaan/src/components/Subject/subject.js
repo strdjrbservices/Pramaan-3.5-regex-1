@@ -507,13 +507,21 @@ function Subject({ defaultFormType }) {
       'Prior Services (3-Year Period Disclosure)': [subjectValidation.checkPriorServicesDisclosure],
       'Prior Services (3-Year Period Disclosure):': [subjectValidation.checkPriorServicesDisclosure],
       'Prior Service': [subjectValidation.checkPriorServicesDisclosure],
-      'ADU File Check': [subjectValidation.checkPresence],
+      'ADU File Check': [subjectValidation.checkAduFileCheck, improvementsValidation.checkAduSalesGridPresence, subjectValidation.checkPresence],
+      'ADU Check': [subjectValidation.checkAduFileCheck, improvementsValidation.checkAduSalesGridPresence, subjectValidation.checkPresence],
+      'ADU': [improvementsValidation.checkAduSalesGridPresence, subjectValidation.checkAduFileCheck, subjectValidation.checkPresence],
+      'ADU Adjustment': [improvementsValidation.checkAduSalesGridPresence],
+      'Accessory Unit': [improvementsValidation.checkAduSalesGridPresence, subjectValidation.checkPresence],
+      'Accessory Dwelling Unit': [improvementsValidation.checkAduSalesGridPresence, subjectValidation.checkPresence],
       'FHA Case No.': [subjectValidation.checkFhaCaseNo],
       'FHA Case #': [subjectValidation.checkFhaCaseNo],
       'FHA Case Number': [subjectValidation.checkFhaCaseNo],
       'Tax Year': [subjectValidation.checkTaxYear],
       'R.E. Taxes $': [subjectValidation.checkRETaxes],
       'Special Assessments $': [subjectValidation.checkSpecialAssessments],
+      'Special Assessments': [subjectValidation.checkSpecialAssessments],
+      'Special Assessment': [subjectValidation.checkSpecialAssessments],
+      'Special Assessment $': [subjectValidation.checkSpecialAssessments],
       'PUD': [subjectValidation.checkPUD, subjectValidation.checkHOA],
       'HOA $': [subjectValidation.checkHOA],
       'Offered for Sale in Last 12 Months': [subjectValidation.checkOfferedForSale],
@@ -635,7 +643,7 @@ function Subject({ defaultFormType }) {
       'Amenities': [version1Validation.checkVersion1AmenitiesAdjustmentConsistency],
       'Amenities Adjustment': [version1Validation.checkVersion1AmenitiesAdjustmentConsistency],
 
-      'Units': [improvementsValidation.checkUnits, improvementsValidation.checkAccessoryUnit],
+      'Units': [improvementsValidation.checkUnits, improvementsValidation.checkAccessoryUnit, improvementsValidation.checkAduSalesGridPresence],
       '# of Stories': [improvementsValidation.checkNumberOfStories],
       'Type': [improvementsValidation.checkPropertyType],
       'Existing/Proposed/Under Const.': [improvementsValidation.checkExistingProposedUnderConst, improvementsValidation.checkConstructionStatusAndReconciliation],
@@ -2272,6 +2280,75 @@ function Subject({ defaultFormType }) {
         newData.Subject['Basement Finish'] = value;
       }
 
+      // Synchronize ADU File Check aliases
+      const isAduField = fieldKey === 'ADU File Check' || fieldKey === 'ADU Check' || fieldKey === 'ADU';
+      if (isAduField) {
+        newData['ADU File Check'] = value;
+        newData['ADU Check'] = value;
+        newData['ADU'] = value;
+        if (!newData.Subject) newData.Subject = {};
+        newData.Subject['ADU File Check'] = value;
+        newData.Subject['ADU Check'] = value;
+        newData.Subject['ADU'] = value;
+        if (!newData.IMPROVEMENTS) newData.IMPROVEMENTS = {};
+        newData.IMPROVEMENTS['ADU File Check'] = value;
+        newData.IMPROVEMENTS['ADU'] = value;
+        if (!newData.Improvements) newData.Improvements = {};
+        newData.Improvements['ADU File Check'] = value;
+        newData.Improvements['ADU'] = value;
+      }
+
+      // Synchronize Units and One with Accessory Unit aliases
+      const isUnitsField = fieldKey === 'Units';
+      const isOneWithAccessoryUnitField = fieldKey === 'One with Accessory Unit';
+
+      if (isUnitsField) {
+        const uVal = String(value || '').trim();
+        newData['Units'] = uVal;
+        if (!newData.Subject) newData.Subject = {};
+        newData.Subject['Units'] = uVal;
+        if (!newData.IMPROVEMENTS) newData.IMPROVEMENTS = {};
+        newData.IMPROVEMENTS['Units'] = uVal;
+        if (!newData.Improvements) newData.Improvements = {};
+        newData.Improvements['Units'] = uVal;
+        if (!newData.GENERAL_DESCRIPTION) newData.GENERAL_DESCRIPTION = {};
+        newData.GENERAL_DESCRIPTION['Units'] = uVal;
+
+        const isAcc = uVal.toLowerCase().includes('accessory');
+        const accFlag = isAcc ? 'Yes' : 'No';
+        newData['One with Accessory Unit'] = isAcc ? 'One with Accessory Unit' : accFlag;
+        newData.Subject['One with Accessory Unit'] = isAcc ? 'One with Accessory Unit' : accFlag;
+        newData.IMPROVEMENTS['One with Accessory Unit'] = isAcc ? 'One with Accessory Unit' : accFlag;
+        newData.Improvements['One with Accessory Unit'] = isAcc ? 'One with Accessory Unit' : accFlag;
+      }
+
+      if (isOneWithAccessoryUnitField) {
+        const accRaw = String(value || '').trim();
+        const isPositive = accRaw.toLowerCase() === 'yes' || accRaw.toLowerCase() === 'y' || accRaw.toLowerCase() === 'true' || accRaw.toLowerCase().includes('accessory');
+
+        newData['One with Accessory Unit'] = accRaw;
+        if (!newData.Subject) newData.Subject = {};
+        newData.Subject['One with Accessory Unit'] = accRaw;
+        if (!newData.IMPROVEMENTS) newData.IMPROVEMENTS = {};
+        newData.IMPROVEMENTS['One with Accessory Unit'] = accRaw;
+        if (!newData.Improvements) newData.Improvements = {};
+        newData.Improvements['One with Accessory Unit'] = accRaw;
+
+        if (isPositive) {
+          newData['Units'] = 'One with Accessory Unit';
+          newData.Subject['Units'] = 'One with Accessory Unit';
+          newData.IMPROVEMENTS['Units'] = 'One with Accessory Unit';
+          newData.Improvements['Units'] = 'One with Accessory Unit';
+        } else if (accRaw.toLowerCase() === 'no') {
+          if (String(newData['Units'] || '').toLowerCase().includes('accessory')) {
+            newData['Units'] = 'One';
+            newData.Subject['Units'] = 'One';
+            newData.IMPROVEMENTS['Units'] = 'One';
+            newData.Improvements['Units'] = 'One';
+          }
+        }
+      }
+
       if (
         fieldKey === "USPAP / Appraisal and Report Identification" ||
         fieldKey === "Appraisal and Report Identification"
@@ -2371,6 +2448,8 @@ function Subject({ defaultFormType }) {
         newData.Subject["Comments on Appraisal and Report Identification"] = value;
       }
 
+      const lowerFieldKey = String(fieldKey || '').toLowerCase();
+
       if (rentScheduleReconciliationFields.includes(fieldKey)) {
         if (!newData['Comparable Rent Schedule Reconciliation']) newData['Comparable Rent Schedule Reconciliation'] = {};
         newData['Comparable Rent Schedule Reconciliation'] = { ...newData['Comparable Rent Schedule Reconciliation'], [fieldKey]: value };
@@ -2383,10 +2462,198 @@ function Subject({ defaultFormType }) {
         newData.INCOME_APPROACH = { ...newData.INCOME_APPROACH, [fieldKey]: value };
         newData[fieldKey] = value;
       }
-      if (reconciliationFields.includes(fieldKey) || fieldKey === 'Conditions Comment' || fieldKey === 'Subject To Comment') {
+      if (reconciliationFields.includes(fieldKey) || fieldKey === 'Conditions Comment' || fieldKey === 'Subject To Comment' || fieldKey === 'Comment on Increase in Value' || fieldKey === 'Prior Sale Increase Comment' || fieldKey === 'Comment on Value Increase (>15%)' || fieldKey === 'Comment for increase in value') {
         if (!newData.RECONCILIATION) newData.RECONCILIATION = {};
         newData.RECONCILIATION = { ...newData.RECONCILIATION, [fieldKey]: value };
         newData[fieldKey] = value;
+      }
+
+      const isIncreaseComment = fieldKey === 'Comment on Increase in Value' ||
+        fieldKey === 'Prior Sale Increase Comment' ||
+        fieldKey === 'Comment on Value Increase (>15%)' ||
+        fieldKey === 'Comment for increase in value' ||
+        lowerFieldKey === 'comment on increase in value' ||
+        lowerFieldKey === 'prior sale increase comment';
+
+      if (isIncreaseComment) {
+        if (!newData.RECONCILIATION) newData.RECONCILIATION = {};
+        newData.RECONCILIATION['Comment on Increase in Value'] = value;
+        newData['Comment on Increase in Value'] = value;
+        if (!newData.Reconciliation) newData.Reconciliation = {};
+        newData.Reconciliation['Comment on Increase in Value'] = value;
+      }
+
+      // Synchronize Prior Sale Price
+      const isPriorSalePrice = fieldKey === 'Price of Prior Sale/Transfer' ||
+        fieldKey === 'Prior Sale History: Price of Prior Sale/Transfer' ||
+        fieldKey === 'Prior Sale Price' ||
+        fieldKey.toLowerCase() === 'price of prior sale/transfer';
+
+      if (isPriorSalePrice) {
+        newData['Price of Prior Sale/Transfer'] = value;
+        newData['Prior Sale History: Price of Prior Sale/Transfer'] = value;
+        newData['Prior Sale Price'] = value;
+        if (!newData.Subject) newData.Subject = {};
+        newData.Subject['Price of Prior Sale/Transfer'] = value;
+        newData.Subject['Prior Sale History: Price of Prior Sale/Transfer'] = value;
+        newData.Subject['Prior Sale Price'] = value;
+        if (!newData.SUBJECT) newData.SUBJECT = {};
+        newData.SUBJECT['Price of Prior Sale/Transfer'] = value;
+        newData.SUBJECT['Prior Sale History: Price of Prior Sale/Transfer'] = value;
+        if (!newData.PRIOR_SALE_HISTORY) newData.PRIOR_SALE_HISTORY = {};
+        newData.PRIOR_SALE_HISTORY['Price of Prior Sale/Transfer'] = value;
+        newData.PRIOR_SALE_HISTORY['Prior Sale History: Price of Prior Sale/Transfer'] = value;
+        if (!newData['Prior Sale History']) newData['Prior Sale History'] = {};
+        newData['Prior Sale History']['Price of Prior Sale/Transfer'] = value;
+        newData['Prior Sale History']['Prior Sale History: Price of Prior Sale/Transfer'] = value;
+        if (!newData.SALES_TRANSFER) newData.SALES_TRANSFER = {};
+        newData.SALES_TRANSFER['Price of Prior Sale/Transfer'] = value;
+        newData.SALES_TRANSFER['Prior Sale History: Price of Prior Sale/Transfer'] = value;
+        if (newData.SALES_GRID && typeof newData.SALES_GRID === 'object') {
+          if (!newData.SALES_GRID.Subject) newData.SALES_GRID.Subject = {};
+          newData.SALES_GRID.Subject['Price of Prior Sale/Transfer'] = value;
+        }
+        if (newData['Sales Grid'] && typeof newData['Sales Grid'] === 'object') {
+          if (!newData['Sales Grid'].Subject) newData['Sales Grid'].Subject = {};
+          newData['Sales Grid'].Subject['Price of Prior Sale/Transfer'] = value;
+        }
+        if (newData.clean_data?.['Prior Sale History']) {
+          newData.clean_data['Prior Sale History']['Price of Prior Sale/Transfer'] = value;
+        }
+        if (newData.clean_data?.PRIOR_SALE_HISTORY) {
+          newData.clean_data.PRIOR_SALE_HISTORY['Price of Prior Sale/Transfer'] = value;
+        }
+      }
+
+      // Synchronize Prior Sale Date
+      const isPriorSaleDate = fieldKey === 'Date of Prior Sale/Transfer' ||
+        fieldKey === 'Prior Sale History: Date of Prior Sale/Transfer' ||
+        fieldKey === 'Prior Sale Date' ||
+        fieldKey.toLowerCase() === 'date of prior sale/transfer';
+
+      if (isPriorSaleDate) {
+        newData['Date of Prior Sale/Transfer'] = value;
+        newData['Prior Sale History: Date of Prior Sale/Transfer'] = value;
+        newData['Prior Sale Date'] = value;
+        if (!newData.Subject) newData.Subject = {};
+        newData.Subject['Date of Prior Sale/Transfer'] = value;
+        newData.Subject['Prior Sale History: Date of Prior Sale/Transfer'] = value;
+        newData.Subject['Prior Sale Date'] = value;
+        if (!newData.SUBJECT) newData.SUBJECT = {};
+        newData.SUBJECT['Date of Prior Sale/Transfer'] = value;
+        newData.SUBJECT['Prior Sale History: Date of Prior Sale/Transfer'] = value;
+        if (!newData.PRIOR_SALE_HISTORY) newData.PRIOR_SALE_HISTORY = {};
+        newData.PRIOR_SALE_HISTORY['Date of Prior Sale/Transfer'] = value;
+        newData.PRIOR_SALE_HISTORY['Prior Sale History: Date of Prior Sale/Transfer'] = value;
+        if (!newData['Prior Sale History']) newData['Prior Sale History'] = {};
+        newData['Prior Sale History']['Date of Prior Sale/Transfer'] = value;
+        newData['Prior Sale History']['Prior Sale History: Date of Prior Sale/Transfer'] = value;
+        if (!newData.SALES_TRANSFER) newData.SALES_TRANSFER = {};
+        newData.SALES_TRANSFER['Date of Prior Sale/Transfer'] = value;
+        newData.SALES_TRANSFER['Prior Sale History: Date of Prior Sale/Transfer'] = value;
+        if (newData.SALES_GRID && typeof newData.SALES_GRID === 'object') {
+          if (!newData.SALES_GRID.Subject) newData.SALES_GRID.Subject = {};
+          newData.SALES_GRID.Subject['Date of Prior Sale/Transfer'] = value;
+        }
+        if (newData['Sales Grid'] && typeof newData['Sales Grid'] === 'object') {
+          if (!newData['Sales Grid'].Subject) newData['Sales Grid'].Subject = {};
+          newData['Sales Grid'].Subject['Date of Prior Sale/Transfer'] = value;
+        }
+        if (newData.clean_data?.['Prior Sale History']) {
+          newData.clean_data['Prior Sale History']['Date of Prior Sale/Transfer'] = value;
+        }
+        if (newData.clean_data?.PRIOR_SALE_HISTORY) {
+          newData.clean_data.PRIOR_SALE_HISTORY['Date of Prior Sale/Transfer'] = value;
+        }
+      }
+
+      // Synchronize Final Appraised Value / Opinion of Market Value
+      const isMarketValueField = lowerFieldKey.includes('opinion of the market value') ||
+        lowerFieldKey === 'opinion of market value' ||
+        lowerFieldKey === 'final value' ||
+        lowerFieldKey === 'final value $' ||
+        lowerFieldKey.includes('indicated value by sales comparison') ||
+        lowerFieldKey.includes('indicated value by: sales comparison');
+
+      if (isMarketValueField) {
+        const canonicalLongKey = "OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $";
+        const canonicalLowerLongKey = "opinion of the market value, as defined, of the real property that is the subject of this report is $";
+        newData[fieldKey] = value;
+        newData[canonicalLongKey] = value;
+        newData[canonicalLowerLongKey] = value;
+        newData['Opinion of Market Value'] = value;
+        newData['Final Value'] = value;
+        newData['Final Value $'] = value;
+        if (!newData.RECONCILIATION) newData.RECONCILIATION = {};
+        newData.RECONCILIATION[fieldKey] = value;
+        newData.RECONCILIATION[canonicalLongKey] = value;
+        newData.RECONCILIATION[canonicalLowerLongKey] = value;
+        newData.RECONCILIATION['Opinion of Market Value'] = value;
+        newData.RECONCILIATION['Final Value'] = value;
+        newData.RECONCILIATION['Final Value $'] = value;
+        if (!newData.Subject) newData.Subject = {};
+        newData.Subject[fieldKey] = value;
+        newData.Subject[canonicalLongKey] = value;
+        newData.Subject[canonicalLowerLongKey] = value;
+        newData.Subject['Opinion of Market Value'] = value;
+        if (newData.clean_data?.RECONCILIATION) {
+          newData.clean_data.RECONCILIATION[fieldKey] = value;
+          newData.clean_data.RECONCILIATION[canonicalLongKey] = value;
+          newData.clean_data.RECONCILIATION[canonicalLowerLongKey] = value;
+        }
+      }
+
+      // Synchronize Prior Sale Analysis Narrative Comment
+      const isPriorSaleAnalysis = lowerFieldKey.includes('analysis of prior sale') ||
+        lowerFieldKey.includes('report the results of the research and analysis') ||
+        lowerFieldKey === 'priorsalesanalysiscomment' ||
+        lowerFieldKey === 'gsepriorsalecomment';
+
+      if (isPriorSaleAnalysis) {
+        const commentCanonical = "Analysis of prior sale or transfer history of the subject property and comparable sales";
+        newData[fieldKey] = value;
+        newData[commentCanonical] = value;
+        if (!newData.PRIOR_SALE_HISTORY) newData.PRIOR_SALE_HISTORY = {};
+        newData.PRIOR_SALE_HISTORY[fieldKey] = value;
+        newData.PRIOR_SALE_HISTORY[commentCanonical] = value;
+        if (!newData['Prior Sale History']) newData['Prior Sale History'] = {};
+        newData['Prior Sale History'][fieldKey] = value;
+        newData['Prior Sale History'][commentCanonical] = value;
+        if (!newData.SALES_TRANSFER) newData.SALES_TRANSFER = {};
+        newData.SALES_TRANSFER[fieldKey] = value;
+        newData.SALES_TRANSFER[commentCanonical] = value;
+        if (!newData.Subject) newData.Subject = {};
+        newData.Subject[fieldKey] = value;
+        newData.Subject[commentCanonical] = value;
+        if (newData.clean_data?.['Prior Sale History']) {
+          newData.clean_data['Prior Sale History'][fieldKey] = value;
+          newData.clean_data['Prior Sale History'][commentCanonical] = value;
+        }
+        if (newData.clean_data?.PRIOR_SALE_HISTORY) {
+          newData.clean_data.PRIOR_SALE_HISTORY[fieldKey] = value;
+          newData.clean_data.PRIOR_SALE_HISTORY[commentCanonical] = value;
+        }
+      }
+
+      // Synchronize As of / Effective Date
+      const isAsOfDate = lowerFieldKey === 'as of' || lowerFieldKey === 'as of date' ||
+        lowerFieldKey === 'effective date' || lowerFieldKey === 'effective date of appraisal';
+
+      if (isAsOfDate) {
+        newData['as of'] = value;
+        newData['Effective Date of Appraisal'] = value;
+        newData['Effective Date'] = value;
+        if (!newData.RECONCILIATION) newData.RECONCILIATION = {};
+        newData.RECONCILIATION['as of'] = value;
+        newData.RECONCILIATION['Effective Date of Appraisal'] = value;
+        newData.RECONCILIATION['Effective Date'] = value;
+        if (!newData.Subject) newData.Subject = {};
+        newData.Subject['as of'] = value;
+        newData.Subject['Effective Date of Appraisal'] = value;
+        if (newData.clean_data?.RECONCILIATION) {
+          newData.clean_data.RECONCILIATION['as of'] = value;
+          newData.clean_data.RECONCILIATION['Effective Date of Appraisal'] = value;
+        }
       }
 
       return newData;
@@ -6712,21 +6979,51 @@ function Subject({ defaultFormType }) {
                         </Grid>
                       )}
 
-                      {data['ADU File Check'] && (
-                        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-                          <Paper variant="outlined" sx={{ p: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '100%' }}>
-                            <Box sx={{ overflow: 'hidden' }}>
-                              <Typography variant="caption" color="secondary.main" fontWeight="bold" display="block" noWrap>ADU File Check</Typography>
-                              <EditableField fieldPath={['ADU File Check']} value={data['ADU File Check']} onDataChange={handleDataChange} editingField={editingField} setEditingField={setEditingField} isEditable={isEditable} allData={data} />
-                            </Box>
-                            <Tooltip title="Check ADU Requirements">
-                              <IconButton onClick={handleADUCheck} size="small" color="info">
-                                <Info fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          </Paper>
-                        </Grid>
-                      )}
+                      {(data['ADU File Check'] || data?.Subject?.['ADU File Check']) && (() => {
+                        const aduCheckVal = data['ADU File Check'] || data?.Subject?.['ADU File Check'] || '';
+                        const aduRes = subjectValidation.checkAduFileCheck('ADU File Check', aduCheckVal, data);
+                        const isManuallyValidated = manualValidations && (
+                          manualValidations[JSON.stringify(['ADU File Check'])] ||
+                          manualValidations['ADU File Check']
+                        );
+                        const isAduErr = !isManuallyValidated && aduRes && aduRes.isError;
+                        return (
+                          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+                            <Paper
+                              variant="outlined"
+                              sx={{
+                                p: 1.5,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                height: '100%',
+                                borderColor: isManuallyValidated ? '#4682b4' : (isAduErr ? 'error.main' : 'divider'),
+                                bgcolor: isManuallyValidated ? '#f0f8ff' : (isAduErr ? '#fff5f5' : 'background.paper')
+                              }}
+                            >
+                              <Box sx={{ overflow: 'hidden' }}>
+                                <Typography variant="caption" color={isManuallyValidated ? '#4682b4' : (isAduErr ? 'error.main' : 'secondary.main')} fontWeight="bold" display="block" noWrap>ADU File Check</Typography>
+                                <EditableField
+                                  fieldPath={['ADU File Check']}
+                                  value={aduCheckVal}
+                                  onDataChange={handleDataChange}
+                                  editingField={editingField}
+                                  setEditingField={setEditingField}
+                                  isEditable={isEditable}
+                                  allData={data}
+                                  manualValidations={manualValidations}
+                                  handleManualValidation={handleManualValidation}
+                                />
+                              </Box>
+                              <Tooltip title={isManuallyValidated ? 'Manually validated' : (aduRes?.message || "Check ADU Requirements")}>
+                                <IconButton onClick={handleADUCheck} size="small" color={isManuallyValidated ? "primary" : (isAduErr ? "error" : "info")}>
+                                  <Info fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            </Paper>
+                          </Grid>
+                        );
+                      })()}
 
                       {(data['1004MC Addendum'] || data['1004MC Present'] || data?.Subject?.['1004MC Addendum'] || data?.has_1004mc !== undefined) && (
                         <Grid size={{ xs: 12, sm: 6, md: 4 }}>

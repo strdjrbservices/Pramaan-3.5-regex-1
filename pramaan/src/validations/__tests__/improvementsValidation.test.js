@@ -1,4 +1,5 @@
-import { checkBasementDetails, checkFoundationType, getFoundationStatus, checkExistingProposedUnderConst, checkEffectiveAge } from '../improvementsValidation';
+import { checkBasementDetails, checkFoundationType, getFoundationStatus, checkExistingProposedUnderConst, checkEffectiveAge, checkUnits, checkAccessoryUnit, isPositiveAdu, isNegativeAdu, isOneWithAccessoryUnit, isAduPresentInSalesGrid, checkAduSalesGridPresence } from '../improvementsValidation';
+import { checkAduFileCheck } from '../subjectValidation';
 import { getReconAsOfYear, getYearBuiltFromImprovements, getSubjectExpectedActualAge, checkSubjectAgeConsistency } from '../salesComparisonValidation';
 
 describe('Improvements Validation - Foundation & Basement Area', () => {
@@ -293,6 +294,208 @@ describe('Improvements Validation - Foundation & Basement Area', () => {
             const greaterRes = checkEffectiveAge('Effective Age', '25', allData);
             expect(greaterRes.isError).toBe(true);
             expect(greaterRes.message).toBe('Effective Age (25) must be less than Actual Age (20).');
+        });
+    });
+
+    describe('ADU File Check vs Improvements Units Validation', () => {
+        test('checkUnits passes when ADU is marked Yes and Units is One with Accessory Unit', () => {
+            const data = { 'ADU File Check': 'Yes' };
+            const res = checkUnits('Units', 'One with Accessory Unit', data);
+            expect(res.isMatch).toBe(true);
+            expect(res.isError).toBeFalsy();
+            expect(res.message).toContain("ADU is marked 'Yes'");
+        });
+
+        test('checkUnits fails when ADU is marked Yes but Units is marked One', () => {
+            const data = { 'ADU File Check': 'Yes' };
+            const res = checkUnits('Units', 'One', data);
+            expect(res.isError).toBe(true);
+            expect(res.message).toContain("must be marked on 'One with Accessory Unit'");
+        });
+
+        test('checkUnits fails when ADU is marked Yes but Units is marked 1', () => {
+            const data = { 'ADU File Check': 'Yes' };
+            const res = checkUnits('Units', '1', data);
+            expect(res.isError).toBe(true);
+            expect(res.message).toContain("must be marked on 'One with Accessory Unit'");
+        });
+
+        test('checkUnits fails when ADU is marked No but Units is marked One with Accessory Unit', () => {
+            const data = { 'ADU File Check': 'No' };
+            const res = checkUnits('Units', 'One with Accessory Unit', data);
+            expect(res.isError).toBe(true);
+            expect(res.message).toContain("ADU is marked 'No'");
+        });
+
+        test('checkUnits passes when ADU is marked No and Units is marked One or 1', () => {
+            const data = { 'ADU File Check': 'No' };
+            const resOne = checkUnits('Units', 'One', data);
+            expect(resOne.isMatch).toBe(true);
+            expect(resOne.isError).toBeFalsy();
+
+            const res1 = checkUnits('Units', '1', data);
+            expect(res1.isMatch).toBe(true);
+            expect(res1.isError).toBeFalsy();
+        });
+
+        test('checkUnits handles nested data structure (e.g. data.Subject)', () => {
+            const data = {
+                Subject: {
+                    'ADU File Check': 'Yes'
+                }
+            };
+            const res = checkUnits('Units', 'One with Accessory Unit', data);
+            expect(res.isMatch).toBe(true);
+
+            const resFail = checkUnits('Units', 'One', data);
+            expect(resFail.isError).toBe(true);
+        });
+
+        test('checkAduFileCheck passes when ADU is Yes, Units is One with Accessory Unit, and ADU is in Sales Grid', () => {
+            const data = {
+                'Units': 'One with Accessory Unit',
+                'sales_grid_custom_rows': [{ label: 'ADU', valueKey: 'ADU' }]
+            };
+            const res = checkAduFileCheck('ADU File Check', 'Yes', data);
+            expect(res.isMatch).toBe(true);
+            expect(res.isError).toBeFalsy();
+            expect(res.message).toContain("ADU is marked 'Yes'");
+            expect(res.message).toContain("ADU is present in the Sales Grid");
+        });
+
+        test('checkAduFileCheck fails when ADU is Yes and Units is One with Accessory Unit but ADU is NOT in Sales Grid', () => {
+            const data = { 'Units': 'One with Accessory Unit' };
+            const res = checkAduFileCheck('ADU File Check', 'Yes', data);
+            expect(res.isError).toBe(true);
+            expect(res.message).toContain("not present in the Sales Comparison Grid");
+        });
+
+        test('checkAduFileCheck fails when ADU is Yes but Units is One or 1', () => {
+            const data = { 'Units': 'One' };
+            const res = checkAduFileCheck('ADU File Check', 'Yes', data);
+            expect(res.isError).toBe(true);
+            expect(res.message).toContain("must be marked on 'One with Accessory Unit'");
+        });
+
+        test('checkAduFileCheck fails when ADU is No but Units is One with Accessory Unit', () => {
+            const data = { 'Units': 'One with Accessory Unit' };
+            const res = checkAduFileCheck('ADU File Check', 'No', data);
+            expect(res.isError).toBe(true);
+            expect(res.message).toContain("ADU is marked 'No'");
+        });
+
+        test('checkAduFileCheck passes when ADU is No and Units is One', () => {
+            const data = { 'Units': 'One' };
+            const res = checkAduFileCheck('ADU File Check', 'No', data);
+            expect(res.isMatch).toBe(true);
+            expect(res.isError).toBeFalsy();
+            expect(res.message).toContain("ADU is marked 'No'");
+        });
+
+        test('checkAduFileCheck fails when ADU File Check is empty', () => {
+            const res = checkAduFileCheck('ADU File Check', '', {});
+            expect(res.isError).toBe(true);
+            expect(res.message).toContain('empty');
+        });
+
+        test('checkAccessoryUnit passes when ADU is Yes', () => {
+            const data = { 'ADU File Check': 'Yes', 'Units': 'One with Accessory Unit' };
+            const res = checkAccessoryUnit('Units', 'One with Accessory Unit', data);
+            expect(res.isMatch).toBe(true);
+            expect(res.isError).toBeFalsy();
+        });
+
+        test('checkAccessoryUnit fails when ADU is No', () => {
+            const data = { 'ADU File Check': 'No', 'Units': 'One with Accessory Unit' };
+            const res = checkAccessoryUnit('Units', 'One with Accessory Unit', data);
+            expect(res.isError).toBe(true);
+            expect(res.message).toContain("ADU is marked 'No'");
+        });
+
+        test('handles dynamic manual changes between Yes/No and One/One with Accessory Unit', () => {
+            const state = {
+                'ADU File Check': 'Yes',
+                'Units': 'One with Accessory Unit',
+                'sales_grid_custom_rows': [{ label: 'ADU', valueKey: 'ADU' }]
+            };
+
+            // Initially valid
+            expect(checkAduFileCheck('ADU File Check', state['ADU File Check'], state).isMatch).toBe(true);
+            expect(checkUnits('Units', state['Units'], state).isMatch).toBe(true);
+
+            // User manually changes Units to 'One'
+            state['Units'] = 'One';
+            const unitErr = checkUnits('Units', state['Units'], state);
+            expect(unitErr.isError).toBe(true);
+            expect(unitErr.message).toContain("must be marked on 'One with Accessory Unit'");
+
+            const aduErr = checkAduFileCheck('ADU File Check', state['ADU File Check'], state);
+            expect(aduErr.isError).toBe(true);
+            expect(aduErr.message).toContain("must be marked on 'One with Accessory Unit'");
+
+            // User manually changes ADU File Check to 'No'
+            state['ADU File Check'] = 'No';
+            expect(checkAduFileCheck('ADU File Check', state['ADU File Check'], state).isMatch).toBe(true);
+            expect(checkUnits('Units', state['Units'], state).isMatch).toBe(true);
+
+            // User manually changes Units back to 'One with Accessory Unit' while ADU is 'No'
+            state['Units'] = 'One with Accessory Unit';
+            expect(checkUnits('Units', state['Units'], state).isError).toBe(true);
+            expect(checkAduFileCheck('ADU File Check', state['ADU File Check'], state).isError).toBe(true);
+
+            // User manually changes ADU File Check back to 'Yes'
+            state['ADU File Check'] = 'Yes';
+            expect(checkUnits('Units', state['Units'], state).isMatch).toBe(true);
+            expect(checkAduFileCheck('ADU File Check', state['ADU File Check'], state).isMatch).toBe(true);
+        });
+    });
+
+    describe('Sales Grid ADU Presence Validation', () => {
+        test('isAduPresentInSalesGrid detects ADU in custom rows array', () => {
+            expect(isAduPresentInSalesGrid({ sales_grid_custom_rows: [{ label: 'ADU' }] })).toBe(true);
+            expect(isAduPresentInSalesGrid({ sales_grid_custom_rows: [{ label: 'Accessory Unit' }] })).toBe(true);
+            expect(isAduPresentInSalesGrid({ SALES_GRID: { sales_grid_custom_rows: [{ valueKey: 'ADU' }] } })).toBe(true);
+            expect(isAduPresentInSalesGrid({ sales_grid_custom_rows: [{ label: 'Woodstove' }] })).toBe(false);
+            expect(isAduPresentInSalesGrid({})).toBe(false);
+        });
+
+        test('isAduPresentInSalesGrid detects ADU in Subject or Comps columns', () => {
+            expect(isAduPresentInSalesGrid({ Subject: { 'ADU': '1 Unit' } })).toBe(true);
+            expect(isAduPresentInSalesGrid({ SALES_GRID: { Subject: { 'Accessory Unit': 'Yes' } } })).toBe(true);
+            expect(isAduPresentInSalesGrid({ SALES_GRID: { 'COMPARABLE SALE #1': { 'ADU': 'None', 'ADU Adjustment': '+$10,000' } } })).toBe(true);
+        });
+
+        test('checkAduSalesGridPresence passes when ADU is Yes and ADU is present in Sales Grid', () => {
+            const data = {
+                'ADU File Check': 'Yes',
+                'Units': 'One with Accessory Unit',
+                'sales_grid_custom_rows': [{ label: 'ADU', valueKey: 'ADU' }]
+            };
+            const res = checkAduSalesGridPresence('ADU File Check', 'Yes', data);
+            expect(res.isMatch).toBe(true);
+            expect(res.isError).toBeFalsy();
+            expect(res.message).toContain("ADU is marked 'Yes'");
+            expect(res.message).toContain("present in the Sales Comparison Grid");
+        });
+
+        test('checkAduSalesGridPresence fails when ADU is Yes but ADU is NOT present in Sales Grid', () => {
+            const data = {
+                'ADU File Check': 'Yes',
+                'Units': 'One with Accessory Unit'
+            };
+            const res = checkAduSalesGridPresence('ADU File Check', 'Yes', data);
+            expect(res.isError).toBe(true);
+            expect(res.message).toBe("ADU is marked 'Yes', but 'ADU' or 'Accessory Unit' field is not present in the Sales Comparison Grid.");
+        });
+
+        test('checkAduSalesGridPresence passes when ADU is No', () => {
+            const data = {
+                'ADU File Check': 'No',
+                'Units': 'One'
+            };
+            const res = checkAduSalesGridPresence('ADU File Check', 'No', data);
+            expect(res.isMatch).toBe(true);
+            expect(res.isError).toBeFalsy();
         });
     });
 });

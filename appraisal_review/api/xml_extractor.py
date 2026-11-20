@@ -3830,8 +3830,65 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
     subj_project_phase = ""
     subj_project_name_phase = ""
     subj_unit_id = unit_id
+    custom_sales_grid_definitions = []
     if val_methods is not None:
         comp_elems = val_methods.findall(".//COMPARABLE_SALE")
+
+        # 1. Discover custom features defined on Subject (PropertySequenceIdentifier == "0" or first)
+        subj_comp_elem = None
+        for c in comp_elems:
+            if c.attrib.get("PropertySequenceIdentifier", "0") == "0":
+                subj_comp_elem = c
+                break
+        if subj_comp_elem is None and comp_elems:
+            subj_comp_elem = comp_elems[0]
+
+        if subj_comp_elem is not None:
+            c_seq_idx = 1
+            for adj in subj_comp_elem.findall("SALE_PRICE_ADJUSTMENT"):
+                atype = adj.attrib.get("_Type", "")
+                aother = adj.attrib.get("_TypeOtherDescription", "")
+                adesc = adj.attrib.get("_Description", "")
+                # Skip bedroom/bath line indicators
+                if aother in ["RoomAboveGradeLine1", "RoomAboveGradeLine2", "RoomAboveGrade1", "RoomAboveGrade2"]:
+                    continue
+                if atype == "Other" or atype in ["Fireplace", "Fence", "Pool", "WoodStove", "Woodstove", "ADU", "Outbuildings"]:
+                    lbl = aother or atype
+                    if lbl and not any(d["label"] == lbl for d in custom_sales_grid_definitions):
+                        custom_sales_grid_definitions.append({
+                            "label": lbl,
+                            "type": atype,
+                            "type_other": aother,
+                            "seq": str(c_seq_idx),
+                            "subj_desc": adesc,
+                        })
+                        c_seq_idx += 1
+
+            for ofa in subj_comp_elem.findall("OTHER_FEATURE_ADJUSTMENT"):
+                p_seq = ofa.attrib.get("PropertyFeatureSequenceIdentifier", "")
+                p_desc = ofa.attrib.get("PropertyFeatureDescription", "")
+                if p_seq and not any(r["seq"] == p_seq for r in custom_sales_grid_definitions):
+                    custom_sales_grid_definitions.append({
+                        "label": f"Other Feature {p_seq}",
+                        "type": "Other",
+                        "type_other": "",
+                        "seq": p_seq,
+                        "subj_desc": p_desc,
+                    })
+
+        # Also discover any OTHER_FEATURE_ADJUSTMENT sequence IDs present on any comp that wasn't on Subject
+        for c in comp_elems:
+            for ofa in c.findall("OTHER_FEATURE_ADJUSTMENT"):
+                p_seq = ofa.attrib.get("PropertyFeatureSequenceIdentifier", "")
+                if p_seq and not any(r["seq"] == p_seq for r in custom_sales_grid_definitions):
+                    custom_sales_grid_definitions.append({
+                        "label": f"Other Feature {p_seq}",
+                        "type": "Other",
+                        "type_other": "",
+                        "seq": p_seq,
+                        "subj_desc": "",
+                    })
+
         for comp in comp_elems:
             seq = comp.attrib.get("PropertySequenceIdentifier", "0")
             sale_price = _clean_currency(comp.attrib.get("PropertySalesAmount", ""))
@@ -3945,7 +4002,8 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
                 adj_key = f"{atype}_{adj_other_desc}" if (atype == "Other" and adj_other_desc) else atype
                 adjustments[adj_key] = {"desc": adesc, "amount": aamt}
                 if atype not in adjustments or not adjustments[atype].get("amount"):
-                    adjustments[atype] = {"desc": adesc, "amount": aamt}
+                    if atype != "Other" or adj_other_desc not in ["RoomAboveGradeLine1", "RoomAboveGradeLine2"]:
+                        adjustments[atype] = {"desc": adesc, "amount": aamt}
 
             if seq == "0":
                 adjustments_subject = adjustments
@@ -4139,6 +4197,62 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
                 if m_e:
                     ps_eff = f"{m_e.group(2)}/{m_e.group(3)}/{m_e.group(1)}"
 
+            # Custom sales grid fields (Fireplace (s), etc., Fence, Pool, etc., Other, ADU, Woodstove, etc.)
+            custom_fields_dict = {}
+            for c_def in custom_sales_grid_definitions:
+                lbl = c_def["label"]
+                c_seq = c_def["seq"]
+                desc = ""
+                amt = ""
+                if seq == "0":
+                    desc = c_def["subj_desc"]
+                    amt = ""
+                else:
+                    # 1. Match by PropertyFeatureSequenceIdentifier on OTHER_FEATURE_ADJUSTMENT
+                    for ofa in comp.findall("OTHER_FEATURE_ADJUSTMENT"):
+                        if ofa.attrib.get("PropertyFeatureSequenceIdentifier", "") == c_seq:
+                            desc = ofa.attrib.get("PropertyFeatureDescription", "")
+                            amt = _clean_currency(ofa.attrib.get("PropertyFeatureAdjustmentAmount", ""))
+                            break
+                    # 2. Match by _TypeOtherDescription or _Type on SALE_PRICE_ADJUSTMENT
+                    if not desc and not amt:
+                        for adj in comp.findall("SALE_PRICE_ADJUSTMENT"):
+                            atype = adj.attrib.get("_Type", "")
+                            aother = adj.attrib.get("_TypeOtherDescription", "")
+                            if (aother and aother == c_def["type_other"]) or (not aother and atype == c_def["type"]):
+                                desc = adj.attrib.get("_Description", "")
+                                amt = _clean_currency(adj.attrib.get("_Amount", ""))
+                                break
+
+                custom_fields_dict[lbl] = desc
+                custom_fields_dict[f"{lbl} Adjustment"] = amt
+
+                lbl_lower = lbl.lower()
+                if "fire" in lbl_lower:
+                    custom_fields_dict["Fireplace"] = desc
+                    custom_fields_dict["Fireplace Adjustment"] = amt
+                    custom_fields_dict["Fireplace(s)"] = desc
+                    custom_fields_dict["Fireplace(s) Adjustment"] = amt
+                    custom_fields_dict["Fireplace (s), etc."] = desc
+                    custom_fields_dict["Fireplace (s), etc. Adjustment"] = amt
+                if "fence" in lbl_lower or "pool" in lbl_lower:
+                    custom_fields_dict["Fence, Pool, etc."] = desc
+                    custom_fields_dict["Fence, Pool, etc. Adjustment"] = amt
+                    custom_fields_dict["Fence/Pool"] = desc
+                    custom_fields_dict["Fence/Pool Adjustment"] = amt
+                if "woodstove" in lbl_lower or "wood stove" in lbl_lower:
+                    custom_fields_dict["Woodstove"] = desc
+                    custom_fields_dict["Woodstove Adjustment"] = amt
+                if "adu" in lbl_lower or "accessory" in lbl_lower:
+                    custom_fields_dict["ADU"] = desc
+                    custom_fields_dict["ADU Adjustment"] = amt
+                if lbl_lower == "other" or "other" in lbl_lower:
+                    custom_fields_dict["Other"] = desc
+                    custom_fields_dict["Other Adjustment"] = amt
+                    if not custom_fields_dict.get("Additional Description"):
+                        custom_fields_dict["Additional Description"] = desc
+                        custom_fields_dict["Additional Adjustment"] = amt
+
             comp_data = {
                 "Address": c_addr or (full_addr if seq == "0" else ""),
                 "Street Address": c_addr_street or (prop_addr if seq == "0" else ""),
@@ -4222,8 +4336,8 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
                 "Parking On/Off Site Adjustment": car_amt,
                 "Porch/Patio/Deck": adjustments.get("PorchDeck", {}).get("desc", ""),
                 "Porch/Patio/Deck Adjustment": adjustments.get("PorchDeck", {}).get("amount", ""),
-                "Additional Description": adjustments.get("Other", {}).get("desc", ""),
-                "Additional Adjustment": adjustments.get("Other", {}).get("amount", ""),
+                "Additional Description": custom_fields_dict.get("Additional Description") or adjustments.get("Other", {}).get("desc", ""),
+                "Additional Adjustment": custom_fields_dict.get("Additional Adjustment") or adjustments.get("Other", {}).get("amount", ""),
                 "Net Adjustment (Total)": net_adj_str,
                 "Gross Adjustment (Total)": f"{gross_pct}%" if gross_pct else "",
                 "Adjusted Sale Price": adj_price,
@@ -4237,6 +4351,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
                 "Prior Sale History: Data source(s) for prior sale": ps_src,
                 "Prior Sale History: Effective date of data source(s)": ps_eff,
                 **unit_breakdown,
+                **custom_fields_dict,
             }
 
             if seq == "0":
@@ -4264,6 +4379,17 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
                 sales_grid[f"Comparable #{seq} Data Source(s)"] = comp_data["Data Source(s)"]
                 sales_grid[f"Comparable #{seq} Verification Source(s)"] = comp_data["Verification Source(s)"]
                 sales_grid[f"Comparable #{seq} Adjusted Sale Price"] = comp_data["Adjusted Sale Price"]
+
+        custom_sales_grid_rows = [
+            {
+                "label": d["label"],
+                "valueKey": d["label"],
+                "adjustmentKey": f"{d['label']} Adjustment",
+            }
+            for d in custom_sales_grid_definitions
+        ]
+        sales_grid["custom_rows"] = custom_sales_grid_rows
+        sales_grid["sales_grid_custom_rows"] = custom_sales_grid_rows
 
 
     # Foundation & Condition fallback to Subject Adjustments if not already found
@@ -7516,6 +7642,25 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "_PriorSalesAnalysisComment": prior_anal_comment_full,
     }
 
+    # Extract comment related to >15% increase if subject prior sale in same year is >15% lower than appraised value
+    try:
+        def _parse_num(val):
+            m = re.sub(r'[^0-9.]', '', str(val or ''))
+            return float(m) if m else 0.0
+
+        p_num = _parse_num(subj_ps_price)
+        a_num = _parse_num(appraised_val)
+        m_ps_yr = re.search(r'\b(20\d{2})\b', str(subj_ps_date or ''))
+        m_eff_yr = re.search(r'\b(20\d{2})\b', str(effective_date or ''))
+        if p_num > 0 and a_num > p_num * 1.15001 and m_ps_yr and m_eff_yr and m_ps_yr.group(1) == m_eff_yr.group(1):
+            inc_comm = ""
+            if prior_anal_comment_full and re.search(r'(?:increase|appreciat|renovat|remodel|updat|improv|flip|purchas|sold|transfer|market|value|percent|%|addition)', prior_anal_comment_full, re.I):
+                if not re.match(r'^(?:my\s+research\s+)?(?:did\s+not\s+reveal|revealed\s+no|no)\s+prior\s+sales?', prior_anal_comment_full.strip(), re.I):
+                    inc_comm = prior_anal_comment_full.strip()
+            reconciliation_section["Comment on Increase in Value"] = inc_comm
+    except Exception:
+        pass
+
     # Combined master fields object
     fields: Dict[str, Any] = {
         "From Type": form_type,
@@ -7614,6 +7759,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "IMPROVEMENTS": improvements_section,
         "SALES_GRID": sales_grid,
         "Sales Grid": clean_sales_grid,
+        "sales_grid_custom_rows": sales_grid.get("sales_grid_custom_rows", []),
         "INFO_OF_SALES": merged_info_of_sales,
         "SALES_TRANSFER": merged_info_of_sales,
         "RECONCILIATION": reconciliation_section,
@@ -7751,6 +7897,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "DENSITY": site_density,
         "Improvements": improvements_section,
         "Sales Grid": clean_sales_grid,
+        "sales_grid_custom_rows": sales_grid.get("sales_grid_custom_rows", []),
         "Reconciliation": reconciliation_section,
         "USPAP_IDENTIFICATION": uspap_identification_section,
         "USPAP / Report Identification": uspap_identification_section,

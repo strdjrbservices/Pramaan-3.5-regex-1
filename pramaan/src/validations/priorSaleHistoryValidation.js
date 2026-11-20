@@ -58,6 +58,10 @@ export const PRIOR_SALE_HISTORY_FIELDS_TO_CHECK = [
     "Comparable Transfer Data Source",
     "Analysis of Prior Sale and Transfer History of Subject Property",
     "Analysis of Prior Sale and Transfer History of Comparable Sales",
+    "Comment on Increase in Value",
+    "Prior Sale Increase Comment",
+    "Comment on Value Increase (>15%)",
+    "Comment for increase in value",
     "Indicated Value by Sales Comparison Approach $",
     "Indicated Value by Sales Comparison Approach",
     "Prior Sale History: Indicated Value by Sales Comparison Approach $",
@@ -168,12 +172,12 @@ export const getAppraisalCurrentYear = (data) => {
     const sources = [
         data.RECONCILIATION,
         data['RECONCILIATION'],
-        data.clean_data?.RECONCILIATION,
-        data.CERTIFICATION,
-        data.clean_data?.CERTIFICATION,
         data.Subject,
         data.SUBJECT,
-        data
+        data.CERTIFICATION,
+        data,
+        data.clean_data?.RECONCILIATION,
+        data.clean_data?.CERTIFICATION
     ];
 
     for (const src of sources) {
@@ -208,16 +212,16 @@ export const getSubjectPriorSalePriceVal = (data) => {
         "prior sale price"
     ];
     const sources = [
-        data.SALES_TRANSFER,
         data.Subject,
         data.SUBJECT,
         data.PRIOR_SALE_HISTORY,
         data['Prior Sale History'],
-        data.clean_data?.['Prior Sale History'],
-        data.clean_data?.PRIOR_SALE_HISTORY,
+        data.SALES_TRANSFER,
         data.SALES_GRID?.Subject,
         data['Sales Grid']?.Subject,
-        data
+        data,
+        data.clean_data?.['Prior Sale History'],
+        data.clean_data?.PRIOR_SALE_HISTORY
     ];
     for (const src of sources) {
         if (src && typeof src === 'object') {
@@ -241,16 +245,16 @@ export const getSubjectPriorSaleDateVal = (data) => {
         "prior sale date"
     ];
     const sources = [
-        data.SALES_TRANSFER,
         data.Subject,
         data.SUBJECT,
         data.PRIOR_SALE_HISTORY,
         data['Prior Sale History'],
-        data.clean_data?.['Prior Sale History'],
-        data.clean_data?.PRIOR_SALE_HISTORY,
+        data.SALES_TRANSFER,
         data.SALES_GRID?.Subject,
         data['Sales Grid']?.Subject,
-        data
+        data,
+        data.clean_data?.['Prior Sale History'],
+        data.clean_data?.PRIOR_SALE_HISTORY
     ];
     for (const src of sources) {
         if (src && typeof src === 'object') {
@@ -273,11 +277,11 @@ export const getFinalAppraisedValue = (data, text, field) => {
     if (!data || typeof data !== 'object') return null;
 
     const valKeys = [
+        "OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $",
+        "opinion of the market value, as defined, of the real property that is the subject of this report is $",
         "Opinion of Market Value",
         "Final Value",
         "Final Value $",
-        "opinion of the market value, as defined, of the real property that is the subject of this report is $",
-        "OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $",
         "Indicated Value by Sales Comparison Approach $",
         "Indicated Value by Sales Comparison Approach",
         "Indicated Value by: Sales Comparison Approach $",
@@ -287,14 +291,14 @@ export const getFinalAppraisedValue = (data, text, field) => {
     const sources = [
         data.RECONCILIATION,
         data['RECONCILIATION'],
-        data.clean_data?.RECONCILIATION,
         data.PRIOR_SALE_HISTORY,
         data['Prior Sale History'],
-        data.clean_data?.['Prior Sale History'],
-        data.clean_data?.PRIOR_SALE_HISTORY,
         data.Subject,
         data.SUBJECT,
-        data
+        data,
+        data.clean_data?.RECONCILIATION,
+        data.clean_data?.['Prior Sale History'],
+        data.clean_data?.PRIOR_SALE_HISTORY
     ];
     for (const src of sources) {
         if (src && typeof src === 'object') {
@@ -312,6 +316,10 @@ export const getFinalAppraisedValue = (data, text, field) => {
 export const getSubjectPriorSaleComment = (data) => {
     if (!data || typeof data !== 'object') return '';
     const commentKeys = [
+        "Comment on Increase in Value",
+        "Comment for increase in value",
+        "Prior Sale Increase Comment",
+        "Comment on Value Increase (>15%)",
         "Analysis of prior sale or transfer history of the subject property and comparable sales",
         "Prior Sale History: Analysis of prior sale or transfer history of the subject property and comparable sales",
         "Analysis of prior sale or transfer history of the subject property and comparable sales.",
@@ -325,13 +333,16 @@ export const getSubjectPriorSaleComment = (data) => {
         "GSEPriorSaleComment"
     ];
     const sources = [
+        data.RECONCILIATION,
+        data.Reconciliation,
         data.PRIOR_SALE_HISTORY,
         data['Prior Sale History'],
-        data.clean_data?.['Prior Sale History'],
-        data.clean_data?.PRIOR_SALE_HISTORY,
+        data.Subject,
+        data.SUBJECT,
         data.SALES_TRANSFER,
-        data.RECONCILIATION,
-        data
+        data,
+        data.clean_data?.['Prior Sale History'],
+        data.clean_data?.PRIOR_SALE_HISTORY
     ];
     for (const src of sources) {
         if (src && typeof src === 'object') {
@@ -345,13 +356,96 @@ export const getSubjectPriorSaleComment = (data) => {
     return '';
 };
 
-export const hasValidPriorSaleComment = (str) => {
+export const hasValidIncreaseComment = (str) => {
     if (!str || typeof str !== 'string') return false;
     const clean = str.trim().toLowerCase();
     if (clean === '' || clean === 'none' || clean === 'n/a' || clean === 'na' || clean === '0' || clean === '-') {
         return false;
     }
+    // Reject text that is standard boilerplate stating no prior sales were found
+    const isNoSalesBoilerplate = /^(?:my\s+research\s+)?(?:did\s+not\s+reveal|revealed\s+no|no)\s+(?:any\s+)?prior\s+sales?(?:\s+or\s+transfers?)?(?:\s+of\s+the\s+subject(?:\s+property)?)?(?:\s+for\s+the\s+three\s+years(?:\s+prior\s+to\s+the\s+effective\s+date.*)?)?[.\s]*$/i.test(clean);
+    if (isNoSalesBoilerplate) {
+        return false;
+    }
+    // If it mentions no prior sales and does not contain explanation of value increase, renovations, or appreciation
+    if (/^(?:my\s+research\s+)?(?:did\s+not\s+reveal|revealed\s+no|no)\s+(?:any\s+)?prior\s+sales?/i.test(clean) &&
+        !/(?:increase|appreciat|renovat|remodel|updat|improv|flip|luxury|addition|expansion)/i.test(clean)) {
+        return false;
+    }
     return clean.length >= 5;
+};
+
+export const hasValidPriorSaleComment = hasValidIncreaseComment;
+
+export const extractIncreaseComment = (data) => {
+    if (!data || typeof data !== 'object') return '';
+    // 1. Direct field in RECONCILIATION or top-level data
+    const directKeys = [
+        'Comment on Increase in Value',
+        'Comment for increase in value',
+        'Prior Sale Increase Comment',
+        'Comment on Value Increase (>15%)'
+    ];
+    for (const k of directKeys) {
+        const val = data?.RECONCILIATION?.[k] ?? data?.Reconciliation?.[k] ?? data?.[k];
+        if (val !== undefined && val !== null && String(val).trim() !== '') {
+            return String(val).trim();
+        }
+    }
+
+    // 2. Prior sale analysis narrative if relevant to increase
+    const priorAnalComment = getSubjectPriorSaleComment(data);
+    if (priorAnalComment && hasValidIncreaseComment(priorAnalComment)) {
+        return priorAnalComment;
+    }
+
+    // 3. Reconciliation narrative
+    const reconNarratives = [
+        data.RECONCILIATION?.['Reconciliation of Market Value'],
+        data.RECONCILIATION?.['Reconciliation Comments'],
+        data.RECONCILIATION?.['Comments'],
+        data.Reconciliation?.['Reconciliation of Market Value'],
+        data.Reconciliation?.['Reconciliation Comments'],
+        data['Reconciliation of Market Value'],
+        data['Reconciliation Comments'],
+        data.clean_data?.RECONCILIATION?.['Reconciliation of Market Value'],
+        data.clean_data?.Reconciliation?.['Reconciliation Comments']
+    ];
+    for (const nar of reconNarratives) {
+        if (nar && typeof nar === 'string' && hasValidIncreaseComment(nar)) {
+            return nar.trim();
+        }
+    }
+
+    return '';
+};
+
+export const isPriorSaleIncreaseOver15 = (data, customFinalVal, customPriorPrice, customPriorDate) => {
+    if (!data || typeof data !== 'object') return false;
+
+    let priorPrice = customPriorPrice !== undefined && customPriorPrice !== null
+        ? customPriorPrice
+        : getSubjectPriorSalePriceVal(data);
+    if (priorPrice === null || priorPrice <= 0) return false;
+
+    let priorDateStr = customPriorDate !== undefined && customPriorDate !== null
+        ? String(customPriorDate)
+        : getSubjectPriorSaleDateVal(data);
+    if (!priorDateStr || ['none', 'n/a', '0', '-'].includes(String(priorDateStr).trim().toLowerCase())) return false;
+
+    const priorSaleYear = extractYearFromDateStr(priorDateStr);
+    if (!priorSaleYear) return false;
+
+    const currentYear = getAppraisalCurrentYear(data);
+    if (priorSaleYear !== currentYear) return false;
+
+    let finalVal = customFinalVal !== undefined && customFinalVal !== null
+        ? customFinalVal
+        : getFinalAppraisedValue(data);
+    if (finalVal === null || finalVal <= 0) return false;
+
+    // Must be an INCREASE and more than 15% greater than prior sale price
+    return finalVal > priorPrice * 1.15001;
 };
 
 const isCompIdentifier = (str) => /^(?:comparable(?:\s*sale)?|comp)\s*#?\d+/i.test(String(str || '').trim());
@@ -373,8 +467,13 @@ export const checkSubjectPriorSaleValueIncrease = (field, text, data, fieldPath,
     // 2. Identify field role
     const isPriceField = cleanField.includes('price of prior sale') || cleanField === 'prior sale price' || cleanField === 'comparable transfer amount';
     const isDateField = cleanField.includes('date of prior sale') || cleanField === 'prior sale date' || cleanField === 'comparable transfer date';
-    const isFinalValueField = cleanField.includes('opinion of') || cleanField.includes('final value') || cleanField.includes('indicated value by sales comparison');
-    const isCommentField = cleanField.includes('analysis of prior sale') || cleanField.includes('report the results of the research and analysis');
+    const isFinalValueField = cleanField.includes('opinion of') || cleanField.includes('final value') || cleanField === 'indicated value by: sales comparison approach $' || cleanField === 'indicated value by sales comparison approach $';
+    const isCommentField = cleanField.includes('analysis of prior sale') ||
+        cleanField.includes('report the results of the research and analysis') ||
+        cleanField.includes('comment on increase in value') ||
+        cleanField.includes('prior sale increase comment') ||
+        cleanField.includes('comment for increase in value') ||
+        cleanField.includes('comment on value increase');
 
     if (!isPriceField && !isDateField && !isFinalValueField && !isCommentField) {
         return null;
@@ -431,42 +530,45 @@ export const checkSubjectPriorSaleValueIncrease = (field, text, data, fieldPath,
         return null;
     }
 
-    // 7. Check 15% increase
-    const maxAllowedVal = priorPrice * 1.15;
-    const isOver15 = finalVal > (maxAllowedVal + 0.001);
-    const diffPct = ((finalVal - priorPrice) / priorPrice) * 100;
-    const diffPctStr = `${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(1)}%`;
     const formattedFinal = `$${Math.round(finalVal).toLocaleString()}`;
     const formattedPrior = `$${Math.round(priorPrice).toLocaleString()}`;
 
+    // 7. Check if final value is more than 15% greater than prior sale price (increase only)
+    const isOver15 = finalVal > priorPrice * 1.15001;
+    const diffPct = ((finalVal - priorPrice) / priorPrice) * 100;
+
     if (!isOver15) {
+        // Value is not more than 15% above prior sale price (covers lower value or within 15%)
+        const msg = finalVal <= priorPrice
+            ? `Subject final value (${formattedFinal}) is not more than 15% above prior sale (${formattedPrior}) in same year (${currentYear}).`
+            : `Subject final value (${formattedFinal}) is within 15% of prior sale (${formattedPrior}) in same year (${currentYear}).`;
         return {
             isMatch: true,
-            message: `Subject final value (${formattedFinal}) is within 15% of prior sale (${formattedPrior}) in same year (${currentYear}).`
+            message: msg
         };
     }
 
-    // Final value is more than 15% higher: check comment
+    // Value increased by more than 15%: check for comment
     let commentStr = '';
     if (isCommentField) {
         commentStr = String(text || '').trim();
     } else {
-        commentStr = getSubjectPriorSaleComment(data);
+        commentStr = extractIncreaseComment(data) || getSubjectPriorSaleComment(data);
     }
 
-    const hasComment = hasValidPriorSaleComment(commentStr);
+    const hasComment = hasValidIncreaseComment(commentStr);
 
     if (!hasComment) {
         return {
             isError: true,
             skipBlankFilter: true,
-            message: `If the subject has prior sale and the year is same as of current year (${currentYear}), then the final value (${formattedFinal}) should not be more than 15% higher than prior sale (${formattedPrior}, ${diffPctStr}). Please add comment to check increase in value.`
+            message: `If the subject has "Price of Prior Sale/Transfer" and the year is same as of current year then the "OPINION OF THE MARKET VALUE, AS DEFINED, OF THE REAL PROPERTY THAT IS THE SUBJECT OF THIS REPORT IS $" should not be more than 15%. Please add comment to check increase in value.`
         };
     }
 
     return {
         isMatch: true,
-        message: `Subject final value (${formattedFinal}) increased by ${diffPct.toFixed(1)}% over prior sale (${formattedPrior}) in same year (${currentYear}), supported by explanatory comment.`
+        message: `Subject final value (${formattedFinal}) increased by ${diffPct.toFixed(1)}% compared to prior sale (${formattedPrior}) in same year (${currentYear}), supported by explanatory comment.`
     };
 };
 
