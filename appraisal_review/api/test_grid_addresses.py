@@ -1,6 +1,9 @@
 import os
 import unittest
-from appraisal_review.api.xml_extractor import extract_fields_from_xml
+try:
+    from appraisal_review.api.xml_extractor import extract_fields_from_xml
+except ModuleNotFoundError:
+    from api.xml_extractor import extract_fields_from_xml
 
 class TestGridAddressesSeparation(unittest.TestCase):
     def test_sales_and_rental_addresses_separation(self):

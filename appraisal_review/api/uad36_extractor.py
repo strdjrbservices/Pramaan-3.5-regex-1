@@ -1596,6 +1596,7 @@ def extract_fields_from_uad36_xml(xml_path_or_bytes: Any, extract_images: bool =
     fl_type = _get_t(subj, ".//{*}FlooringType") or "Hardwood"
     fl_up = _get_t(subj, ".//{*}OverallFlooringUpdateStatusType") or "ModeratelyUpdated"
     fl_up_str = "Moderately Updated" if fl_up == "ModeratelyUpdated" else (fl_up or "Moderately Updated")
+    walls_ceiling_type = _get_t(subj, ".//{*}WallSurfaceType") or _get_t(subj, ".//{*}CeilingSurfaceType") or "Drywall"
 
     int_defects = "None" if _get_t(subj, ".//{*}UnitInteriorDefectsExistIndicator") != "true" else "Present"
 

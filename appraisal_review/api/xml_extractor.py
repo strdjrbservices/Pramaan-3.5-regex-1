@@ -3879,6 +3879,33 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
     deprec_ext_pct = ""
     gla_sqft_cost = ""
     price_per_sqft_cost = ""
+    cost_subtotal = ""
+    cost_multiplier = ""
+    cost_modified_subtotal = ""
+    cost_delivery_setup = ""
+    cost_other_site_imp = ""
+    sections_1004c = {
+        "SectionOne": {"sqft": "", "rate": "", "cost": "", "width": "", "length": "", "area": ""},
+        "SectionTwo": {"sqft": "", "rate": "", "cost": "", "width": "", "length": "", "area": ""},
+        "SectionThree": {"sqft": "", "rate": "", "cost": "", "width": "", "length": "", "area": ""},
+        "SectionFour": {"sqft": "", "rate": "", "cost": "", "width": "", "length": "", "area": ""},
+    }
+    additional_improvements_1004c = []
+    nada_month = ""
+    nada_year = ""
+    nada_state = ""
+    nada_region = ""
+    nada_width = ""
+    nada_length = ""
+    nada_grey_pg = ""
+    nada_white_pg = ""
+    nada_black_pg = ""
+    nada_conversion_pg = ""
+    nada_yellow_pg = ""
+    nada_comment = ""
+    deprec_phys_amt = ""
+    deprec_func_amt = ""
+    deprec_ext_amt = ""
 
     if cost_elem is not None:
         cost_type = cost_elem.attrib.get("_Type", "")
@@ -5084,6 +5111,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
     leased_ind = ""
     leased_desc = ""
     common_elements = ""
+    p_type = ""
 
     prop_type_elem = root.find(".//PROPERTY_TYPE")
     if prop_type_elem is not None:
@@ -6512,16 +6540,23 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
     hud_data_plate_loc = ""
     hud_cert_label = ""
     hud_cert_label_num = ""
+    hud_cl_desc = ""
     serial_vin = ""
     manufacturer_name = ""
     model_name = ""
     manufacture_date = ""
     meets_hud_req = ""
+    m_hud_req_desc = ""
+    meets_hud_req_full = ""
     sections_count = ""
     foundation_attached = ""
     foundation_manner = ""
     wheels_removed = ""
+    wheels_desc = ""
     utilities_connected = ""
+    conn_desc = ""
+    interior_acceptable = ""
+    space_desc = ""
     modifications_desc = ""
     installer_name = ""
     installed_date = ""

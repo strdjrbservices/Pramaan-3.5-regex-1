@@ -1,7 +1,11 @@
 import unittest
 import xml.etree.ElementTree as ET
-from appraisal_review.api.xml_extractor import _detect_eo_in_xml_tags, extract_fields_from_xml
-from appraisal_review.api.eo_extractor import parse_eo_text
+try:
+    from appraisal_review.api.xml_extractor import _detect_eo_in_xml_tags, extract_fields_from_xml
+    from appraisal_review.api.eo_extractor import parse_eo_text
+except ModuleNotFoundError:
+    from api.xml_extractor import _detect_eo_in_xml_tags, extract_fields_from_xml
+    from api.eo_extractor import parse_eo_text
 
 class TestEoXmlExtraction(unittest.TestCase):
     def test_parse_eo_text_labels(self):

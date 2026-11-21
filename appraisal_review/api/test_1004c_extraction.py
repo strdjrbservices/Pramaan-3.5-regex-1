@@ -6,8 +6,12 @@ WORKSPACE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 if WORKSPACE_DIR not in sys.path:
     sys.path.insert(0, WORKSPACE_DIR)
 
-from appraisal_review.api.xml_extractor import extract_fields_from_xml
-from appraisal_review.api.pdf_extractor_offline import extract_fields_from_pdf_offline
+try:
+    from appraisal_review.api.xml_extractor import extract_fields_from_xml
+    from appraisal_review.api.pdf_extractor_offline import extract_fields_from_pdf_offline
+except ModuleNotFoundError:
+    from api.xml_extractor import extract_fields_from_xml
+    from api.pdf_extractor_offline import extract_fields_from_pdf_offline
 XML_FILE = os.path.join(WORKSPACE_DIR, "5580 Paradise Dr.xml")
 PDF_FILE = os.path.join(WORKSPACE_DIR, "5580 Paradise Dr.pdf")
 
