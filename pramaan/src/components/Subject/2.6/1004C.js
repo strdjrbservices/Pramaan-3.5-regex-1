@@ -457,6 +457,7 @@ const Form1004C = ({
         title="HUD Data Plate & Compliance Certificate / Certification Label"
         data={data}
         allData={allData}
+        formType={formType || allData?.formType || '1004C'}
         onDataChange={handleDataChange}
         editingField={editingField}
         setEditingField={setEditingField}

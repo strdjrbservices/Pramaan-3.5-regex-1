@@ -3909,7 +3909,7 @@ function Subject({ defaultFormType }) {
     { id: 'project-analysis-section', title: 'Project Analysis', category: 'PROJECT_ANALYSIS', icon: <AnalyticsIcon /> },
     { id: 'unit-descriptions-section', title: 'Unit Descriptions', category: 'UNIT_DESCRIPTIONS', icon: <MeetingRoomIcon /> },
     { id: 'site-section', title: 'Site', category: 'SITE', icon: <TerrainIcon /> },
-    ...((selectedFormType === '1004C' || selectedFormType === '1004C + 1007' || data?.['Manufactured Home'] || data?.MANUFACTURED_HOME || data?.HUD_IMAGE_VERIFICATION || data?.HUD_IMAGE_DATA) ? [{ id: 'manufactured-home-section', title: 'Manufactured Home', category: 'MANUFACTURED_HOME', icon: <BuildIcon /> }] : []),
+    ...((selectedFormType === '1004C' || selectedFormType === '1004C + 1007') ? [{ id: 'manufactured-home-section', title: 'Manufactured Home', category: 'MANUFACTURED_HOME', icon: <BuildIcon /> }] : []),
     { id: 'improvements-section', title: 'Improvements', category: 'IMPROVEMENTS', icon: <BuildIcon /> },
     { id: 'comparable-rental-data', title: 'COMPARABLE RENTAL DATA', category: 'COMPARABLE_RENTAL_DATA', icon: <ApartmentIcon /> },
     { id: 'subject-rent-schedule', title: 'SUBJECT RENT SCHEDULE', category: 'SUBJECT_RENT_SCHEDULE', icon: <RequestQuoteIcon /> },
@@ -3930,7 +3930,7 @@ function Subject({ defaultFormType }) {
     { id: 'map-sketch-exhibits-section', title: 'Map & Sketch Analysis', category: 'MAP_SKETCH_ANALYSIS', icon: <MapIcon /> },
     { id: 'photos-exhibits-section', title: 'Photos & Exhibits', category: 'EXTRACTED_PHOTOS', icon: <PhotoLibraryIcon /> },
     { id: 'raw-output', title: 'Raw Output', icon: <CodeIcon /> },
-  ], [engagementLetterFile, selectedFormType, data]);
+  ], [engagementLetterFile, selectedFormType]);
 
   const salesGridRows = [
     { label: "Address", valueKey: "Address", subjectValueKey: "Property Address" },

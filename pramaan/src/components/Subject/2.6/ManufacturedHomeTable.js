@@ -159,6 +159,7 @@ export const ManufacturedHomeTable = ({
   title = 'HUD Data Plate & Compliance Certificate / Certification Label',
   data = {},
   allData = {},
+  formType,
   onDataChange,
   editingField,
   setEditingField,
@@ -403,6 +404,23 @@ export const ManufacturedHomeTable = ({
       setOcrLoading(false);
     }
   };
+
+  const effectiveFormType = (
+    formType ||
+    allData?.formType ||
+    data?.formType ||
+    data?.['Form Type'] ||
+    allData?.['Form Type'] ||
+    data?.form_type ||
+    allData?.form_type ||
+    ''
+  ).toString().toUpperCase();
+
+  const is1004C = effectiveFormType.includes('1004C');
+
+  if (!is1004C) {
+    return null;
+  }
 
   return (
     <Paper

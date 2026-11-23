@@ -3,7 +3,6 @@ import { CondoCoopProjectsTable } from '../components/tables';
 import ActionButtons from '../components/ActionButtons';
 import MapAndSketchExhibitsSection from '../components/MapAndSketchExhibitsSection';
 import SalesComparisonSection from '../components/SalesComparisonSection';
-import ManufacturedHomeTable from './ManufacturedHomeTable';
 const Form1004 = ({
   data, allData, extractionAttempted, handleDataChange, editingField, setEditingField,
   highlightedSubjectFields, highlightedContractFields, highlightedSiteFields,
@@ -40,21 +39,6 @@ const Form1004 = ({
     <GridInfoCard id="site-section" title="Site Section" fields={siteFields} data={data.SITE} cardClass="bg-warning" extractionAttempted={extractionAttempted} onDataChange={(field, value) => handleDataChange(['SITE', ...field], value)} editingField={editingField} setEditingField={setEditingField} isEditable={true} highlightedFields={highlightedSiteFields} allData={allData} loading={loading} loadingSection={loadingSection} manualValidations={manualValidations} handleManualValidation={handleManualValidation} onRevisionButtonClick={onSiteRevisionButtonClick} revisionHandlers={revisionHandlers} />
 
     <GridInfoCard id="improvements-section" title="Improvements Section" fields={improvementsFields} data={data} cardClass="bg-success" extractionAttempted={extractionAttempted} onDataChange={(field, value) => handleDataChange(field, value)} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} loading={loading} loadingSection={loadingSection} manualValidations={manualValidations} handleManualValidation={handleManualValidation} onRevisionButtonClick={onImprovementsRevisionButtonClick} revisionHandlers={revisionHandlers} />
-
-    {(data?.['Manufactured Home'] || data?.MANUFACTURED_HOME || data?.HUD_IMAGE_VERIFICATION || data?.HUD_IMAGE_DATA || allData?.['Manufactured Home'] || allData?.HUD_IMAGE_VERIFICATION || allData?.HUD_IMAGE_DATA) && (
-      <ManufacturedHomeTable
-        id="manufactured-home-section"
-        title="HUD Data Plate & Compliance Certificate / Certification Label"
-        data={data}
-        allData={allData}
-        onDataChange={handleDataChange}
-        editingField={editingField}
-        setEditingField={setEditingField}
-        isEditable={true}
-        manualValidations={manualValidations}
-        handleManualValidation={handleManualValidation}
-      />
-    )}
 
     <GridInfoCard id="info-of-sales-section" title="Sales Comparison Approach" fields={infoOfSalesFields} data={data.INFO_OF_SALES} cardClass="bg-primary" extractionAttempted={extractionAttempted} onDataChange={(field, value) => handleDataChange(['INFO_OF_SALES', ...field], value)} editingField={editingField} setEditingField={setEditingField} isEditable={true} allData={allData} loading={loading} loadingSection={loadingSection} manualValidations={manualValidations} handleManualValidation={handleManualValidation} revisionHandlers={revisionHandlers} />
 

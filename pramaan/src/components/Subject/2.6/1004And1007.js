@@ -4,7 +4,6 @@ import ActionButtons from '../components/ActionButtons';
 import MapAndSketchExhibitsSection from '../components/MapAndSketchExhibitsSection';
 import SalesComparisonSection from '../components/SalesComparisonSection';
 import ComparableRentScheduleSection from '../components/ComparableRentScheduleSection';
-import ManufacturedHomeTable from './ManufacturedHomeTable';
 
 const Form1004And1007 = ({
   data, allData, extractionAttempted, handleDataChange, editingField, setEditingField,
@@ -148,21 +147,6 @@ const Form1004And1007 = ({
       onRevisionButtonClick={onImprovementsRevisionButtonClick}
       revisionHandlers={revisionHandlers}
     />
-
-    {(data?.['Manufactured Home'] || data?.MANUFACTURED_HOME || data?.HUD_IMAGE_VERIFICATION || data?.HUD_IMAGE_DATA || allData?.['Manufactured Home'] || allData?.HUD_IMAGE_VERIFICATION || allData?.HUD_IMAGE_DATA) && (
-      <ManufacturedHomeTable
-        id="manufactured-home-section"
-        title="HUD Data Plate & Compliance Certificate / Certification Label"
-        data={data}
-        allData={allData}
-        onDataChange={handleDataChange}
-        editingField={editingField}
-        setEditingField={setEditingField}
-        isEditable={true}
-        manualValidations={manualValidations}
-        handleManualValidation={handleManualValidation}
-      />
-    )}
 
     <GridInfoCard
       id="info-of-sales-section"
