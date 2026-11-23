@@ -65,6 +65,26 @@ class Test1004CHUDLabels(unittest.TestCase):
             classify_subject_view_label("HUD Certification Label")[0],
             "HUD Certification Label"
         )
+        self.assertEqual(
+            classify_subject_view_label("Data HUD ID")[0],
+            "HUD Data Plate / Compliance Certificate"
+        )
+        self.assertEqual(
+            classify_subject_view_label("HUD Info")[0],
+            "HUD Data Plate / Compliance Certificate"
+        )
+        self.assertEqual(
+            classify_subject_view_label("Hud Label")[0],
+            "HUD Certification Label"
+        )
+        self.assertEqual(
+            classify_subject_view_label("Hud Label 1 Illegible")[0],
+            "HUD Certification Label"
+        )
+        self.assertEqual(
+            classify_subject_view_label("Hud Label 2 Illegible")[0],
+            "HUD Certification Label"
+        )
 
         # 2. Address-prefixed labels (e.g. from user uploaded Image 3)
         self.assertEqual(

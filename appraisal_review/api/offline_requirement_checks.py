@@ -7177,11 +7177,12 @@ def evaluate_photo_requirements(pdf_path: str, extracted_data: Optional[Dict[str
         checks.extend([
             ("HUD Certification Label", [
                 "HUD CERTIFICATION LABEL", "HUD CERTIFICATION", "HUD PLATE 1", "HUD PLATE 2",
-                "HUD PLATE", "PLATE 1", "PLATE 2", "HUD LABEL 1", "HUD LABEL 2", "HUD LABEL"
+                "HUD PLATE", "PLATE 1", "PLATE 2", "HUD LABEL 1", "HUD LABEL 2", "HUD LABEL",
+                "HUD LABEL 1 ILLEGIBLE", "HUD LABEL 2 ILLEGIBLE"
             ], "Required HUD Certification Label photograph attached to the exterior of each section."),
             ("HUD Data Plate / Compliance Certificate", [
                 "HUD DATA PLATE", "HUD PLATE DATA", "DATA PLATE", "HUD CERTIFICATE",
-                "COMPLIANCE CERTIFICATE", "HUD COMPLIANCE"
+                "COMPLIANCE CERTIFICATE", "HUD COMPLIANCE", "DATA HUD ID", "DATA HUD", "HUD INFO"
             ], "Required HUD Data Plate / Compliance Certificate photograph from interior of dwelling.")
         ])
 

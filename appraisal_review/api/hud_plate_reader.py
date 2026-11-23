@@ -342,7 +342,7 @@ def extract_hud_image_data_from_photos(photos_list: List[Dict[str, Any]]) -> Dic
     combined_ocr_text = []
 
     hud_keyword_pattern = re.compile(
-        r'\b(?:hud\s*plate|plate\s*[1-9]|hud\s*cert(?:ification)?(?:\s*label)?|label\s*[1-9]|data\s*plate|compliance\s*cert)\b',
+        r'\b(?:data\s+hud(?:\s+id)?|hud\s+id|hud\s+info(?:rmation)?|hud\s*plate(?:\s*#?\s*\d+)?|plate\s*#?\s*[1-9]\d*|hud\s*cert(?:ification)?(?:\s*label)?|hud\s*label(?:\s*#?\s*\d+)?(?:\s+illegible)?|label\s*#?\s*[1-9]\d*(?:\s+illegible)?|data\s*plate|compliance\s*cert)\b',
         re.I
     )
 
@@ -357,6 +357,9 @@ def extract_hud_image_data_from_photos(photos_list: List[Dict[str, Any]]) -> Dic
         is_hud = (
             "hud" in vt.lower() or
             "data plate" in vt.lower() or
+            "certification label" in vt.lower() or
+            "hud" in cap.lower() or
+            "hud" in orig_cap.lower() or
             hud_keyword_pattern.search(cap) is not None or
             hud_keyword_pattern.search(orig_cap) is not None or
             "hud" in cat.lower()

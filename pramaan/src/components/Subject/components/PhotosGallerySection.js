@@ -129,7 +129,8 @@ export const PhotosGallerySection = ({
     if (
       c.includes('hud') || c.includes('plate') || c.includes('certification label') ||
       vt.includes('hud') || vt.includes('plate') || vt.includes('data plate') ||
-      /\b(?:hud\s*plate|plate\s*[1-9]|hud\s*cert(?:ification)?(?:\s*label)?|label\s*[1-9]|data\s*plate|compliance\s*cert)\b/i.test(cap)
+      cap.includes('hud') ||
+      /\b(?:data\s+hud(?:\s+id)?|hud\s+info|hud\s*plate|plate\s*[1-9]|hud\s*cert(?:ification)?(?:\s*label)?|hud\s*label|label\s*[1-9]|data\s*plate|compliance\s*cert)\b/i.test(cap)
     ) {
       return 'HUD Plate & Certification';
     }
@@ -248,19 +249,19 @@ export const PhotosGallerySection = ({
       (typeof allData?.formType === 'string' && allData.formType.includes('1004C')) ||
       (typeof data?.['Form Type'] === 'string' && data['Form Type'].includes('1004C')) ||
       (typeof allData?.['Form Type'] === 'string' && allData['Form Type'].includes('1004C')) ||
-      photosList.some(p => /hud\s*plate|hud\s*cert|data\s*plate/i.test(p.caption || '') || /hud\s*plate|hud\s*cert/i.test(p.original_caption || ''))
+      photosList.some(p => /hud|data\s*plate/i.test(p.caption || '') || /hud|data\s*plate/i.test(p.original_caption || ''))
     );
 
     const hasHudPlate = photosList.some(p =>
       p.view_type === 'HUD Certification Label' ||
-      /\b(?:hud\s*plate|plate\s*[1-9]|hud\s*cert(?:ification)?(?:\s*label)?|label\s*[1-9])\b/i.test(p.caption || '') ||
-      /\b(?:hud\s*plate|plate\s*[1-9]|hud\s*cert(?:ification)?(?:\s*label)?|label\s*[1-9])\b/i.test(p.original_caption || '')
+      /\b(?:hud\s*plate|plate\s*[1-9]|hud\s*cert(?:ification)?(?:\s*label)?|hud\s*label(?:\s*[1-9]\d*)?(?:\s+illegible)?|label\s*[1-9])\b/i.test(p.caption || '') ||
+      /\b(?:hud\s*plate|plate\s*[1-9]|hud\s*cert(?:ification)?(?:\s*label)?|hud\s*label(?:\s*[1-9]\d*)?(?:\s+illegible)?|label\s*[1-9])\b/i.test(p.original_caption || '')
     );
 
     const hasHudDataPlate = photosList.some(p =>
       p.view_type === 'HUD Data Plate / Compliance Certificate' ||
-      /\b(?:hud\s*data\s*plate|hud\s*plate\s*data|data\s*plate|hud\s*cert(?:ificate)?|compliance\s*cert(?:ificate)?)\b/i.test(p.caption || '') ||
-      /\b(?:hud\s*data\s*plate|hud\s*plate\s*data|data\s*plate|hud\s*cert(?:ificate)?|compliance\s*cert(?:ificate)?)\b/i.test(p.original_caption || '')
+      /\b(?:data\s+hud(?:\s+id)?|hud\s+info|hud\s*data\s*plate|hud\s*plate\s*data|data\s*plate|hud\s*cert(?:ificate)?|compliance\s*cert(?:ificate)?)\b/i.test(p.caption || '') ||
+      /\b(?:data\s+hud(?:\s+id)?|hud\s+info|hud\s*data\s*plate|hud\s*plate\s*data|data\s*plate|hud\s*cert(?:ificate)?|compliance\s*cert(?:ificate)?)\b/i.test(p.original_caption || '')
     );
 
     const checks = [

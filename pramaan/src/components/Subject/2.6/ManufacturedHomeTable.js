@@ -312,9 +312,12 @@ export const ManufacturedHomeTable = ({
       return (
         vt.includes('hud') ||
         vt.includes('data plate') ||
-        /\b(?:hud\s*plate|plate\s*[1-9]|hud\s*cert(?:ification)?(?:\s*label)?|label\s*[1-9]|data\s*plate|compliance\s*cert)\b/i.test(cap) ||
-        /\b(?:hud\s*plate|plate\s*[1-9]|hud\s*cert(?:ification)?(?:\s*label)?|label\s*[1-9]|data\s*plate|compliance\s*cert)\b/i.test(origCap) ||
-        cat.includes('hud')
+        vt.includes('certification label') ||
+        cat.includes('hud') ||
+        cap.includes('hud') ||
+        origCap.includes('hud') ||
+        /\b(?:data\s+hud(?:\s+id)?|hud\s+id|hud\s+info(?:rmation)?|hud\s*plate(?:\s*#?\s*\d+)?|plate\s*#?\s*[1-9]\d*|hud\s*cert(?:ification)?(?:\s*label)?|hud\s*label(?:\s*#?\s*\d+)?(?:\s+illegible)?|label\s*#?\s*[1-9]\d*(?:\s+illegible)?|data\s*plate|compliance\s*cert(?:ificate)?)\b/i.test(cap) ||
+        /\b(?:data\s+hud(?:\s+id)?|hud\s+id|hud\s+info(?:rmation)?|hud\s*plate(?:\s*#?\s*\d+)?|plate\s*#?\s*[1-9]\d*|hud\s*cert(?:ification)?(?:\s*label)?|hud\s*label(?:\s*#?\s*\d+)?(?:\s+illegible)?|label\s*#?\s*[1-9]\d*(?:\s+illegible)?|data\s*plate|compliance\s*cert(?:ificate)?)\b/i.test(origCap)
       );
     });
   }, [data, allData]);
@@ -493,7 +496,7 @@ export const ManufacturedHomeTable = ({
             )}
           </Box>
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-            Target labels: HUD Plate 1, HUD Plate 2, Plate 1, Plate 2, HUD Certificate, HUD Certification Label, Data Plate
+            Target labels: Data HUD ID, HUD Info, HUD Certification Label, Hud Label, Hud Label 1/2 Illegible, HUD Plate 1/2, Plate 1/2, Data Plate, HUD Certificate
           </Typography>
         </Box>
 
@@ -579,7 +582,7 @@ export const ManufacturedHomeTable = ({
           </Box>
         ) : (
           <Typography variant="body2" sx={{ color: 'text.secondary', fontStyle: 'italic', fontSize: '0.82rem' }}>
-            No HUD Plate / Certification Label photos detected yet. When uploaded, photographs labeled "HUD Plate 1", "HUD Plate 2", "Plate 1", "Plate 2", "HUD Certificate", or "HUD Certification Label" will display here automatically.
+            No HUD Plate / Certification Label photos detected yet. When uploaded, photographs labeled &quot;Data HUD ID&quot;, &quot;HUD Info&quot;, &quot;HUD Certification Label&quot;, &quot;Hud Label&quot;, &quot;Hud Label 1/2 Illegible&quot;, &quot;HUD Plate 1/2&quot;, &quot;Data Plate&quot;, or &quot;HUD Certificate&quot; will display here automatically.
           </Typography>
         )}
       </Box>
