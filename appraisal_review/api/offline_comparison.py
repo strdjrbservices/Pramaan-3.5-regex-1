@@ -65,6 +65,14 @@ except ImportError:
         NLPRevisionMatcher = None
         fuzz = None
 
+try:
+    from .contract_reconciliation import compare_contract_to_report
+except ImportError:
+    try:
+        from contract_reconciliation import compare_contract_to_report
+    except ImportError:
+        compare_contract_to_report = None
+
 # -------------------------------------------------------------------------
 
 STREET_ABBREVIATIONS = {
@@ -4177,7 +4185,14 @@ def compare_documents_offline(
 def compare_contract_offline(main_report_path: str, contract_path: str) -> List[Dict[str, Any]]:
     """
     Compares Contract Price and Contract Date between appraisal report and contract copy offline.
+    Uses production-grade deterministic ContractPdfExtractor and appraisal source reconciliation.
     """
+    if compare_contract_to_report is not None:
+        try:
+            return compare_contract_to_report(main_report_path, contract_path)
+        except Exception:
+            pass
+
     rep = extract_report_data_offline(main_report_path)
     contract_rep = extract_report_data_offline(contract_path)
 

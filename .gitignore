@@ -59,6 +59,9 @@ yarn-error.log*
 *.temp
 .easyocr/
 **/.easyocr/
+.easyocr_models/
+**/.easyocr_models/
+*.pth
 **/Downloads/
 **/scratch/
 scratch/

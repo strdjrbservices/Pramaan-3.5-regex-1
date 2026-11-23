@@ -61,6 +61,7 @@ import {
   PdfXmlDiffDialog,
 } from './components/dialogs.js';
 import { EngagementLetterSection } from './components/EngagementLetterSection';
+import { ContractComparisonSection } from './components/ContractComparisonSection';
 import { SalesComparisonSection, ComparisonResultTable, SubjectRentScheduleTable } from './components/tables.js';
 import { getComparisonStyle, playSound, API_BASE_URL } from './utils/utils.js';
 
@@ -2796,13 +2797,20 @@ function Subject({ defaultFormType }) {
     const file = e.target.files && e.target.files[0];
     if (file) {
       setContractFile(file);
-      setNotification({ open: true, message: 'Contract file uploaded. Click "Review Contract" to compare.', severity: 'success' });
-
+      setNotification({ open: true, message: 'Contract file uploaded.', severity: 'success' });
+      const reportFile = (extractionSource === 'xml' ? (xmlFile || selectedFile) : (selectedFile || xmlFile)) || selectedFile || xmlFile;
+      if (reportFile) {
+        handleContractCompare(file);
+      }
     }
   };
 
-  const handleContractCompare = async () => {
-    if (!selectedFile || !contractFile) {
+  const handleContractCompare = async (targetContractOverride = null) => {
+    const reportFile = (extractionSource === 'xml' ? (xmlFile || selectedFile) : (selectedFile || xmlFile)) || selectedFile || xmlFile;
+    const targetContract = (targetContractOverride && typeof targetContractOverride === 'object' && targetContractOverride.name)
+      ? targetContractOverride
+      : contractFile;
+    if (!reportFile || !targetContract) {
       setNotification({ open: true, message: 'Please upload both the main report and the contract copy.', severity: 'warning' });
       return;
     }
@@ -2811,8 +2819,8 @@ function Subject({ defaultFormType }) {
     setContractCompareResult(null);
 
     const formData = new FormData();
-    formData.append('main_report_file', selectedFile);
-    formData.append('contract_copy_file', contractFile);
+    formData.append('main_report_file', reportFile);
+    formData.append('contract_copy_file', targetContract);
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/compare-contract/`, {
@@ -7709,8 +7717,10 @@ function Subject({ defaultFormType }) {
             result={contractCompareResult}
             error={contractCompareError}
             selectedFile={selectedFile}
+            xmlFile={xmlFile}
             contractFile={contractFile}
             mainData={data}
+            extractionSource={extractionSource}
           />
           <EngagementLetterDialog
             open={isEngagementLetterDialogOpen}
@@ -7748,6 +7758,27 @@ function Subject({ defaultFormType }) {
               }}
               onPreview={handlePreviewPdf}
               canCompare={Boolean(selectedFile || xmlFile)}
+            />
+          )}
+
+          {/* Contract Comparison Section - appears as a separate section above Subject section when contract is uploaded */}
+          {contractFile && (
+            <ContractComparisonSection
+              contractFile={contractFile}
+              reportFile={(extractionSource === 'xml' ? (xmlFile || selectedFile) : (selectedFile || xmlFile)) || selectedFile || xmlFile}
+              loading={contractCompareLoading}
+              result={contractCompareResult}
+              error={contractCompareError}
+              onCompare={() => handleContractCompare()}
+              onClose={() => {
+                setContractFile(null);
+                setContractCompareResult(null);
+                setContractCompareError('');
+                if (contractFileInputRef.current) contractFileInputRef.current.value = '';
+              }}
+              onPreview={handlePreviewPdf}
+              canCompare={Boolean(selectedFile || xmlFile)}
+              mainData={data}
             />
           )}
 

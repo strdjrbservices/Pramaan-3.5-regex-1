@@ -106,3 +106,60 @@ map_output/
    - Property Address (e.g. `76 Delaware Dr`)
    - Proximity / Distance (`0.33 miles`) and Compass Direction (`SE`)
    - Price (if present)
+
+---
+
+# Real Estate Contract Copy Extraction & Appraisal Reconciliation Engine
+
+Deterministic, production-grade module to extract **Purchase Price** and **Contract Date(s)** from real estate purchase contracts (PDF, scanned images, DocuSign envelopes) and reconcile them against an Appraisal Report (MISMO 2.6 / 3.x XML or Fannie Mae / Freddie Mac PDF Form 1004 / 1025 / 1073 / UAD 3.6).
+
+## 🚀 CLI Quick Start
+
+### Compare Contract to MISMO XML
+```powershell
+python contract_reconciliation.py --report "path/to/report.xml" --contract "path/to/contract.pdf"
+```
+
+### Compare Contract to Appraisal PDF (Form 1004 / 1025)
+```powershell
+python contract_reconciliation.py --report "path/to/appraisal.pdf" --contract "path/to/contract.pdf"
+```
+
+### Output Raw JSON
+```powershell
+python contract_reconciliation.py --report "path/to/report.xml" --contract "path/to/contract.pdf" --json
+```
+
+## 🐍 Python API Usage
+```python
+from contract_reconciliation import compare_contract_to_report
+
+results = compare_contract_to_report(
+    main_report_path="3342 Fairfield Ave.xml",
+    contract_path="Purchase Contract.pdf"
+)
+
+print(results)
+# Output:
+# [
+#   {
+#     "field": "Contract Price",
+#     "old_value": "$600,000",
+#     "new_value": "$600,000",
+#     "status": "Match"
+#   },
+#   {
+#     "field": "Contract Date",
+#     "old_value": "2026-10-22",
+#     "new_value": "2026-09-09",
+#     "status": "Mismatch"
+#   }
+# ]
+```
+
+## ⚙️ Core Architecture Highlights
+- **Dual-Pass Ingestion**: Fast sub-second digital text extraction via PyMuPDF (`fitz`), with automatic fallback to offline local EasyOCR if pages are scanned or contain corrupted font subsets.
+- **Form Family Detection**: Automatic classification of California C.A.R. Form RPA, New Jersey REALTORS Standard Form 118, North Carolina Standard Form 2-T, Texas TREC One to Four Family, and Generic Bilateral Contracts.
+- **Mathematical Invariant Verification**: Cross-checks deposit schedule and mortgage loan amount against total purchase price ($\text{Deposit} + \text{Mortgage} = \text{Total Price}$) to heal OCR noise/misreads.
+- **Legal Date Milestone Hierarchy**: Resolves Effective/Acceptance Date > Buyer Execution Date > Date Prepared / Contract Dated.
+- **Comprehensive Appraisal Support**: Reconciles against MISMO 2.6 GSE XML, MISMO 3.x XML, legacy Fannie Mae URAR Form 1004 / 1025 / 1073, and modern UAD 3.6 URAR PDFs.

@@ -8,13 +8,18 @@ import {
 import {
     Close as CloseIcon, CheckCircleOutline as CheckCircleOutlineIcon,
     ErrorOutline as ErrorOutlineIcon, Warning as WarningIcon, ContentCopy as ContentCopyIcon,
-    NoteAlt as NoteAltIcon
+    NoteAlt as NoteAltIcon, InfoOutlined as InfoOutlinedIcon
 } from '@mui/icons-material';
 
-export const ContractComparisonDialog = ({ open, onClose, onCompare, loading, result, error, selectedFile, contractFile, mainData }) => {
+export const ContractComparisonDialog = ({
+    open, onClose, onCompare, loading, result, error,
+    selectedFile, xmlFile, contractFile, mainData, extractionSource
+}) => {
     const handleClose = () => {
         onClose();
     };
+
+    const effectiveReportFile = (extractionSource === 'xml' ? (xmlFile || selectedFile) : (selectedFile || xmlFile)) || selectedFile || xmlFile;
 
     return (
         <Dialog open={open} onClose={handleClose} maxWidth={result ? "md" : "sm"} fullWidth>
@@ -29,6 +34,22 @@ export const ContractComparisonDialog = ({ open, onClose, onCompare, loading, re
                 </IconButton>
             </DialogTitle>
             <DialogContent dividers>
+                {/* File source indicators */}
+                <Box sx={{ mb: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    <Chip
+                        label={`Main Report: ${effectiveReportFile?.name || 'Not selected'}`}
+                        color={effectiveReportFile ? "primary" : "default"}
+                        variant="outlined"
+                        size="small"
+                    />
+                    <Chip
+                        label={`Contract Copy: ${contractFile?.name || 'Not selected'}`}
+                        color={contractFile ? "primary" : "default"}
+                        variant="outlined"
+                        size="small"
+                    />
+                </Box>
+
                 {loading && <Box sx={{ display: 'flex', justifyContent: 'center', my: 3 }}><CircularProgress /></Box>}
                 {error && <Alert severity="error" sx={{ my: 2 }}>{error}</Alert>}
                 {result ? (
@@ -37,23 +58,36 @@ export const ContractComparisonDialog = ({ open, onClose, onCompare, loading, re
                             <TableHead>
                                 <TableRow>
                                     <TableCell sx={{ fontWeight: 'bold' }}>Field</TableCell>
-                                    <TableCell sx={{ fontWeight: 'bold' }}>Main Report</TableCell>
+                                    <TableCell sx={{ fontWeight: 'bold' }}>Main Report (Appraisal)</TableCell>
                                     <TableCell sx={{ fontWeight: 'bold' }}>Contract Copy</TableCell>
                                     <TableCell sx={{ fontWeight: 'bold' }} align="center">Status</TableCell>
                                 </TableRow>
                             </TableHead>
                             <TableBody>
-                                {['Contract Price', 'Contract Date'].map(fieldName => {
-                                    const item = result.find(r => r.field.toLowerCase() === fieldName.toLowerCase());
-                                    const mainValue = fieldName === 'Contract Price' ? mainData?.CONTRACT?.['Contract Price $'] : mainData?.CONTRACT?.['Date of Contract'];
+                                {((result && result.length > 0) ? result.map(r => r.field) : ['Contract Price', 'Contract Date']).map(fieldName => {
+                                    const item = result.find(r => r.field.toLowerCase() === fieldName.toLowerCase()) || result.find(r => r.field.toLowerCase().includes(fieldName.toLowerCase()));
+                                    const mainValue = fieldName === 'Contract Price' 
+                                        ? (mainData?.CONTRACT?.['Contract Price $'] || mainData?.CONTRACT?.['Contract Price']) 
+                                        : fieldName === 'Contract Date' 
+                                        ? mainData?.CONTRACT?.['Date of Contract']
+                                        : null;
+                                    const isMatch = item?.status === 'Match';
+                                    const isMismatch = item?.status === 'Mismatch';
+                                    const isInfo = item?.status === 'Info';
                                     return (
-                                        <TableRow key={fieldName} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
-                                            <TableCell>{fieldName}</TableCell>
-                                            <TableCell>{item?.old_value || mainValue || 'N/A'}</TableCell>
-                                            <TableCell>{item?.new_value || 'N/A'}</TableCell>
+                                        <TableRow key={fieldName} sx={{ bgcolor: isMismatch ? '#fff5f5' : '#ffffff', '&:last-child td, &:last-child th': { border: 0 } }}>
+                                            <TableCell sx={{ fontWeight: 600 }}>{fieldName}</TableCell>
+                                            <TableCell sx={{ fontWeight: 500 }}>{item?.old_value || mainValue || 'N/A'}</TableCell>
+                                            <TableCell sx={{ fontWeight: 500 }}>{item?.new_value || 'N/A'}</TableCell>
                                             <TableCell align="center">
                                                 {item ? (
-                                                    item.status === 'Match' ? <CheckCircleOutlineIcon color="success" /> : <ErrorOutlineIcon color="error" />
+                                                    <Chip
+                                                        icon={isMatch ? <CheckCircleOutlineIcon /> : isInfo ? <InfoOutlinedIcon /> : <ErrorOutlineIcon />}
+                                                        label={item.status}
+                                                        color={isMatch ? "success" : isInfo ? "default" : "error"}
+                                                        size="small"
+                                                        variant="outlined"
+                                                    />
                                                 ) : <WarningIcon color="warning" />}
                                             </TableCell>
                                         </TableRow>
@@ -63,7 +97,7 @@ export const ContractComparisonDialog = ({ open, onClose, onCompare, loading, re
                         </Table>
                     </TableContainer>
                 ) : !loading && (
-                    <Typography>
+                    <Typography color="text.secondary">
                         Click 'Compare' to check for consistency in Contract Date and Contract Price between the main report and the contract copy.
                     </Typography>
                 )
@@ -71,7 +105,11 @@ export const ContractComparisonDialog = ({ open, onClose, onCompare, loading, re
             </DialogContent>
             <DialogActions>
                 <Button onClick={handleClose}>Close</Button>
-                <Button onClick={onCompare} variant="contained" disabled={loading || !selectedFile || !contractFile}>
+                <Button
+                    onClick={onCompare}
+                    variant="contained"
+                    disabled={loading || !effectiveReportFile || !contractFile}
+                >
                     {loading ? <CircularProgress size={24} /> : (result ? 'Reload' : 'Compare')}
                 </Button>
             </DialogActions>
