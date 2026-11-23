@@ -16,6 +16,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { EditableField } from '../components/EditableField';
 import { InteractiveZoomImageViewer } from '../components/InteractiveZoomImageViewer.js';
+import { API_BASE_URL } from '../utils/utils.js';
 
 export const MANUFACTURED_HOME_SECTIONS = [
   {
@@ -152,8 +153,6 @@ const FIELD_FALLBACKS = {
     'Year Built'
   ],
 };
-
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://127.0.0.1:8000';
 
 export const ManufacturedHomeTable = ({
   id = 'manufactured-home-section',
@@ -410,7 +409,12 @@ export const ManufacturedHomeTable = ({
       }
     } catch (err) {
       console.error('HUD OCR Error:', err);
-      setOcrError(err.message || 'Error running OCR extraction.');
+      const isConnError = err?.message?.includes('Failed to fetch') || err?.message?.includes('NetworkError');
+      setOcrError(
+        isConnError
+          ? `Could not connect to backend server at ${API_BASE_URL}. Please verify the backend service is running.`
+          : (err.message || 'Error running OCR extraction.')
+      );
     } finally {
       setOcrLoading(false);
     }
