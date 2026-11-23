@@ -3901,7 +3901,7 @@ function Subject({ defaultFormType }) {
     { id: 'project-analysis-section', title: 'Project Analysis', category: 'PROJECT_ANALYSIS', icon: <AnalyticsIcon /> },
     { id: 'unit-descriptions-section', title: 'Unit Descriptions', category: 'UNIT_DESCRIPTIONS', icon: <MeetingRoomIcon /> },
     { id: 'site-section', title: 'Site', category: 'SITE', icon: <TerrainIcon /> },
-    ...((selectedFormType === '1004C' || selectedFormType === '1004C + 1007') ? [{ id: 'manufactured-home-section', title: 'Manufactured Home', category: 'MANUFACTURED_HOME', icon: <BuildIcon /> }] : []),
+    ...((selectedFormType === '1004C' || selectedFormType === '1004C + 1007' || data?.['Manufactured Home'] || data?.MANUFACTURED_HOME || data?.HUD_IMAGE_VERIFICATION || data?.HUD_IMAGE_DATA) ? [{ id: 'manufactured-home-section', title: 'Manufactured Home', category: 'MANUFACTURED_HOME', icon: <BuildIcon /> }] : []),
     { id: 'improvements-section', title: 'Improvements', category: 'IMPROVEMENTS', icon: <BuildIcon /> },
     { id: 'comparable-rental-data', title: 'COMPARABLE RENTAL DATA', category: 'COMPARABLE_RENTAL_DATA', icon: <ApartmentIcon /> },
     { id: 'subject-rent-schedule', title: 'SUBJECT RENT SCHEDULE', category: 'SUBJECT_RENT_SCHEDULE', icon: <RequestQuoteIcon /> },
@@ -3922,7 +3922,7 @@ function Subject({ defaultFormType }) {
     { id: 'map-sketch-exhibits-section', title: 'Map & Sketch Analysis', category: 'MAP_SKETCH_ANALYSIS', icon: <MapIcon /> },
     { id: 'photos-exhibits-section', title: 'Photos & Exhibits', category: 'EXTRACTED_PHOTOS', icon: <PhotoLibraryIcon /> },
     { id: 'raw-output', title: 'Raw Output', icon: <CodeIcon /> },
-  ], [engagementLetterFile, selectedFormType]);
+  ], [engagementLetterFile, selectedFormType, data]);
 
   const salesGridRows = [
     { label: "Address", valueKey: "Address", subjectValueKey: "Property Address" },
@@ -4813,6 +4813,30 @@ function Subject({ defaultFormType }) {
       Object.assign(normalizedFields, mhSec);
     }
 
+    const hudImgData = result.HUD_IMAGE_DATA || result.hud_image_data ||
+      result.fields?.HUD_IMAGE_DATA || result.fields?.hud_image_data ||
+      result.clean_data?.HUD_IMAGE_DATA || result.clean_data?.hud_image_data ||
+      mhSec?._hud_image_data;
+    if (hudImgData) {
+      normalizedFields["HUD_IMAGE_DATA"] = hudImgData;
+      normalizedFields["hud_image_data"] = hudImgData;
+      if (!normalizedFields["Manufactured Home"]) normalizedFields["Manufactured Home"] = {};
+      normalizedFields["Manufactured Home"]._hud_image_data = hudImgData;
+      normalizedFields["Manufactured Home"].HUD_IMAGE_DATA = hudImgData;
+    }
+
+    const hudImgVerif = result.HUD_IMAGE_VERIFICATION || result.hud_image_verification ||
+      result.fields?.HUD_IMAGE_VERIFICATION || result.fields?.hud_image_verification ||
+      result.clean_data?.HUD_IMAGE_VERIFICATION || result.clean_data?.hud_image_verification ||
+      mhSec?._hud_image_verification;
+    if (hudImgVerif) {
+      normalizedFields["HUD_IMAGE_VERIFICATION"] = hudImgVerif;
+      normalizedFields["hud_image_verification"] = hudImgVerif;
+      if (!normalizedFields["Manufactured Home"]) normalizedFields["Manufactured Home"] = {};
+      normalizedFields["Manufactured Home"]._hud_image_verification = hudImgVerif;
+      normalizedFields["Manufactured Home"].HUD_IMAGE_VERIFICATION = hudImgVerif;
+    }
+
     // Unpack UNIT_DESCRIPTIONS section (Form 1073 Condo)
     const unitDescSec = result.fields?.UNIT_DESCRIPTIONS || result.fields?.['Unit Descriptions'] || result.clean_data?.['Unit Descriptions'] || result.clean_data?.UNIT_DESCRIPTIONS || result['Unit Descriptions'] || result['UNIT_DESCRIPTIONS'];
     if (unitDescSec && typeof unitDescSec === 'object') {
@@ -5101,7 +5125,9 @@ function Subject({ defaultFormType }) {
 
     // Automatically trigger and output all requirement checks (State, Client, Escalation) upon file upload
     const payloadFields = extractedDataResult?.fields || {};
-    triggerAutoRequirementChecks(activeFile, payloadFields, detectedFormType);
+    setTimeout(() => {
+      triggerAutoRequirementChecks(activeFile, payloadFields, detectedFormType);
+    }, 250);
   };
 
   const handlePromptAnalysis = async (prompt) => {
@@ -5513,32 +5539,34 @@ function Subject({ defaultFormType }) {
     }
   };
 
-  const triggerAutoRequirementChecks = (activeFile, extractedData, formType) => {
+  const triggerAutoRequirementChecks = async (activeFile, extractedData, formType) => {
     if (!activeFile) return;
 
-    // Concurrently trigger State, Client, Escalation, and FHA checks upon file upload
-    const checks = [
-      handleStateRequirementCheck(true, activeFile, extractedData, formType),
-      handleClientRequirementCheck(true, activeFile, extractedData, formType),
-      handleEscalationCheck(true, activeFile, extractedData, formType),
-    ];
+    // Run State, Client, Escalation, and FHA checks sequentially with a short pause
+    // to prevent server-side socket contention / Broken pipe on single-threaded dev server
+    try {
+      await handleStateRequirementCheck(true, activeFile, extractedData, formType);
+      await new Promise(res => setTimeout(res, 250));
+      await handleClientRequirementCheck(true, activeFile, extractedData, formType);
+      await new Promise(res => setTimeout(res, 250));
+      await handleEscalationCheck(true, activeFile, extractedData, formType);
 
-    const hasFha = Boolean(
-      extractedData?.['FHA Case No.'] ||
-      extractedData?.['FHA Case #'] ||
-      extractedData?.['FHA Case Number'] ||
-      extractedData?.Subject?.['FHA Case No.'] ||
-      extractedData?.Subject?.['FHA Case #'] ||
-      extractedData?.Subject?.['FHA Case Number'] ||
-      String(extractedData?.Subject?.['Loan Type'] || '').toUpperCase().includes('FHA')
-    );
-    if (hasFha) {
-      checks.push(handleFhaCheck(true, activeFile, extractedData, formType));
-    }
-
-    Promise.allSettled(checks).catch(err => {
+      const hasFha = Boolean(
+        extractedData?.['FHA Case No.'] ||
+        extractedData?.['FHA Case #'] ||
+        extractedData?.['FHA Case Number'] ||
+        extractedData?.Subject?.['FHA Case No.'] ||
+        extractedData?.Subject?.['FHA Case #'] ||
+        extractedData?.Subject?.['FHA Case Number'] ||
+        String(extractedData?.Subject?.['Loan Type'] || '').toUpperCase().includes('FHA')
+      );
+      if (hasFha) {
+        await new Promise(res => setTimeout(res, 250));
+        await handleFhaCheck(true, activeFile, extractedData, formType);
+      }
+    } catch (err) {
       console.error("Auto requirement checks error:", err);
-    });
+    }
   };
 
   const handleSectionClick = (section) => {

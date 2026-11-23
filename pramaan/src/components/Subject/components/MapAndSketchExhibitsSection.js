@@ -54,6 +54,7 @@ import {
 } from '@mui/icons-material';
 import { VERIFY_IMAGES_URL } from './ImageVerificationBanner';
 import { API_BASE_URL } from '../utils/utils.js';
+import { InteractiveZoomImageViewer } from './InteractiveZoomImageViewer';
 import {
   ROOM_THEMES,
   DEFAULT_ROOM_THEME,
@@ -5082,18 +5083,13 @@ export const MapAndSketchExhibitsSection = ({
             </IconButton>
           </Stack>
         </DialogTitle>
-        <DialogContent sx={{ textAlign: 'center', p: 2, bgcolor: '#0f172a' }}>
+        <DialogContent sx={{ p: 0, bgcolor: '#090d16' }}>
           {previewImage && (
-            <img
+            <InteractiveZoomImageViewer
               src={previewImage}
               alt="Exhibit Enlarged Preview"
-              style={{
-                maxWidth: '100%',
-                maxHeight: '75vh',
-                objectFit: 'contain',
-                transform: `rotate(${rotation}deg)`,
-                transition: 'transform 0.2s ease-in-out'
-              }}
+              maxHeight="75vh"
+              initialRotation={rotation}
             />
           )}
         </DialogContent>

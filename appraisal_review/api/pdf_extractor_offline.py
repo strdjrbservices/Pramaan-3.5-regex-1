@@ -16,9 +16,9 @@ except ImportError:
     pymupdf = fitz
 
 try:
-    from .xml_extractor import find_comparable_rent_schedule_pages, extract_rent_schedule_from_pdf_page
+    from .xml_extractor import find_comparable_rent_schedule_pages, extract_rent_schedule_from_pdf_page, classify_subject_view_label
 except ImportError:
-    from api.xml_extractor import find_comparable_rent_schedule_pages, extract_rent_schedule_from_pdf_page
+    from api.xml_extractor import find_comparable_rent_schedule_pages, extract_rent_schedule_from_pdf_page, classify_subject_view_label
 
 try:
     from api.eo_extractor import extract_eo_insurance_from_doc
@@ -6126,9 +6126,10 @@ def extract_photos_and_captions(doc, pdf_path=None):
         real_images.sort(key=sort_key)
 
         is_photo_page = (
-            any(k in header_text for k in ["PHOTO", "PHOTOS", "PHOTOGRAPH", "INTERIOR", "EXTERIOR", "SUBJECT PHOTO", "COMPARABLE PHOTO", "LISTING PHOTO", "ADDITIONAL PHOTO", "RENTAL PHOTO"])
-            or any(k in text_upper[:200] for k in ["FORM PIC", "PHT3", "PHT6", "PIC3X5", "PIC4X6", "PICINT", "SUBJECT PROPERTY PHOTO", "COMPARABLE PROPERTY PHOTO"])
+            any(k in header_text for k in ["PHOTO", "PHOTOS", "PHOTOGRAPH", "INTERIOR", "EXTERIOR", "SUBJECT PHOTO", "COMPARABLE PHOTO", "LISTING PHOTO", "ADDITIONAL PHOTO", "RENTAL PHOTO", "HUD CERTIFICATION", "HUD PLATE", "DATA PLATE", "COMPLIANCE CERTIFICATE", "HUD CERTIFICATE"])
+            or any(k in text_upper[:200] for k in ["FORM PIC", "PHT3", "PHT6", "PIC3X5", "PIC4X6", "PICINT", "SUBJECT PROPERTY PHOTO", "COMPARABLE PROPERTY PHOTO", "SCNLGL"])
             or len(real_images) >= 2
+            or (len(real_images) >= 1 and any(k in header_text or k in text_upper[:200] for k in ["HUD", "DATA PLATE", "PLATE DATA", "CERTIFICATE"]))
         )
 
         words = page.get_text("words")
@@ -6227,7 +6228,13 @@ def extract_photos_and_captions(doc, pdf_path=None):
                 elif cap_above:
                     caption_clean = cap_above
                 else:
-                    if is_predominantly_interior:
+                    if any(k in header_text or k in text_upper[:200] for k in ["HUD PLATE DATA", "HUD DATA PLATE", "DATA PLATE"]):
+                        caption_clean = "HUD Plate Data"
+                    elif any(k in header_text or k in text_upper[:200] for k in ["HUD CERTIFICATION LABEL", "HUD CERTIFICATION"]):
+                        caption_clean = "HUD Certification Label"
+                    elif any(k in header_text or k in text_upper[:200] for k in ["HUD COMPLIANCE", "HUD CERTIFICATE", "COMPLIANCE CERTIFICATE"]):
+                        caption_clean = "HUD Compliance Certificate"
+                    elif is_predominantly_interior:
                         caption_clean = f"Interior Photo {idx + 1}"
                     elif "SUBJECT" in header_text:
                         caption_clean = f"Subject Photo {idx + 1}"
@@ -6238,9 +6245,25 @@ def extract_photos_and_captions(doc, pdf_path=None):
                     else:
                         caption_clean = f"Exhibit Photo {idx + 1}"
 
+                # Normalize HUD labels when on HUD-specific page
+                if any(k in header_text for k in ["HUD CERTIFICATION", "HUD PLATE", "DATA PLATE"]):
+                    if re.match(r'^(?:Label|Plate)\s*[1-9]\d*$', caption_clean, re.I):
+                        caption_clean = f"HUD Certification {caption_clean}"
+                    elif re.match(r'^(?:Label|Plate)\s*[1-9]\d*\s*\(', caption_clean, re.I):
+                        m_lbl = re.match(r'^(?:Label|Plate)\s*([1-9]\d*)', caption_clean, re.I)
+                        if m_lbl:
+                            caption_clean = f"HUD Certification Label {m_lbl.group(1)}"
+
                 cap_upper = caption_clean.upper()
                 category = "General"
                 if any(k in cap_upper for k in ["FRONT", "REAR", "STREET", "SIDE", "ACROSS STREET", "BEHIND SUBJECT", "DRIVEWAY", "PORCH", "PATIO", "DECK", "YARD", "EXTERIOR"]):
+                    category = "Subject"
+                elif any(k in cap_upper for k in [
+                    "HUD PLATE", "HUD CERTIFICATION", "HUD CERTIFICATE", "DATA PLATE",
+                    "COMPLIANCE CERTIFICATE", "HUD LABEL"
+                ]) or re.search(r'\b(?:HUD\s+PLATE|PLATE\s*[#\d]|HUD\s+CERT(?:IFICATE)?|DATA\s+PLATE)\b', cap_upper):
+                    category = "Subject"
+                elif any(k in header_text for k in ["HUD CERTIFICATION", "HUD PLATE", "DATA PLATE", "COMPLIANCE CERTIFICATE"]):
                     category = "Subject"
                 elif any(k in cap_upper for k in ["COMPARABLE", "COMP #", "COMP 1", "COMP 2", "COMP 3", "COMP 4", "COMP 5", "COMP 6"]):
                     category = "Comparable"
@@ -6271,6 +6294,11 @@ def extract_photos_and_captions(doc, pdf_path=None):
                     "rect": [round(bbox.x0, 1), round(bbox.y0, 1), round(bbox.x1, 1), round(bbox.y1, 1)],
                     "base64_preview": f"data:image/jpeg;base64,{b64_str}"
                 }
+                mand_check = classify_subject_view_label(caption_clean, page_context=header_text)
+                if mand_check:
+                    photo_item["view_type"] = mand_check[0]
+                    photo_item["original_label"] = mand_check[1]
+                    photo_item["is_mandatory"] = True
                 if comp_details:
                     photo_item["comp_details"] = comp_details
                 photos.append(photo_item)
@@ -7803,6 +7831,28 @@ def extract_fields_from_pdf_offline(pdf_path):
                             clean_data["Improvements"].setdefault(mk, mv)
                         unified_fields.setdefault(mk, mv)
 
+                # HUD Image OCR Extraction & Cross-Verification
+                try:
+                    try:
+                        from api.hud_plate_reader import extract_hud_image_data_from_pdf, compare_form_with_image_data
+                    except ImportError:
+                        try:
+                            from appraisal_review.api.hud_plate_reader import extract_hud_image_data_from_pdf, compare_form_with_image_data
+                        except ImportError:
+                            from hud_plate_reader import extract_hud_image_data_from_pdf, compare_form_with_image_data
+
+                    hud_ocr_res = extract_hud_image_data_from_pdf(doc)
+                    if hud_ocr_res:
+                        hud_verif = compare_form_with_image_data(manufactured_home_section, hud_ocr_res)
+                        clean_data["HUD_IMAGE_DATA"] = hud_ocr_res
+                        clean_data["HUD_IMAGE_VERIFICATION"] = hud_verif
+                        manufactured_home_section["_hud_image_data"] = hud_ocr_res
+                        manufactured_home_section["_hud_image_verification"] = hud_verif
+                        unified_fields["HUD_IMAGE_DATA"] = hud_ocr_res
+                        unified_fields["HUD_IMAGE_VERIFICATION"] = hud_verif
+                except Exception as e_hud:
+                    print(f"[pdf_extractor_offline] HUD OCR verification error: {e_hud}")
+
                 # Extract 1004C Cost Approach from p2_mf
                 if p2_mf:
                     try:
@@ -8069,6 +8119,11 @@ def extract_fields_from_pdf_offline(pdf_path):
                 clean_section_data["MANUFACTURED_HOME"] = manufactured_home_section
                 unified_fields["Manufactured Home"] = manufactured_home_section
                 unified_fields["MANUFACTURED_HOME"] = manufactured_home_section
+            if clean_data.get("HUD_IMAGE_DATA"):
+                clean_section_data["HUD_IMAGE_DATA"] = clean_data["HUD_IMAGE_DATA"]
+                clean_section_data["HUD_IMAGE_VERIFICATION"] = clean_data.get("HUD_IMAGE_VERIFICATION", [])
+                unified_fields["HUD_IMAGE_DATA"] = clean_data["HUD_IMAGE_DATA"]
+                unified_fields["HUD_IMAGE_VERIFICATION"] = clean_data.get("HUD_IMAGE_VERIFICATION", [])
             if single_family_rent_schedule and any(single_family_rent_schedule.values()):
                 clean_section_data["Single Family Rent Schedule"] = single_family_rent_schedule
                 unified_fields["Single Family Rent Schedule"] = single_family_rent_schedule

@@ -1947,6 +1947,15 @@ def _classify_photo_category(caption: str, page_header: str, default_cat: str = 
 
     # 1. High-confidence keywords in caption
     if any(k in cap_upper for k in [
+        "HUD PLATE", "HUD CERTIFICATION", "HUD CERTIFICATE", "DATA PLATE",
+        "COMPLIANCE CERTIFICATE", "HUD LABEL"
+    ]) or re.search(r'\b(?:HUD\s+PLATE|PLATE\s*[#\d]|HUD\s+CERT(?:IFICATE)?|DATA\s+PLATE)\b', cap_upper) or (
+        any(k in cap_upper for k in ["PLATE 1", "PLATE 2", "LABEL 1", "LABEL 2"])
+        and any(k in hdr_upper for k in ["HUD", "CERTIFICATION", "PLATE", "MANUFACTUR"])
+    ):
+        return "Subject property"
+
+    if any(k in cap_upper for k in [
         "LIVING", "KITCHEN", "BATH", "BED", "DINING", "FAMILY", "BASEMENT", "ROOM",
         "DEN", "OFFICE", "NOOK", "LAUNDRY", "ALARM", "FURNACE", "HEATER", "HVAC",
         "WATER TANK", "WATER HEATER", "HOT WATER", "CLOSET", "HALL", "STAIR", "CEILING", "FIREPLACE",
@@ -2367,6 +2376,20 @@ def classify_subject_view_label(raw_label: str, page_context: str = "") -> Optio
     if lbl_upper in ["STREET", "STREET SCENE", "STREET VIEW", "SUBJECT STREET"]:
         return ("Subject Street Scene", lbl)
 
+    # 6. Form 1004C HUD Data Plate & Compliance Certificate
+    if re.search(r'\b(?:HUD\s+DATA\s+PLATE|HUD\s+PLATE\s+DATA|DATA\s+PLATE|HUD\s+(?:COMPLIANCE\s+)?CERTIFICATE|COMPLIANCE\s+CERTIFICATE)\b', lbl_upper):
+        return ("HUD Data Plate / Compliance Certificate", lbl)
+
+    # 7. Form 1004C HUD Certification Label / HUD Plate
+    if re.search(r'\b(?:HUD\s+CERTIFICATION(?:\s+LABEL)?|CERTIFICATION\s+LABEL)\b', lbl_upper):
+        return ("HUD Certification Label", lbl)
+    if re.search(r'\b(?:HUD\s+PLATE(?:\s*#?\s*\d+)?|PLATE\s*#?\s*[1-9]\d*)\b', lbl_upper):
+        return ("HUD Certification Label", lbl)
+    if re.search(r'\b(?:HUD\s+LABEL(?:\s*#?\s*\d+)?)\b', lbl_upper):
+        return ("HUD Certification Label", lbl)
+    if re.search(r'\bLABEL\s*#?\s*[1-9]\d*\b', lbl_upper) and any(k in ctx_upper for k in ["HUD", "PLATE", "CERTIF", "MANUFACTUR"]):
+        return ("HUD Certification Label", lbl)
+
     return None
 
 
@@ -2699,7 +2722,14 @@ def extract_photos_from_xml(
             # Category detection based on label and page context
             category = "General"
             lbl_upper = (best_label or "").upper()
-            if any(k in lbl_upper for k in ["FRONT", "REAR", "STREET", "SIDE", "YARD", "EXTERIOR", "DRIVEWAY"]):
+            if any(k in lbl_upper for k in [
+                "HUD PLATE", "HUD CERTIFICATION", "HUD CERTIFICATE", "DATA PLATE",
+                "COMPLIANCE CERTIFICATE", "HUD LABEL"
+            ]) or re.search(r'\b(?:HUD\s+PLATE|PLATE\s*[#\d]|HUD\s+CERT(?:IFICATE)?|DATA\s+PLATE)\b', lbl_upper):
+                category = "Subject"
+            elif any(k in raw_upper for k in ["HUD CERTIFICATION", "HUD PLATE", "DATA PLATE", "COMPLIANCE CERTIFICATE", "HUD CERTIFICATE"]):
+                category = "Subject"
+            elif any(k in lbl_upper for k in ["FRONT", "REAR", "STREET", "SIDE", "YARD", "EXTERIOR", "DRIVEWAY"]):
                 category = "Subject"
             elif any(k in lbl_upper for k in ["LIVING", "KITCHEN", "BATH", "BED", "DINING", "FAMILY", "BASEMENT", "ROOM", "DEN", "OFFICE", "NOOK", "LAUNDRY", "ALARM", "FURNACE", "HEATER", "GARAGE"]):
                 category = "Interior"
@@ -2709,7 +2739,7 @@ def extract_photos_from_xml(
                 category = "Rental"
             elif any(k in lbl_upper or k in raw_upper for k in ["SKETCH", "FLOORPLAN"]):
                 category = "Sketch"
-            elif any(k in lbl_upper or k in raw_upper for k in ["MAP", "PLAT", "AERIAL", "FLOOD"]):
+            elif any(re.search(r'\b' + re.escape(k) + r'\b', lbl_upper) or re.search(r'\b' + re.escape(k) + r'\b', raw_upper) for k in ["MAP", "PLAT", "AERIAL", "FLOOD"]):
                 category = "Map"
             elif any(k in raw_upper for k in ["SUBJECT PROPERTY PHOTO", "SUBJECT PHOTO"]):
                 category = "Subject"
@@ -2717,7 +2747,13 @@ def extract_photos_from_xml(
                 category = "Interior"
 
             if not best_label:
-                if category == "Sketch":
+                if any(k in raw_upper for k in ["HUD CERTIFICATION LABEL", "HUD CERTIFICATION"]):
+                    best_label = "HUD Certification Label"
+                elif any(k in raw_upper for k in ["HUD PLATE DATA", "HUD DATA PLATE", "DATA PLATE"]):
+                    best_label = "HUD Plate Data"
+                elif any(k in raw_upper for k in ["HUD COMPLIANCE", "HUD CERTIFICATE", "COMPLIANCE CERTIFICATE"]):
+                    best_label = "HUD Compliance Certificate"
+                elif category == "Sketch":
                     best_label = "Building Floorplan Sketch"
                 elif category == "Map":
                     for m_term in ["PLAT MAP", "FLOOD MAP", "AERIAL MAP", "LOCATION MAP", "TAX MAP"]:
@@ -2742,13 +2778,26 @@ def extract_photos_from_xml(
                 except Exception:
                     pass
 
+            is_hud_page = any(k in raw_upper for k in [
+                "HUD CERTIFICATION", "HUD PLATE", "DATA PLATE", "COMPLIANCE CERTIFICATE", "HUD CERTIFICATE"
+            ]) or bool(re.search(r'\b(?:HUD\s+PLATE|PLATE\s*[#\d]|HUD\s+CERT(?:IFICATION)?|DATA\s+PLATE)\b', raw_upper))
+
+            # Normalize HUD labels when on HUD-specific page
+            if is_hud_page:
+                if re.match(r'^(?:Label|Plate)\s*[1-9]\d*$', best_label, re.I):
+                    best_label = f"HUD Certification {best_label}"
+                elif re.match(r'^(?:Label|Plate)\s*[1-9]\d*\s*\(', best_label, re.I):
+                    m_lbl = re.match(r'^(?:Label|Plate)\s*([1-9]\d*)', best_label, re.I)
+                    if m_lbl:
+                        best_label = f"HUD Certification Label {m_lbl.group(1)}"
+
             # Extract photo metadata (Subject, Comparable, Rental)
             comp_meta = {}
-            if category in ["Comparable", "Rental", "Subject"] or any(k in raw_upper for k in [
+            if not is_hud_page and (category in ["Comparable", "Rental", "Subject"] or any(k in raw_upper for k in [
                 "COMPARABLE PHOTO", "COMPARABLE PROPERTY", "FORM PICPIX",
                 "RENTAL PHOTO", "FORM DLSTRNT", "RENTALS PHOTO",
                 "SUBJECT PROPERTY PHOTO", "SUBJECT PHOTO"
-            ]):
+            ])):
                 comp_meta = extract_comp_photo_metadata(page, frame, body_blocks, reference_records=reference_records)
                 if comp_meta.get("category") and comp_meta.get("category") != "General":
                     category = comp_meta["category"]
@@ -8739,21 +8788,39 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
             "Subject Front View": [],
             "Subject Rear View": [],
             "Subject Side View": [],
-            "Subject Street Scene": []
+            "Subject Street Scene": [],
+            "HUD Certification Label": [],
+            "HUD Data Plate / Compliance Certificate": []
         }
         for p in extracted_photos:
             vt = p.get("view_type")
             if vt in mand_groups:
                 mand_groups[vt].append(p)
-            elif p.get("category") == "Subject":
-                cap_res = classify_subject_view_label(p.get("caption") or p.get("title") or "")
+            elif p.get("category") in ("Subject", "Subject property"):
+                cap_res = classify_subject_view_label(p.get("caption") or p.get("title") or "", page_context=p.get("original_caption") or "")
                 if cap_res and cap_res[0] in mand_groups:
                     p["view_type"] = cap_res[0]
                     p["original_label"] = cap_res[1]
                     p["is_mandatory"] = True
                     mand_groups[cap_res[0]].append(p)
 
-        missing_mand = [k for k, v in mand_groups.items() if len(v) == 0]
+        is_1004c_form = bool(
+            form_type in ("1004C", "1004C + 1007") or
+            "1004C" in str(form_type).upper() or
+            "MANUFACTURED" in str(form_type).upper()
+        )
+        required_mand_views = [
+            "Subject Front View",
+            "Subject Rear View",
+            "Subject Side View",
+            "Subject Street Scene"
+        ]
+        if is_1004c_form:
+            required_mand_views.extend([
+                "HUD Certification Label",
+                "HUD Data Plate / Compliance Certificate"
+            ])
+        missing_mand = [k for k in required_mand_views if len(mand_groups.get(k, [])) == 0]
         mandatory_subject_photos = {
             "all_mandatory_found": len(missing_mand) == 0,
             "summary": {
@@ -8773,6 +8840,79 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         clean_data["mandatory_subject_photos"] = mandatory_subject_photos
         fields["MANDATORY_SUBJECT_PHOTOS"] = mandatory_subject_photos
         fields["mandatory_subject_photos"] = mandatory_subject_photos
+
+    # HUD Image OCR Extraction & Cross-Verification for Form 1004C
+    is_1004c_report = bool(
+        form_type in ("1004C", "1004C + 1007") or
+        "1004C" in str(form_type).upper() or
+        "MANUFACTURED" in str(form_type).upper() or
+        (manufactured_home_section and any(manufactured_home_section.values()))
+    )
+    if is_1004c_report:
+        hud_pdf_source = companion_pdf_path
+        if not hud_pdf_source or not os.path.exists(hud_pdf_source):
+            # Look for companion PDF with same stem in workspace, cwd, or parent directories
+            search_dirs = [
+                os.getcwd(),
+                os.path.dirname(os.getcwd()),
+                os.path.dirname(os.path.abspath(__file__)),
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            ]
+            if isinstance(xml_path_or_bytes, str):
+                search_dirs.append(os.path.dirname(os.path.abspath(xml_path_or_bytes)))
+                xml_stem = os.path.splitext(os.path.basename(xml_path_or_bytes))[0]
+            else:
+                xml_stem = ""
+
+            for sdir in search_dirs:
+                if not sdir or not os.path.isdir(sdir):
+                    continue
+                if xml_stem:
+                    cand = os.path.join(sdir, f"{xml_stem}.pdf")
+                    if os.path.exists(cand):
+                        hud_pdf_source = cand
+                        break
+                # Also check case-insensitive match
+                if not hud_pdf_source and xml_stem:
+                    try:
+                        for entry in os.listdir(sdir):
+                            if entry.lower() == f"{xml_stem.lower()}.pdf":
+                                hud_pdf_source = os.path.join(sdir, entry)
+                                break
+                    except Exception:
+                        pass
+                if hud_pdf_source:
+                    break
+
+        try:
+            try:
+                from api.hud_plate_reader import extract_hud_image_data_from_pdf, extract_hud_image_data_from_photos, compare_form_with_image_data
+            except ImportError:
+                try:
+                    from appraisal_review.api.hud_plate_reader import extract_hud_image_data_from_pdf, extract_hud_image_data_from_photos, compare_form_with_image_data
+                except ImportError:
+                    from hud_plate_reader import extract_hud_image_data_from_pdf, extract_hud_image_data_from_photos, compare_form_with_image_data
+
+            hud_ocr_res = {}
+            if hud_pdf_source and os.path.exists(hud_pdf_source):
+                hud_ocr_res = extract_hud_image_data_from_pdf(hud_pdf_source)
+
+            # Fallback to direct OCR on extracted photos if PDF missing or produced empty results
+            if not hud_ocr_res and extracted_photos:
+                hud_ocr_res = extract_hud_image_data_from_photos(extracted_photos)
+
+            if hud_ocr_res:
+                hud_verif = compare_form_with_image_data(manufactured_home_section or fields, hud_ocr_res)
+                clean_data["HUD_IMAGE_DATA"] = hud_ocr_res
+                clean_data["HUD_IMAGE_VERIFICATION"] = hud_verif
+                fields["HUD_IMAGE_DATA"] = hud_ocr_res
+                fields["HUD_IMAGE_VERIFICATION"] = hud_verif
+                if manufactured_home_section is not None:
+                    manufactured_home_section["_hud_image_data"] = hud_ocr_res
+                    manufactured_home_section["_hud_image_verification"] = hud_verif
+        except Exception as e_hud:
+            print(f"[xml_extractor] HUD OCR verification error: {e_hud}")
 
     # Photo room label counts
     photo_room_counts = {

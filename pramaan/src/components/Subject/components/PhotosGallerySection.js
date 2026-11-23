@@ -54,6 +54,8 @@ import {
 
 } from '@mui/icons-material';
 
+import { InteractiveZoomImageViewer } from './InteractiveZoomImageViewer';
+
 
 
 export const PhotosGallerySection = ({
@@ -118,26 +120,28 @@ export const PhotosGallerySection = ({
 
   // Normalize category names
 
-  const normalizeCategory = (cat) => {
+  const normalizeCategory = (cat, p = {}) => {
+    if (!cat && !p) return 'General';
+    const c = String(cat || '').trim().toLowerCase();
+    const vt = String(p?.view_type || '').toLowerCase();
+    const cap = String(p?.caption || p?.title || p?.original_caption || '').toLowerCase();
 
-    if (!cat) return 'General';
-
-    const c = String(cat).trim().toLowerCase();
+    if (
+      c.includes('hud') || c.includes('plate') || c.includes('certification label') ||
+      vt.includes('hud') || vt.includes('plate') || vt.includes('data plate') ||
+      /\b(?:hud\s*plate|plate\s*[1-9]|hud\s*cert(?:ification)?(?:\s*label)?|label\s*[1-9]|data\s*plate|compliance\s*cert)\b/i.test(cap)
+    ) {
+      return 'HUD Plate & Certification';
+    }
 
     if (c === 'subject interior' || c === 'interior') return 'Subject interior';
-
     if (c === 'subject property' || c === 'subject') return 'Subject property';
-
     if (c === 'comparable property' || c === 'comparable' || c === 'comp') return 'Comparable property';
-
     if (c === 'rental property' || c === 'rental') return 'Rental property';
-
     if (c.includes('sketch') || c.includes('floor')) return 'Building Sketch';
-
     if (c.includes('map') || c.includes('aerial')) return 'Maps & Aerials';
 
-    return cat;
-
+    return cat || 'General';
   };
 
 
@@ -164,49 +168,32 @@ export const PhotosGallerySection = ({
 
       'Maps & Aerials': 0,
 
+      'HUD Plate & Certification': 0,
+
       General: 0
 
     };
 
     photosList.forEach(p => {
-
-      const norm = normalizeCategory(p.category);
-
+      const norm = normalizeCategory(p.category, p);
       if (p.match_status === 'unmatched' || p.match_confidence === 'low' || p.caption === 'Caption not found') {
-
         counts['Needs Review']++;
-
       }
-
       if (counts[norm] !== undefined) {
-
         counts[norm]++;
-
       } else {
-
         counts.General++;
-
       }
-
     });
-
     return counts;
-
   }, [photosList]);
-
-
 
   const [searchTerm, setSearchTerm] = useState('');
 
-
-
   // Filtered photos by Category AND Search Term
-
   const filteredPhotos = useMemo(() => {
-
     return photosList.filter(p => {
-
-      const normCat = normalizeCategory(p.category);
+      const normCat = normalizeCategory(p.category, p);
 
       let matchCat = true;
 
@@ -254,21 +241,46 @@ export const PhotosGallerySection = ({
 
     const compPhotosCount = photosList.filter(p => /comparable/i.test(p.category || '') || /comp/i.test(p.caption || '')).length;
 
+    const is1004C = Boolean(
+      (typeof data?.form_type === 'string' && data.form_type.includes('1004C')) ||
+      (typeof allData?.form_type === 'string' && allData.form_type.includes('1004C')) ||
+      (typeof data?.formType === 'string' && data.formType.includes('1004C')) ||
+      (typeof allData?.formType === 'string' && allData.formType.includes('1004C')) ||
+      (typeof data?.['Form Type'] === 'string' && data['Form Type'].includes('1004C')) ||
+      (typeof allData?.['Form Type'] === 'string' && allData['Form Type'].includes('1004C')) ||
+      photosList.some(p => /hud\s*plate|hud\s*cert|data\s*plate/i.test(p.caption || '') || /hud\s*plate|hud\s*cert/i.test(p.original_caption || ''))
+    );
 
+    const hasHudPlate = photosList.some(p =>
+      p.view_type === 'HUD Certification Label' ||
+      /\b(?:hud\s*plate|plate\s*[1-9]|hud\s*cert(?:ification)?(?:\s*label)?|label\s*[1-9])\b/i.test(p.caption || '') ||
+      /\b(?:hud\s*plate|plate\s*[1-9]|hud\s*cert(?:ification)?(?:\s*label)?|label\s*[1-9])\b/i.test(p.original_caption || '')
+    );
 
-    return [
+    const hasHudDataPlate = photosList.some(p =>
+      p.view_type === 'HUD Data Plate / Compliance Certificate' ||
+      /\b(?:hud\s*data\s*plate|hud\s*plate\s*data|data\s*plate|hud\s*cert(?:ificate)?|compliance\s*cert(?:ificate)?)\b/i.test(p.caption || '') ||
+      /\b(?:hud\s*data\s*plate|hud\s*plate\s*data|data\s*plate|hud\s*cert(?:ificate)?|compliance\s*cert(?:ificate)?)\b/i.test(p.original_caption || '')
+    );
 
+    const checks = [
       { label: 'Subject Front View', pass: hasFront },
-
       { label: 'Subject Rear View', pass: hasRear },
-
       { label: 'Subject Street Scene', pass: hasStreet },
-
-      { label: `Comparable Photos (${compPhotosCount} Found)`, pass: compPhotosCount >= 3 },
-
     ];
 
-  }, [photosList]);
+    if (is1004C) {
+      checks.push(
+        { label: 'HUD Plate / Certification Label', pass: hasHudPlate },
+        { label: 'HUD Data Plate / Certificate', pass: hasHudDataPlate }
+      );
+    }
+
+    checks.push({ label: `Comparable Photos (${compPhotosCount} Found)`, pass: compPhotosCount >= 3 });
+
+    return checks;
+
+  }, [photosList, data, allData]);
 
 
 
@@ -289,6 +301,8 @@ export const PhotosGallerySection = ({
       case 'Building Sketch': return { bg: '#fbe9e7', color: '#d84315', border: '#ffab91' };
 
       case 'Maps & Aerials': return { bg: '#e0f2f1', color: '#00695c', border: '#80cbc4' };
+
+      case 'HUD Plate & Certification': return { bg: '#e0f2fe', color: '#0369a1', border: '#7dd3fc' };
 
       default: return { bg: '#f5f5f5', color: '#424242', border: '#e0e0e0' };
 
@@ -1054,39 +1068,25 @@ export const PhotosGallerySection = ({
 
 
 
-        <DialogContent sx={{ p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 450 }}>
+        <DialogContent sx={{ p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', bgcolor: '#090d16' }}>
 
-          {previewPhoto?.base64_preview ? (
+          {(previewPhoto?.base64_preview || previewPhoto?.image_data || previewPhoto?.url) ? (
 
-            <img
+            <InteractiveZoomImageViewer
 
-              src={previewPhoto.base64_preview}
+              src={previewPhoto.base64_preview || previewPhoto.image_data || previewPhoto.url}
 
-              alt={previewPhoto.caption}
+              alt={previewPhoto.caption || 'Photo Preview'}
 
-              style={{
+              maxHeight="65vh"
 
-                maxWidth: '100%',
-
-                maxHeight: '60vh',
-
-                objectFit: 'contain',
-
-                borderRadius: '8px',
-
-                transform: `rotate(${rotation}deg)`,
-
-                transition: 'transform 0.3s ease',
-
-                boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
-
-              }}
+              initialRotation={rotation}
 
             />
 
           ) : (
 
-            <Typography variant="body1" color="grey.400">
+            <Typography variant="body1" color="grey.400" sx={{ py: 6 }}>
 
               No high-resolution preview available.
 

@@ -7169,6 +7169,22 @@ def evaluate_photo_requirements(pdf_path: str, extracted_data: Optional[Dict[str
         ("Building Sketch / Floor Plan", ["BUILDING SKETCH", "SKETCH", "INSTAPLAN", "FLOOR PLAN"], "Required exterior building dimensions / floor plan sketch.")
     ]
 
+    form_type = str(data.get("form_type") or data.get("Form Type") or data.get("formType") or "").upper()
+    is_1004c = "1004C" in form_type or "MANUFACTURED" in form_type or any(
+        k in captions_text for k in ["HUD PLATE", "HUD CERTIFICATION", "DATA PLATE"]
+    )
+    if is_1004c:
+        checks.extend([
+            ("HUD Certification Label", [
+                "HUD CERTIFICATION LABEL", "HUD CERTIFICATION", "HUD PLATE 1", "HUD PLATE 2",
+                "HUD PLATE", "PLATE 1", "PLATE 2", "HUD LABEL 1", "HUD LABEL 2", "HUD LABEL"
+            ], "Required HUD Certification Label photograph attached to the exterior of each section."),
+            ("HUD Data Plate / Compliance Certificate", [
+                "HUD DATA PLATE", "HUD PLATE DATA", "DATA PLATE", "HUD CERTIFICATE",
+                "COMPLIANCE CERTIFICATE", "HUD COMPLIANCE"
+            ], "Required HUD Data Plate / Compliance Certificate photograph from interior of dwelling.")
+        ])
+
     details = []
     fulfilled_count = 0
 

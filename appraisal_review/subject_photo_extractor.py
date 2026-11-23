@@ -55,11 +55,28 @@ MANDATORY_SUBJECT_VIEWS = [
     "Subject Street Scene"
 ]
 
+MANDATORY_1004C_VIEWS = [
+    "Subject Front View",
+    "Subject Rear View",
+    "Subject Side View",
+    "Subject Street Scene",
+    "HUD Certification Label",
+    "HUD Data Plate / Compliance Certificate"
+]
+
 VIEW_ALIASES = {
     "Subject Front View": ["front", "subject front", "front view", "subject front view"],
     "Subject Rear View": ["rear", "subject rear", "rear view", "subject rear view"],
     "Subject Side View": ["side", "subject side", "side view", "subject side view", "left side", "right side"],
-    "Subject Street Scene": ["street", "subject street", "street scene", "street view", "subject street scene"]
+    "Subject Street Scene": ["street", "subject street", "street scene", "street view", "subject street scene"],
+    "HUD Certification Label": [
+        "hud certification label", "hud plate 1", "hud plate 2", "hud plate", "hud plates",
+        "plate 1", "plate 2", "hud label 1", "hud label 2", "hud label", "certification label", "label 1", "label 2"
+    ],
+    "HUD Data Plate / Compliance Certificate": [
+        "hud data plate", "hud plate data", "data plate", "hud certificate",
+        "hud compliance certificate", "compliance certificate"
+    ]
 }
 
 
@@ -124,6 +141,20 @@ def classify_subject_view_label(raw_label: str, page_context: str = "") -> Optio
         return ("Subject Street Scene", lbl)
     if lbl_upper in ["STREET", "STREET SCENE", "STREET VIEW", "SUBJECT STREET"]:
         return ("Subject Street Scene", lbl)
+
+    # 6. Form 1004C HUD Data Plate & Compliance Certificate
+    if re.search(r'\b(?:HUD\s+DATA\s+PLATE|HUD\s+PLATE\s+DATA|DATA\s+PLATE|HUD\s+(?:COMPLIANCE\s+)?CERTIFICATE|COMPLIANCE\s+CERTIFICATE)\b', lbl_upper):
+        return ("HUD Data Plate / Compliance Certificate", lbl)
+
+    # 7. Form 1004C HUD Certification Label / HUD Plate
+    if re.search(r'\b(?:HUD\s+CERTIFICATION(?:\s+LABEL)?|CERTIFICATION\s+LABEL)\b', lbl_upper):
+        return ("HUD Certification Label", lbl)
+    if re.search(r'\b(?:HUD\s+PLATE(?:\s*#?\s*\d+)?|PLATE\s*#?\s*[1-9]\d*)\b', lbl_upper):
+        return ("HUD Certification Label", lbl)
+    if re.search(r'\b(?:HUD\s+LABEL(?:\s*#?\s*\d+)?)\b', lbl_upper):
+        return ("HUD Certification Label", lbl)
+    if re.search(r'\bLABEL\s*#?\s*[1-9]\d*\b', lbl_upper) and any(k in ctx_upper for k in ["HUD", "PLATE", "CERTIF", "MANUFACTUR"]):
+        return ("HUD Certification Label", lbl)
 
     return None
 

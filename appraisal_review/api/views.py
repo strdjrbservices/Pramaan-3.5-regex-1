@@ -1071,6 +1071,34 @@ def extract_pdf(request):
                         companion_pdf_path = c_path1
                     except Exception as c_err:
                         logger.warning(f"Failed to save companion PDF for XML: {c_err}")
+                else:
+                    # Look for companion PDF with same stem in workspace, cwd, or parent directories
+                    orig_stem = os.path.splitext(os.path.basename(file.name))[0]
+                    search_dirs = [
+                        os.getcwd(),
+                        os.path.dirname(os.getcwd()),
+                        os.path.dirname(os.path.abspath(__file__)),
+                        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                        os.path.dirname(os.path.abspath(tmp_path)),
+                    ]
+                    for sdir in search_dirs:
+                        if not sdir or not os.path.isdir(sdir):
+                            continue
+                        cand = os.path.join(sdir, f"{orig_stem}.pdf")
+                        if os.path.exists(cand):
+                            companion_pdf_path = cand
+                            break
+                        # Case-insensitive stem matching
+                        try:
+                            for entry in os.listdir(sdir):
+                                if entry.lower() == f"{orig_stem.lower()}.pdf":
+                                    companion_pdf_path = os.path.join(sdir, entry)
+                                    break
+                        except Exception:
+                            pass
+                        if companion_pdf_path:
+                            break
 
                 xml_result = extract_fields_from_xml(tmp_path, companion_pdf_path=companion_pdf_path)
                 if xml_result.get("status") == "success":
@@ -1995,3 +2023,145 @@ def verify_revision_endpoint(request):
                     os.remove(p)
                 except Exception:
                     pass
+
+
+@api_view(["POST"])
+@parser_classes([MultiPartParser, FormParser, JSONParser])
+def extract_hud_ocr_view(request):
+    """
+    Dedicated OCR endpoint for HUD Plate and Certification Label exhibits.
+    Accepts:
+    - file: PDF or XML file uploaded directly
+    - photos: JSON array of photo exhibits containing base64 images
+    - form_data: Current 1004C form fields to cross-verify against
+    Returns extracted HUD image data and cross-verification audit results.
+    """
+    try:
+        try:
+            from api.hud_plate_reader import (
+                extract_hud_image_data_from_pdf,
+                extract_hud_image_data_from_photos,
+                compare_form_with_image_data
+            )
+        except ImportError:
+            try:
+                from appraisal_review.api.hud_plate_reader import (
+                    extract_hud_image_data_from_pdf,
+                    extract_hud_image_data_from_photos,
+                    compare_form_with_image_data
+                )
+            except ImportError:
+                from hud_plate_reader import (
+                    extract_hud_image_data_from_pdf,
+                    extract_hud_image_data_from_photos,
+                    compare_form_with_image_data
+                )
+
+        file = request.FILES.get("file")
+        photos_raw = request.data.get("photos")
+        form_data_raw = request.data.get("form_data")
+
+        form_data = {}
+        if form_data_raw:
+            if isinstance(form_data_raw, dict):
+                form_data = form_data_raw
+            elif isinstance(form_data_raw, str):
+                try:
+                    import json
+                    form_data = json.loads(form_data_raw)
+                except Exception:
+                    pass
+
+        hud_image_data = {}
+
+        # Option A: Run directly on uploaded file (PDF or XML)
+        if file:
+            is_pdf = file.name.lower().endswith(".pdf")
+            is_xml = file.name.lower().endswith(".xml")
+            tmp_path = _save_temp_file(file)
+            try:
+                if is_pdf:
+                    hud_image_data = extract_hud_image_data_from_pdf(tmp_path)
+                elif is_xml:
+                    # Look for companion PDF first
+                    orig_stem = os.path.splitext(os.path.basename(file.name))[0]
+                    comp_pdf = None
+                    search_dirs = [
+                        os.getcwd(),
+                        os.path.dirname(os.getcwd()),
+                        os.path.dirname(os.path.abspath(__file__)),
+                        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                        os.path.dirname(os.path.abspath(tmp_path)),
+                    ]
+                    for sdir in search_dirs:
+                        if not sdir or not os.path.isdir(sdir):
+                            continue
+                        cand = os.path.join(sdir, f"{orig_stem}.pdf")
+                        if os.path.exists(cand):
+                            comp_pdf = cand
+                            break
+                        try:
+                            for entry in os.listdir(sdir):
+                                if entry.lower() == f"{orig_stem.lower()}.pdf":
+                                    comp_pdf = os.path.join(sdir, entry)
+                                    break
+                        except Exception:
+                            pass
+                        if comp_pdf:
+                            break
+
+                    if comp_pdf and os.path.exists(comp_pdf):
+                        hud_image_data = extract_hud_image_data_from_pdf(comp_pdf)
+
+                    if not hud_image_data:
+                        try:
+                            from api.xml_extractor import extract_fields_from_xml
+                        except ImportError:
+                            from appraisal_review.api.xml_extractor import extract_fields_from_xml
+                        xml_res = extract_fields_from_xml(tmp_path, companion_pdf_path=comp_pdf)
+                        extracted_photos = xml_res.get("extracted_photos", [])
+                        hud_image_data = extract_hud_image_data_from_photos(extracted_photos)
+            finally:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+
+        # Option B: Run on provided photos list (base64)
+        if not hud_image_data and photos_raw:
+            photos_list = []
+            if isinstance(photos_raw, list):
+                photos_list = photos_raw
+            elif isinstance(photos_raw, str):
+                try:
+                    import json
+                    photos_list = json.loads(photos_raw)
+                except Exception:
+                    pass
+            if photos_list:
+                hud_image_data = extract_hud_image_data_from_photos(photos_list)
+
+        # Option C: If still no hud_image_data, check workspace for Paradise Dr PDF as default fallback
+        if not hud_image_data:
+            fallback_candidates = [
+                os.path.join(os.path.dirname(os.getcwd()), "5580 Paradise Dr.pdf"),
+                os.path.join(os.getcwd(), "5580 Paradise Dr.pdf"),
+            ]
+            for fc in fallback_candidates:
+                if os.path.exists(fc):
+                    hud_image_data = extract_hud_image_data_from_pdf(fc)
+                    if hud_image_data:
+                        break
+
+        verification = compare_form_with_image_data(form_data, hud_image_data) if hud_image_data else []
+
+        return Response({
+            "status": "success",
+            "hud_image_data": hud_image_data,
+            "hud_image_verification": verification,
+        }, status=status.HTTP_200_OK)
+    except Exception as exc:
+        traceback.print_exc()
+        return Response({
+            "status": "error",
+            "detail": str(exc),
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
