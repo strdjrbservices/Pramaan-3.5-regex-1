@@ -5,7 +5,9 @@ from contract_reconciliation import (
     extract_appraisal_source,
     ContractPdfExtractor,
     clean_currency,
-    parse_date_to_iso
+    parse_date_to_iso,
+    names_match,
+    addresses_match
 )
 
 def test_unit_normalizers():
@@ -23,7 +25,19 @@ def test_unit_normalizers():
     assert parse_date_to_iso("23/10/2026") == "2026-10-23"
     assert parse_date_to_iso("October 23, 2026") == "2026-10-23"
     assert parse_date_to_iso("Nov 10, 2026") == "2026-11-10"
-    print("✓ Normalizer tests passed!")
+
+    # Name matching tests
+    assert names_match("Light Homes LLC", "LIGHT HOMES LLC") is True
+    assert names_match("ANA C GALVEZ", "Anna C. Galvez") is True
+    assert names_match("Adam Glauberg", "Adam Glauberg, Mara Glauberg") is True
+    assert names_match("312 Lovijoy LLC", "Jessica Rodriguez-Fuenmayor") is False
+
+    # Address matching tests
+    assert addresses_match("3342 Fairfield Ave, Cincinnati, OH 45207", "3342 Fairfield Ave, Cincinnati, 45207, Hamilton") is True
+    assert addresses_match("413 51st St, West New York, NJ 07093", "413 51st Street, West New York, New Jersey 0709") is True
+    assert addresses_match("123 Main St", "456 Elm St") is False
+
+    print("✓ Normalizer and party matcher tests passed!")
 
 def run_suite():
     test_unit_normalizers()

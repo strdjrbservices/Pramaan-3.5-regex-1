@@ -217,11 +217,17 @@ export const ContractComparisonSection = ({
                         ? (mainData?.CONTRACT?.['Contract Price $'] || mainData?.CONTRACT?.['Contract Price']) 
                         : fieldName === 'Contract Date'
                         ? mainData?.CONTRACT?.['Date of Contract']
+                        : (fieldName.toLowerCase().includes('owner') || fieldName.toLowerCase().includes('seller'))
+                        ? (mainData?.SUBJECT?.['Owner of Public Record'] || mainData?.SUBJECT?.['Owner of Record'])
+                        : (fieldName.toLowerCase().includes('borrower') || fieldName.toLowerCase().includes('buyer'))
+                        ? (mainData?.SUBJECT?.['Borrower'] || mainData?.SUBJECT?.['Borrower Name'])
+                        : fieldName.toLowerCase().includes('address')
+                        ? (mainData?.SUBJECT?.['Property Address'])
                         : null;
                       const isMatch = item?.status === 'Match';
                       const isMismatch = item?.status === 'Mismatch';
                       const isInfo = item?.status === 'Info';
-                      const mainVal = item?.old_value || item?.main_report_value || mainFallback || 'N/A';
+                      const mainVal = (item?.old_value && item.old_value !== 'N/A') ? item.old_value : (mainFallback || item?.old_value || item?.main_report_value || 'N/A');
                       const contractVal = item?.new_value || item?.contract_copy_value || 'N/A';
                       const status = item ? item.status : 'Unknown';
 

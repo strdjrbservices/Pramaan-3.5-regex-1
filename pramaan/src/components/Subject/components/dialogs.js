@@ -66,18 +66,25 @@ export const ContractComparisonDialog = ({
                             <TableBody>
                                 {((result && result.length > 0) ? result.map(r => r.field) : ['Contract Price', 'Contract Date']).map(fieldName => {
                                     const item = result.find(r => r.field.toLowerCase() === fieldName.toLowerCase()) || result.find(r => r.field.toLowerCase().includes(fieldName.toLowerCase()));
-                                    const mainValue = fieldName === 'Contract Price' 
+                                    const mainFallback = fieldName === 'Contract Price' 
                                         ? (mainData?.CONTRACT?.['Contract Price $'] || mainData?.CONTRACT?.['Contract Price']) 
                                         : fieldName === 'Contract Date' 
                                         ? mainData?.CONTRACT?.['Date of Contract']
+                                        : (fieldName.toLowerCase().includes('owner') || fieldName.toLowerCase().includes('seller'))
+                                        ? (mainData?.SUBJECT?.['Owner of Public Record'] || mainData?.SUBJECT?.['Owner of Record'])
+                                        : (fieldName.toLowerCase().includes('borrower') || fieldName.toLowerCase().includes('buyer'))
+                                        ? (mainData?.SUBJECT?.['Borrower'] || mainData?.SUBJECT?.['Borrower Name'])
+                                        : fieldName.toLowerCase().includes('address')
+                                        ? (mainData?.SUBJECT?.['Property Address'])
                                         : null;
                                     const isMatch = item?.status === 'Match';
                                     const isMismatch = item?.status === 'Mismatch';
                                     const isInfo = item?.status === 'Info';
+                                    const mainVal = (item?.old_value && item.old_value !== 'N/A') ? item.old_value : (mainFallback || item?.old_value || 'N/A');
                                     return (
                                         <TableRow key={fieldName} sx={{ bgcolor: isMismatch ? '#fff5f5' : '#ffffff', '&:last-child td, &:last-child th': { border: 0 } }}>
                                             <TableCell sx={{ fontWeight: 600 }}>{fieldName}</TableCell>
-                                            <TableCell sx={{ fontWeight: 500 }}>{item?.old_value || mainValue || 'N/A'}</TableCell>
+                                            <TableCell sx={{ fontWeight: 500 }}>{mainVal}</TableCell>
                                             <TableCell sx={{ fontWeight: 500 }}>{item?.new_value || 'N/A'}</TableCell>
                                             <TableCell align="center">
                                                 {item ? (
