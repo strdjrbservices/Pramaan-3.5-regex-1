@@ -422,9 +422,6 @@ def compare_form_with_image_data(form_data: Dict[str, Any], image_data: Dict[str
         if not form_val and not img_val:
             continue
 
-        status = "Match"
-        note = "Form value verified against HUD image."
-        # Clean strings for comparison
         clean_f = re.sub(r'[^A-Za-z0-9]', '', form_val).upper()
         clean_i = re.sub(r'[^A-Za-z0-9]', '', img_val).upper()
 
@@ -432,33 +429,39 @@ def compare_form_with_image_data(form_data: Dict[str, Any], image_data: Dict[str
         f_digits = re.findall(r'\d{5,7}', form_val)
         i_digits = re.findall(r'\d{5,7}', img_val)
 
-        if clean_f == clean_i:
+        # 1. Unilateral presence checks (image OCR not extracted or missing from form)
+        if not clean_i and clean_f:
+            status = "Not Detected"
+            note = f"Present in Form 1004C ('{form_val}'), but not detected in HUD photo OCR."
+        elif not clean_f and clean_i:
+            status = "Image Only"
+            note = f"Detected in HUD photo OCR ('{img_val}'), but missing from Form 1004C."
+        # 2. Both values present: exact match
+        elif clean_f == clean_i:
             status = "Match"
             note = "Exact match between Form 1004C and image."
-        elif clean_i in clean_f or clean_f in clean_i:
+        # 3. Both values present: substring match (requires at least 3 chars to prevent empty/trivial match)
+        elif clean_i and clean_f and len(clean_i) >= 3 and len(clean_f) >= 3 and (clean_i in clean_f or clean_f in clean_i):
             status = "Match"
             note = "Verified match with minor formatting differences."
+        # 4. Both values present: numeric label identifier match
         elif f_digits and i_digits and set(f_digits) == set(i_digits):
             status = "Match"
             note = f"Verified match on numeric label identifiers ({', '.join(f_digits)}) with minor prefix variant."
-        elif label == "Manufacturer’s Serial #(s)/VIN #(s)" and (
+        # 5. Serial number OCR noise forgiveness (C vs O, 0 vs O)
+        elif label == "Manufacturer’s Serial #(s)/VIN #(s)" and clean_f and clean_i and (
             clean_f.replace("O", "C") == clean_i.replace("O", "C") or
             clean_f.replace("0", "O") == clean_i.replace("0", "O")
         ):
             status = "Match"
             note = "Verified match with minor OCR character variation (C vs O)."
+        # 6. Discrepancies
         elif label == "Date of Manufacture":
             status = "Discrepancy"
             note = f"Discrepancy detected: Form states '{form_val}', but HUD Data Plate image indicates '{img_val}'."
-        elif clean_f and clean_i:
+        else:
             status = "Discrepancy"
             note = f"Discrepancy detected: Form has '{form_val}', but image shows '{img_val}'."
-        elif img_val and not form_val:
-            status = "Image Only"
-            note = f"Found in image ('{img_val}'), but missing from form."
-        else:
-            status = "Form Only"
-            note = f"Present in form ('{form_val}'), but not clearly detected in image OCR."
 
         comparisons.append({
             "field": label,

@@ -10,6 +10,7 @@ import ZoomInIcon from '@mui/icons-material/ZoomIn';
 import CloseIcon from '@mui/icons-material/Close';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import DocumentScannerIcon from '@mui/icons-material/DocumentScanner';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
@@ -233,21 +234,24 @@ export const ManufacturedHomeTable = ({
           const cleanI = iVal.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
           let status = 'Match';
           let note = 'Form value verified against HUD image.';
-          if (cleanF === cleanI) {
+          if (!cleanI && cleanF) {
+            status = 'Not Detected';
+            note = `Present in Form 1004C ('${fVal}'), but not detected in HUD photo OCR.`;
+          } else if (cleanI && !cleanF) {
+            status = 'Image Only';
+            note = `Detected in HUD photo OCR ('${iVal}'), but missing from Form 1004C.`;
+          } else if (cleanF === cleanI) {
             status = 'Match';
             note = 'Exact match between Form 1004C and image.';
           } else if (label === 'Date of Manufacture' && cleanF !== cleanI) {
             status = 'Discrepancy';
             note = `Discrepancy detected: Form states '${fVal}', but HUD Data Plate image indicates '${iVal}'.`;
-          } else if (cleanF && cleanI) {
+          } else if (cleanI && cleanF && cleanI.length >= 3 && cleanF.length >= 3 && (cleanI.includes(cleanF) || cleanF.includes(cleanI))) {
+            status = 'Match';
+            note = 'Verified match with minor formatting differences.';
+          } else {
             status = 'Discrepancy';
             note = `Discrepancy detected: Form has '${fVal}', but image shows '${iVal}'.`;
-          } else if (iVal && !fVal) {
-            status = 'Image Only';
-            note = `Found in image ('${iVal}'), but missing from form.`;
-          } else {
-            status = 'Form Only';
-            note = `Present in form ('${fVal}'), but not clearly detected in image OCR.`;
           }
           generated.push({ field: label, form_value: fVal, image_value: iVal, status, note });
         }
@@ -278,6 +282,10 @@ export const ManufacturedHomeTable = ({
 
   const discrepancyCount = useMemo(() => {
     return hudVerification.filter(v => v.status === 'Discrepancy').length;
+  }, [hudVerification]);
+
+  const notDetectedCount = useMemo(() => {
+    return hudVerification.filter(v => v.status === 'Not Detected' || v.status === 'Form Only').length;
   }, [hudVerification]);
 
   const discrepancies = useMemo(() => {
@@ -585,22 +593,34 @@ export const ManufacturedHomeTable = ({
               <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#0f172a', fontSize: '0.9rem' }}>
                 HUD Photo OCR &amp; Form 1004C Cross-Verification
               </Typography>
-              <Chip
-                size="small"
-                icon={<CheckCircleIcon sx={{ fontSize: '14px !important' }} />}
-                label={`${matchCount} Match${matchCount === 1 ? '' : 'es'}`}
-                color="success"
-                variant="outlined"
-                sx={{ fontWeight: 600, height: 24 }}
-              />
+              {matchCount > 0 && (
+                <Chip
+                  size="small"
+                  icon={<CheckCircleIcon sx={{ fontSize: '14px !important' }} />}
+                  label={`${matchCount} Match${matchCount === 1 ? '' : 'es'}`}
+                  color="success"
+                  variant="outlined"
+                  sx={{ fontWeight: 600, height: 24 }}
+                />
+              )}
               {discrepancyCount > 0 && (
                 <Chip
                   size="small"
                   icon={<WarningAmberIcon sx={{ fontSize: '14px !important' }} />}
-                  label={`${discrepancyCount} Discrepancy`}
+                  label={`${discrepancyCount} Discrepanc${discrepancyCount === 1 ? 'y' : 'ies'}`}
                   color="warning"
                   variant="filled"
                   sx={{ fontWeight: 700, height: 24 }}
+                />
+              )}
+              {notDetectedCount > 0 && (
+                <Chip
+                  size="small"
+                  icon={<HelpOutlineIcon sx={{ fontSize: '14px !important' }} />}
+                  label={`${notDetectedCount} Not Detected in OCR`}
+                  color="default"
+                  variant="outlined"
+                  sx={{ fontWeight: 600, height: 24, bgcolor: '#f8fafc', color: '#64748b', borderColor: '#cbd5e1' }}
                 />
               )}
             </Box>
@@ -653,7 +673,9 @@ export const ManufacturedHomeTable = ({
                 </TableHead>
                 <TableBody>
                   {hudVerification.map((item, idx) => {
+                    const isMatch = item.status === 'Match';
                     const isDiscrepancy = item.status === 'Discrepancy';
+                    const isNotDetected = item.status === 'Not Detected' || item.status === 'Form Only';
                     return (
                       <TableRow
                         key={idx}
@@ -668,19 +690,32 @@ export const ManufacturedHomeTable = ({
                         <TableCell sx={{ fontSize: '0.78rem', color: '#334155', py: 0.75 }}>
                           {item.form_value || '—'}
                         </TableCell>
-                        <TableCell sx={{ fontSize: '0.78rem', fontWeight: 600, color: isDiscrepancy ? '#b45309' : '#0f766e', py: 0.75 }}>
+                        <TableCell sx={{ fontSize: '0.78rem', fontWeight: 600, color: isDiscrepancy ? '#b45309' : isMatch ? '#0f766e' : '#94a3b8', py: 0.75 }}>
                           {item.image_value || '—'}
                         </TableCell>
                         <TableCell sx={{ py: 0.75 }}>
                           <Chip
                             size="small"
                             label={item.status}
-                            color={isDiscrepancy ? 'warning' : 'success'}
-                            icon={isDiscrepancy ? <WarningAmberIcon sx={{ fontSize: '13px !important' }} /> : <CheckCircleIcon sx={{ fontSize: '13px !important' }} />}
-                            sx={{ height: 20, fontSize: '0.68rem', fontWeight: 600 }}
+                            color={isMatch ? 'success' : isDiscrepancy ? 'warning' : 'default'}
+                            icon={
+                              isMatch ? (
+                                <CheckCircleIcon sx={{ fontSize: '13px !important' }} />
+                              ) : isDiscrepancy ? (
+                                <WarningAmberIcon sx={{ fontSize: '13px !important' }} />
+                              ) : (
+                                <HelpOutlineIcon sx={{ fontSize: '13px !important' }} />
+                              )
+                            }
+                            sx={{
+                              height: 20,
+                              fontSize: '0.68rem',
+                              fontWeight: 600,
+                              ...(isNotDetected ? { bgcolor: '#f1f5f9', color: '#64748b', border: '1px solid #cbd5e1' } : {})
+                            }}
                           />
                         </TableCell>
-                        <TableCell sx={{ fontSize: '0.72rem', color: isDiscrepancy ? '#92400e' : '#64748b', py: 0.75 }}>
+                        <TableCell sx={{ fontSize: '0.72rem', color: isDiscrepancy ? '#92400e' : isMatch ? '#15803d' : '#64748b', py: 0.75 }}>
                           {item.note}
                         </TableCell>
                       </TableRow>
@@ -794,7 +829,7 @@ export const ManufacturedHomeTable = ({
                         />
                         {verificationByField[field] && (
                           <Box sx={{ mt: 0.5 }}>
-                            {verificationByField[field].status === 'Match' ? (
+                            {verificationByField[field].status === 'Match' && verificationByField[field].image_value ? (
                               <Chip
                                 size="small"
                                 variant="outlined"
@@ -803,21 +838,21 @@ export const ManufacturedHomeTable = ({
                                 label={`Image OCR Verified: ${verificationByField[field].image_value}`}
                                 sx={{ height: 20, fontSize: '0.7rem', fontWeight: 500 }}
                               />
-                            ) : (
+                            ) : verificationByField[field].status === 'Discrepancy' ? (
                               <Box>
                                 <Chip
                                   size="small"
                                   variant="filled"
                                   color="warning"
                                   icon={<WarningAmberIcon sx={{ fontSize: '13px !important' }} />}
-                                  label={`Image OCR Discrepancy: ${verificationByField[field].image_value} (Form: ${verificationByField[field].form_value})`}
+                                  label={`Image OCR Discrepancy: ${verificationByField[field].image_value || 'None'} (Form: ${verificationByField[field].form_value})`}
                                   sx={{ height: 21, fontSize: '0.7rem', fontWeight: 600 }}
                                 />
                                 <Typography variant="caption" sx={{ display: 'block', color: 'error.main', fontSize: '0.7rem', mt: 0.25, lineHeight: 1.25 }}>
                                   {verificationByField[field].note}
                                 </Typography>
                               </Box>
-                            )}
+                            ) : null}
                           </Box>
                         )}
                       </TableCell>
