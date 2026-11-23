@@ -54,7 +54,7 @@ import {
 } from '@mui/icons-material';
 import { VERIFY_IMAGES_URL } from './ImageVerificationBanner';
 import { API_BASE_URL } from '../utils/utils.js';
-import { InteractiveZoomImageViewer } from './InteractiveZoomImageViewer';
+import { InteractiveZoomImageViewer } from './InteractiveZoomImageViewer.js';
 import {
   ROOM_THEMES,
   DEFAULT_ROOM_THEME,

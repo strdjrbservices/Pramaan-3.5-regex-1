@@ -14,7 +14,7 @@ import DocumentScannerIcon from '@mui/icons-material/DocumentScanner';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { EditableField } from '../components/EditableField';
-import { InteractiveZoomImageViewer } from '../components/InteractiveZoomImageViewer';
+import { InteractiveZoomImageViewer } from '../components/InteractiveZoomImageViewer.js';
 
 export const MANUFACTURED_HOME_SECTIONS = [
   {

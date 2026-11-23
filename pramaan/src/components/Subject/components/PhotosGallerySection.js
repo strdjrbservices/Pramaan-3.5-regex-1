@@ -54,7 +54,7 @@ import {
 
 } from '@mui/icons-material';
 
-import { InteractiveZoomImageViewer } from './InteractiveZoomImageViewer';
+import { InteractiveZoomImageViewer } from './InteractiveZoomImageViewer.js';
 
 
 
