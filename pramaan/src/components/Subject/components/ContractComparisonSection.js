@@ -26,6 +26,22 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import WarningIcon from '@mui/icons-material/Warning';
 
+const formatDateWithSlashes = (val) => {
+  if (!val || typeof val !== 'string') return val;
+  const s = val.trim();
+  const isoMatch = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  if (isoMatch) {
+    const [, y, m, d] = isoMatch;
+    return `${m.padStart(2, '0')}/${d.padStart(2, '0')}/${y}`;
+  }
+  const usDash = s.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})$/);
+  if (usDash) {
+    const [, m, d, y] = usDash;
+    return `${m.padStart(2, '0')}/${d.padStart(2, '0')}/${y.length === 2 ? '20' + y : y}`;
+  }
+  return s.replace(/(?<=\d)-(?=\d)/g, '/');
+};
+
 export const ContractComparisonSection = ({
   contractFile,
   reportFile,
@@ -227,8 +243,11 @@ export const ContractComparisonSection = ({
                       const isMatch = item?.status === 'Match';
                       const isMismatch = item?.status === 'Mismatch';
                       const isInfo = item?.status === 'Info';
-                      const mainVal = (item?.old_value && item.old_value !== 'N/A') ? item.old_value : (mainFallback || item?.old_value || item?.main_report_value || 'N/A');
-                      const contractVal = item?.new_value || item?.contract_copy_value || 'N/A';
+                      const rawMainVal = (item?.old_value && item.old_value !== 'N/A') ? item.old_value : (mainFallback || item?.old_value || item?.main_report_value || 'N/A');
+                      const rawContractVal = item?.new_value || item?.contract_copy_value || 'N/A';
+                      const isDateField = fieldName.toLowerCase().includes('date');
+                      const mainVal = (isDateField && rawMainVal !== 'N/A') ? formatDateWithSlashes(rawMainVal) : rawMainVal;
+                      const contractVal = (isDateField && rawContractVal !== 'N/A') ? formatDateWithSlashes(rawContractVal) : rawContractVal;
                       const status = item ? item.status : 'Unknown';
 
                       return (
@@ -247,7 +266,47 @@ export const ContractComparisonSection = ({
                             {mainVal}
                           </TableCell>
                           <TableCell sx={{ color: '#334155', fontWeight: 500 }}>
-                            {contractVal}
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                              <Typography sx={{ fontWeight: 600, color: isMismatch ? '#b91c1c' : '#334155', fontSize: '0.875rem' }}>
+                                {contractVal}
+                              </Typography>
+                              {item?.page && (
+                                <Chip
+                                  label={`Pg ${item.page}`}
+                                  size="small"
+                                  sx={{ height: 20, fontSize: '0.72rem', fontWeight: 600, bgcolor: '#f1f5f9', color: '#475569' }}
+                                />
+                              )}
+                            </Box>
+                            {item?.snippet && (
+                              <Typography
+                                variant="caption"
+                                sx={{
+                                  display: 'block',
+                                  color: '#64748b',
+                                  fontStyle: 'italic',
+                                  mt: 0.5,
+                                  lineHeight: 1.3,
+                                  maxWidth: 440
+                                }}
+                              >
+                                "{item.snippet}"
+                              </Typography>
+                            )}
+                            {item?.message && (!item?.snippet || isMismatch) && (
+                              <Typography
+                                variant="caption"
+                                sx={{
+                                  display: 'block',
+                                  color: isMismatch ? '#dc2626' : '#0284c7',
+                                  fontWeight: isMismatch ? 600 : 500,
+                                  mt: 0.5,
+                                  fontSize: '0.75rem'
+                                }}
+                              >
+                                {item.message}
+                              </Typography>
+                            )}
                           </TableCell>
                           <TableCell align="center">
                             {item ? (

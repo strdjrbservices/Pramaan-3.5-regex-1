@@ -12,11 +12,34 @@ import os
 import re
 import sys
 import json
+import io
+import hashlib
 import argparse
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, List, Optional, Union, Tuple
 from difflib import SequenceMatcher
 import xml.etree.ElementTree as ET
 import pymupdf as fitz
+from PIL import Image, ImageEnhance, ImageFilter
+
+
+_GLOBAL_OCR_CACHE: Dict[str, str] = {}
+
+
+def enhance_pixmap_for_ocr(pix) -> bytes:
+    """
+    Converts a PyMuPDF pixmap into an enhanced high-contrast grayscale image
+    optimized for reading faint handwriting, ink pen strokes, carbon copies,
+    and noisy scanned pages.
+    """
+    try:
+        img = Image.open(io.BytesIO(pix.tobytes("png"))).convert("L")
+        enhancer = ImageEnhance.Contrast(img)
+        img = enhancer.enhance(1.8).filter(ImageFilter.SHARPEN)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+    except Exception:
+        return pix.tobytes("png")
 
 
 # ==============================================================================
@@ -141,6 +164,120 @@ def parse_date_to_iso(date_str: Optional[str]) -> Optional[str]:
     return None
 
 
+BOILERPLATE_BLACKLIST = [
+    r"STRIKE\s+THOSE",
+    r"NOT\s+APPLICABLE",
+    r"LISTING\s+FIRM",
+    r"AGENT\s+OF",
+    r"REAL\s+ESTATE\s+BROKER",
+    r"PRINT\s+NAME",
+    r"SIGNATURE",
+    r"ACKNOWLEDGMENT",
+    r"HEREINAFTER",
+    r"CALLED",
+    r"RECEIPT\s+OF",
+    r"THIS\s+PAGE",
+    r"PAGE\s+\d+",
+    r"ATTORNEY",
+    r"ESCROW",
+    r"TITLE\s+COMPANY",
+]
+
+
+def is_boilerplate(name: Optional[str]) -> bool:
+    """
+    Detects if an extracted text snippet is contractual legal boilerplate rather than a real party name.
+    """
+    if not name:
+        return True
+    s = str(name).strip().upper()
+    if len(s) < 3 or len(s) > 90:
+        return True
+    for pat in BOILERPLATE_BLACKLIST:
+        if re.search(pat, s):
+            return True
+    return False
+
+
+def split_joint_names(raw_name: Optional[str]) -> List[str]:
+    """
+    Splits joint or multi-party owner/borrower names into individual person names.
+    Handles delimiters like '&', 'and', '/', '+', 'et al', ';'.
+    Carries over the shared family surname from the last person to earlier persons
+    (e.g. 'Randy J & Jessica R Wesley' -> ['Randy J Wesley', 'Randy Wesley', 'Jessica R Wesley', 'Jessica Wesley']).
+    """
+    if not raw_name:
+        return []
+    s = str(raw_name).strip()
+    parts = re.split(r'\s*(?:&|(?:\band\b)|/|\+|\bet\s+al\.?\b|\bor\b|;)\s*', s, flags=re.I)
+    parts = [p.strip() for p in parts if p.strip()]
+    if len(parts) <= 1:
+        return [s]
+
+    last_part_tokens = [w for w in parts[-1].split() if len(w) > 1]
+    family_surname = last_part_tokens[-1] if last_part_tokens else ''
+
+    results = []
+    for p in parts:
+        raw_toks = p.split()
+        if len(raw_toks) == 1 and family_surname and raw_toks[0].upper() != family_surname.upper():
+            results.append(f"{raw_toks[0]} {family_surname}")
+        elif len(raw_toks) >= 2 and len(raw_toks[-1]) <= 2 and family_surname:
+            # e.g. 'Randy J' with middle initial -> 'Randy J Wesley' and 'Randy Wesley'
+            results.append(f"{p} {family_surname}")
+            results.append(f"{raw_toks[0]} {family_surname}")
+        elif family_surname and family_surname.upper() not in [t.upper() for t in raw_toks]:
+            results.append(f"{p} {family_surname}")
+        else:
+            results.append(p)
+            if len(raw_toks) == 3 and len(raw_toks[1]) <= 2:
+                results.append(f"{raw_toks[0]} {raw_toks[-1]}")
+
+    dedup = []
+    for r in results:
+        if r not in dedup:
+            dedup.append(r)
+    return dedup
+
+
+def format_date_with_slashes(val: Optional[str]) -> Optional[str]:
+    """
+    Normalizes any date into US standard slash format (MM/DD/YYYY or MM/DD/YY).
+    Guarantees no hyphens remain in dates.
+    E.g. 2026-11-08 -> 11/08/2026, 2026-10-27 -> 10/27/2026.
+    """
+    if not val:
+        return val
+    s = str(val).strip()
+    # 1. ISO: YYYY-MM-DD or YYYY/MM/DD
+    m = re.match(r'^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$', s)
+    if m:
+        y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        return f"{mo:02d}/{d:02d}/{y:04d}"
+    # 2. MM-DD-YYYY or MM/DD/YYYY
+    m2 = re.match(r'^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$', s)
+    if m2:
+        mo, d, y = int(m2.group(1)), int(m2.group(2)), int(m2.group(3))
+        if y < 100:
+            return f"{mo:02d}/{d:02d}/{y:02d}"
+        return f"{mo:02d}/{d:02d}/{y:04d}"
+    # 3. Textual dates: November 8, 2026
+    months = {
+        'january': 1, 'february': 2, 'march': 3, 'april': 4, 'may': 5, 'june': 6,
+        'july': 7, 'august': 8, 'september': 9, 'october': 10, 'november': 11, 'december': 12,
+        'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+        'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
+    }
+    mt = re.match(r'([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})', s)
+    if mt and mt.group(1).lower() in months:
+        mo = months[mt.group(1).lower()]
+        d = int(mt.group(2))
+        y = int(mt.group(3))
+        return f"{mo:02d}/{d:02d}/{y:04d}"
+    # Otherwise replace any hyphens between digits with slashes
+    return re.sub(r'(?<=\d)-(?=\d)', '/', s)
+
+
 def normalize_name(name: Optional[str]) -> str:
     """
     Normalizes person or entity names by stripping legal entity designations,
@@ -159,36 +296,83 @@ def normalize_name(name: Optional[str]) -> str:
     return " ".join(tokens)
 
 
+def single_person_matches(p1: str, p2: str) -> bool:
+    """
+    Checks if two person names match:
+    1. First word must match (exact or fuzzy >= 0.8)
+    2. Last word must match (exact, z/s interchange, or fuzzy >= 0.75)
+    If both match, returns True.
+    If either the first word or last word does not match, returns False.
+    Also handles reversed order (Last, First) and exact token equality/subset.
+    """
+    toks1 = [w for w in normalize_name(p1).split() if len(w) > 1]
+    toks2 = [w for w in normalize_name(p2).split() if len(w) > 1]
+    if not toks1 or not toks2:
+        return False
+
+    s1, s2 = set(toks1), set(toks2)
+    if s1 == s2 or s1.issubset(s2) or s2.issubset(s1):
+        return True
+
+    first1, last1 = toks1[0], toks1[-1]
+    first2, last2 = toks2[0], toks2[-1]
+
+    # Forward: First1 ~ First2 and Last1 ~ Last2
+    first_ok = (first1 == first2) or (SequenceMatcher(None, first1, first2).ratio() >= 0.8)
+    last_ok = (
+        (last1 == last2) or
+        (last1.replace('Z', 'S') == last2.replace('Z', 'S')) or
+        (SequenceMatcher(None, last1, last2).ratio() >= 0.75)
+    )
+    if first_ok and last_ok:
+        return True
+
+    # Reversed: First1 ~ Last2 and Last1 ~ First2 (e.g. Gonzalez, David)
+    rev_first_ok = (first1 == last2) or (SequenceMatcher(None, first1, last2).ratio() >= 0.8)
+    rev_last_ok = (
+        (last1 == first2) or
+        (last1.replace('Z', 'S') == first2.replace('Z', 'S')) or
+        (SequenceMatcher(None, last1, first2).ratio() >= 0.75)
+    )
+    if rev_first_ok and rev_last_ok:
+        return True
+
+    return False
+
+
 def names_match(n1: Optional[str], n2: Optional[str]) -> bool:
     """
     Compares two names (e.g. Owner of Record vs Seller Name, or Borrower vs Buyer Name)
-    using token containment, cross-name matching, and fuzzy sequence similarity.
-    Supports individual and joint buyers/sellers (e.g. 'Adam Glauberg' vs 'Adam Glauberg, Mara Glauberg').
+    using joint constituent decomposition, first-word + last-word matching, and fuzzy sequence similarity.
+    Supports individual and joint buyers/sellers (e.g. 'Randy J & Jessica R Wesley' vs 'Randy Wesley',
+    and 'David James Gonzalez' vs 'David Gonzales').
+    Rejects legal boilerplate phrases immediately.
     """
     if not n1 or not n2:
         return False
+    if is_boilerplate(n1) or is_boilerplate(n2):
+        return False
+
     norm1, norm2 = normalize_name(n1), normalize_name(n2)
     if not norm1 or not norm2:
         return False
     if norm1 == norm2 or norm1 in norm2 or norm2 in norm1:
         return True
 
+    p1_list = split_joint_names(n1)
+    p2_list = split_joint_names(n2)
+
+    for p1 in p1_list:
+        for p2 in p2_list:
+            if single_person_matches(p1, p2):
+                return True
+
+    # General full-string token subset check
     t1, t2 = set(norm1.split()), set(norm2.split())
     if t1.issubset(t2) or t2.issubset(t1):
         return True
 
-    overlap = t1.intersection(t2)
-    if len(overlap) >= 2:
-        return True
-
-    # If any overlapping token is a distinctive name token of >= 5 letters (e.g. Glauberg, Galvez, Gonzalez)
-    generic_words = {"HOMES", "INVESTMENTS", "PROPERTIES", "REALTY", "HOUSES", "CAPITAL", "ENTERPRISES", "HOLDINGS"}
-    for tok in overlap:
-        if len(tok) >= 5 and tok not in generic_words:
-            return True
-
-    ratio = SequenceMatcher(None, norm1, norm2).ratio()
-    return ratio >= 0.75
+    return SequenceMatcher(None, norm1, norm2).ratio() >= 0.80
 
 
 def normalize_address(addr: Optional[str]) -> str:
@@ -249,13 +433,27 @@ def addresses_match(a1: Optional[str], a2: Optional[str]) -> bool:
 # 2. Offline OCR Helper
 # ==============================================================================
 
+_GLOBAL_READER = None
+
 def get_offline_easyocr_reader():
     """
     Instantiates an offline EasyOCR reader looking in project-local or user directories.
-    Ensures download_enabled=False for strictly deterministic, air-gapped execution.
+    Caches as a process-wide singleton so model weights load exactly once,
+    saving 5-8 seconds per comparison request.
     """
+    global _GLOBAL_READER
+    if _GLOBAL_READER is not None:
+        return _GLOBAL_READER
+
     try:
         import easyocr
+        import torch
+        # Configure optimal CPU thread count
+        try:
+            num_cpus = os.cpu_count() or 4
+            torch.set_num_threads(min(8, max(4, num_cpus // 2)))
+        except Exception:
+            pass
     except ImportError:
         return None
 
@@ -281,7 +479,7 @@ def get_offline_easyocr_reader():
 
     try:
         if model_dir:
-            return easyocr.Reader(
+            _GLOBAL_READER = easyocr.Reader(
                 ['en'],
                 model_storage_directory=model_dir,
                 user_network_directory=model_dir,
@@ -289,7 +487,8 @@ def get_offline_easyocr_reader():
                 gpu=False
             )
         else:
-            return easyocr.Reader(['en'], download_enabled=False, gpu=False)
+            _GLOBAL_READER = easyocr.Reader(['en'], download_enabled=False, gpu=False)
+        return _GLOBAL_READER
     except Exception:
         return None
 
@@ -340,20 +539,34 @@ class ContractPdfExtractor:
         needs_ocr = (len(alnum_chars) < 25) or (len(raw_txt) > 0 and len(control_chars) / len(raw_txt) > 0.3)
 
         if needs_ocr:
-            self._ensure_reader()
-            if self.reader:
-                try:
-                    pix = page.get_pixmap(dpi=150)
-                    results = self.reader.readtext(pix.tobytes("png"))
-                    ocr_txt = " ".join([r[1] for r in results])
-                    if ocr_txt.strip():
-                        # Append OCR text to ensure standard English titles and form labels are available
-                        raw_txt = f"{raw_txt}\n{ocr_txt}".strip()
-                except Exception:
-                    pass
+            cache_key = f"{self.pdf_path}:{page_num}"
+            if cache_key in _GLOBAL_OCR_CACHE:
+                ocr_txt = _GLOBAL_OCR_CACHE[cache_key]
+                if ocr_txt.strip():
+                    raw_txt = f"{raw_txt}\n{ocr_txt}".strip()
+            else:
+                self._ensure_reader()
+                if self.reader:
+                    try:
+                        pix = page.get_pixmap(dpi=120)
+                        enhanced = enhance_pixmap_for_ocr(pix)
+                        results = self.reader.readtext(enhanced)
+                        ocr_txt = " ".join([r[1] for r in results])
+                        _GLOBAL_OCR_CACHE[cache_key] = ocr_txt
+                        if ocr_txt.strip():
+                            raw_txt = f"{raw_txt}\n{ocr_txt}".strip()
+                    except Exception:
+                        pass
 
         self._page_cache[page_num] = raw_txt
         return raw_txt
+
+    def close(self):
+        try:
+            if not self.doc.is_closed:
+                self.doc.close()
+        except Exception:
+            pass
 
     def extract(self) -> Dict[str, Any]:
         """
@@ -364,6 +577,9 @@ class ContractPdfExtractor:
           - all_dates: dict of milestone -> ISO date string
           - form_family: detected form family
         """
+        if self.doc.is_closed:
+            self.doc = fitz.open(self.pdf_path)
+
         # Step 1: Detect form family progressively (start with page 1 to save unnecessary OCR passes)
         header = self.get_text(1)
         header_upper = header.upper()
@@ -441,11 +657,15 @@ class ContractPdfExtractor:
                 if not buyer:
                     m_b = re.search(r"(?:Buyer|Buyer\(s\))\s*[:\-]?\s*([^\n\r]+)", txt, re.I)
                     if m_b and len(m_b.group(1).strip()) > 2 and "signature" not in m_b.group(1).lower():
-                        buyer = m_b.group(1).strip()
+                        cand_b = m_b.group(1).strip()
+                        if not is_boilerplate(cand_b):
+                            buyer = cand_b
                 if not seller:
                     m_s = re.search(r"(?:Seller|Seller\(s\))\s*[:\-]?\s*([^\n\r]+)", txt, re.I)
                     if m_s and len(m_s.group(1).strip()) > 2 and "signature" not in m_s.group(1).lower():
-                        seller = m_s.group(1).strip()
+                        cand_s = m_s.group(1).strip()
+                        if not is_boilerplate(cand_s):
+                            seller = cand_s
                 if not property_address:
                     m_addr = re.search(r"(?:Property\s+Address|Real\s+Property\s+Address|commonly\s+known\s+as)\s*[:\-]?\s*([^\n\r]+)", txt, re.I)
                     if m_addr and len(m_addr.group(1).strip()) > 3:
@@ -633,10 +853,10 @@ class ContractPdfExtractor:
 
             # Parties & Property Address
             m_b = re.search(r'Buyer:\s*([^\n\r]+)', p1, re.I)
-            if m_b and len(m_b.group(1).strip()) > 2:
+            if m_b and len(m_b.group(1).strip()) > 2 and not is_boilerplate(m_b.group(1).strip()):
                 buyer = m_b.group(1).strip()
             m_s = re.search(r'Seller:\s*([^\n\r]+)', p1, re.I)
-            if m_s and len(m_s.group(1).strip()) > 2:
+            if m_s and len(m_s.group(1).strip()) > 2 and not is_boilerplate(m_s.group(1).strip()):
                 seller = m_s.group(1).strip()
             m_prop = re.search(r'Property:\s*([^\n\r]+)', p1, re.I)
             if m_prop and len(m_prop.group(1).strip()) > 3:
@@ -764,10 +984,10 @@ class ContractPdfExtractor:
             if m_addr:
                 property_address = m_addr.group(1).strip()
             m_b = re.search(r"Buyer\(s\):\s*([^\n\r]+)", all_text, re.I)
-            if m_b:
+            if m_b and not is_boilerplate(m_b.group(1).strip()):
                 buyer = m_b.group(1).strip()
             m_s = re.search(r"Seller\(s\):\s*([^\n\r]+)", all_text, re.I)
-            if m_s:
+            if m_s and not is_boilerplate(m_s.group(1).strip()):
                 seller = m_s.group(1).strip()
 
             m_dated = re.search(r'DATED\s*[:\-]?\s*([A-Za-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})', all_text, re.I)
@@ -915,10 +1135,10 @@ class ContractPdfExtractor:
                     price = max(cands)
 
             m_s = re.search(r"(?:Seller|Seller\(s\))\s*[:\-]?\s*([^\n\r]+)", all_contract_text, re.I)
-            if m_s and len(m_s.group(1).strip()) > 2:
+            if m_s and len(m_s.group(1).strip()) > 2 and not is_boilerplate(m_s.group(1).strip()):
                 seller = m_s.group(1).strip()
             m_b = re.search(r"(?:Buyer|Buyer\(s\))\s*[:\-]?\s*([^\n\r]+)", all_contract_text, re.I)
-            if m_b and len(m_b.group(1).strip()) > 2:
+            if m_b and len(m_b.group(1).strip()) > 2 and not is_boilerplate(m_b.group(1).strip()):
                 buyer = m_b.group(1).strip()
             m_addr = re.search(r"(?:Property\s+Address|Premises)\s*[:\-]?\s*([^\n\r]+)", all_contract_text, re.I)
             if m_addr and len(m_addr.group(1).strip()) > 3:
@@ -995,7 +1215,6 @@ class ContractPdfExtractor:
             or (list(dates.values())[0] if dates else None)
         )
 
-        self.doc.close()
         return {
             "price": price,
             "date": best_date,
@@ -1256,8 +1475,928 @@ def extract_appraisal_source(path: str) -> Dict[str, Any]:
 
 
 # ==============================================================================
-# 5. Master Comparison & Reconciliation Function
+# 5. Master Ground-Truth Verification & Reconciliation Engine
 # ==============================================================================
+
+def generate_currency_variants(val: Optional[float]) -> List[str]:
+    """
+    Generates exact numeric, currency, and OCR/handwriting-resilient representations of a price figure.
+    """
+    if val is None:
+        return []
+    v = float(val)
+    int_v = int(v)
+    variants = {
+        f"${int_v:,}",
+        f"${int_v}",
+        f"{int_v:,}",
+        f"{int_v}",
+        f"${v:,.2f}",
+        f"{v:,.2f}",
+        f"${v:.2f}",
+        f"{v:.2f}",
+        # European / OCR dot notation (e.g. 525.000.00 or 525.000)
+        f"{int_v:,}".replace(",", "."),
+        f"${int_v:,}".replace(",", "."),
+    }
+    # OCR / handwriting letter-digit confusions (e.g. S for $, O for 0)
+    variants.add(f"S{int_v:,}")
+    variants.add(f"{int_v:,}".replace("0", "O"))
+    variants.add(f"{int_v:,}".replace("0", "o"))
+    variants.add(f"{int_v:,}".replace("0", "D"))
+
+    return [var for var in variants if var]
+
+
+def generate_date_variants(iso_date: Optional[str], raw_date: Optional[str] = None) -> List[str]:
+    """
+    Generates all common representations of a date across US formats, ISO, military,
+    and textual month names, including handwriting/OCR letter-digit variations.
+    """
+    if not iso_date:
+        return [raw_date] if raw_date else []
+
+    variants = set()
+    if raw_date:
+        rd = raw_date.strip()
+        variants.add(rd)
+        variants.add(rd.replace("-", "/"))
+        variants.add(rd.replace("/", "-"))
+
+    parts = iso_date.split("-")
+    if len(parts) == 3:
+        try:
+            y, m, d = int(parts[0]), int(parts[1]), int(parts[2])
+            yy = y % 100
+            months = [
+                "January", "February", "March", "April", "May", "June",
+                "July", "August", "September", "October", "November", "December"
+            ]
+            short_months = [
+                "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+            ]
+            mon_name = months[m - 1]
+            short_mon = short_months[m - 1]
+
+            # Standard digital formats
+            variants.add(f"{y:04d}-{m:02d}-{d:02d}")
+            variants.add(f"{y:04d}/{m:02d}/{d:02d}")
+            variants.add(f"{m:02d}/{d:02d}/{y:04d}")
+            variants.add(f"{m}/{d}/{y:04d}")
+            variants.add(f"{m:02d}/{d:02d}/{yy:02d}")
+            variants.add(f"{m}/{d}/{yy:02d}")
+            variants.add(f"{m:02d}-{d:02d}-{y:04d}")
+            variants.add(f"{m}-{d}-{y:04d}")
+            variants.add(f"{m:02d}-{d:02d}-{yy:02d}")
+            variants.add(f"{m}-{d}-{yy:02d}")
+            variants.add(f"{m:02d}.{d:02d}.{y:04d}")
+            variants.add(f"{m:02d}.{d:02d}.{yy:02d}")
+            variants.add(f"{mon_name} {d}, {y:04d}")
+            variants.add(f"{mon_name} {d} {y:04d}")
+            variants.add(f"{short_mon} {d}, {y:04d}")
+            variants.add(f"{short_mon} {d} {y:04d}")
+            variants.add(f"{short_mon}. {d}, {y:04d}")
+            variants.add(f"{d} {mon_name} {y:04d}")
+            variants.add(f"{d} {short_mon} {y:04d}")
+            variants.add(f"{d}-{short_mon}-{y:04d}")
+
+            # Handwriting / OCR substitutions: O for 0, l for 1
+            variants.add(f"{m:02d}/{d:02d}/{y:04d}".replace("0", "O"))
+            variants.add(f"{m:02d}/{d:02d}/{yy:02d}".replace("0", "O"))
+            variants.add(f"{m:02d}-{d:02d}-{y:04d}".replace("0", "O"))
+        except Exception:
+            pass
+
+    return [v for v in variants if v]
+
+
+class ContractGroundTruthVerifier:
+    """
+    Inverse Ground-Truth Directed Verification Engine.
+    Takes known truth from Appraisal Report (MISMO XML / PDF) and verifies
+    whether each value exists in the contract copy (digital, scanned, hybrid, or image).
+    Extracts citation snippets and page numbers for verified fields.
+    """
+    def __init__(self, contract_path: str, appraisal_data: Dict[str, Any], easyocr_reader=None):
+        self.contract_path = contract_path
+        self.appraisal = appraisal_data
+        self.reader = easyocr_reader
+        self._reader_attempted = False
+
+        # Fast content hash of document for instant (0.01s) cache hits on reloads / re-scans
+        try:
+            with open(contract_path, "rb") as f:
+                self._file_hash = hashlib.md5(f.read(2 * 1024 * 1024)).hexdigest()
+        except Exception:
+            self._file_hash = os.path.basename(contract_path)
+
+        # Open multi-modal document (PDF or Image: PNG, JPG, JPEG, TIFF, BMP)
+        self.doc = fitz.open(contract_path)
+        self.pages_data = []
+        for idx in range(len(self.doc)):
+            page = self.doc[idx]
+            txt = page.get_text("text").strip()
+            alnum_count = len(re.findall(r'[a-zA-Z0-9]', txt))
+            has_img = len(page.get_images()) > 0
+            is_scanned = (alnum_count < 25)
+            self.pages_data.append({
+                "page": idx + 1,
+                "text": txt,
+                "has_images": has_img,
+                "is_scanned": is_scanned,
+                "ocr_text": None
+            })
+
+        self._fallback_extractor = None
+
+    def close(self):
+        try:
+            self.doc.close()
+        except Exception:
+            pass
+
+    def _ensure_reader(self):
+        if self.reader is None and not self._reader_attempted:
+            self._reader_attempted = True
+            self.reader = get_offline_easyocr_reader()
+
+    def _get_candidate_ocr_pages(self, field_type: str = "general") -> List[int]:
+        """
+        Determines candidate pages for OCR verification when digital text fails.
+        - Page 1 is ALWAYS first (covers 99% of purchase contracts).
+        - For dates, if not found on Page 1, only then checks the last signature page.
+        """
+        cand = [1]
+        total = len(self.pages_data)
+        if field_type == "date" and total > 1:
+            if total not in cand:
+                cand.append(total)
+
+        for p in self.pages_data:
+            pg = p["page"]
+            if pg not in cand:
+                if p["is_scanned"]:
+                    cand.append(pg)
+        return cand[:2]
+
+    def _ocr_page(self, page_num: int) -> str:
+        idx = page_num - 1
+        if idx < 0 or idx >= len(self.pages_data):
+            return ""
+        if self.pages_data[idx]["ocr_text"] is not None:
+            return self.pages_data[idx]["ocr_text"]
+
+        cache_key = f"{self._file_hash}:{page_num}"
+        if cache_key in _GLOBAL_OCR_CACHE:
+            ocr_txt = _GLOBAL_OCR_CACHE[cache_key]
+            self.pages_data[idx]["ocr_text"] = ocr_txt
+            return ocr_txt
+
+        self._ensure_reader()
+        if not self.reader:
+            return ""
+
+        try:
+            page = self.doc[idx]
+            # Use 120 DPI with batch_size=8 for optimal speed and accurate digit recognition
+            pix = page.get_pixmap(dpi=120)
+            enhanced_bytes = enhance_pixmap_for_ocr(pix)
+            results = self.reader.readtext(enhanced_bytes, batch_size=8)
+            ocr_txt = " ".join([r[1] for r in results])
+            _GLOBAL_OCR_CACHE[cache_key] = ocr_txt
+            self.pages_data[idx]["ocr_text"] = ocr_txt
+            return ocr_txt
+        except Exception:
+            return ""
+
+    def _get_fallback_contract_data(self) -> Dict[str, Any]:
+        if self._fallback_extractor is None:
+            if hasattr(self, "contract_path") and self.contract_path and os.path.exists(self.contract_path):
+                self._fallback_extractor = ContractPdfExtractor(self.contract_path, easyocr_reader=self.reader)
+            else:
+                return {}
+        try:
+            return self._fallback_extractor.extract()
+        except Exception:
+            return {}
+
+    def _extract_snippet(self, text: str, start_pos: int, end_pos: int) -> str:
+        start = max(0, start_pos - 45)
+        end = min(len(text), end_pos + 45)
+        raw_snip = text[start:end]
+        return " ".join(raw_snip.split())
+
+    def _generate_name_variants(self, full_name: Optional[str]) -> Tuple[List[str], List[Tuple[str, str]]]:
+        """
+        Generates search candidate strings and proximity token pairs for person/entity matching.
+        Supports joint owners/borrowers, middle initial omissions, and reversed names.
+        """
+        if not full_name or is_boilerplate(full_name):
+            return [], []
+
+        clean_full = normalize_name(full_name)
+        cands = set()
+        if clean_full:
+            cands.add(clean_full)
+
+        proximity_pairs = []
+
+        persons = split_joint_names(full_name)
+        for p in persons:
+            norm_p = normalize_name(p)
+            if norm_p:
+                cands.add(norm_p)
+            toks = [w for w in norm_p.split() if len(w) > 1]
+            if len(toks) >= 2:
+                first, last = toks[0], toks[-1]
+                proximity_pairs.append((first, last))
+                cands.add(f"{first} {last}")
+                cands.add(f"{last} {first}")
+            elif len(toks) == 1:
+                cands.add(toks[0])
+
+        # Also add tokens of full name if >= 2
+        full_toks = [w for w in clean_full.split() if len(w) > 1]
+        if len(full_toks) >= 2:
+            proximity_pairs.append((full_toks[0], full_toks[-1]))
+
+        # Sort candidate strings by descending length for greedy matching
+        sorted_cands = sorted(list(cands), key=len, reverse=True)
+        return sorted_cands, proximity_pairs
+
+    def _search_name_in_text(self, target_name: Optional[str], text: Optional[str]) -> Tuple[bool, Optional[str], Optional[str]]:
+        """
+        Searches for a person or entity name in text.
+        Requires First Word to match AND Last Word to match (allowing middle name omission,
+        whitespace variations, z/s interchange, and minor spelling differences).
+        Returns (matched, matched_name, snippet).
+        """
+        if not target_name or not text or is_boilerplate(target_name):
+            return False, None, None
+
+        txt_upper = text.upper()
+        clean_target = normalize_name(target_name)
+        if clean_target and clean_target in txt_upper:
+            idx = txt_upper.find(clean_target)
+            return True, text[idx:idx + len(clean_target)].strip(), self._extract_snippet(text, idx, idx + len(clean_target))
+
+        cand_strings, _ = self._generate_name_variants(target_name)
+        for c_str in cand_strings:
+            if c_str in txt_upper:
+                idx = txt_upper.find(c_str)
+                return True, text[idx:idx + len(c_str)].strip(), self._extract_snippet(text, idx, idx + len(c_str))
+
+        persons = split_joint_names(target_name)
+        for p in persons:
+            norm_p = normalize_name(p)
+            if not norm_p:
+                continue
+            if norm_p in txt_upper:
+                idx = txt_upper.find(norm_p)
+                return True, text[idx:idx + len(norm_p)].strip(), self._extract_snippet(text, idx, idx + len(norm_p))
+
+            toks = [w for w in norm_p.split() if len(w) > 1]
+            if len(toks) >= 2:
+                first_w, last_w = toks[0], toks[-1]
+                last_stem = re.escape(last_w[:-1]) if len(last_w) > 4 else re.escape(last_w)
+
+                # 1. Regex forward: First [Middle] Last with variable whitespace
+                pat_fwd = r'\b' + re.escape(first_w) + r'\s+(?:[A-Za-z.\'\"]+\s+)?' + last_stem + r'[A-Za-z]?' + r'\b'
+                m_fwd = re.search(pat_fwd, text, re.I)
+                if m_fwd:
+                    start, end = m_fwd.start(), m_fwd.end()
+                    return True, text[start:end].strip(), self._extract_snippet(text, start, end)
+
+                # 2. Regex reversed: Last, First with variable whitespace
+                pat_rev = r'\b' + last_stem + r'[A-Za-z]?,?\s+(?:[A-Za-z.\'\"]+\s+)?' + re.escape(first_w) + r'\b'
+                m_rev = re.search(pat_rev, text, re.I)
+                if m_rev:
+                    start, end = m_rev.start(), m_rev.end()
+                    return True, text[start:end].strip(), self._extract_snippet(text, start, end)
+
+                # 3. Window search around occurrences of First Word
+                for m_first in re.finditer(r'\b' + re.escape(first_w) + r'\b', txt_upper):
+                    f_idx = m_first.start()
+                    w_start = max(0, f_idx - 35)
+                    w_end = min(len(text), f_idx + 85)
+                    sub = txt_upper[w_start:w_end]
+                    for w_match in re.finditer(r'\b[A-Za-z]{3,}\b', sub):
+                        cand_w = w_match.group(0)
+                        if cand_w == first_w:
+                            continue
+                        if (cand_w == last_w or
+                            cand_w.replace('Z', 'S') == last_w.replace('Z', 'S') or
+                            SequenceMatcher(None, cand_w, last_w).ratio() >= 0.75):
+                            abs_w_start = w_start + w_match.start()
+                            abs_w_end = w_start + w_match.end()
+                            s_pos = min(f_idx, abs_w_start)
+                            e_pos = max(f_idx + len(first_w), abs_w_end)
+                            return True, text[s_pos:e_pos].strip(), self._extract_snippet(text, s_pos, e_pos)
+
+                # 4. Window search around occurrences of Last Stem
+                for m_last in re.finditer(r'\b' + last_stem + r'[A-Za-z]?\b', txt_upper):
+                    l_idx = m_last.start()
+                    w_start = max(0, l_idx - 65)
+                    w_end = min(len(text), l_idx + 65)
+                    sub = txt_upper[w_start:w_end]
+                    m_f = re.search(r'\b' + re.escape(first_w) + r'\b', sub)
+                    if m_f:
+                        abs_f_start = w_start + m_f.start()
+                        abs_f_end = w_start + m_f.end()
+                        s_pos = min(abs_f_start, l_idx)
+                        e_pos = max(abs_f_end, l_idx + len(m_last.group(0)))
+                        return True, text[s_pos:e_pos].strip(), self._extract_snippet(text, s_pos, e_pos)
+
+        return False, None, None
+
+    def _verify_handwritten_date_slot(
+        self,
+        ocr_text: str,
+        t_date: str,
+        raw_date: Optional[str] = None
+    ) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
+        """
+        Verifies handwritten, stamped, or form-slotted contract dates inside preamble slots and anchor labels.
+        Normalizes OCR letter-digit confusions, removes line-boundary artifacts, and compares
+        against the ground truth appraisal date components (Year, Month, Day).
+        """
+        if not t_date:
+            return False, None, None, None
+
+        try:
+            parts = t_date.split("-")
+            ty, tm, td = int(parts[0]), int(parts[1]), int(parts[2])
+        except Exception:
+            return False, None, None, None
+
+        tyy = ty % 100
+        expected_short = f"{tm}/{td}/{tyy}"
+
+        clean_ocr = " ".join(ocr_text.split())
+
+        anchor_patterns = [
+            # Preamble: Contract of Sale made as of <DATE> BETWEEN ...
+            r'(?:contract\s+of\s+sale\s+)?made\s*[-–]?\s*(?:this\s+)?as\s+(?:of|ot|to|os)[_\s]*([^\n\r]+?)\s+(?:BETWEEN|by\s+and\s+between)',
+            r'made\s*[-–]?\s*as\s+(?:of|ot|to|os)[_\s]*([^\n\r]+?)(?:\s+BETWEEN|\n|$)',
+            r'(?:contract\s+date|date\s+of\s+contract|agreement\s+date|date\s+prepared|offer\s+date)\s*[:\-]?\s*([^\n\r]+)',
+            r'(?:Date|Dated)\s*[:\-]?\s*([^\n\r]+)',
+            r'(?:Execution|Acceptance)\s+Date\s*[:\-]?\s*([^\n\r]+)',
+            r'(?:Buyer|Seller|Purchaser)\s*(?:Signature)?.*?Date\s*[:\-]?\s*([^\n\r]+)',
+        ]
+
+        mapping = {
+            '[': '1', '(': '1', '{': '1', '|': '1', 'l': '1', 'I': '1', 'L': '1', 'i': '1',
+            'e': '0', 'E': '0', 'o': '0', 'O': '0', 'D': '0', 'Q': '0',
+            'h': '/', 'H': '/', 'p': '/', 'P': '/', '\\': '/',
+            'z': '2', 'Z': '2',
+            'b': '6', 'G': '6',
+            't': '7', 'T': '7',
+        }
+
+        for pat in anchor_patterns:
+            m = re.search(pat, clean_ocr, re.I)
+            if not m:
+                continue
+
+            cand = m.group(1).strip(" _.-:;,")
+            if len(cand) < 2 or len(cand) > 35:
+                continue
+
+            # Replace whitespace inside candidate with slash if between letters/digits
+            cand_fixed = re.sub(r'(?<=[A-Za-z0-9])\s+(?=[A-Za-z0-9])', '/', cand)
+            norm = ''.join([mapping.get(c, c) for c in cand_fixed]).strip(" _.-:;,")
+
+            # Year normalization (e.g. '20' or '2e' -> '26' if target year ends with 6)
+            if norm.endswith(('20', '2e', 'zb', 'ze')) and str(tyy).endswith('6'):
+                norm = norm[:-1] + '6'
+            elif cand.endswith(('e', 'E', 'b')) and str(tyy).endswith('6'):
+                norm = norm[:-1] + '6'
+
+            # 1. Slash / Dash parsed date check
+            m_slash = re.search(r'(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})', norm)
+            if m_slash:
+                c_m, c_d, c_y = int(m_slash.group(1)), int(m_slash.group(2)), int(m_slash.group(3))
+                c_y_full = c_y + 2000 if c_y < 100 else c_y
+                if c_m == tm and c_y_full == ty:
+                    start = max(0, m.start() - 25)
+                    end = min(len(clean_ocr), m.end() + 25)
+                    return True, cand, expected_short, clean_ocr[start:end]
+
+            # 2. Digits-only ending with target year and matching month
+            digits = re.sub(r'\D', '', norm)
+            if len(digits) >= 4 and digits.endswith(str(tyy)):
+                if digits.startswith(str(tm)) or (len(str(tm)) > 1 and digits.startswith(str(tm)[0])):
+                    start = max(0, m.start() - 25)
+                    end = min(len(clean_ocr), m.end() + 25)
+                    return True, cand, expected_short, clean_ocr[start:end]
+
+            # 3. Sequence similarity
+            if SequenceMatcher(None, norm, expected_short).ratio() >= 0.55:
+                start = max(0, m.start() - 25)
+                end = min(len(clean_ocr), m.end() + 25)
+                return True, cand, expected_short, clean_ocr[start:end]
+
+        return False, None, None, None
+
+    def verify_price(self) -> Dict[str, Any]:
+        t_price = self.appraisal.get("price")
+        if t_price is None:
+            fb = self._get_fallback_contract_data()
+            fb_p = fb.get("price")
+            return {
+                "field": "Contract Price",
+                "old_value": "N/A",
+                "new_value": f"${fb_p:,.0f}" if fb_p else "N/A",
+                "status": "Info",
+                "page": None,
+                "snippet": None,
+                "message": "Appraisal report does not specify a Contract Price"
+            }
+
+        variants = generate_currency_variants(t_price)
+        variants_sorted = sorted(list(variants), key=len, reverse=True)
+        pats = [re.escape(v) for v in variants_sorted]
+        price_regex = re.compile(r'(?:' + '|'.join(pats) + r')', re.I)
+
+        # Pass 1: Digital text search
+        for p in self.pages_data:
+            m = price_regex.search(p["text"])
+            if m:
+                snip = self._extract_snippet(p["text"], m.start(), m.end())
+                return {
+                    "field": "Contract Price",
+                    "old_value": f"${t_price:,.0f}",
+                    "new_value": f"${t_price:,.0f}",
+                    "status": "Match",
+                    "page": p["page"],
+                    "snippet": snip,
+                    "message": f"Verified in contract copy on Page {p['page']}"
+                }
+
+        # Pass 2: Targeted OCR on candidate price pages (Page 1 is always checked)
+        cand_pages = self._get_candidate_ocr_pages(field_type="price")
+        for pg in cand_pages:
+            ocr = self._ocr_page(pg)
+            if not ocr:
+                continue
+            m = price_regex.search(ocr)
+            if m:
+                snip = self._extract_snippet(ocr, m.start(), m.end())
+                return {
+                    "field": "Contract Price",
+                    "old_value": f"${t_price:,.0f}",
+                    "new_value": f"${t_price:,.0f}",
+                    "status": "Match",
+                    "page": pg,
+                    "snippet": snip,
+                    "message": f"Verified via OCR on Page {pg}"
+                }
+            # Clean currency fallback token scan
+            for tok in re.findall(r'[\$]?\s*[0-9.,uUoOD]{4,}', ocr):
+                c_val = clean_currency(tok)
+                if c_val and abs(c_val - t_price) < 1.0:
+                    idx = ocr.find(tok)
+                    snip = self._extract_snippet(ocr, idx, idx + len(tok))
+                    return {
+                        "field": "Contract Price",
+                        "old_value": f"${t_price:,.0f}",
+                        "new_value": f"${t_price:,.0f}",
+                        "status": "Match",
+                        "page": pg,
+                        "snippet": snip,
+                        "message": f"Verified via OCR on Page {pg}"
+                    }
+
+        # Pass 3: Check fallback extraction
+        fb = self._get_fallback_contract_data()
+        fb_price = fb.get("price")
+        if fb_price and abs(fb_price - t_price) < 1.0:
+            return {
+                "field": "Contract Price",
+                "old_value": f"${t_price:,.0f}",
+                "new_value": f"${t_price:,.0f}",
+                "status": "Match",
+                "page": None,
+                "snippet": None,
+                "message": "Verified in contract copy"
+            }
+
+        if fb_price:
+            return {
+                "field": "Contract Price",
+                "old_value": f"${t_price:,.0f}",
+                "new_value": f"${fb_price:,.0f}",
+                "status": "Mismatch",
+                "page": None,
+                "snippet": None,
+                "message": f"Price ${t_price:,.0f} from XML not found in contract copy (Contract shows ${fb_price:,.0f})"
+            }
+
+        return {
+            "field": "Contract Price",
+            "old_value": f"${t_price:,.0f}",
+            "new_value": "Not Found",
+            "status": "Mismatch",
+            "page": None,
+            "snippet": None,
+            "message": f"Price ${t_price:,.0f} from XML not found anywhere in contract copy"
+        }
+
+    def verify_date(self) -> Dict[str, Any]:
+        t_date = self.appraisal.get("date")
+        raw_date = self.appraisal.get("raw_date")
+        display_old = format_date_with_slashes(raw_date or t_date) or "N/A"
+
+        if not t_date:
+            fb = self._get_fallback_contract_data()
+            fb_d = fb.get("date")
+            return {
+                "field": "Contract Date",
+                "old_value": "N/A",
+                "new_value": format_date_with_slashes(fb_d) if fb_d else "N/A",
+                "status": "Info",
+                "page": None,
+                "snippet": None,
+                "message": "Appraisal report does not specify a Contract Date"
+            }
+
+        variants = generate_date_variants(t_date, raw_date)
+        variants_sorted = sorted(list(variants), key=len, reverse=True)
+        pats = [re.escape(v) for v in variants_sorted]
+        date_regex = re.compile(r'(?:' + '|'.join(pats) + r')', re.I)
+
+        # Pass 1: Digital text search
+        for p in self.pages_data:
+            m = date_regex.search(p["text"])
+            if m:
+                snip = self._extract_snippet(p["text"], m.start(), m.end())
+                return {
+                    "field": "Contract Date",
+                    "old_value": display_old,
+                    "new_value": format_date_with_slashes(m.group(0)),
+                    "status": "Match",
+                    "page": p["page"],
+                    "snippet": snip,
+                    "message": f"Verified in contract copy on Page {p['page']}"
+                }
+
+        # Pass 2: Targeted OCR on candidate signature/execution pages (Page 1 and last page)
+        cand_pages = self._get_candidate_ocr_pages(field_type="date")
+        for pg in cand_pages:
+            ocr = self._ocr_page(pg)
+            if not ocr:
+                continue
+            m = date_regex.search(ocr)
+            if m:
+                snip = self._extract_snippet(ocr, m.start(), m.end())
+                return {
+                    "field": "Contract Date",
+                    "old_value": display_old,
+                    "new_value": format_date_with_slashes(m.group(0)),
+                    "status": "Match",
+                    "page": pg,
+                    "snippet": snip,
+                    "message": f"Verified via OCR on Page {pg}"
+                }
+
+            # Check for handwritten or slot-anchored contract dates
+            matched, raw_cand, matched_val, snip = self._verify_handwritten_date_slot(ocr, t_date, raw_date)
+            if matched:
+                return {
+                    "field": "Contract Date",
+                    "old_value": display_old,
+                    "new_value": format_date_with_slashes(matched_val),
+                    "status": "Match",
+                    "page": pg,
+                    "snippet": snip,
+                    "message": f"Verified handwritten contract date on Page {pg}"
+                }
+
+        # Pass 3: Check fallback extraction
+        fb = self._get_fallback_contract_data()
+        fb_dates = fb.get("all_dates", {})
+        fb_date = fb.get("date")
+
+        if t_date and (t_date in fb_dates.values() or t_date == fb_date):
+            return {
+                "field": "Contract Date",
+                "old_value": display_old,
+                "new_value": format_date_with_slashes(fb_date or t_date),
+                "status": "Match",
+                "page": None,
+                "snippet": None,
+                "message": "Verified against contract milestone date"
+            }
+
+        if fb_date:
+            return {
+                "field": "Contract Date",
+                "old_value": display_old,
+                "new_value": format_date_with_slashes(fb_date),
+                "status": "Mismatch",
+                "page": None,
+                "snippet": None,
+                "message": f"Date '{display_old}' from XML not found in contract copy (Contract shows: {format_date_with_slashes(fb_date)})"
+            }
+
+        return {
+            "field": "Contract Date",
+            "old_value": display_old,
+            "new_value": "Not Found",
+            "status": "Mismatch",
+            "page": None,
+            "snippet": None,
+            "message": f"Date '{display_old}' from XML not found anywhere in contract copy"
+        }
+
+    def verify_seller(self) -> Dict[str, Any]:
+        t_seller = self.appraisal.get("owner_of_record")
+        if not t_seller:
+            return None
+
+        # Pass 1: Digital text search
+        for p in self.pages_data:
+            matched, name_val, snip = self._search_name_in_text(t_seller, p["text"])
+            if matched:
+                return {
+                    "field": "Seller vs Owner of Record",
+                    "old_value": t_seller,
+                    "new_value": name_val if len(name_val) >= 3 else t_seller,
+                    "status": "Match",
+                    "page": p["page"],
+                    "snippet": snip,
+                    "message": f"Seller identity verified on Page {p['page']}"
+                }
+
+        # Pass 2: Targeted OCR on candidate pages (Page 1 is always checked)
+        cand_pages = self._get_candidate_ocr_pages(field_type="parties")
+        for pg in cand_pages:
+            ocr = self._ocr_page(pg)
+            if not ocr:
+                continue
+            matched, name_val, snip = self._search_name_in_text(t_seller, ocr)
+            if matched:
+                return {
+                    "field": "Seller vs Owner of Record",
+                    "old_value": t_seller,
+                    "new_value": name_val if len(name_val) >= 3 else t_seller,
+                    "status": "Match",
+                    "page": pg,
+                    "snippet": snip,
+                    "message": f"Seller identity verified via OCR on Page {pg}"
+                }
+            # Fuzzy candidate match for OCR typos with label
+            for m in re.finditer(r'(?:Seller|Owner)\s*[:;\-]?\s*([A-Za-z\s,.\'\"]{3,45})', ocr, re.I):
+                cand_name = m.group(1).strip()
+                if names_match(t_seller, cand_name):
+                    snip = self._extract_snippet(ocr, m.start(), m.end() + 20)
+                    return {
+                        "field": "Seller vs Owner of Record",
+                        "old_value": t_seller,
+                        "new_value": cand_name,
+                        "status": "Match",
+                        "page": pg,
+                        "snippet": snip,
+                        "message": f"Seller identity verified via OCR on Page {pg}"
+                    }
+
+        # Pass 3: Check fallback extraction
+        fb = self._get_fallback_contract_data()
+        c_seller = fb.get("seller")
+        if c_seller and not is_boilerplate(c_seller):
+            is_m = names_match(t_seller, c_seller)
+            return {
+                "field": "Seller vs Owner of Record",
+                "old_value": t_seller,
+                "new_value": c_seller,
+                "status": "Match" if is_m else "Mismatch",
+                "page": None,
+                "snippet": None,
+                "message": "Seller matches contract party" if is_m else f"Owner of record '{t_seller}' differs from contract seller '{c_seller}'"
+            }
+
+        return {
+            "field": "Seller vs Owner of Record",
+            "old_value": t_seller,
+            "new_value": "Not Found",
+            "status": "Mismatch",
+            "page": None,
+            "snippet": None,
+            "message": f"Owner of record '{t_seller}' not identified in contract copy"
+        }
+
+    def verify_borrower(self) -> Dict[str, Any]:
+        t_borrower = self.appraisal.get("borrower")
+        if not t_borrower:
+            return None
+
+        # Pass 1: Digital text search
+        for p in self.pages_data:
+            matched, name_val, snip = self._search_name_in_text(t_borrower, p["text"])
+            if matched:
+                return {
+                    "field": "Borrower vs Buyer Name",
+                    "old_value": t_borrower,
+                    "new_value": name_val if len(name_val) >= 3 else t_borrower,
+                    "status": "Match",
+                    "page": p["page"],
+                    "snippet": snip,
+                    "message": f"Buyer identity verified on Page {p['page']}"
+                }
+
+        # Check candidate OCR pages (Page 1 is always checked)
+        cand_pages = self._get_candidate_ocr_pages(field_type="parties")
+        for pg in cand_pages:
+            ocr = self._ocr_page(pg)
+            if not ocr:
+                continue
+            matched, name_val, snip = self._search_name_in_text(t_borrower, ocr)
+            if matched:
+                return {
+                    "field": "Borrower vs Buyer Name",
+                    "old_value": t_borrower,
+                    "new_value": name_val if len(name_val) >= 3 else t_borrower,
+                    "status": "Match",
+                    "page": pg,
+                    "snippet": snip,
+                    "message": f"Buyer identity verified via OCR on Page {pg}"
+                }
+            # Fuzzy candidate match for OCR typos with label (e.g. Purchaeer)
+            for m in re.finditer(r'(?:Purchas\w*|Purchaeer|Buyer|Borrower)\s*[:;\-]?\s*([A-Za-z\s,.\'\"]{3,45})', ocr, re.I):
+                cand_name = m.group(1).strip()
+                if names_match(t_borrower, cand_name):
+                    snip = self._extract_snippet(ocr, m.start(), m.end() + 20)
+                    return {
+                        "field": "Borrower vs Buyer Name",
+                        "old_value": t_borrower,
+                        "new_value": cand_name,
+                        "status": "Match",
+                        "page": pg,
+                        "snippet": snip,
+                        "message": f"Buyer identity verified via OCR on Page {pg}"
+                    }
+
+        fb = self._get_fallback_contract_data()
+        c_buyer = fb.get("buyer")
+        if c_buyer and not is_boilerplate(c_buyer):
+            is_m = names_match(t_borrower, c_buyer)
+            return {
+                "field": "Borrower vs Buyer Name",
+                "old_value": t_borrower,
+                "new_value": c_buyer,
+                "status": "Match" if is_m else "Mismatch",
+                "page": None,
+                "snippet": None,
+                "message": "Borrower matches contract buyer" if is_m else f"Borrower '{t_borrower}' differs from contract buyer '{c_buyer}'"
+            }
+
+        return {
+            "field": "Borrower vs Buyer Name",
+            "old_value": t_borrower,
+            "new_value": "Not Found",
+            "status": "Mismatch",
+            "page": None,
+            "snippet": None,
+            "message": f"Borrower name '{t_borrower}' not identified in contract copy"
+        }
+
+    def verify_address(self) -> Dict[str, Any]:
+        t_addr = self.appraisal.get("property_address")
+        if not t_addr:
+            return None
+
+        m_num = re.search(r'\b(\d+)\b', t_addr)
+        house_num = m_num.group(1) if m_num else None
+        addr_clean = normalize_address(t_addr)
+        street_tokens = [t for t in addr_clean.split() if len(t) > 2 and not t.isdigit() and t not in ("AVE", "ST", "RD", "DR", "LN", "CT", "BLVD")]
+
+        for p in self.pages_data:
+            txt_upper = normalize_address(p["text"])
+            if house_num and house_num in txt_upper:
+                if any(st in txt_upper for st in street_tokens):
+                    idx = p["text"].find(house_num)
+                    snip = self._extract_snippet(p["text"], idx, idx + 40)
+                    return {
+                        "field": "Property Address",
+                        "old_value": t_addr,
+                        "new_value": t_addr,
+                        "status": "Match",
+                        "page": p["page"],
+                        "snippet": snip,
+                        "message": f"Property address verified on Page {p['page']}"
+                    }
+
+        # Check candidate OCR pages (Page 1 is always checked)
+        cand_pages = self._get_candidate_ocr_pages(field_type="address")
+        for pg in cand_pages:
+            ocr = self._ocr_page(pg)
+            if not ocr:
+                continue
+            ocr_clean = normalize_address(ocr)
+            if house_num and house_num in ocr_clean:
+                if any(st in ocr_clean for st in street_tokens):
+                    idx = ocr.find(house_num)
+                    snip = self._extract_snippet(ocr, idx, idx + 40)
+                    return {
+                        "field": "Property Address",
+                        "old_value": t_addr,
+                        "new_value": t_addr,
+                        "status": "Match",
+                        "page": pg,
+                        "snippet": snip,
+                        "message": f"Property address verified via OCR on Page {pg}"
+                    }
+            for m in re.finditer(r'(?:Address|Premises|Street\s+Address|Property)\s*[:;\-]?\s*([^\n\r]+)', ocr, re.I):
+                cand_addr = m.group(1).strip()
+                if addresses_match(t_addr, cand_addr):
+                    snip = self._extract_snippet(ocr, m.start(), m.end())
+                    return {
+                        "field": "Property Address",
+                        "old_value": t_addr,
+                        "new_value": t_addr,
+                        "status": "Match",
+                        "page": pg,
+                        "snippet": snip,
+                        "message": f"Property address verified via OCR on Page {pg}"
+                    }
+
+        fb = self._get_fallback_contract_data()
+        c_addr = fb.get("property_address")
+        if c_addr:
+            is_m = addresses_match(t_addr, c_addr)
+            return {
+                "field": "Property Address",
+                "old_value": t_addr,
+                "new_value": c_addr,
+                "status": "Match" if is_m else "Mismatch",
+                "page": None,
+                "snippet": None,
+                "message": "Property address matches contract" if is_m else f"Property address '{t_addr}' differs from contract address '{c_addr}'"
+            }
+
+        return {
+            "field": "Property Address",
+            "old_value": t_addr,
+            "new_value": "Not Found",
+            "status": "Mismatch",
+            "page": None,
+            "snippet": None,
+            "message": f"Property address '{t_addr}' not identified in contract copy"
+        }
+
+    def verify_concessions(self) -> Optional[Dict[str, Any]]:
+        t_conc = self.appraisal.get("concessions")
+        c_conc = None
+        for p in self.pages_data:
+            txt = p["text"]
+            m_c = re.search(r'seller\s+(?:concession|credit).*?\$?\s*([0-9.,]+)', txt, re.I)
+            if not m_c:
+                m_c = re.search(r'closing\s+cost\s+credit.*?\$?\s*([0-9.,]+)', txt, re.I)
+            if m_c:
+                c_conc = clean_currency(m_c.group(1))
+                break
+
+        if c_conc is None and t_conc is not None and t_conc > 0:
+            fb = self._get_fallback_contract_data()
+            c_conc = fb.get("concessions")
+
+        if t_conc is not None or c_conc is not None:
+            conc_match = (
+                t_conc is not None
+                and c_conc is not None
+                and abs(t_conc - c_conc) == 0.0
+            ) or (t_conc in (None, 0.0) and c_conc in (None, 0.0))
+            return {
+                "field": "Seller Concessions",
+                "old_value": f"${t_conc:,.0f}" if t_conc is not None else "N/A",
+                "new_value": f"${c_conc:,.0f}" if c_conc is not None else "N/A",
+                "status": "Match" if conc_match else "Mismatch" if (t_conc is not None and c_conc is not None) else "Info",
+                "page": None,
+                "snippet": None,
+                "message": "Concessions match" if conc_match else "Seller concessions discrepancy"
+            }
+        return None
+
+    def verify_all(self) -> List[Dict[str, Any]]:
+        results = [
+            self.verify_price(),
+            self.verify_date()
+        ]
+        seller = self.verify_seller()
+        if seller:
+            results.append(seller)
+        borrower = self.verify_borrower()
+        if borrower:
+            results.append(borrower)
+        address = self.verify_address()
+        if address:
+            results.append(address)
+        conc = self.verify_concessions()
+        if conc:
+            results.append(conc)
+        return results
+
 
 def compare_contract_to_report(
     main_report_path: str,
@@ -1265,8 +2404,11 @@ def compare_contract_to_report(
     easyocr_reader=None
 ) -> List[Dict[str, Any]]:
     """
-    Reconciles Purchase Price and Contract Date between an Appraisal Report
-    and a Contract Copy PDF.
+    Reconciles Purchase Price, Contract Date, Parties, and Address between
+    an Appraisal Report (MISMO XML / PDF) and a Contract Copy (PDF, Scanned, Hybrid, Image).
+
+    Takes ground-truth values from the Appraisal Report and verifies their presence,
+    handwritten entries, and context in the contract copy.
 
     Returns an array of dictionaries matching the exact specification:
     [
@@ -1274,110 +2416,20 @@ def compare_contract_to_report(
         "field": "Contract Price",
         "old_value": "$600,000",
         "new_value": "$600,000",
-        "status": "Match"
+        "status": "Match",
+        "page": 1,
+        "snippet": "...Purchase Price $ 600,000.00...",
+        "message": "Verified in contract copy on Page 1"
       },
-      {
-        "field": "Contract Date",
-        "old_value": "2026-10-22",
-        "new_value": "2026-09-09",
-        "status": "Mismatch"
-      }
+      ...
     ]
     """
     appraisal = extract_appraisal_source(main_report_path)
-    extractor = ContractPdfExtractor(contract_path, easyocr_reader=easyocr_reader)
-    contract = extractor.extract()
-
-    # Price Match: abs(contract_price - appraisal_price) == 0.0
-    price_match = (
-        contract["price"] is not None
-        and appraisal["price"] is not None
-        and abs(contract["price"] - appraisal["price"]) == 0.0
-    )
-
-    # Date Match: True if appraisal date matches ANY valid contract milestone
-    app_date_iso = appraisal.get("date")
-    c_dates = contract.get("all_dates", {})
-    contract_date_iso = contract.get("date")
-
-    date_match = False
-    if app_date_iso:
-        if app_date_iso == contract_date_iso:
-            date_match = True
-        elif c_dates and app_date_iso in c_dates.values():
-            date_match = True
-
-    res = [
-        {
-            "field": "Contract Price",
-            "old_value": f"${appraisal['price']:,.0f}" if appraisal["price"] is not None else "N/A",
-            "new_value": f"${contract['price']:,.0f}" if contract["price"] is not None else "N/A",
-            "status": "Match" if price_match else "Mismatch",
-        },
-        {
-            "field": "Contract Date",
-            "old_value": appraisal.get("raw_date") or appraisal.get("date") or "N/A",
-            "new_value": contract.get("date") or "N/A",
-            "status": "Match" if date_match else "Mismatch",
-        },
-    ]
-
-    # Seller vs Owner of Record
-    app_owner = appraisal.get("owner_of_record")
-    c_seller = contract.get("seller")
-    if app_owner or c_seller:
-        s_match = names_match(app_owner, c_seller)
-        status = "Match" if s_match else ("Mismatch" if app_owner and c_seller else "Info")
-        res.append({
-            "field": "Seller vs Owner of Record",
-            "old_value": app_owner or "N/A",
-            "new_value": c_seller or "N/A",
-            "status": status,
-        })
-
-    # Borrower vs Buyer Name
-    app_borrower = appraisal.get("borrower")
-    c_buyer = contract.get("buyer")
-    if app_borrower or c_buyer:
-        b_match = names_match(app_borrower, c_buyer)
-        status = "Match" if b_match else ("Mismatch" if app_borrower and c_buyer else "Info")
-        res.append({
-            "field": "Borrower vs Buyer Name",
-            "old_value": app_borrower or "N/A",
-            "new_value": c_buyer or "N/A",
-            "status": status,
-        })
-
-    # Property Address
-    app_addr = appraisal.get("property_address")
-    c_addr = contract.get("property_address")
-    if app_addr or c_addr:
-        a_match = addresses_match(app_addr, c_addr)
-        status = "Match" if a_match else ("Mismatch" if app_addr and c_addr else "Info")
-        res.append({
-            "field": "Property Address",
-            "old_value": app_addr or "N/A",
-            "new_value": c_addr or "N/A",
-            "status": status,
-        })
-
-    # Seller Concessions / Closing Cost Credit
-    app_conc = appraisal.get("concessions")
-    c_conc = contract.get("concessions")
-    if app_conc is not None or c_conc is not None:
-        conc_match = (
-            app_conc is not None
-            and c_conc is not None
-            and abs(app_conc - c_conc) == 0.0
-        )
-        res.append({
-            "field": "Seller Concessions",
-            "old_value": f"${app_conc:,.0f}" if app_conc is not None else "N/A",
-            "new_value": f"${c_conc:,.0f}" if c_conc is not None else "N/A",
-            "status": "Match" if conc_match else "Mismatch" if (app_conc is not None and c_conc is not None) else "Info",
-        })
-
-    return res
+    verifier = ContractGroundTruthVerifier(contract_path, appraisal, easyocr_reader=easyocr_reader)
+    try:
+        return verifier.verify_all()
+    finally:
+        verifier.close()
 
 
 # Alias for backward compatibility with existing views

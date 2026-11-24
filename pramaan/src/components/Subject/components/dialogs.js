@@ -85,7 +85,28 @@ export const ContractComparisonDialog = ({
                                         <TableRow key={fieldName} sx={{ bgcolor: isMismatch ? '#fff5f5' : '#ffffff', '&:last-child td, &:last-child th': { border: 0 } }}>
                                             <TableCell sx={{ fontWeight: 600 }}>{fieldName}</TableCell>
                                             <TableCell sx={{ fontWeight: 500 }}>{mainVal}</TableCell>
-                                            <TableCell sx={{ fontWeight: 500 }}>{item?.new_value || 'N/A'}</TableCell>
+                                            <TableCell sx={{ fontWeight: 500 }}>
+                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                                                    <span>{item?.new_value || 'N/A'}</span>
+                                                    {item?.page && (
+                                                        <Chip
+                                                            label={`Pg ${item.page}`}
+                                                            size="small"
+                                                            sx={{ height: 20, fontSize: '0.72rem', fontWeight: 600, bgcolor: '#f1f5f9' }}
+                                                        />
+                                                    )}
+                                                </Box>
+                                                {item?.snippet && (
+                                                    <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', fontStyle: 'italic', mt: 0.5 }}>
+                                                        "{item.snippet}"
+                                                    </Typography>
+                                                )}
+                                                {item?.message && (!item?.snippet || isMismatch) && (
+                                                    <Typography variant="caption" sx={{ display: 'block', color: isMismatch ? 'error.main' : 'primary.main', mt: 0.5 }}>
+                                                        {item.message}
+                                                    </Typography>
+                                                )}
+                                            </TableCell>
                                             <TableCell align="center">
                                                 {item ? (
                                                     <Chip

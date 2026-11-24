@@ -6652,7 +6652,7 @@ function Subject({ defaultFormType }) {
                             file: contractFile,
                             onClick: () => contractFileInputRef.current.click(),
                             inputRef: contractFileInputRef,
-                            accept: '.pdf,.doc,.docx',
+                            accept: '.pdf,.doc,.docx,.png,.jpg,.jpeg,.tiff',
                             onChange: onContractFileChange
                           },
                           {
@@ -6661,7 +6661,7 @@ function Subject({ defaultFormType }) {
                             file: engagementLetterFile,
                             onClick: () => engagementLetterFileInputRef.current.click(),
                             inputRef: engagementLetterFileInputRef,
-                            accept: '.pdf,.doc,.docx',
+                            accept: '.pdf,.doc,.docx,.png,.jpg,.jpeg,.tiff',
                             onChange: onEngagementLetterFileChange
                           }
                         ].map((item, index) => (
