@@ -186,13 +186,16 @@ const Form1004C = ({
   }, [siteFields]);
 
   const siteData1004C = React.useMemo(() => {
+    const getCleanObj = (target) => (target && typeof target === 'object' && !Array.isArray(target) ? target : {});
     const merged = {
-      ...(data?.SITE || {}),
-      ...(data?.Site || {}),
-      ...(data?.clean_data?.Site || {}),
-      ...(allData?.SITE || {}),
-      ...(allData?.Site || {}),
-      ...(allData?.clean_data?.Site || {}),
+      ...getCleanObj(allData?.clean_data?.Site),
+      ...getCleanObj(allData?.clean_data?.SITE),
+      ...getCleanObj(allData?.Site),
+      ...getCleanObj(allData?.SITE),
+      ...getCleanObj(data?.clean_data?.Site),
+      ...getCleanObj(data?.clean_data?.SITE),
+      ...getCleanObj(data?.Site),
+      ...getCleanObj(data?.SITE),
     };
 
     const q1Key = "Is the site size, shape and topography generally conforming to and acceptable in the market area? Yes No If No, explain";
@@ -200,8 +203,11 @@ const Form1004C = ({
       const val = merged["Is the site size, shape and topography generally conforming to and acceptable in the market area?"]
         || merged["ConformsToNeighborhoodInTermsOfSizeAndShape"]
         || merged["Site Conforming To Market Area"]
-        || "Yes";
-      merged[q1Key] = val;
+        || merged["SiteConformingToMarketArea"]
+        || "";
+      if (val) {
+        merged[q1Key] = val;
+      }
     }
 
     const q2Key = "Is there adequate vehicular access to the subject property? Yes No If No, describe";
@@ -209,8 +215,11 @@ const Form1004C = ({
       const val = merged["Is there adequate vehicular access to the subject property?"]
         || merged["StreetAccess"]
         || merged["Vehicular Access"]
-        || "Yes";
-      merged[q2Key] = val;
+        || merged["VehicularAccess"]
+        || "";
+      if (val) {
+        merged[q2Key] = val;
+      }
     }
 
     const q3Key = "Is the street properly maintained? Yes No If No, describe";
@@ -218,9 +227,46 @@ const Form1004C = ({
       const val = merged["Is the street properly maintained?"]
         || merged["StreetMaintenance"]
         || merged["Street Maintained"]
-        || "Yes";
-      merged[q3Key] = val;
+        || merged["ProperlyMaintained"]
+        || "";
+      if (val) {
+        merged[q3Key] = val;
+      }
     }
+
+    const q4Key = "Are the utilities and off-site improvements typical for the market area?";
+    const q4DescKey = "Are the utilities and off-site improvements typical for the market area? If No, describe";
+    if (!merged[q4Key]) {
+      const val = merged["UtilitiesAndOffSiteImprovementsConformToNeighborhood"]
+        || (merged[q4DescKey] ? (merged[q4DescKey].match(/^(yes|no)\b/i) ? merged[q4DescKey].match(/^(yes|no)\b/i)[0] : merged[q4DescKey]) : "")
+        || "";
+      if (val) {
+        merged[q4Key] = val.charAt(0).toUpperCase() + val.slice(1).toLowerCase();
+      }
+    }
+    if (!merged[q4DescKey] && merged[q4Key]) {
+      merged[q4DescKey] = merged[q4Key];
+    }
+
+    const q5Key = "Are there any adverse site conditions or external factors (easements, encroachments, environmental conditions, land uses, etc.)? If Yes, describe";
+    const q5Alt1 = "Are there any adverse site conditions or external factors (easements, encroachments, environmental conditions, land uses, etc.)? Yes No If Yes, describe";
+    const q5Alt2 = "Adverse Site Conditions Description";
+    const q5Alt3 = "Are there any adverse site conditions or external factors (easements, encroachments, environmental conditions, land uses, etc.)?";
+    const q5Alt4 = "Adverse Site Conditions";
+    if (!merged[q5Key]) {
+      const val = merged[q5Alt1] || merged[q5Alt2] || merged[q5Alt3] || merged[q5Alt4] || "";
+      if (val) {
+        merged[q5Key] = val;
+      }
+    }
+
+    // Copy from top-level fields if present in data or allData root
+    [q1Key, q2Key, q3Key, q4Key, q4DescKey, q5Key].forEach(k => {
+      if (!merged[k]) {
+        if (data?.[k]) merged[k] = data[k];
+        else if (allData?.[k]) merged[k] = allData[k];
+      }
+    });
 
     return merged;
   }, [data, allData]);
@@ -320,8 +366,15 @@ const Form1004C = ({
   if (foundationVal && !improvementsData1004C['Poured Concrete / Concrete Runners / Block & Pier / Other-att. description / Full Basement / Partial Basement']) {
     improvementsData1004C['Poured Concrete / Concrete Runners / Block & Pier / Other-att. description / Full Basement / Partial Basement'] = foundationVal;
   }
-  const unitsVal = improvementsData1004C['Units'] || improvementsData1004C['# of Units'] || '1';
-  improvementsData1004C['# of Units'] = unitsVal;
+  const unitsVal = improvementsData1004C['# of Units'] || improvementsData1004C['Units'] || '';
+  if (unitsVal) {
+    improvementsData1004C['# of Units'] = unitsVal;
+    if (!improvementsData1004C['Units']) {
+      improvementsData1004C['Units'] = unitsVal;
+    }
+  } else if (improvementsData1004C['# of Units'] === undefined) {
+    improvementsData1004C['# of Units'] = '';
+  }
 
   const qualityVal = improvementsData1004C['Quality Rating (Cost Service)'] || improvementsData1004C['The appraiser must rate the quality of construction for the subject unit based on objective criteria (such as N.A.D.A. Manufactured Housing Appraisal Guide®, Marshall & Swift Residential Cost Handbook, etc.)'] || '';
   if (qualityVal && !improvementsData1004C['Quality Poor Fair Average Good Excellent Identify source of quality rating']) {
@@ -343,15 +396,56 @@ const Form1004C = ({
     improvementsData1004C['Have the towing hitch, wheels, and axles been removed? Yes No If No, explain'] = wheelsVal;
   }
 
-  const utilVal = improvementsData1004C['Connected to Utilities'] || improvementsData1004C['Is the manufactured home permanently connected to a septic tank or sewage system and other utilities?'] || 'Yes';
+  const utilVal = improvementsData1004C['Connected to Utilities'] || improvementsData1004C['Is the manufactured home permanently connected to a septic tank or sewage system and other utilities?'] || '';
   if (utilVal && !improvementsData1004C['Is the manufactured home permanently connected to a septic tank or sewage system and other utilities? Yes No If No, explain']) {
     improvementsData1004C['Is the manufactured home permanently connected to a septic tank or sewage system and other utilities? Yes No If No, explain'] = utilVal;
   }
 
-  const marketAccVal = improvementsData1004C['Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market?'] || 'Yes';
+  const marketAccVal = improvementsData1004C['Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market?'] || '';
   if (marketAccVal && !improvementsData1004C['Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market? Yes No If No, explain']) {
     improvementsData1004C['Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market? Yes No If No, explain'] = marketAccVal;
   }
+
+  const modDescVal = improvementsData1004C['Describe any additions or modifications (decks, rooms, remodeling, etc.):'] ||
+    improvementsData1004C['Describe any additions or modifications (decks, rooms, remodeling, etc.)'] ||
+    improvementsData1004C['Describe any additions or modifications (decks, rooms, remodeling, etc.'] ||
+    improvementsData1004C['Additions/Modifications Description'] ||
+    improvementsData1004C['Additions or Modifications'] || '';
+  if (modDescVal) {
+    improvementsData1004C['Describe any additions or modifications (decks, rooms, remodeling, etc.):'] = modDescVal;
+    improvementsData1004C['Describe any additions or modifications (decks, rooms, remodeling, etc.)'] = modDescVal;
+    improvementsData1004C['Describe any additions or modifications (decks, rooms, remodeling, etc.'] = modDescVal;
+  }
+
+  const confQVal = improvementsData1004C['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? If No, describe'] ||
+    improvementsData1004C['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?'] ||
+    improvementsData1004C['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)'] ||
+    improvementsData1004C['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)Yes/NO If No, describe:'] || '';
+  if (confQVal) {
+    improvementsData1004C['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? If No, describe'] = confQVal;
+    improvementsData1004C['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?'] = confQVal;
+    improvementsData1004C['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)Yes/NO If No, describe:'] = confQVal;
+  }
+  const confCommentVal = improvementsData1004C['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? comment'] ||
+    improvementsData1004C['Neighborhood Conformance Comment'] ||
+    improvementsData1004C['If No, describe'] || '';
+  if (confCommentVal) {
+    improvementsData1004C['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? comment'] = confCommentVal;
+    improvementsData1004C['Neighborhood Conformance Comment'] = confCommentVal;
+    improvementsData1004C['If No, describe'] = confCommentVal;
+  }
+
+  const costApproachData1004C = React.useMemo(() => {
+    return {
+      ...(allData?.clean_data?.['Cost Approach'] || {}),
+      ...(allData?.clean_data?.COST_APPROACH || {}),
+      ...(allData?.['Cost Approach'] || {}),
+      ...(allData?.COST_APPROACH || {}),
+      ...(data?.['Cost Approach'] || {}),
+      ...(data?.COST_APPROACH || {}),
+      ...(data || {})
+    };
+  }, [data, allData]);
 
   return (
     <>
@@ -548,13 +642,23 @@ const Form1004C = ({
         id="cost-approach-section"
         title="Cost Approach"
         fields={costApproachFields}
-        data={data?.COST_APPROACH || data?.['Cost Approach'] || data}
+        data={costApproachData1004C}
         allData={allData}
         extractionAttempted={extractionAttempted}
         onDataChange={(field, value) => {
           handleDataChange(field, value);
-          handleDataChange(['COST_APPROACH', ...(Array.isArray(field) ? field : [field])], value);
-          handleDataChange(['Cost Approach', ...(Array.isArray(field) ? field : [field])], value);
+          const rawField = Array.isArray(field) ? field : [field];
+          if (rawField[0] !== 'COST_APPROACH' && rawField[0] !== 'Cost Approach') {
+            handleDataChange(['COST_APPROACH', ...rawField], value);
+            handleDataChange(['Cost Approach', ...rawField], value);
+          } else {
+            const innerField = rawField.slice(1);
+            handleDataChange(['COST_APPROACH', ...innerField], value);
+            handleDataChange(['Cost Approach', ...innerField], value);
+            if (innerField.length === 1) {
+              handleDataChange(innerField[0], value);
+            }
+          }
         }}
         editingField={editingField}
         setEditingField={setEditingField}

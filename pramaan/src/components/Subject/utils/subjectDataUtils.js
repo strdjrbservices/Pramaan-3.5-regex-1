@@ -83,14 +83,30 @@ export const normalizeFullFileData = (raw) => {
     normalized.COST_APPROACH = raw.COST_APPROACH || raw['Cost Approach'] || raw.clean_data?.['Cost Approach'] || {};
   }
 
+  const getSectionObj = (...candidates) => {
+    for (const c of candidates) {
+      if (c && typeof c === 'object' && !Array.isArray(c)) return c;
+    }
+    return {};
+  };
+
   if (!normalized.CONTRACT || typeof normalized.CONTRACT !== 'object') {
-    normalized.CONTRACT = raw.CONTRACT || raw.Contract || raw.contract || {};
+    normalized.CONTRACT = getSectionObj(raw.CONTRACT, raw.Contract, raw.contract, raw.clean_data?.Contract, raw.clean_data?.CONTRACT);
+  }
+  if (!normalized.Contract || typeof normalized.Contract !== 'object') {
+    normalized.Contract = normalized.CONTRACT;
   }
   if (!normalized.NEIGHBORHOOD || typeof normalized.NEIGHBORHOOD !== 'object') {
-    normalized.NEIGHBORHOOD = raw.NEIGHBORHOOD || raw.Neighborhood || raw.neighborhood || {};
+    normalized.NEIGHBORHOOD = getSectionObj(raw.NEIGHBORHOOD, raw.Neighborhood, raw.neighborhood, raw.clean_data?.Neighborhood, raw.clean_data?.NEIGHBORHOOD);
+  }
+  if (!normalized.Neighborhood || typeof normalized.Neighborhood !== 'object') {
+    normalized.Neighborhood = normalized.NEIGHBORHOOD;
   }
   if (!normalized.SITE || typeof normalized.SITE !== 'object') {
-    normalized.SITE = raw.SITE || raw.Site || raw.site || {};
+    normalized.SITE = getSectionObj(raw.SITE, (typeof raw.Site === 'object' ? raw.Site : null), (typeof raw.site === 'object' ? raw.site : null), raw.clean_data?.Site, raw.clean_data?.SITE);
+  }
+  if (!normalized.Site || typeof normalized.Site !== 'object') {
+    normalized.Site = normalized.SITE;
   }
   if (!normalized.INFO_OF_SALES || typeof normalized.INFO_OF_SALES !== 'object') {
     normalized.INFO_OF_SALES = raw.INFO_OF_SALES || raw['Sales Comparison'] || raw.sales_comparison || {};

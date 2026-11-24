@@ -825,6 +825,7 @@ export const SalesComparisonSection = ({ data, salesGridRows, comparableSales, e
                                                 value={subjectValue}
                                                 onDataChange={handleDataChange}
                                                 isEditable={isEditable} allData={allData}
+                                                saleName={'Subject'}
                                             />
                                         )}
                                     </td>
@@ -841,7 +842,8 @@ export const SalesComparisonSection = ({ data, salesGridRows, comparableSales, e
                                                         onDataChange={handleDataChange}
                                                         editingField={editingField}
                                                         setEditingField={setEditingField}
-                                                        isEditable={isEditable} allData={allData} />
+                                                        isEditable={isEditable} allData={allData}
+                                                        saleName={sale} />
                                                 )}
                                             </td>
                                         );
@@ -883,6 +885,8 @@ export const SalesComparisonSection = ({ data, salesGridRows, comparableSales, e
                                                         editingField={editingField}
                                                         setEditingField={setEditingField}
                                                         isEditable={isEditable}
+                                                        isAdjustment={true}
+                                                        saleName={sale}
                                                         allData={allData} />
                                                 </td>
                                             );

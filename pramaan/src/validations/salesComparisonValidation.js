@@ -4368,3 +4368,294 @@ export const checkGarageCarportAdjustment = (field, arg2, arg3, arg4, arg5) => {
     return null;
 };
 
+export const checkExtraSalesGridFieldAdjustment = (field, arg2, arg3, arg4, arg5) => {
+    const { allData, saleName, textVal } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
+    if (!allData || !field) return null;
+
+    // Do not run on rental comparables / rent schedule
+    if (saleName && (String(saleName).toLowerCase().includes('rental') || String(saleName).toLowerCase().includes('rent'))) {
+        return null;
+    }
+    if (Array.isArray(arg4) && arg4.some(p => typeof p === 'string' && (p.toLowerCase().includes('rental') || p.toLowerCase().includes('rent')))) {
+        return null;
+    }
+
+    // 1. Gather all custom / extra row candidates
+    const customRows = [
+        ...(Array.isArray(allData?.sales_grid_custom_rows) ? allData.sales_grid_custom_rows : []),
+        ...(Array.isArray(allData?.SALES_GRID?.sales_grid_custom_rows) ? allData.SALES_GRID.sales_grid_custom_rows : []),
+        ...(Array.isArray(allData?.SALES_GRID?.custom_rows) ? allData.SALES_GRID.custom_rows : []),
+        ...(Array.isArray(allData?.['Sales Grid']?.sales_grid_custom_rows) ? allData['Sales Grid'].sales_grid_custom_rows : []),
+        ...(Array.isArray(allData?.['Sales Grid']?.custom_rows) ? allData['Sales Grid'].custom_rows : []),
+        ...(Array.isArray(allData?.salesGridRows) ? allData.salesGridRows : []),
+        ...(Array.isArray(allData?.SALES_GRID?.salesGridRows) ? allData.SALES_GRID.salesGridRows : []),
+        { label: "Fireplace (s), etc.", valueKey: "Fireplace (s), etc.", adjustmentKey: "Fireplace (s), etc. Adjustment" },
+        { label: "Fence, Pool, etc.", valueKey: "Fence, Pool, etc.", adjustmentKey: "Fence, Pool, etc. Adjustment" },
+        { label: "Other", valueKey: "Other", adjustmentKey: "Other Adjustment" },
+        { label: "ADU", valueKey: "ADU", adjustmentKey: "ADU Adjustment" },
+        { label: "Woodstove", valueKey: "Woodstove", adjustmentKey: "Woodstove Adjustment" },
+        { label: "Additional Description", valueKey: "Additional Description", adjustmentKey: "Additional Adjustment" },
+    ];
+
+    const fieldStr = String(field).trim();
+    const fieldLower = fieldStr.toLowerCase();
+
+    // 2. Determine featureKey, adjKey, and isAdjField
+    let featureKey = '';
+    let adjKey = '';
+    let isAdjField = false;
+
+    // Check against custom rows
+    for (const r of customRows) {
+        if (!r) continue;
+        const rLabel = String(r.label || '').trim();
+        const rValKey = String(r.valueKey || rLabel).trim();
+        const rAdjKey = String(r.adjustmentKey || `${rValKey} Adjustment`).trim();
+
+        if (
+            rAdjKey.toLowerCase() === fieldLower ||
+            `${rValKey} adjustment`.toLowerCase() === fieldLower ||
+            `${rLabel} adjustment`.toLowerCase() === fieldLower ||
+            `${rValKey} adj`.toLowerCase() === fieldLower
+        ) {
+            featureKey = rValKey;
+            adjKey = rAdjKey;
+            isAdjField = true;
+            break;
+        } else if (rValKey.toLowerCase() === fieldLower || rLabel.toLowerCase() === fieldLower) {
+            featureKey = rValKey;
+            adjKey = rAdjKey;
+            isAdjField = false;
+            break;
+        }
+    }
+
+    // If not matched from customRows, derive by convention
+    if (!featureKey) {
+        if (fieldLower.endsWith(' adjustment') || fieldLower.endsWith(' adj')) {
+            isAdjField = true;
+            featureKey = fieldStr.replace(/\s*(?:adjustment|adj)\s*$/i, '').trim();
+            adjKey = fieldStr;
+        } else {
+            isAdjField = false;
+            featureKey = fieldStr;
+            adjKey = `${fieldStr} Adjustment`;
+        }
+    }
+
+    // Standardize well-known custom names
+    const fLower = featureKey.toLowerCase();
+    if (fLower === 'additional' || fLower === 'additional description') {
+        featureKey = 'Additional Description';
+        adjKey = 'Additional Adjustment';
+    } else if (fLower === 'other') {
+        featureKey = 'Other';
+        adjKey = 'Other Adjustment';
+    } else if (fLower === 'fireplace' || fLower === 'fireplace(s)') {
+        featureKey = 'Fireplace (s), etc.';
+        adjKey = 'Fireplace (s), etc. Adjustment';
+    } else if (fLower === 'fence/pool' || fLower === 'fence' || fLower === 'pool') {
+        featureKey = 'Fence, Pool, etc.';
+        adjKey = 'Fence, Pool, etc. Adjustment';
+    }
+
+    // 3. Helper to find a value from an object using multiple key variations
+    const getValFromObj = (obj, targetKey, targetAdjKey = null) => {
+        if (!obj || typeof obj !== 'object') return '';
+        if (obj[targetKey] !== undefined && obj[targetKey] !== null) return String(obj[targetKey]).trim();
+        const targetLower = targetKey.toLowerCase();
+        for (const [k, v] of Object.entries(obj)) {
+            if (k.trim().toLowerCase() === targetLower) {
+                if (v !== undefined && v !== null) return String(v).trim();
+            }
+        }
+        if (targetAdjKey) {
+            const adjLower = targetAdjKey.toLowerCase();
+            for (const [k, v] of Object.entries(obj)) {
+                if (k.trim().toLowerCase() === adjLower) {
+                    if (v !== undefined && v !== null) return String(v).trim();
+                }
+            }
+        }
+        return '';
+    };
+
+    // 4. Extract Subject value
+    const subjGrid = getSubjectGridData(allData);
+    let subjectVal = getValFromObj(subjGrid, featureKey);
+    if (!subjectVal) subjectVal = getValFromObj(allData?.Subject, featureKey);
+    if (!subjectVal) subjectVal = getValFromObj(allData?.SUBJECT, featureKey);
+    if (!subjectVal) subjectVal = getValFromObj(allData?.SALES_GRID?.Subject, featureKey);
+    if (!subjectVal) subjectVal = getValFromObj(allData?.['Sales Grid']?.Subject, featureKey);
+    if (!subjectVal) subjectVal = getValFromObj(allData?.sales_grid?.Subject, featureKey);
+    if (!subjectVal) subjectVal = getValFromObj(allData, featureKey);
+    if (!subjectVal) subjectVal = getValFromObj(allData, `Subject ${featureKey}`);
+
+    // If validating Subject column directly
+    if (saleName === 'Subject') {
+        if (isAdjField) return null;
+        const currentText = textVal !== null && textVal !== undefined ? String(textVal).trim() : subjectVal;
+        if (currentText) {
+            return {
+                isMatch: true,
+                section: 'Sales Comparison',
+                field: featureKey,
+                message: `Subject ${featureKey} value is '${currentText}'.`
+            };
+        }
+        return null;
+    }
+
+    // 5. Extract Comparable value and adjustment
+    const compGrid = getComparableGridData(allData, saleName);
+    const compRawObj = (allData && saleName && allData[saleName]) || {};
+
+    let compVal = '';
+    if (!isAdjField && textVal !== null && textVal !== undefined) {
+        compVal = String(textVal).trim();
+    } else {
+        compVal = getValFromObj(compGrid, featureKey) || getValFromObj(compRawObj, featureKey);
+        if (!compVal && featureKey.includes('(')) {
+            const shortKey = featureKey.split('(')[0].trim();
+            compVal = getValFromObj(compGrid, shortKey) || getValFromObj(compRawObj, shortKey);
+        }
+    }
+
+    let adjVal = '';
+    if (isAdjField && textVal !== null && textVal !== undefined) {
+        adjVal = String(textVal).trim();
+    } else {
+        adjVal = getValFromObj(compGrid, adjKey, `${featureKey} Adjustment`) ||
+                 getValFromObj(compRawObj, adjKey, `${featureKey} Adjustment`) ||
+                 getValFromObj(compGrid, `${featureKey} Adj`) ||
+                 getValFromObj(compRawObj, `${featureKey} Adj`);
+    }
+
+    // If completely empty across Subject and Comp, skip
+    if (!subjectVal && !compVal && !adjVal) {
+        return null;
+    }
+
+    // 6. Compare Subject and Comparable values
+    const isValMatch = (v1, v2) => {
+        const s1 = String(v1 || '').trim();
+        const s2 = String(v2 || '').trim();
+        if (!s1 && !s2) return true;
+        if (!s1 || !s2) return false;
+        if (normalizeForCompare(s1) === normalizeForCompare(s2)) return true;
+        const isNone1 = /^(none|na|n\/a|no|-|0)$/i.test(s1);
+        const isNone2 = /^(none|na|n\/a|no|-|0)$/i.test(s2);
+        if (isNone1 && isNone2) return true;
+        return false;
+    };
+
+    const valuesMatch = isValMatch(subjectVal, compVal);
+
+    const isAdjPresent = (adj) => {
+        if (adj === null || adj === undefined) return false;
+        const s = String(adj).trim();
+        if (!s || s === '-' || s.toLowerCase() === 'n/a') return false;
+        return true;
+    };
+
+    const adjPresent = isAdjPresent(adjVal);
+    const adjNum = parseAdjustmentValue(adjVal);
+
+    const compDisplay = saleName || 'Comparable';
+
+    // 7. Validation Logic
+    if (!valuesMatch) {
+        // Comparable value does NOT match Subject value -> Adjustment is required!
+        if (!adjPresent) {
+            return {
+                isError: true,
+                section: 'Sales Comparison',
+                field: isAdjField ? adjKey : featureKey,
+                message: `${featureKey} differs from Subject (Subject: '${subjectVal || 'None'}', ${compDisplay}: '${compVal || 'None'}'), but no adjustment is present. An adjustment is required.`
+            };
+        } else {
+            return {
+                isMatch: true,
+                section: 'Sales Comparison',
+                field: isAdjField ? adjKey : featureKey,
+                message: `Valid: ${featureKey} differs from Subject (Subject: '${subjectVal || 'None'}', ${compDisplay}: '${compVal || 'None'}'), and adjustment of ${adjVal} is present.`
+            };
+        }
+    } else {
+        // Comparable value MATCHES Subject value -> No adjustment is needed!
+        if (adjPresent && adjNum !== 0) {
+            return {
+                isError: true,
+                section: 'Sales Comparison',
+                field: isAdjField ? adjKey : featureKey,
+                message: `Warning: ${featureKey} is the same as Subject (${compVal || subjectVal || 'None'}), but an adjustment of '${adjVal}' is present. Expected $0 or blank.`
+            };
+        } else {
+            return {
+                isMatch: true,
+                section: 'Sales Comparison',
+                field: isAdjField ? adjKey : featureKey,
+                message: `Valid: ${featureKey} matches Subject (${compVal || subjectVal || 'None'}).`
+            };
+        }
+    }
+};
+
+export const checkCustomSalesGridAdjustment = checkExtraSalesGridFieldAdjustment;
+export const checkOtherSalesGridAdjustment = checkExtraSalesGridFieldAdjustment;
+
+export const checkVerificationSources = (field, arg2, arg3, arg4, arg5) => {
+    const { allData, saleName, textVal } = normalizeCheckArgs(field, arg2, arg3, arg4, arg5);
+    const fieldStr = String(field || '').trim();
+    if (!/^verification source/i.test(fieldStr)) return null;
+
+    // Do not run on rental comparables / rent schedule
+    if (saleName && (String(saleName).toLowerCase().includes('rental') || String(saleName).toLowerCase().includes('rent'))) {
+        return null;
+    }
+
+    let val = '';
+    if (textVal !== null && textVal !== undefined) {
+        val = typeof textVal === 'object' ? (textVal.value ?? textVal.text ?? '') : textVal;
+    }
+
+    if ((val === '' || val === null || val === undefined) && allData && saleName) {
+        if (saleName === 'Subject') {
+            const subjGrid = getSubjectGridData(allData);
+            val = subjGrid[fieldStr] || subjGrid['Verification Source(s)'] || subjGrid['Verification Source'] || subjGrid['Verification Sources'] ||
+                allData.Subject?.[fieldStr] || allData.Subject?.['Verification Source(s)'] || allData.Subject?.['Verification Source'] || allData.Subject?.['Verification Sources'] ||
+                allData['Verification Source(s)'] || allData['Verification Source'] || '';
+        } else {
+            const compGrid = getComparableGridData(allData, saleName);
+            val = compGrid[fieldStr] || compGrid['Verification Source(s)'] || compGrid['Verification Source'] || compGrid['Verification Sources'] || '';
+        }
+    }
+
+    const str = String(val ?? '').trim();
+    const isBlank = !str || str === '-' || str === '--' || str.toLowerCase() === 'n/a' || str.toLowerCase() === 'none';
+
+    const prefix = saleName && saleName !== 'Subject' ? `${saleName} ` : (saleName === 'Subject' ? 'Subject ' : '');
+
+    if (isBlank) {
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            section: 'Sales Comparison',
+            field: fieldStr || 'Verification Source(s)',
+            message: `${prefix}'Verification Source(s)' must not be blank.`
+        };
+    }
+
+    return {
+        isMatch: true,
+        skipBlankFilter: true,
+        section: 'Sales Comparison',
+        field: fieldStr || 'Verification Source(s)',
+        message: `Valid: ${prefix}'Verification Source(s)' is present ('${str}').`
+    };
+};
+
+export const checkVerificationSource = checkVerificationSources;
+
+
+

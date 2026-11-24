@@ -3476,46 +3476,50 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
     street_access_desc = ""
     street_maintained = ""
     street_maintained_desc = ""
-    for osi in root.findall(".//_OFF_SITE_IMPROVEMENT"):
+    for osi in root.findall(".//_OFF_SITE_IMPROVEMENT") + root.findall(".//OFF_SITE_IMPROVEMENT"):
         otype = osi.attrib.get("_Type", "")
         odesc = osi.attrib.get("_Description", "").strip()
         oown = osi.attrib.get("_OwnershipType", "").strip()
         oexists = osi.attrib.get("_ExistsIndicator", "").upper()
 
-        if otype == "Street":
+        if otype.lower() == "street":
             if odesc and odesc.lower() != "none" and not street_desc:
                 street_desc = odesc
             if oexists == "Y" and oown and oown not in street_types:
                 street_types.append(oown)
             elif oown and oexists != "N" and oown not in street_types:
                 street_types.append(oown)
-        elif otype == "Alley":
+        elif otype.lower() == "alley":
             if oexists == "Y" and odesc and odesc.lower() != "none":
                 alley_val = f"{oown}: {odesc}" if oown else odesc
             elif odesc and odesc.lower() == "none":
                 alley_val = "None"
             elif oexists == "N" and not alley_val:
                 alley_val = "None"
-        elif otype in ("StreetAccess", "VehicularAccess"):
+        elif otype in ("StreetAccess", "VehicularAccess", "AdequateVehicularAccess") or otype.lower() in ("streetaccess", "vehicularaccess", "adequatevehicularaccess"):
             if oexists == "Y":
                 street_access = "Yes"
-                street_access_desc = "Yes"
+                street_access_desc = f"Yes: {odesc}" if odesc else "Yes"
             elif oexists == "N":
                 street_access = "No"
                 street_access_desc = f"No: {odesc}" if odesc else "No"
             elif oexists:
                 street_access = oexists
-                street_access_desc = oexists
-        elif otype in ("StreetMaintenance", "ProperlyMaintained"):
+                street_access_desc = f"{oexists}: {odesc}" if odesc else oexists
+            elif odesc:
+                street_access_desc = odesc
+        elif otype in ("StreetMaintenance", "ProperlyMaintained", "StreetProperlyMaintained") or otype.lower() in ("streetmaintenance", "properlymaintained", "streetproperlymaintained"):
             if oexists == "Y":
                 street_maintained = "Yes"
-                street_maintained_desc = "Yes"
+                street_maintained_desc = f"Yes: {odesc}" if odesc else "Yes"
             elif oexists == "N":
                 street_maintained = "No"
                 street_maintained_desc = f"No: {odesc}" if odesc else "No"
             elif oexists:
                 street_maintained = oexists
-                street_maintained_desc = oexists
+                street_maintained_desc = f"{oexists}: {odesc}" if odesc else oexists
+            elif odesc:
+                street_maintained_desc = odesc
 
     if street_types:
         s_own = "/".join(street_types)
@@ -3562,7 +3566,14 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         pind = pa.attrib.get("_ExistsIndicator", "").upper()
         pcomm = pa.attrib.get("_Comment", "").strip()
 
-        if ptype == "UtilitiesAndOffSiteImprovementsConformToNeighborhood":
+        ptype_clean = ptype.lower().replace("_", "").replace(" ", "")
+        if ptype_clean in (
+            "utilitiesandoffsiteimprovementsconformtoneighborhood",
+            "utilitiesandoffsiteimprovementsconform",
+            "utilitiesconformtoneighborhood",
+            "utilitiesandoffsitetypical",
+            "utilitiesandoffsiteimprovementstypical"
+        ) or "utilities" in ptype_clean and "conform" in ptype_clean:
             util_typical_comment = pcomm
             if pind == "Y":
                 util_typical = "Yes"
@@ -3573,7 +3584,15 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
             elif pind:
                 util_typical = pind
                 util_typical_desc = f"{pind}: {pcomm}" if pcomm else pind
-        elif ptype in ("ConformsToNeighborhoodInTermsOfSizeAndShape", "SiteConformingToMarketArea"):
+            elif pcomm:
+                util_typical_desc = pcomm
+        elif ptype_clean in (
+            "conformstoneighborhoodintermsofsizeandshape",
+            "siteconformingtomarketarea",
+            "siteconformstomarketarea",
+            "sitesizeshapeconforming",
+            "conformstoneighborhoodsizeandshape"
+        ) or ("site" in ptype_clean and "conforming" in ptype_clean):
             site_conforming_comment = pcomm
             if pind == "Y":
                 site_conforming = "Yes"
@@ -3584,7 +3603,13 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
             elif pind:
                 site_conforming = pind
                 site_conforming_desc = f"{pind}: {pcomm}" if pcomm else pind
-        elif ptype == "AdverseSiteConditions":
+            elif pcomm:
+                site_conforming_desc = pcomm
+        elif ptype_clean in (
+            "adversesiteconditions",
+            "adverseconditions",
+            "adversesiteconditionsorexternalfactors"
+        ) or ("adverse" in ptype_clean and "site" in ptype_clean):
             adverse_site_comment = pcomm
             if pind == "N":
                 adverse_site = "No"
@@ -3595,6 +3620,8 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
             elif pind:
                 adverse_site = pind
                 adverse_site_desc = f"{pind}: {pcomm}" if pcomm else pind
+            elif pcomm:
+                adverse_site_desc = pcomm
 
     # Neighborhood
     nb_name = ""
@@ -5881,23 +5908,23 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "Sanitary Sewer": util_dict.get("Sanitary Sewer", ""),
         "Street": street_val,
         "Alley": alley_val,
-        "Is the site size, shape and topography generally conforming to and acceptable in the market area? Yes No If No, explain": site_conforming_desc,
-        "Is the site size, shape and topography generally conforming to and acceptable in the market area?": site_conforming,
-        "Is there adequate vehicular access to the subject property? Yes No If No, describe": street_access_desc,
-        "Is there adequate vehicular access to the subject property?": street_access,
-        "Is the street properly maintained? Yes No If No, describe": street_maintained_desc,
-        "Is the street properly maintained?": street_maintained,
+        "Is the site size, shape and topography generally conforming to and acceptable in the market area? Yes No If No, explain": site_conforming_desc or site_conforming,
+        "Is the site size, shape and topography generally conforming to and acceptable in the market area?": site_conforming or (site_conforming_desc.split(":")[0].strip() if site_conforming_desc else ""),
+        "Is there adequate vehicular access to the subject property? Yes No If No, describe": street_access_desc or street_access,
+        "Is there adequate vehicular access to the subject property?": street_access or (street_access_desc.split(":")[0].strip() if street_access_desc else ""),
+        "Is the street properly maintained? Yes No If No, describe": street_maintained_desc or street_maintained,
+        "Is the street properly maintained?": street_maintained or (street_maintained_desc.split(":")[0].strip() if street_maintained_desc else ""),
         "FEMA Special Flood Hazard Area": fema_special,
         "FEMA Flood Zone": fema_zone,
         "FEMA Map #": fema_map_id,
         "FEMA Map Date": fema_map_date,
-        "Are the utilities and off-site improvements typical for the market area?": util_typical,
-        "Are the utilities and off-site improvements typical for the market area? If No, describe": util_typical_desc,
-        "Are there any adverse site conditions or external factors (easements, encroachments, environmental conditions, land uses, etc.)? If Yes, describe": adverse_site_comment or adverse_site_desc,
-        "Are there any adverse site conditions or external factors (easements, encroachments, environmental conditions, land uses, etc.)? Yes No If Yes, describe": adverse_site_desc,
-        "Are there any adverse site conditions or external factors (easements, encroachments, environmental conditions, land uses, etc.)?": adverse_site,
-        "Adverse Site Conditions": adverse_site,
-        "Adverse Site Conditions Description": adverse_site_comment or adverse_site_desc,
+        "Are the utilities and off-site improvements typical for the market area?": util_typical or (util_typical_desc.split(":")[0].strip() if util_typical_desc else ""),
+        "Are the utilities and off-site improvements typical for the market area? If No, describe": util_typical_desc or util_typical,
+        "Are there any adverse site conditions or external factors (easements, encroachments, environmental conditions, land uses, etc.)? If Yes, describe": adverse_site_desc or (f"{adverse_site}: {adverse_site_comment}" if adverse_site and adverse_site_comment else (adverse_site or adverse_site_comment)),
+        "Are there any adverse site conditions or external factors (easements, encroachments, environmental conditions, land uses, etc.)? Yes No If Yes, describe": adverse_site_desc or (f"{adverse_site}: {adverse_site_comment}" if adverse_site and adverse_site_comment else (adverse_site or adverse_site_comment)),
+        "Are there any adverse site conditions or external factors (easements, encroachments, environmental conditions, land uses, etc.)?": adverse_site or (adverse_site_desc.split(":")[0].strip() if adverse_site_desc else ""),
+        "Adverse Site Conditions": adverse_site or (adverse_site_desc.split(":")[0].strip() if adverse_site_desc else ""),
+        "Adverse Site Conditions Description": adverse_site_desc or (f"{adverse_site}: {adverse_site_comment}" if adverse_site and adverse_site_comment else (adverse_site or adverse_site_comment)),
         "Utilities": utilities_str,
         "Off-site Improvements - Street": street_val,
         "Off-site Improvements - Alley": alley_val,
@@ -5914,7 +5941,20 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
     else:
         bldg_status = "Existing"
 
-    living_units = units if units and units != "1" else "1"
+    is_1004c_report = bool(
+        form_type in ("1004C", "1004C + 1007") or
+        "1004C" in str(form_type).upper() or
+        "MANUFACTURED" in str(form_type).upper()
+    )
+
+    living_units = str(units).strip() if units else ""
+    if adu_check == "Yes":
+        unit_val = "Additions" if is_1004c_report else "One with Accessory Unit"
+    elif living_units:
+        unit_val = living_units
+    else:
+        unit_val = ""
+
     struct_type_val = "Detached" if "det" in struct_type.lower() else ("Attached" if "att" in struct_type.lower() else (struct_type or "Detached"))
 
     # Attic
@@ -6181,8 +6221,10 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
     roof_surf = _format_mat_cond(ext_dict.get("RoofSurface", ""))
     gutters = _format_mat_cond(ext_dict.get("GuttersAndDownspouts", ""))
     window_type = _format_mat_cond(ext_dict.get("WindowType", ""))
-    storm_sash = ext_dict.get("WindowStormSash", "") or "None"
-    screens = ext_dict.get("WindowScreens", "") or "None"
+    storm_sash_raw = ext_dict.get("WindowStormSash", "")
+    storm_sash = _format_mat_cond(storm_sash_raw) if storm_sash_raw else ""
+    screens_raw = ext_dict.get("WindowScreens", "")
+    screens = _format_mat_cond(screens_raw) if screens_raw else ""
 
     # Amenities
     amenities_list = []
@@ -6444,9 +6486,9 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
 
     improvements_section = {
         # General Description
-        "# of Units": "One with Accessory Unit" if adu_check == "Yes" else living_units,
-        "Number of Units": "One with Accessory Unit" if adu_check == "Yes" else living_units,
-        "Units": "One with Accessory Unit" if adu_check == "Yes" else living_units,
+        "# of Units": unit_val,
+        "Number of Units": unit_val,
+        "Units": unit_val,
         "One with Accessory Unit": adu_check if adu_check else "No",
         "# of Stories": stories,
         "Type": struct_type_val,
@@ -6507,6 +6549,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "Window Type (Material/Condition)": window_type,
         "Window Type": window_type,
         "Storm Sash/Insulated": storm_sash,
+        "Storm Sash": storm_sash,
         "Screens": screens,
         "Amenities": amenities_val,
         "Woodstove(s) #": amenity_details.get("Woodstove(s) #", "0"),
@@ -6571,7 +6614,11 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? If Yes, describe": conf_desc,
         "Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?If Yes, describe": conf_desc,
         "Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?": conf_desc,
+        "Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)Yes/NO If No, describe:": conf_desc,
+        "Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.) Yes/No If No, describe": conf_desc,
         "Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? comment": conf_comment or over_under_comment,
+        "Neighborhood Conformance Comment": conf_comment or over_under_comment,
+        "If No, describe": conf_comment if conf_ex == "N" else ("N/A" if conf_ex == "Y" else (conf_comment or "")),
         "Comments on Improvements": over_under_comment,
         "one unit housing price(high,low,pred)": housing_price,
         "ONE UNIT HOUSING PRICE(HIGH,LOW,PRED)": housing_price,
@@ -6740,6 +6787,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "Market Acceptability Comment": space_desc,
         "Interior Space Acceptability Description": space_desc,
         "Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market?": interior_acceptable,
+        "Describe any additions or modifications (decks, rooms, remodeling, etc.):": modifications_desc,
         "Describe any additions or modifications (decks, rooms, remodeling, etc.)": modifications_desc,
         "Describe any additions or modifications (decks, rooms, remodeling, etc.": modifications_desc,
         "Additions/Modifications Description": modifications_desc,
@@ -6821,6 +6869,16 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         m_cost_comm = re.search(r'([^.?!;\n]*\bcost\s+approach\b[^.?!;\n]*(?:[.?!]|$))', full_narrative, re.IGNORECASE)
         if m_cost_comm:
             cost_comment = m_cost_comm.group(0).strip()
+
+    sec_gla_sum = 0
+    for _sk in ["SectionOne", "SectionTwo", "SectionThree", "SectionFour"]:
+        _sv = sections_1004c[_sk].get("sqft") or sections_1004c[_sk].get("area")
+        if _sv:
+            try:
+                sec_gla_sum += float(str(_sv).replace(",", "").strip())
+            except Exception:
+                pass
+    total_cost_gla = gba or gla_sqft_cost or (f"{int(sec_gla_sum):,}" if sec_gla_sum > 0 else "")
 
     cost_approach_section = {
         "Provide adequate information for the lender/client to replicate the below cost figures and calculations.": cost_comment,
@@ -6907,8 +6965,8 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "Additional Item 3 Description": additional_improvements_1004c[2]["description"] if len(additional_improvements_1004c) > 2 else "",
         "Additional Item 3 Cost $": additional_improvements_1004c[2]["cost"] if len(additional_improvements_1004c) > 2 else "",
 
-        "Total Gross Living Area": gba or gla_sqft_cost,
-        "Total Gross Living Area:": f"{gba or gla_sqft_cost} Sq. ft." if (gba or gla_sqft_cost) else "",
+        "Total Gross Living Area": total_cost_gla,
+        "Total Gross Living Area:": f"{total_cost_gla} Sq. ft." if total_cost_gla else "",
         "N.A.D.A. Data Identification Info: Edition Mo:": nada_month,
         "N.A.D.A. Data Identification Info: Yr:": nada_year,
         "MH State:": nada_state,

@@ -4,11 +4,11 @@ import { checkTaxYear, checkRETaxes, checkSpecialAssessments, checkPUD, checkHOA
 import { checkZoning, checkNonconformingComment, checkZoningDescription, checkSpecificZoningClassification, checkHighestAndBestUse, checkFemaInconsistency, checkFemaFieldsConsistency, checkSiteSectionBlank, checkArea, checkYesNoWithComment, checkUtilities } from '../../../validations/siteValidation';
 import { checkVersion1UtilitySubfields, checkZoningClassificationDescription, checkSiteSizesConsistency, checkVersion1EffectiveDatesConsistency, checkAboveGradeFinishedAreaConsistency, checkYearBuiltConsistency, checkAppraiserNameConsistency, checkVersion1ComparableListingStatusConsistency, checkVersion1ComparableTransferTermsConsistency, checkVersion1YearBuiltAdjustmentConsistency, checkVersion1ConstructionMethodAdjustmentConsistency, checkVersion1SiteSizeAdjustmentConsistency, checkVersion1LocationAdjustmentConsistency, checkVersion1AttachedDetachedAdjustmentConsistency, checkVersion1HeatingAdjustmentConsistency, checkVersion1AmenitiesAdjustmentConsistency, checkVersion1QualityConditionConsistency, checkVersion1AreaAdjustmentConsistency, checkVersion1OverallQualityConditionAdjustmentConsistency, checkVersion1VehicleStorageAdjustmentConsistency } from '../Version1/version1Validation';
 import { checkHousingPriceAndAge, checkPredominantPriceVsIndicatedValue, checkNeighborhoodUsageConsistency, checkSingleChoiceFields, checkNeighborhoodBoundaries, checkNeighborhoodFieldsNotBlank, checkOtherLandUseComment, checkOtherLandUse, checkSearchCriteriaDescription, checkNeighborhoodListPricesConsistency, checkNeighborhoodSalePricesConsistency, checkLocation, checkBuiltUp, checkGrowth, checkPropertyValues, checkDemandSupply } from '../../../validations/neighborhoodValidation';
-import { checkUnits, checkAccessoryUnit, checkNumberOfStories, checkPropertyType, checkConstructionStatusAndReconciliation, checkExistingProposedUnderConst, checkDesignStyle, checkSubjectDesignStyleConsistency, checkYearBuilt, checkEffectiveAge, checkAdditionalFeatures, checkPhysicalDeficienciesImprovements, checkNeighborhoodConformity, checkFoundationType, checkBasementDetails, checkEvidenceOf, checkMaterialCondition, checkHeatingFuel, checkCarStorage, checkImprovementsFieldsNotBlank, checkAduSalesGridPresence } from '../../../validations/improvementsValidation';
-import { checkComparableAddressDuplicates, checkConditionAdjustment, checkBedroomsAdjustment, checkBathsAdjustment, checkQualityOfConstructionAdjustment, checkProximityToSubject, checkSiteAdjustment, checkGrossLivingAreaAdjustment, checkSubjectAddressInconsistency, checkDesignStyleAdjustment, checkFunctionalUtilityAdjustment, checkEnergyEfficientItemsAdjustment, checkPorchPatioDeckAdjustment, checkHeatingCoolingAdjustment, checkDataSourceDOM, checkActualAgeAdjustment, checkLeaseholdFeeSimpleConsistency, checkDateOfSale, checkLocationConsistency, checkSalePrice, checkSubjectAgeConsistency, checkViewAdjustment, checkCompSalePriceBracketing, checkCompAdjustedSalePriceBracketing, checkSalesConcessions, checkSalesConcessionsAdjustment, checkBasementAdjustment, checkGrossLivingAreaBracketing, checkSiteBracketing, checkBasementAreaBracketing, checkBasementFinishedAreaBracketing, checkGarageCarportAdjustment, checkGarageCarportBracketing, checkCompSalePriceWithinNeighborhoodRange } from '../../../validations/salesComparisonValidation';
+import { checkUnits, checkAccessoryUnit, checkNumberOfStories, checkPropertyType, checkConstructionStatusAndReconciliation, checkExistingProposedUnderConst, checkDesignStyle, checkSubjectDesignStyleConsistency, checkYearBuilt, checkEffectiveAge, checkAdditionalFeatures, checkPhysicalDeficienciesImprovements, checkNeighborhoodConformity, checkFoundationType, checkBasementDetails, checkEvidenceOf, checkMaterialCondition, checkHeatingFuel, checkCarStorage, checkImprovementsFieldsNotBlank, checkAduSalesGridPresence, checkAdditionsOrModifications, checkManufacturedHomeConditionalField } from '../../../validations/improvementsValidation';
+import { checkComparableAddressDuplicates, checkConditionAdjustment, checkBedroomsAdjustment, checkBathsAdjustment, checkQualityOfConstructionAdjustment, checkProximityToSubject, checkSiteAdjustment, checkGrossLivingAreaAdjustment, checkSubjectAddressInconsistency, checkDesignStyleAdjustment, checkFunctionalUtilityAdjustment, checkEnergyEfficientItemsAdjustment, checkPorchPatioDeckAdjustment, checkHeatingCoolingAdjustment, checkDataSourceDOM, checkActualAgeAdjustment, checkLeaseholdFeeSimpleConsistency, checkDateOfSale, checkLocationConsistency, checkSalePrice, checkSubjectAgeConsistency, checkViewAdjustment, checkCompSalePriceBracketing, checkCompAdjustedSalePriceBracketing, checkSalesConcessions, checkSalesConcessionsAdjustment, checkBasementAdjustment, checkGrossLivingAreaBracketing, checkSiteBracketing, checkBasementAreaBracketing, checkBasementFinishedAreaBracketing, checkGarageCarportAdjustment, checkGarageCarportBracketing, checkCompSalePriceWithinNeighborhoodRange, checkExtraSalesGridFieldAdjustment, checkVerificationSources } from '../../../validations/salesComparisonValidation';
 import { checkFinalValueConsistency, checkCostApproachDeveloped, checkAppraisalCondition, checkAsOfDate, checkFinalValueBracketing, checkReconciliationFieldsNotBlank, checkFiveValuesConsistency, checkEffectiveDatesConsistency, checkPropertyQualityConsistency, checkPropertyConditionConsistency, checkHbuConsistency, checkCostApproachConsistency, checkAttachmentTypeConsistency, checkPropertyRightsConsistency, checkAppraiserCredentialLevelConsistency } from '../../../validations/reconciliationValidation';
 import { checkLenderAddressInconsistency, checkLenderNameInconsistency, checkUnpaidLender, checkAppraiserFieldsNotBlank, checkLicenseNumberConsistency as checkAppraiserLicenseConsistency, checkDateGreaterThanToday, checkClientNameHtmlConsistency, checkClientAddressHtmlConsistency, checkBorrowerHtmlConsistency, checkAppraiserVendorNameConsistency, checkSupervisoryAppraiserFields, checkAppraiserLicenseGroup, checkUspapReportingOption, checkReasonableExposureTime, checkAppraiserInspection, checkSignatureDateVsEffectiveDate, checkUadAndCertificationAddenda } from '../../../validations/appraiserLenderValidation';
-import { checkCostNew, checkSourceOfCostData, checkIndicatedValueByCostApproach, checkCostApproachFieldsNotBlank, checkOpinionOfSiteValue, checkRemainingEconomicLife, checkBplCostApproachReplication } from '../../../validations/costApproachValidation';
+import { checkCostNew, checkSourceOfCostData, checkIndicatedValueByCostApproach, checkCostApproachFieldsNotBlank, checkOpinionOfSiteValue, checkRemainingEconomicLife, checkBplCostApproachReplication, checkCostApproachGlaConsistency } from '../../../validations/costApproachValidation';
 import { checkResearchHistory, checkSubjectPriorSales, checkComparablePriorSales, checkDataSourceNotBlank, checkEffectiveDateIsCurrentYear, checkSubjectPriorSaleDate, checkCompPriorSaleDate, checkPriorSalePrice } from '../../../validations/salesHistoryValidation';
 import { checkStateRequirements } from '../../../validations/stateValidation';
 import { checkLenderAddressInconsistency as checkLenderAddressHtmlInconsistency, checkSubjectLenderNameVsHtml, checkBorrowerNameVsHtml, checkTransactionTypeHtmlConsistency, checkAppraisalTypeHtmlConsistency, checkCountyHtmlConsistency, checkPropertyAddressHtmlConsistency } from '../../../validations/htmldatavaliadtion';
@@ -131,8 +131,57 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'View': [checkSiteSectionBlank, checkViewAdjustment], 'View Adjustment': [checkViewAdjustment],
     'Area': [checkArea],
 
+    'Are the utilities and off-site improvements typical for the market area?': [(field, text, data) => checkYesNoWithComment(field, text, data, { name: 'Are the utilities and off-site improvements typical for the market area?', wantedValue: 'yes', unwantedValue: 'no' })],
     'Are the utilities and off-site improvements typical for the market area? If No, describe': [(field, text, data) => checkYesNoWithComment(field, text, data, { name: 'Are the utilities and off-site improvements typical for the market area? If No, describe', wantedValue: 'yes', unwantedValue: 'no' })],
     'Are there any adverse site conditions or external factors (easements, encroachments, environmental conditions, land uses, etc.)? If Yes, describe': [(field, text, data) => checkYesNoWithComment(field, text, data, { name: 'Are there any adverse site conditions or external factors (easements, encroachments, environmental conditions, land uses, etc.)? If Yes, describe', wantedValue: 'no', unwantedValue: 'yes' })],
+    'Are there any adverse site conditions or external factors (easements, encroachments, environmental conditions, land uses, etc.)? Yes No If Yes, describe': [(field, text, data) => checkYesNoWithComment(field, text, data, { name: 'Are there any adverse site conditions or external factors (easements, encroachments, environmental conditions, land uses, etc.)? Yes No If Yes, describe', wantedValue: 'no', unwantedValue: 'yes' })],
+    'Are there any adverse site conditions or external factors (easements, encroachments, environmental conditions, land uses, etc.)?': [(field, text, data) => checkYesNoWithComment(field, text, data, { name: 'Are there any adverse site conditions or external factors (easements, encroachments, environmental conditions, land uses, etc.)?', wantedValue: 'no', unwantedValue: 'yes' })],
+    'Is the site size, shape and topography generally conforming to and acceptable in the market area? Yes No If No, explain': [(field, text, data) => checkYesNoWithComment(field, text, data, { name: 'Is the site size, shape and topography generally conforming to and acceptable in the market area? Yes No If No, explain', wantedValue: 'yes', unwantedValue: 'no' })],
+    'Is the site size, shape and topography generally conforming to and acceptable in the market area?': [(field, text, data) => checkYesNoWithComment(field, text, data, { name: 'Is the site size, shape and topography generally conforming to and acceptable in the market area?', wantedValue: 'yes', unwantedValue: 'no' })],
+    'Is there adequate vehicular access to the subject property? Yes No If No, describe': [(field, text, data) => checkYesNoWithComment(field, text, data, { name: 'Is there adequate vehicular access to the subject property? Yes No If No, describe', wantedValue: 'yes', unwantedValue: 'no' })],
+    'Is there adequate vehicular access to the subject property?': [(field, text, data) => checkYesNoWithComment(field, text, data, { name: 'Is there adequate vehicular access to the subject property?', wantedValue: 'yes', unwantedValue: 'no' })],
+    'Is the street properly maintained? Yes No If No, describe': [(field, text, data) => checkYesNoWithComment(field, text, data, { name: 'Is the street properly maintained? Yes No If No, describe', wantedValue: 'yes', unwantedValue: 'no' })],
+    'Is the street properly maintained?': [(field, text, data) => checkYesNoWithComment(field, text, data, { name: 'Is the street properly maintained?', wantedValue: 'yes', unwantedValue: 'no' })],
+    'Do the Wind, Roof Load, and Thermal Zones meet the minimum HUD requirements for the location of the subject property? Yes No If No, explain': [checkManufacturedHomeConditionalField],
+    'Do the Wind, Roof Load, and Thermal Zones meet the minimum HUD requirements for the location of the subject property?': [checkManufacturedHomeConditionalField],
+    'Wind, Roof Load, and Thermal Zones Explanation': [checkManufacturedHomeConditionalField],
+    'Meets HUD Requirements For Location Description': [checkManufacturedHomeConditionalField],
+
+    'Is the manufactured home attached to a permanent foundation system? Yes No If No, describe the foundation sytem and the manner of attachment.': [checkManufacturedHomeConditionalField],
+    'Is the manufactured home attached to a permanent foundation system? Yes No If No, describe the foundation system and the manner of attachment.': [checkManufacturedHomeConditionalField],
+    'Is the manufactured home attached to a permanent foundation system?': [checkManufacturedHomeConditionalField],
+    'Permanent Foundation': [checkManufacturedHomeConditionalField],
+    'Attached to Permanent Foundation': [checkManufacturedHomeConditionalField],
+    'If No, describe the foundation system and the manner of attachment.': [checkManufacturedHomeConditionalField],
+    'If No, describe the foundation system and the manner of attachment': [checkManufacturedHomeConditionalField],
+    'If No, describe the foundation sytem and the manner of attachment.': [checkManufacturedHomeConditionalField],
+    'If No, describe the foundation sytem and the manner of attachment': [checkManufacturedHomeConditionalField],
+    'Foundation Attachment Description': [checkManufacturedHomeConditionalField],
+
+    'Have the towing hitch, wheels, and axles been removed? Yes No If No, explain': [checkManufacturedHomeConditionalField],
+    'Have the towing hitch, wheels, and axles been removed? Yes No If No, explain.': [checkManufacturedHomeConditionalField],
+    'Have the towing hitch, wheels, and axles been removed?': [checkManufacturedHomeConditionalField],
+    'Wheels/Axles Removed': [checkManufacturedHomeConditionalField],
+    'Towing Hitch/Wheels/Axles Removed': [checkManufacturedHomeConditionalField],
+    'Have the towing hitch, wheels, and axles been removed? explain': [checkManufacturedHomeConditionalField],
+    'Have the towing hitch, wheels, and axles been removed? If No, explain': [checkManufacturedHomeConditionalField],
+    'Wheels/Axles Removed Comment': [checkManufacturedHomeConditionalField],
+
+    'Is the manufactured home permanently connected to a septic tank or sewage system and other utilities? Yes No If No, explain': [checkManufacturedHomeConditionalField],
+    'Is the manufactured home permanently connected to a septic tank or sewage system and other utilities? Yes No If No, explain.': [checkManufacturedHomeConditionalField],
+    'Is the manufactured home permanently connected to a septic tank or sewage system and other utilities?': [checkManufacturedHomeConditionalField],
+    'Connected to Utilities': [checkManufacturedHomeConditionalField],
+    'Is the manufactured home permanently connected to a septic tank or sewage system and other utilities? explain': [checkManufacturedHomeConditionalField],
+    'Is the manufactured home permanently connected to a septic tank or sewage system and other utilities? If No, explain': [checkManufacturedHomeConditionalField],
+    'Connected to Utilities Comment': [checkManufacturedHomeConditionalField],
+
+    'Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market? Yes No If No, explain': [checkManufacturedHomeConditionalField],
+    'Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market? Yes No If No, explain.': [checkManufacturedHomeConditionalField],
+    'Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market?': [checkManufacturedHomeConditionalField],
+    'Market Acceptability': [checkManufacturedHomeConditionalField],
+    'Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market? explain': [checkManufacturedHomeConditionalField],
+    'Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market? If No, explain': [checkManufacturedHomeConditionalField],
+    'Market Acceptability Comment': [checkManufacturedHomeConditionalField],
     "Electricity": [checkUtilities], "Gas": [checkUtilities], "Water": [checkUtilities], "Sanitary Sewer": [checkUtilities], "Street": [checkUtilities], "Alley": [checkUtilities],
 
     'Electricity Detail': [checkVersion1UtilitySubfields],
@@ -172,7 +221,7 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'ADU File Check': [checkAduFileCheck, checkAduSalesGridPresence, checkPresence],
     'ADU Check': [checkAduFileCheck, checkAduSalesGridPresence, checkPresence],
     'ADU': [checkAduSalesGridPresence, checkAduFileCheck, checkPresence],
-    'ADU Adjustment': [checkAduSalesGridPresence],
+    'ADU Adjustment': [checkAduSalesGridPresence, checkExtraSalesGridFieldAdjustment],
     'Accessory Unit': [checkAduSalesGridPresence, checkPresence],
     'Accessory Dwelling Unit': [checkAduSalesGridPresence, checkPresence],
     'FHA Case No.': [checkFhaCaseNo],
@@ -243,7 +292,19 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     "2-4 Unit": [checkNeighborhoodUsageConsistency, checkNeighborhoodFieldsNotBlank],
     "Multi-Family": [checkNeighborhoodUsageConsistency, checkNeighborhoodFieldsNotBlank],
     "Commercial": [checkNeighborhoodUsageConsistency, checkNeighborhoodFieldsNotBlank],
-    "Other": [checkOtherLandUseComment, checkNeighborhoodUsageConsistency, checkNeighborhoodFieldsNotBlank],
+    "Other": [
+      (field, arg2, arg3, arg4, arg5) => {
+        const isSalesGrid = arg5 || (typeof arg3 === 'string' && (arg3 === 'Subject' || arg3.startsWith('Comp'))) || (Array.isArray(arg4) && (arg4[0] === 'Subject' || String(arg4[0]).startsWith('Comp') || arg4[0] === 'SALES_GRID' || arg4[0] === 'Sales Grid'));
+        if (isSalesGrid) {
+          return checkExtraSalesGridFieldAdjustment(field, arg2, arg3, arg4, arg5);
+        }
+        const res1 = checkOtherLandUseComment(field, arg2, arg3);
+        if (res1) return res1;
+        const res2 = checkNeighborhoodUsageConsistency(field, arg2);
+        if (res2) return res2;
+        return checkNeighborhoodFieldsNotBlank(field, arg2, arg3);
+      }
+    ],
     "Present Land Use for other": [checkOtherLandUse],
     "Neighborhood Boundaries": [checkNeighborhoodBoundaries, checkNeighborhoodFieldsNotBlank],
     "Built-Up": [checkBuiltUp, checkSingleChoiceFields, checkNeighborhoodFieldsNotBlank], "Growth": [checkGrowth, checkSingleChoiceFields, checkNeighborhoodFieldsNotBlank], "Property Values": [checkPropertyValues, checkSingleChoiceFields, checkNeighborhoodFieldsNotBlank], "Demand/Supply": [checkDemandSupply, checkSingleChoiceFields, checkNeighborhoodFieldsNotBlank], "Marketing Time": [checkSingleChoiceFields, checkNeighborhoodFieldsNotBlank],
@@ -285,6 +346,8 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
 
 
     'Units': [checkUnits, checkAccessoryUnit, checkAduSalesGridPresence],
+    '# of Units': [checkUnits, checkAccessoryUnit, checkAduSalesGridPresence],
+    'Number of Units': [checkUnits, checkAccessoryUnit, checkAduSalesGridPresence],
     '# of Stories': [checkNumberOfStories],
     'Type': [checkPropertyType],
     'Existing/Proposed/Under Const.': [checkExistingProposedUnderConst, checkConstructionStatusAndReconciliation],
@@ -312,6 +375,15 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'Describe the condition of the property': [checkProjectAndPropertyCondition],
     'Are there any physical deficiencies or adverse conditions that affect the livability, soundness, or structural integrity of the property? If Yes, describe': [checkPhysicalDeficienciesImprovements],
     'Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? If No, describe': [checkNeighborhoodConformity],
+    'Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?': [checkNeighborhoodConformity],
+    'Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)': [checkNeighborhoodConformity],
+    'Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)Yes/NO If No, describe:': [checkNeighborhoodConformity],
+    'Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.) Yes/No If No, describe': [checkNeighborhoodConformity],
+    'Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?If Yes, describe': [checkNeighborhoodConformity],
+    'Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? If Yes, describe': [checkNeighborhoodConformity],
+    'Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? comment': [checkNeighborhoodConformity],
+    'Neighborhood Conformance Comment': [checkNeighborhoodConformity],
+    'If No, describe': [checkNeighborhoodConformity],
     'Foundation': [checkFoundationType],
     'Foundation Type': [checkFoundationType],
     'Full Basement': [checkFoundationType],
@@ -323,12 +395,20 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'Basement Finish': [checkBasementDetails],
     'Basement Finish %': [checkBasementDetails],
     'Infestation': [checkEvidenceOf], 'Dampness': [checkEvidenceOf], 'Settlement': [checkEvidenceOf],
-    'Foundation Walls (Material/Condition)': [checkMaterialCondition], 'Exterior Walls (Material/Condition)': [checkMaterialCondition],
-    'Roof Surface (Material/Condition)': [checkMaterialCondition], 'Gutters & Downspouts (Material/Condition)': [checkMaterialCondition],
-    'Window Type (Material/Condition)': [checkMaterialCondition], 'Floors (Material/Condition)': [checkMaterialCondition],
-    'Walls (Material/Condition)': [checkMaterialCondition],
-    'Trim/Finish (Material/Condition)': [checkMaterialCondition],
-    'Bath Floor (Material/Condition)': [checkMaterialCondition], 'Bath Wainscot (Material/Condition)': [checkMaterialCondition],
+    'Foundation Walls (Material/Condition)': [checkMaterialCondition], 'Foundation Walls': [checkMaterialCondition],
+    'Exterior Walls (Material/Condition)': [checkMaterialCondition], 'Exterior Walls': [checkMaterialCondition],
+    'Roof Surface (Material/Condition)': [checkMaterialCondition], 'Roof Surface': [checkMaterialCondition],
+    'Gutters & Downspouts (Material/Condition)': [checkMaterialCondition], 'Gutters & Downspouts': [checkMaterialCondition],
+    'Window Type (Material/Condition)': [checkMaterialCondition], 'Window Type': [checkMaterialCondition],
+    'Storm Sash/Insulated': [checkMaterialCondition], 'Storm Sash': [checkMaterialCondition], 'Storm Sash / Insulated': [checkMaterialCondition], 'Storm Sash/Insulated (Material/Condition)': [checkMaterialCondition],
+    'Screens': [checkMaterialCondition], 'Screens (Material/Condition)': [checkMaterialCondition],
+    'Doors': [checkMaterialCondition], 'Doors (Material/Condition)': [checkMaterialCondition],
+    'Skirting': [checkMaterialCondition], 'Skirting (Material/Condition)': [checkMaterialCondition],
+    'Floors (Material/Condition)': [checkMaterialCondition], 'Floors': [checkMaterialCondition],
+    'Walls (Material/Condition)': [checkMaterialCondition], 'Walls': [checkMaterialCondition],
+    'Trim/Finish (Material/Condition)': [checkMaterialCondition], 'Trim/Finish': [checkMaterialCondition],
+    'Bath Floor (Material/Condition)': [checkMaterialCondition], 'Bath Floor': [checkMaterialCondition],
+    'Bath Wainscot (Material/Condition)': [checkMaterialCondition], 'Bath Wainscot': [checkMaterialCondition],
     'Fuel': [checkHeatingFuel, checkImprovementsFieldsNotBlank],
     'Car Storage': [checkCarStorage, checkImprovementsFieldsNotBlank],
     'Driveway # of Cars': [checkCarStorage],
@@ -406,6 +486,9 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'Porch/Patio/Deck': [checkPorchPatioDeckAdjustment], 'Porch/Patio/Deck Adjustment': [checkPorchPatioDeckAdjustment],
     'Heating/Cooling': [checkHeatingCoolingAdjustment], 'Heating/Cooling Adjustment': [checkHeatingCoolingAdjustment],
     'Data Source(s)': [checkDataSourceDOM],
+    'Verification Source(s)': [checkVerificationSources],
+    'Verification Source': [checkVerificationSources],
+    'Verification Sources': [checkVerificationSources],
     'Actual Age': [checkActualAgeAdjustment, checkSubjectAgeConsistency], 'Actual Age Adjustment': [checkActualAgeAdjustment],
     'Sale Price': [checkCompSalePriceWithinNeighborhoodRange, checkSalePrice, checkCompSalePriceBracketing],
     'Sale Price $': [checkCompSalePriceWithinNeighborhoodRange, checkSalePrice, checkCompSalePriceBracketing],
@@ -446,8 +529,32 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
     'Other Basement Adj': [checkRentOtherBasementAdjustment],
     'Other:': [checkRentSubjectOtherConsistency, checkRentOtherAdjustment],
     'Other: Adjustment': [checkRentOtherAdjustment],
-    // 'Other': [checkRentSubjectOtherConsistency, checkRentOtherAdjustment],
-    'Other Adjustment': [checkRentOtherAdjustment],
+    'Other Adjustment': [checkExtraSalesGridFieldAdjustment, checkRentOtherAdjustment],
+    'Other Feature 1': [checkExtraSalesGridFieldAdjustment],
+    'Other Feature 1 Adjustment': [checkExtraSalesGridFieldAdjustment],
+    'Other Feature 2': [checkExtraSalesGridFieldAdjustment],
+    'Other Feature 2 Adjustment': [checkExtraSalesGridFieldAdjustment],
+    'Other Feature 3': [checkExtraSalesGridFieldAdjustment],
+    'Other Feature 3 Adjustment': [checkExtraSalesGridFieldAdjustment],
+    'Other Feature 4': [checkExtraSalesGridFieldAdjustment],
+    'Other Feature 4 Adjustment': [checkExtraSalesGridFieldAdjustment],
+    'Other Feature 5': [checkExtraSalesGridFieldAdjustment],
+    'Other Feature 5 Adjustment': [checkExtraSalesGridFieldAdjustment],
+    'Additional Description': [checkExtraSalesGridFieldAdjustment],
+    'Additional Adjustment': [checkExtraSalesGridFieldAdjustment],
+    'Additional Description Adjustment': [checkExtraSalesGridFieldAdjustment],
+    'Fireplace (s), etc.': [checkExtraSalesGridFieldAdjustment],
+    'Fireplace (s), etc. Adjustment': [checkExtraSalesGridFieldAdjustment],
+    'Fireplace': [checkExtraSalesGridFieldAdjustment],
+    'Fireplace Adjustment': [checkExtraSalesGridFieldAdjustment],
+    'Fireplace(s)': [checkExtraSalesGridFieldAdjustment],
+    'Fireplace(s) Adjustment': [checkExtraSalesGridFieldAdjustment],
+    'Fence, Pool, etc.': [checkExtraSalesGridFieldAdjustment],
+    'Fence, Pool, etc. Adjustment': [checkExtraSalesGridFieldAdjustment],
+    'Fence/Pool': [checkExtraSalesGridFieldAdjustment],
+    'Fence/Pool Adjustment': [checkExtraSalesGridFieldAdjustment],
+    'Woodstove': [checkExtraSalesGridFieldAdjustment],
+    'Woodstove Adjustment': [checkExtraSalesGridFieldAdjustment],
     'I (WE) ESTIMATE THE MONTHLY MARKET RENT OF THE SUBJECT AS OF': [checkRentScheduleAsOfDateConsistency],
     'TO BE $': [checkRentScheduleToBeBracketing, checkRentScheduleToBeAmountConsistency],
     'To be $': [checkRentScheduleToBeBracketing, checkRentScheduleToBeAmountConsistency],
@@ -1105,6 +1212,22 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
       if (!validationRegistry[field]) validationRegistry[field] = [];
       validationRegistry[field].push(checkAppraiserCredentialLevelConsistency);
     });
+
+    ['Total Gross Living Area', 'Total Gross Living Area:', 'Square Feet of Gross Living Area Above Grade', 'Gross Living Area', 'Gross Living Area sq.ft.'].forEach(field => {
+      if (!validationRegistry[field]) validationRegistry[field] = [];
+      validationRegistry[field].push(checkCostApproachGlaConsistency);
+    });
+
+    [
+      'Describe any additions or modifications (decks, rooms, remodeling, etc.):',
+      'Describe any additions or modifications (decks, rooms, remodeling, etc.)',
+      'Describe any additions or modifications (decks, rooms, remodeling, etc.',
+      'Additions/Modifications Description',
+      'Additions or Modifications'
+    ].forEach(field => {
+      if (!validationRegistry[field]) validationRegistry[field] = [];
+      validationRegistry[field].push(checkAdditionsOrModifications);
+    });
   }
 
   const getValidationInfo = (lookupField, text, data, fieldPath, saleName, manualValidations, isAdjustment) => {
@@ -1189,6 +1312,48 @@ export const EditableField = ({ fieldPath, value, onDataChange, editingField, se
           checksToRun = [checkAduFileCheck, checkAduSalesGridPresence, checkPresence];
         } else if (lowerLookup === 'special assessments' || lowerLookup === 'special assessment' || lowerLookup === 'special assessments $' || lowerLookup === 'special assessment $') {
           checksToRun = [checkSpecialAssessments];
+        } else if (
+          lowerLookup === 'skirting' || lowerLookup.includes('skirting') ||
+          lowerLookup === 'storm sash/insulated' || lowerLookup === 'storm sash' || lowerLookup.includes('storm sash') ||
+          lowerLookup === 'screens' || lowerLookup.includes('screens')
+        ) {
+          checksToRun = [checkMaterialCondition];
+        } else if (
+          lowerLookup === 'total gross living area' || lowerLookup === 'total gross living area:' ||
+          lowerLookup.includes('total gross living area') ||
+          (Array.isArray(fieldPath) && (fieldPath[0] === 'COST_APPROACH' || fieldPath[0] === 'Cost Approach') && (lowerLookup.includes('gross living area') || lowerLookup.includes('gla')))
+        ) {
+          checksToRun = [checkCostApproachGlaConsistency];
+        } else if (lowerLookup.includes('additions or modifications') || lowerLookup.includes('additions/modifications')) {
+          checksToRun = [checkAdditionsOrModifications];
+        } else if (lowerLookup.includes('conform to the neighborhood') || lowerLookup === 'if no, describe' || lowerLookup.includes('neighborhood conformance')) {
+          checksToRun = [checkNeighborhoodConformity];
+        } else if (
+          lowerLookup.startsWith('other feature') ||
+          lowerLookup === 'other' || lowerLookup === 'other adjustment' ||
+          lowerLookup.includes('additional description') || lowerLookup.includes('additional adjustment') ||
+          lowerLookup.includes('fireplace') || lowerLookup.includes('woodstove') || lowerLookup.includes('fence, pool') ||
+          (saleName && (String(saleName).startsWith('Comp') || saleName === 'Subject') && (
+            (allData?.sales_grid_custom_rows && allData.sales_grid_custom_rows.some(r => r.label?.toLowerCase() === lowerLookup || r.valueKey?.toLowerCase() === lowerLookup || r.adjustmentKey?.toLowerCase() === lowerLookup)) ||
+            (allData?.SALES_GRID?.custom_rows && allData.SALES_GRID.custom_rows.some(r => r.label?.toLowerCase() === lowerLookup || r.valueKey?.toLowerCase() === lowerLookup || r.adjustmentKey?.toLowerCase() === lowerLookup)) ||
+            (data?.sales_grid_custom_rows && data.sales_grid_custom_rows.some(r => r.label?.toLowerCase() === lowerLookup || r.valueKey?.toLowerCase() === lowerLookup || r.adjustmentKey?.toLowerCase() === lowerLookup)) ||
+            (data?.SALES_GRID?.custom_rows && data.SALES_GRID.custom_rows.some(r => r.label?.toLowerCase() === lowerLookup || r.valueKey?.toLowerCase() === lowerLookup || r.adjustmentKey?.toLowerCase() === lowerLookup))
+          ))
+        ) {
+          checksToRun = [checkExtraSalesGridFieldAdjustment];
+        } else if (lowerLookup.includes('verification source')) {
+          checksToRun = [checkVerificationSources];
+        } else if (
+          lowerLookup.includes('permanent foundation') ||
+          lowerLookup.includes('towing hitch') ||
+          lowerLookup.includes('septic tank') ||
+          lowerLookup.includes('acceptable to the market') ||
+          lowerLookup.includes('manner of attachment') ||
+          lowerLookup.includes('wheels/axles removed') ||
+          lowerLookup.includes('connected to utilities') ||
+          lowerLookup.includes('market acceptability')
+        ) {
+          checksToRun = [checkManufacturedHomeConditionalField];
         }
       }
       if (isSupervisory && !checksToRun.includes(checkSupervisoryAppraiserFields)) {

@@ -1,5 +1,5 @@
-import { checkProjectAndPropertyCondition } from './form1073Validation';
-import { getSubjectExpectedActualAge, getSubjectGridActualAge } from './salesComparisonValidation';
+import { checkProjectAndPropertyCondition } from './form1073Validation.js';
+import { getSubjectExpectedActualAge, getSubjectGridActualAge } from './salesComparisonValidation.js';
 
 export const isPositiveAdu = (val) => {
     if (val === undefined || val === null) return false;
@@ -191,49 +191,98 @@ export const checkAduSalesGridPresence = (field, arg2, arg3, arg4, arg5) => {
 
 export const checkUnits = (field, text, data = {}) => {
     const fLower = String(field || '').trim().toLowerCase();
-    if (fLower !== 'units') return null;
+    if (fLower !== 'units' && fLower !== '# of units' && fLower !== 'number of units') return null;
 
     const value = String(text || '').trim();
     if (!value) {
-        return { isError: true, message: "'Units' cannot be blank. If 1 unit, it should be marked '1' or 'One with Accessory Unit'." };
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: "'# of Units' cannot be blank. One of the fields must be selected."
+        };
     }
 
     const aduVal = getAduFileCheckValue(data);
+    const hasAdditions = value.toLowerCase().includes('addition');
+    const isOne = value === '1' || value.toLowerCase().includes('one');
 
     if (isPositiveAdu(aduVal)) {
-        if (isOneWithAccessoryUnit(value)) {
+        if (isOneWithAccessoryUnit(value) || hasAdditions) {
             return {
                 isMatch: true,
-                message: "Verified: ADU is marked 'Yes' and Improvements section is correctly marked on 'One with Accessory Unit'."
+                message: "Verified: ADU is marked 'Yes' and Improvements section is correctly marked on '" + (hasAdditions ? 'Additions' : 'One with Accessory Unit') + "'."
             };
         }
         return {
             isError: true,
-            message: `ADU is marked 'Yes', so Improvements section 'Units' must be marked on 'One with Accessory Unit' (currently '${value}').`
+            skipBlankFilter: true,
+            message: `ADU is marked 'Yes', so Improvements section '# of Units' must be marked on 'One with Accessory Unit' or 'Additions' (currently '${value}').`
         };
     }
 
     if (isNegativeAdu(aduVal)) {
-        if (isOneWithAccessoryUnit(value)) {
+        if (isOneWithAccessoryUnit(value) || (hasAdditions && !isOne)) {
             return {
                 isError: true,
-                message: "Improvements 'Units' is marked on 'One with Accessory Unit', but ADU is marked 'No'."
+                skipBlankFilter: true,
+                message: "Improvements '# of Units' is marked on '" + (hasAdditions ? 'Additions' : 'One with Accessory Unit') + "', but ADU is marked 'No'."
             };
         }
     }
 
-    if (isOneWithAccessoryUnit(value)) {
+    if (isOneWithAccessoryUnit(value) || hasAdditions) {
         return {
             isMatch: true,
-            message: "Verified: One with Accessory Unit."
+            message: "Verified: " + (hasAdditions ? "Additions" : "One with Accessory Unit") + "."
         };
     }
 
-    if (value !== '1' && !value.toLowerCase().includes('one')) {
-        return { isError: true, message: "For a single unit property, 'Units' must be '1' or 'One with Accessory Unit'." };
+    if (!isOne) {
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: "For a single unit property, '# of Units' must be 'One' or 'Additions'."
+        };
     }
 
-    return { isMatch: true };
+    return {
+        isMatch: true,
+        message: `Verified: '# of Units' is selected (${value}).`
+    };
+};
+
+export const checkAdditionsOrModifications = (field, text, data = {}) => {
+    const fLower = String(field || '').trim().toLowerCase();
+    const isTargetField = (
+        fLower === 'describe any additions or modifications (decks, rooms, remodeling, etc.):' ||
+        fLower === 'describe any additions or modifications (decks, rooms, remodeling, etc.)' ||
+        fLower === 'describe any additions or modifications (decks, rooms, remodeling, etc.' ||
+        fLower === 'additions/modifications description' ||
+        fLower === 'additions or modifications' ||
+        fLower.includes('additions or modifications') ||
+        fLower.includes('additions/modifications')
+    );
+
+    if (!isTargetField) return null;
+
+    const val = String(
+        text !== undefined && text !== null
+            ? (typeof text === 'object' ? (text.value ?? text.choice ?? '') : text)
+            : ''
+    ).trim();
+
+    if (!val) {
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: "'Describe any additions or modifications (decks, rooms, remodeling, etc.):' field must not be blank."
+        };
+    }
+
+    return {
+        isMatch: true,
+        message: "Verified: 'Describe any additions or modifications' is provided."
+    };
 };
 
 export const calculateFinishedBasementArea = (area, finishPct) => {
@@ -412,29 +461,49 @@ export const checkEvidenceOf = (field, text) => {
 };
 
 export const checkMaterialCondition = (field, text) => {
-    const fieldsToCheck = [
-        'Foundation Walls (Material/Condition)', 'Exterior Walls (Material/Condition)',
-        'Roof Surface (Material/Condition)', 'Gutters & Downspouts (Material/Condition)',
-        'Window Type (Material/Condition)', 'Floors (Material/Condition)',
-        'Walls (Material/Condition)', 'Trim/Finish (Material/Condition)',
-        'Bath Floor (Material/Condition)', 'Bath Wainscot (Material/Condition)'
+    const fLower = String(field || '').trim().toLowerCase();
+    const cleanField = fLower.replace(/\s*\(material\/condition\)/g, '').trim();
+
+    const allowedFields = [
+        'foundation walls', 'exterior walls', 'roof surface', 'gutters & downspouts',
+        'window type', 'storm sash/insulated', 'storm sash', 'storm sash / insulated',
+        'screens', 'doors', 'skirting', 'floors', 'walls', 'trim/finish',
+        'bath floor', 'bath wainscot'
     ];
 
-    if (!fieldsToCheck.includes(field)) return null;
+    if (!allowedFields.includes(cleanField) && !allowedFields.includes(fLower)) {
+        return null;
+    }
 
     const value = String(text || '').trim();
     if (!value) {
-        return { isError: true, message: `'${field}' cannot be blank.` };
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: `'${field}' cannot be blank.`
+        };
     }
 
-    if (value.toLowerCase().includes('none')) {
-        return { isMatch: true };
+    const valLower = value.toLowerCase();
+    if (valLower.includes('none') || valLower === 'n/a' || valLower === 'not present' || valLower === 'no') {
+        return {
+            isMatch: true,
+            message: `Verified: '${field}' is marked '${value}'.`
+        };
     }
 
     if (!value.includes('/') || value.split('/').length < 2 || value.split('/').some(part => !part.trim())) {
-        return { isError: true, message: `Both Material and Condition are required for '${field}', separated by '/'.` };
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: `Both Material and Condition are required for '${field}', separated by '/'.`
+        };
     }
-    return { isMatch: true };
+
+    return {
+        isMatch: true,
+        message: `Verified: '${field}' has material and condition '${value}'.`
+    };
 };
 
 export const checkHeatingFuel = (field, text) => {
@@ -1334,17 +1403,153 @@ export const checkPhysicalDeficienciesImprovements = (field, text) => {
     return { isMatch: true };
 };
 
-export const checkNeighborhoodConformity = (field, text) => {
-    const fieldName = "Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? If No, describe";
-    if (field !== fieldName) return null;
-    const value = String(text || '').trim().toLowerCase();
-    if (!value) {
-        return { isError: true, message: `'${fieldName}' cannot be blank.` };
+export const checkNeighborhoodConformity = (field, text, data = {}, fieldPath = [], saleName = null) => {
+    const fLower = String(field || '').trim().toLowerCase();
+    const isQuestionField = (
+        fLower === 'does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?' ||
+        fLower === 'does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? if no, describe' ||
+        fLower === 'does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)' ||
+        fLower === 'does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)yes/no if no, describe:' ||
+        fLower === 'does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.) yes/no if no, describe' ||
+        fLower === 'does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?if yes, describe' ||
+        fLower === 'does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? if yes, describe' ||
+        fLower.includes('conform to the neighborhood')
+    );
+
+    const isCommentField = (
+        fLower === 'if no, describe' ||
+        fLower === 'neighborhood conformance comment' ||
+        fLower === 'does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? comment' ||
+        fLower === 'does the property generally conform to the neighborhood comment'
+    );
+
+    if (!isQuestionField && !isCommentField) {
+        return null;
     }
-    if (value.startsWith('no') && value.length < 5) {
-        return { isError: true, message: "If 'No', a description is required." };
+
+    const rawText = String(
+        text !== undefined && text !== null
+            ? (typeof text === 'object' ? (text.value ?? text.choice ?? '') : text)
+            : ''
+    ).trim();
+
+    // Helper to resolve question answer ('Yes' or 'No') from text or data
+    const getQuestionAnswer = () => {
+        if (isQuestionField && rawText) {
+            return rawText;
+        }
+        if (!data || typeof data !== 'object') return '';
+        const candidates = [
+            data['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?'],
+            data['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? If No, describe'],
+            data['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)'],
+            data.IMPROVEMENTS?.['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?'],
+            data.IMPROVEMENTS?.['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? If No, describe'],
+            data.Improvements?.['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?'],
+            data.Improvements?.['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? If No, describe'],
+            data.clean_data?.Improvements?.['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?'],
+            data.clean_data?.Improvements?.['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? If No, describe'],
+            data.UNIT_DESCRIPTIONS?.['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?'],
+            data['Unit Descriptions']?.['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?'],
+            data.clean_data?.['Unit Descriptions']?.['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?'],
+            data.clean_data?.UNIT_DESCRIPTIONS?.['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?'],
+            data.data?.clean_data?.Improvements?.['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?'],
+            data.data?.Improvements?.['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?'],
+            data.data?.clean_data?.['Unit Descriptions']?.['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?'],
+            data.data?.['Unit Descriptions']?.['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?']
+        ];
+        for (const c of candidates) {
+            if (c !== undefined && c !== null && c !== '') {
+                const s = String(typeof c === 'object' ? (c.value ?? c.choice ?? '') : c).trim();
+                if (s) return s;
+            }
+        }
+        return '';
+    };
+
+    // Helper to resolve comment text from text or data
+    const getCommentText = () => {
+        if (isCommentField && rawText) {
+            return rawText;
+        }
+        // If question field has combined format e.g. "No: some description"
+        if (isQuestionField && rawText) {
+            const stripped = rawText.replace(/^(no|n|false)\b[:\s-]*/i, '').trim();
+            if (stripped && stripped.toLowerCase() !== 'no' && stripped.toLowerCase() !== 'n/a') {
+                return stripped;
+            }
+        }
+        if (!data || typeof data !== 'object') return '';
+        const candidates = [
+            data['If No, describe'],
+            data['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? comment'],
+            data['Neighborhood Conformance Comment'],
+            data['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? If No, describe'],
+            data.IMPROVEMENTS?.['If No, describe'],
+            data.IMPROVEMENTS?.['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? comment'],
+            data.IMPROVEMENTS?.['Neighborhood Conformance Comment'],
+            data.Improvements?.['If No, describe'],
+            data.Improvements?.['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? comment'],
+            data.Improvements?.['Neighborhood Conformance Comment'],
+            data.clean_data?.Improvements?.['If No, describe'],
+            data.clean_data?.Improvements?.['Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? comment'],
+            data.clean_data?.Improvements?.['Neighborhood Conformance Comment'],
+            data.UNIT_DESCRIPTIONS?.['If No, describe'],
+            data['Unit Descriptions']?.['If No, describe'],
+            data.clean_data?.['Unit Descriptions']?.['If No, describe'],
+            data.clean_data?.UNIT_DESCRIPTIONS?.['If No, describe'],
+            data.data?.clean_data?.Improvements?.['If No, describe'],
+            data.data?.clean_data?.Improvements?.['Neighborhood Conformance Comment'],
+            data.data?.clean_data?.['Unit Descriptions']?.['If No, describe'],
+            data.data?.['Unit Descriptions']?.['If No, describe']
+        ];
+        for (const c of candidates) {
+            if (c !== undefined && c !== null && c !== '') {
+                const s = String(typeof c === 'object' ? (c.value ?? c.choice ?? '') : c).trim();
+                const stripped = s.replace(/^(no|n|false)\b[:\s-]*/i, '').trim();
+                if (stripped && stripped.toLowerCase() !== 'n/a') return stripped;
+                if (s && s.toLowerCase() !== 'no' && s.toLowerCase() !== 'n/a') return s;
+            }
+        }
+        return '';
+    };
+
+    const qVal = getQuestionAnswer();
+    const commentVal = getCommentText();
+
+    const isYes = /^(yes|y|true)\b/i.test(qVal);
+    const isNo = /^(no|n|false)\b/i.test(qVal);
+
+    if (isYes) {
+        return {
+            isMatch: true,
+            message: "Verified: Property generally conforms to the neighborhood (Yes)."
+        };
     }
-    return { isMatch: true };
+
+    if (isNo) {
+        if (!commentVal) {
+            return {
+                isError: true,
+                skipBlankFilter: true,
+                message: "'Does the property generally conform to the neighborhood' is marked 'No', but explanation is missing. 'If No, describe' is required."
+            };
+        }
+        return {
+            isMatch: true,
+            message: `Verified: 'No' selected with non-conformance description provided ("${commentVal}").`
+        };
+    }
+
+    if (isQuestionField) {
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: "'Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?' must be answered 'Yes' or 'No'."
+        };
+    }
+
+    return null;
 };
 
 export const checkFoundationType = (field, text, data = {}) => {
@@ -1484,9 +1689,352 @@ export const checkImprovementsFieldsNotBlank = (field, text) => {
     return null;
 };
 
+export const isAnswerAffirmative = (val) => {
+    if (val === null || val === undefined) return false;
+    if (typeof val === 'boolean') return val;
+    const s = String(val).trim().toLowerCase();
+    return s === 'yes' || s === 'y' || s === 'true' || s === '1' || s === 'checked' || s === 'x' || s === '[x]' || (s.startsWith('yes') && !s.includes('no'));
+};
+
+export const isAnswerNegative = (val) => {
+    if (val === null || val === undefined) return false;
+    if (typeof val === 'boolean') return !val;
+    const s = String(val).trim().toLowerCase();
+    return s === 'no' || s === 'n' || s === 'false' || s === '0' || s === 'none' || (s.startsWith('no') && !s.includes('yes'));
+};
+
+export const MANUFACTURED_HOME_CONDITIONAL_CONFIGS = [
+    {
+        id: 'permanent_foundation',
+        triggerType: 'no',
+        triggerLabel: 'No',
+        nonTriggerLabel: 'Yes',
+        questionLabel: 'Is the manufactured home attached to a permanent foundation system?',
+        commentLabel: 'If No, describe the foundation system and the manner of attachment',
+        questionKeys: [
+            'Is the manufactured home attached to a permanent foundation system? Yes No If No, describe the foundation sytem and the manner of attachment.',
+            'Is the manufactured home attached to a permanent foundation system? Yes No If No, describe the foundation system and the manner of attachment.',
+            'Is the manufactured home attached to a permanent foundation system? Yes No If No, describe the foundation sytem and the manner of attachment',
+            'Is the manufactured home attached to a permanent foundation system? Yes No If No, describe the foundation system and the manner of attachment',
+            'Is the manufactured home attached to a permanent foundation system?',
+            'Permanent Foundation',
+            'Attached to Permanent Foundation'
+        ],
+        commentKeys: [
+            'If No, describe the foundation system and the manner of attachment.',
+            'If No, describe the foundation system and the manner of attachment',
+            'If No, describe the foundation sytem and the manner of attachment.',
+            'If No, describe the foundation sytem and the manner of attachment',
+            'If No, describe the foundation system and the manner of attachment:',
+            'If No, describe the foundation sytem and the manner of attachment:',
+            'Foundation Attachment Description',
+            'describe the foundation system and the manner of attachment',
+            'describe the foundation sytem and the manner of attachment'
+        ]
+    },
+    {
+        id: 'towing_hitch_removed',
+        triggerType: 'no',
+        triggerLabel: 'No',
+        nonTriggerLabel: 'Yes',
+        questionLabel: 'Have the towing hitch, wheels, and axles been removed?',
+        commentLabel: 'If No, explain (towing hitch, wheels, and axles)',
+        questionKeys: [
+            'Have the towing hitch, wheels, and axles been removed? Yes No If No, explain',
+            'Have the towing hitch, wheels, and axles been removed? Yes No If No, explain.',
+            'Have the towing hitch, wheels, and axles been removed?',
+            'Wheels/Axles Removed',
+            'Towing Hitch/Wheels/Axles Removed'
+        ],
+        commentKeys: [
+            'Have the towing hitch, wheels, and axles been removed? explain',
+            'Have the towing hitch, wheels, and axles been removed? If No, explain',
+            'Have the towing hitch, wheels, and axles been removed? explain:',
+            'Wheels/Axles Removed Comment',
+            'Towing Hitch Removed Comment'
+        ]
+    },
+    {
+        id: 'connected_to_utilities',
+        triggerType: 'no',
+        triggerLabel: 'No',
+        nonTriggerLabel: 'Yes',
+        questionLabel: 'Is the manufactured home permanently connected to a septic tank or sewage system and other utilities?',
+        commentLabel: 'If No, explain (septic tank, sewage system, and other utilities)',
+        questionKeys: [
+            'Is the manufactured home permanently connected to a septic tank or sewage system and other utilities? Yes No If No, explain',
+            'Is the manufactured home permanently connected to a septic tank or sewage system and other utilities? Yes No If No, explain.',
+            'Is the manufactured home permanently connected to a septic tank or sewage system and other utilities?',
+            'Connected to Utilities'
+        ],
+        commentKeys: [
+            'Is the manufactured home permanently connected to a septic tank or sewage system and other utilities? explain',
+            'Is the manufactured home permanently connected to a septic tank or sewage system and other utilities? If No, explain',
+            'Is the manufactured home permanently connected to a septic tank or sewage system and other utilities? explain:',
+            'Connected to Utilities Comment'
+        ]
+    },
+    {
+        id: 'market_acceptability',
+        triggerType: 'no',
+        triggerLabel: 'No',
+        nonTriggerLabel: 'Yes',
+        questionLabel: 'Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market?',
+        commentLabel: 'If No, explain (sufficient gross living area and room dimensions)',
+        questionKeys: [
+            'Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market? Yes No If No, explain',
+            'Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market? Yes No If No, explain.',
+            'Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market?',
+            'Market Acceptability'
+        ],
+        commentKeys: [
+            'Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market? explain',
+            'Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market? If No, explain',
+            'Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market? explain:',
+            'Market Acceptability Comment'
+        ]
+    },
+    {
+        id: 'hud_zones_meet',
+        triggerType: 'no',
+        triggerLabel: 'No',
+        nonTriggerLabel: 'Yes',
+        questionLabel: 'Do the Wind, Roof Load, and Thermal Zones meet the minimum HUD requirements for the location of the subject property?',
+        commentLabel: 'If No, explain (minimum HUD requirements)',
+        questionKeys: [
+            'Do the Wind, Roof Load, and Thermal Zones meet the minimum HUD requirements for the location of the subject property? Yes No If No, explain',
+            'Do the Wind, Roof Load, and Thermal Zones meet the minimum HUD requirements for the location of the subject property? Yes No If No, explain.',
+            'Do the Wind, Roof Load, and Thermal Zones meet the minimum HUD requirements for the location of the subject property?',
+            'Wind/Roof/Thermal Zones Meet HUD Requirements'
+        ],
+        commentKeys: [
+            'Wind, Roof Load, and Thermal Zones Explanation',
+            'Meets HUD Requirements For Location Description',
+            'Do the Wind, Roof Load, and Thermal Zones meet the minimum HUD requirements for the location of the subject property? explain'
+        ]
+    }
+];
+
+export const findManufacturedHomeConditionalConfig = (field) => {
+    if (!field) return null;
+    const clean = String(field).trim().toLowerCase().replace(/[\s\r\n\t]+/g, ' ');
+
+    for (const cfg of MANUFACTURED_HOME_CONDITIONAL_CONFIGS) {
+        const matchesComment = cfg.commentKeys.some(k => clean === k.trim().toLowerCase().replace(/[\s\r\n\t]+/g, ' '));
+        if (matchesComment) {
+            return { config: cfg, isComment: true, isQuestion: false };
+        }
+        const matchesQuestion = cfg.questionKeys.some(k => clean === k.trim().toLowerCase().replace(/[\s\r\n\t]+/g, ' '));
+        if (matchesQuestion) {
+            return { config: cfg, isComment: false, isQuestion: true };
+        }
+    }
+
+    // Flexible fallback
+    for (const cfg of MANUFACTURED_HOME_CONDITIONAL_CONFIGS) {
+        if (cfg.id === 'permanent_foundation') {
+            if (clean.includes('foundation') && (clean.includes('describe') || clean.includes('attachment') || clean.includes('sytem') || clean.includes('system'))) {
+                return { config: cfg, isComment: true, isQuestion: false };
+            }
+            if (clean.includes('foundation') && clean.includes('permanent')) {
+                return { config: cfg, isComment: false, isQuestion: true };
+            }
+        } else if (cfg.id === 'towing_hitch_removed') {
+            if ((clean.includes('hitch') || clean.includes('wheels') || clean.includes('axles')) && (clean.includes('explain') || clean.includes('comment'))) {
+                return { config: cfg, isComment: true, isQuestion: false };
+            }
+            if ((clean.includes('hitch') || clean.includes('wheels') || clean.includes('axles')) && clean.includes('removed')) {
+                return { config: cfg, isComment: false, isQuestion: true };
+            }
+        } else if (cfg.id === 'connected_to_utilities') {
+            if ((clean.includes('septic') || clean.includes('sewage') || clean.includes('utilities')) && (clean.includes('explain') || clean.includes('comment'))) {
+                return { config: cfg, isComment: true, isQuestion: false };
+            }
+            if ((clean.includes('septic') || clean.includes('sewage') || clean.includes('utilities')) && clean.includes('connected')) {
+                return { config: cfg, isComment: false, isQuestion: true };
+            }
+        } else if (cfg.id === 'market_acceptability') {
+            if ((clean.includes('gross living') || clean.includes('room dimensions') || clean.includes('acceptable to the market')) && (clean.includes('explain') || clean.includes('comment'))) {
+                return { config: cfg, isComment: true, isQuestion: false };
+            }
+            if (clean.includes('gross living') || clean.includes('room dimensions') || clean.includes('acceptable to the market')) {
+                return { config: cfg, isComment: false, isQuestion: true };
+            }
+        } else if (cfg.id === 'hud_zones_meet') {
+            if ((clean.includes('wind') || clean.includes('roof load') || clean.includes('thermal zones')) && (clean.includes('explain') || clean.includes('comment') || clean.includes('description'))) {
+                return { config: cfg, isComment: true, isQuestion: false };
+            }
+            if (clean.includes('wind') && clean.includes('roof load') && clean.includes('hud')) {
+                return { config: cfg, isComment: false, isQuestion: true };
+            }
+        }
+    }
+    return null;
+};
+
+export const getManufacturedHomeValue = (allData, keys) => {
+    if (!allData || typeof allData !== 'object') return '';
+    const keyList = Array.isArray(keys) ? keys : [keys];
+    for (const k of keyList) {
+        const candidates = [
+            allData?.[k],
+            allData?.IMPROVEMENTS?.[k],
+            allData?.Improvements?.[k],
+            allData?.['Manufactured Home']?.[k],
+            allData?.MANUFACTURED_HOME?.[k],
+            allData?.clean_data?.Improvements?.[k],
+            allData?.clean_data?.IMPROVEMENTS?.[k],
+            allData?.clean_data?.['Manufactured Home']?.[k],
+            allData?.clean_data?.[k]
+        ];
+        for (const val of candidates) {
+            if (val !== undefined && val !== null && val !== '') {
+                const extracted = typeof val === 'object' && val !== null ? (val.value ?? val.choice ?? '') : val;
+                if (extracted !== undefined && extracted !== null && String(extracted).trim() !== '') {
+                    return String(extracted).trim();
+                }
+            }
+        }
+    }
+    return '';
+};
+
+export const checkManufacturedHomeConditionalField = (field, text, arg3, arg4, arg5) => {
+    let allData = null;
+    let textVal = text;
+
+    if (arg3 && typeof arg3 === 'object' && !Array.isArray(arg3)) {
+        allData = arg3;
+    } else if (text && typeof text === 'object' && !Array.isArray(text)) {
+        allData = text;
+        textVal = null;
+    } else {
+        allData = arg3 || {};
+    }
+
+    const match = findManufacturedHomeConditionalConfig(field);
+    if (!match) return null;
+
+    const { config, isComment, isQuestion } = match;
+
+    let currentVal = textVal !== undefined && textVal !== null
+        ? (typeof textVal === 'object' ? (textVal.value ?? textVal.choice ?? '') : String(textVal)).trim()
+        : '';
+
+    if (!currentVal && allData) {
+        currentVal = getManufacturedHomeValue(allData, isComment ? config.commentKeys : config.questionKeys);
+    }
+
+    if (isComment) {
+        const questionVal = getManufacturedHomeValue(allData, config.questionKeys);
+        const isTrigger = config.triggerType === 'no' ? isAnswerNegative(questionVal) : isAnswerAffirmative(questionVal);
+        const isNonTrigger = config.triggerType === 'no' ? isAnswerAffirmative(questionVal) : isAnswerNegative(questionVal);
+
+        if (isTrigger) {
+            if (!currentVal) {
+                return {
+                    isError: true,
+                    skipBlankFilter: true,
+                    section: 'Improvements',
+                    field: field,
+                    message: `'${field}' is required when '${config.questionLabel}' is answered '${config.triggerLabel}'.`
+                };
+            }
+            return {
+                isMatch: true,
+                skipBlankFilter: true,
+                section: 'Improvements',
+                field: field,
+                message: `Valid: Explanation is provided for '${config.questionLabel}'.`
+            };
+        }
+
+        if (isNonTrigger) {
+            if (!currentVal) {
+                return null;
+            }
+            return {
+                isMatch: true,
+                skipBlankFilter: true,
+                section: 'Improvements',
+                field: field,
+                message: `Valid: Value is present.`
+            };
+        }
+
+        // If question is not answered in data
+        if (!currentVal) {
+            return {
+                isError: true,
+                skipBlankFilter: true,
+                section: 'Improvements',
+                field: field,
+                message: `'${config.questionLabel}' must be answered (Yes or No).`
+            };
+        }
+        return {
+            isMatch: true,
+            skipBlankFilter: true,
+            section: 'Improvements',
+            field: field,
+            message: `Valid: Value is present.`
+        };
+    }
+
+    if (isQuestion) {
+        if (!currentVal) {
+            return {
+                isError: true,
+                skipBlankFilter: true,
+                section: 'Improvements',
+                field: field,
+                message: `'${field}' must not be blank.`
+            };
+        }
+
+        const isAffirmative = isAnswerAffirmative(currentVal);
+        const isNegative = isAnswerNegative(currentVal);
+        const isTrigger = config.triggerType === 'no' ? isNegative : isAffirmative;
+
+        if (!isTrigger) {
+            return {
+                isMatch: true,
+                skipBlankFilter: true,
+                section: 'Improvements',
+                field: field,
+                message: `Valid: '${config.questionLabel}' is answered '${config.nonTriggerLabel}'.`
+            };
+        }
+
+        // Trigger condition ("No")
+        const commentVal = getManufacturedHomeValue(allData, config.commentKeys);
+        const hasInlineComment = currentVal.replace(/^(no|yes|n|y)\b/i, '').replace(/^[\s;:,\-./]+/, '').trim().length > 0;
+
+        if (!commentVal && !hasInlineComment) {
+            return {
+                isError: true,
+                skipBlankFilter: true,
+                section: 'Improvements',
+                field: field,
+                message: `'${config.commentLabel}' is required when '${field}' is answered '${config.triggerLabel}'.`
+            };
+        }
+
+        return {
+            isMatch: true,
+            skipBlankFilter: true,
+            section: 'Improvements',
+            field: field,
+            message: `Valid: '${field}' is answered '${config.triggerLabel}' and explanation is provided.`
+        };
+    }
+
+    return null;
+};
+
 export {
     checkPredominantPriceVsIndicatedValue,
     getPredominantPriceValue,
     getIndicatedSalesComparisonValue,
     getImprovementsComments
-} from './neighborhoodValidation';
+} from './neighborhoodValidation.js';

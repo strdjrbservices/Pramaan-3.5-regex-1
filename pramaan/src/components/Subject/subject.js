@@ -473,8 +473,57 @@ function Subject({ defaultFormType }) {
       'Shape': [siteValidation.checkSiteSectionBlank],
       'View': [siteValidation.checkSiteSectionBlank, salesComparisonValidation.checkViewAdjustment], 'View Adjustment': [salesComparisonValidation.checkViewAdjustment],
       'Area': [siteValidation.checkArea],
+      'Are the utilities and off-site improvements typical for the market area?': [(field, text, data) => siteValidation.checkYesNoWithComment(field, text, data, { name: 'Are the utilities and off-site improvements typical for the market area?', wantedValue: 'yes', unwantedValue: 'no' })],
       'Are the utilities and off-site improvements typical for the market area? If No, describe': [(field, text, data) => siteValidation.checkYesNoWithComment(field, text, data, { name: 'Are the utilities and off-site improvements typical for the market area? If No, describe', wantedValue: 'yes', unwantedValue: 'no' })],
       'Are there any adverse site conditions or external factors (easements, encroachments, environmental conditions, land uses, etc.)? If Yes, describe': [(field, text, data) => siteValidation.checkYesNoWithComment(field, text, data, { name: 'Are there any adverse site conditions or external factors (easements, encroachments, environmental conditions, land uses, etc.)? If Yes, describe', wantedValue: 'no', unwantedValue: 'yes' })],
+      'Are there any adverse site conditions or external factors (easements, encroachments, environmental conditions, land uses, etc.)? Yes No If Yes, describe': [(field, text, data) => siteValidation.checkYesNoWithComment(field, text, data, { name: 'Are there any adverse site conditions or external factors (easements, encroachments, environmental conditions, land uses, etc.)? Yes No If Yes, describe', wantedValue: 'no', unwantedValue: 'yes' })],
+      'Are there any adverse site conditions or external factors (easements, encroachments, environmental conditions, land uses, etc.)?': [(field, text, data) => siteValidation.checkYesNoWithComment(field, text, data, { name: 'Are there any adverse site conditions or external factors (easements, encroachments, environmental conditions, land uses, etc.)?', wantedValue: 'no', unwantedValue: 'yes' })],
+      'Is the site size, shape and topography generally conforming to and acceptable in the market area? Yes No If No, explain': [(field, text, data) => siteValidation.checkYesNoWithComment(field, text, data, { name: 'Is the site size, shape and topography generally conforming to and acceptable in the market area? Yes No If No, explain', wantedValue: 'yes', unwantedValue: 'no' })],
+      'Is the site size, shape and topography generally conforming to and acceptable in the market area?': [(field, text, data) => siteValidation.checkYesNoWithComment(field, text, data, { name: 'Is the site size, shape and topography generally conforming to and acceptable in the market area?', wantedValue: 'yes', unwantedValue: 'no' })],
+      'Is there adequate vehicular access to the subject property? Yes No If No, describe': [(field, text, data) => siteValidation.checkYesNoWithComment(field, text, data, { name: 'Is there adequate vehicular access to the subject property? Yes No If No, describe', wantedValue: 'yes', unwantedValue: 'no' })],
+      'Is there adequate vehicular access to the subject property?': [(field, text, data) => siteValidation.checkYesNoWithComment(field, text, data, { name: 'Is there adequate vehicular access to the subject property?', wantedValue: 'yes', unwantedValue: 'no' })],
+      'Is the street properly maintained? Yes No If No, describe': [(field, text, data) => siteValidation.checkYesNoWithComment(field, text, data, { name: 'Is the street properly maintained? Yes No If No, describe', wantedValue: 'yes', unwantedValue: 'no' })],
+      'Is the street properly maintained?': [(field, text, data) => siteValidation.checkYesNoWithComment(field, text, data, { name: 'Is the street properly maintained?', wantedValue: 'yes', unwantedValue: 'no' })],
+      'Do the Wind, Roof Load, and Thermal Zones meet the minimum HUD requirements for the location of the subject property? Yes No If No, explain': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Do the Wind, Roof Load, and Thermal Zones meet the minimum HUD requirements for the location of the subject property?': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Wind, Roof Load, and Thermal Zones Explanation': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Meets HUD Requirements For Location Description': [improvementsValidation.checkManufacturedHomeConditionalField],
+
+      'Is the manufactured home attached to a permanent foundation system? Yes No If No, describe the foundation sytem and the manner of attachment.': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Is the manufactured home attached to a permanent foundation system? Yes No If No, describe the foundation system and the manner of attachment.': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Is the manufactured home attached to a permanent foundation system?': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Permanent Foundation': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Attached to Permanent Foundation': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'If No, describe the foundation system and the manner of attachment.': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'If No, describe the foundation system and the manner of attachment': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'If No, describe the foundation sytem and the manner of attachment.': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'If No, describe the foundation sytem and the manner of attachment': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Foundation Attachment Description': [improvementsValidation.checkManufacturedHomeConditionalField],
+
+      'Have the towing hitch, wheels, and axles been removed? Yes No If No, explain': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Have the towing hitch, wheels, and axles been removed? Yes No If No, explain.': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Have the towing hitch, wheels, and axles been removed?': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Wheels/Axles Removed': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Towing Hitch/Wheels/Axles Removed': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Have the towing hitch, wheels, and axles been removed? explain': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Have the towing hitch, wheels, and axles been removed? If No, explain': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Wheels/Axles Removed Comment': [improvementsValidation.checkManufacturedHomeConditionalField],
+
+      'Is the manufactured home permanently connected to a septic tank or sewage system and other utilities? Yes No If No, explain': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Is the manufactured home permanently connected to a septic tank or sewage system and other utilities? Yes No If No, explain.': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Is the manufactured home permanently connected to a septic tank or sewage system and other utilities?': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Connected to Utilities': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Is the manufactured home permanently connected to a septic tank or sewage system and other utilities? explain': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Is the manufactured home permanently connected to a septic tank or sewage system and other utilities? If No, explain': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Connected to Utilities Comment': [improvementsValidation.checkManufacturedHomeConditionalField],
+
+      'Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market? Yes No If No, explain': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market? Yes No If No, explain.': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market?': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Market Acceptability': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market? explain': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Does the dwelling have sufficient gross living area and room dimensions to be acceptable to the market? If No, explain': [improvementsValidation.checkManufacturedHomeConditionalField],
+      'Market Acceptability Comment': [improvementsValidation.checkManufacturedHomeConditionalField],
       "Electricity": [siteValidation.checkUtilities], "Gas": [siteValidation.checkUtilities], "Water": [siteValidation.checkUtilities], "Sanitary Sewer": [siteValidation.checkUtilities], "Street": [siteValidation.checkUtilities], "Alley": [siteValidation.checkUtilities],
 
       'Electricity Detail': [version1Validation.checkVersion1UtilitySubfields],
@@ -512,7 +561,7 @@ function Subject({ defaultFormType }) {
       'ADU File Check': [subjectValidation.checkAduFileCheck, improvementsValidation.checkAduSalesGridPresence, subjectValidation.checkPresence],
       'ADU Check': [subjectValidation.checkAduFileCheck, improvementsValidation.checkAduSalesGridPresence, subjectValidation.checkPresence],
       'ADU': [improvementsValidation.checkAduSalesGridPresence, subjectValidation.checkAduFileCheck, subjectValidation.checkPresence],
-      'ADU Adjustment': [improvementsValidation.checkAduSalesGridPresence],
+      'ADU Adjustment': [improvementsValidation.checkAduSalesGridPresence, salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
       'Accessory Unit': [improvementsValidation.checkAduSalesGridPresence, subjectValidation.checkPresence],
       'Accessory Dwelling Unit': [improvementsValidation.checkAduSalesGridPresence, subjectValidation.checkPresence],
       'FHA Case No.': [subjectValidation.checkFhaCaseNo],
@@ -605,7 +654,19 @@ function Subject({ defaultFormType }) {
       "Multi-Family": [neighborhoodValidation.checkNeighborhoodUsageConsistency, neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
 
       "Commercial": [neighborhoodValidation.checkNeighborhoodUsageConsistency, neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
-      "Other": [neighborhoodValidation.checkOtherLandUseComment, neighborhoodValidation.checkNeighborhoodUsageConsistency, neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
+      "Other": [
+        (field, arg2, arg3, arg4, arg5) => {
+          const isSalesGrid = arg5 || (typeof arg3 === 'string' && (arg3 === 'Subject' || arg3.startsWith('Comp'))) || (Array.isArray(arg4) && (arg4[0] === 'Subject' || String(arg4[0]).startsWith('Comp') || arg4[0] === 'SALES_GRID' || arg4[0] === 'Sales Grid'));
+          if (isSalesGrid) {
+            return salesComparisonValidation.checkExtraSalesGridFieldAdjustment(field, arg2, arg3, arg4, arg5);
+          }
+          const res1 = neighborhoodValidation.checkOtherLandUseComment(field, arg2, arg3);
+          if (res1) return res1;
+          const res2 = neighborhoodValidation.checkNeighborhoodUsageConsistency(field, arg2);
+          if (res2) return res2;
+          return neighborhoodValidation.checkNeighborhoodFieldsNotBlank(field, arg2, arg3);
+        }
+      ],
       "Present Land Use for other": [neighborhoodValidation.checkOtherLandUse],
       "Neighborhood Boundaries": [neighborhoodValidation.checkNeighborhoodBoundaries, neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
       "Built-Up": [neighborhoodValidation.checkBuiltUp, neighborhoodValidation.checkSingleChoiceFields, neighborhoodValidation.checkNeighborhoodFieldsNotBlank], "Growth": [neighborhoodValidation.checkGrowth, neighborhoodValidation.checkSingleChoiceFields, neighborhoodValidation.checkNeighborhoodFieldsNotBlank], "Property Values": [neighborhoodValidation.checkPropertyValues, neighborhoodValidation.checkSingleChoiceFields, neighborhoodValidation.checkNeighborhoodFieldsNotBlank], "Demand/Supply": [neighborhoodValidation.checkDemandSupply, neighborhoodValidation.checkSingleChoiceFields, neighborhoodValidation.checkNeighborhoodFieldsNotBlank], "Marketing Time": [neighborhoodValidation.checkMarketingTime, neighborhoodValidation.checkSingleChoiceFields, neighborhoodValidation.checkNeighborhoodFieldsNotBlank],
@@ -646,6 +707,8 @@ function Subject({ defaultFormType }) {
       'Amenities Adjustment': [version1Validation.checkVersion1AmenitiesAdjustmentConsistency],
 
       'Units': [improvementsValidation.checkUnits, improvementsValidation.checkAccessoryUnit, improvementsValidation.checkAduSalesGridPresence],
+      '# of Units': [improvementsValidation.checkUnits, improvementsValidation.checkAccessoryUnit, improvementsValidation.checkAduSalesGridPresence],
+      'Number of Units': [improvementsValidation.checkUnits, improvementsValidation.checkAccessoryUnit, improvementsValidation.checkAduSalesGridPresence],
       '# of Stories': [improvementsValidation.checkNumberOfStories],
       'Type': [improvementsValidation.checkPropertyType],
       'Existing/Proposed/Under Const.': [improvementsValidation.checkExistingProposedUnderConst, improvementsValidation.checkConstructionStatusAndReconciliation],
@@ -665,6 +728,13 @@ function Subject({ defaultFormType }) {
       'Describe the condition of the property': [improvementsValidation.checkPropertyConditionDescription],
       'Are there any physical deficiencies or adverse conditions that affect the livability, soundness, or structural integrity of the property? If Yes, describe': [improvementsValidation.checkPhysicalDeficienciesImprovements],
       'Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? If No, describe': [improvementsValidation.checkNeighborhoodConformity],
+      'Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?': [improvementsValidation.checkNeighborhoodConformity],
+      'Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)': [improvementsValidation.checkNeighborhoodConformity],
+      'Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)Yes/NO If No, describe:': [improvementsValidation.checkNeighborhoodConformity],
+      'Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.) Yes/No If No, describe': [improvementsValidation.checkNeighborhoodConformity],
+      'Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? comment': [improvementsValidation.checkNeighborhoodConformity],
+      'Neighborhood Conformance Comment': [improvementsValidation.checkNeighborhoodConformity],
+      'If No, describe': [improvementsValidation.checkNeighborhoodConformity],
       'Foundation': [improvementsValidation.checkFoundationType],
       'Foundation Type': [improvementsValidation.checkFoundationType],
       'Basement Area': [improvementsValidation.checkBasementDetails],
@@ -672,13 +742,21 @@ function Subject({ defaultFormType }) {
       'Basement Finish': [improvementsValidation.checkBasementDetails],
       'Basement Finish %': [improvementsValidation.checkBasementDetails],
       'Infestation': [improvementsValidation.checkEvidenceOf], 'Dampness': [improvementsValidation.checkEvidenceOf], 'Settlement': [improvementsValidation.checkEvidenceOf],
-      'Foundation Walls (Material/Condition)': [improvementsValidation.checkMaterialCondition], 'Exterior Walls (Material/Condition)': [improvementsValidation.checkMaterialCondition],
-      'Roof Surface (Material/Condition)': [improvementsValidation.checkMaterialCondition], 'Gutters & Downspouts (Material/Condition)': [improvementsValidation.checkMaterialCondition],
-      'Window Type (Material/Condition)': [improvementsValidation.checkMaterialCondition], 'Floors (Material/Condition)': [improvementsValidation.checkMaterialCondition],
-      'Walls (Material/Condition)': [improvementsValidation.checkMaterialCondition],
+      'Foundation Walls (Material/Condition)': [improvementsValidation.checkMaterialCondition], 'Foundation Walls': [improvementsValidation.checkMaterialCondition],
+      'Exterior Walls (Material/Condition)': [improvementsValidation.checkMaterialCondition], 'Exterior Walls': [improvementsValidation.checkMaterialCondition],
+      'Roof Surface (Material/Condition)': [improvementsValidation.checkMaterialCondition], 'Roof Surface': [improvementsValidation.checkMaterialCondition],
+      'Gutters & Downspouts (Material/Condition)': [improvementsValidation.checkMaterialCondition], 'Gutters & Downspouts': [improvementsValidation.checkMaterialCondition],
+      'Window Type (Material/Condition)': [improvementsValidation.checkMaterialCondition], 'Window Type': [improvementsValidation.checkMaterialCondition],
+      'Storm Sash/Insulated': [improvementsValidation.checkMaterialCondition], 'Storm Sash': [improvementsValidation.checkMaterialCondition], 'Storm Sash / Insulated': [improvementsValidation.checkMaterialCondition], 'Storm Sash/Insulated (Material/Condition)': [improvementsValidation.checkMaterialCondition],
+      'Screens': [improvementsValidation.checkMaterialCondition], 'Screens (Material/Condition)': [improvementsValidation.checkMaterialCondition],
+      'Doors': [improvementsValidation.checkMaterialCondition], 'Doors (Material/Condition)': [improvementsValidation.checkMaterialCondition],
+      'Skirting': [improvementsValidation.checkMaterialCondition], 'Skirting (Material/Condition)': [improvementsValidation.checkMaterialCondition],
+      'Floors (Material/Condition)': [improvementsValidation.checkMaterialCondition], 'Floors': [improvementsValidation.checkMaterialCondition],
+      'Walls (Material/Condition)': [improvementsValidation.checkMaterialCondition], 'Walls': [improvementsValidation.checkMaterialCondition],
       'Appraiser Name': [htmlDataValidation.checkAppraiserVendorNameConsistency, version1Validation.checkAppraiserNameConsistency],
-      'Trim/Finish (Material/Condition)': [improvementsValidation.checkMaterialCondition],
-      'Bath Floor (Material/Condition)': [improvementsValidation.checkMaterialCondition], 'Bath Wainscot (Material/Condition)': [improvementsValidation.checkMaterialCondition],
+      'Trim/Finish (Material/Condition)': [improvementsValidation.checkMaterialCondition], 'Trim/Finish': [improvementsValidation.checkMaterialCondition],
+      'Bath Floor (Material/Condition)': [improvementsValidation.checkMaterialCondition], 'Bath Floor': [improvementsValidation.checkMaterialCondition],
+      'Bath Wainscot (Material/Condition)': [improvementsValidation.checkMaterialCondition], 'Bath Wainscot': [improvementsValidation.checkMaterialCondition],
       'Fuel': [improvementsValidation.checkHeatingFuel, improvementsValidation.checkImprovementsFieldsNotBlank],
       'Car Storage': [improvementsValidation.checkCarStorage, improvementsValidation.checkImprovementsFieldsNotBlank],
       'Driveway # of Cars': [improvementsValidation.checkCarStorage],
@@ -726,6 +804,32 @@ function Subject({ defaultFormType }) {
       'Functional Utility': [salesComparisonValidation.checkFunctionalUtilityAdjustment], 'Functional Utility Adjustment': [salesComparisonValidation.checkFunctionalUtilityAdjustment],
       'Energy Efficient Items': [salesComparisonValidation.checkEnergyEfficientItemsAdjustment], 'Energy Efficient Items Adjustment': [salesComparisonValidation.checkEnergyEfficientItemsAdjustment],
       'Porch/Patio/Deck': [salesComparisonValidation.checkPorchPatioDeckAdjustment], 'Porch/Patio/Deck Adjustment': [salesComparisonValidation.checkPorchPatioDeckAdjustment],
+      'Other Adjustment': [salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
+      'Other Feature 1': [salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
+      'Other Feature 1 Adjustment': [salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
+      'Other Feature 2': [salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
+      'Other Feature 2 Adjustment': [salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
+      'Other Feature 3': [salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
+      'Other Feature 3 Adjustment': [salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
+      'Other Feature 4': [salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
+      'Other Feature 4 Adjustment': [salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
+      'Other Feature 5': [salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
+      'Other Feature 5 Adjustment': [salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
+      'Additional Description': [salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
+      'Additional Adjustment': [salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
+      'Additional Description Adjustment': [salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
+      'Fireplace (s), etc.': [salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
+      'Fireplace (s), etc. Adjustment': [salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
+      'Fireplace': [salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
+      'Fireplace Adjustment': [salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
+      'Fireplace(s)': [salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
+      'Fireplace(s) Adjustment': [salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
+      'Fence, Pool, etc.': [salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
+      'Fence, Pool, etc. Adjustment': [salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
+      'Fence/Pool': [salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
+      'Fence/Pool Adjustment': [salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
+      'Woodstove': [salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
+      'Woodstove Adjustment': [salesComparisonValidation.checkExtraSalesGridFieldAdjustment],
       'Heating/Cooling': [salesComparisonValidation.checkHeatingCoolingAdjustment], 'Heating/Cooling Adjustment': [salesComparisonValidation.checkHeatingCoolingAdjustment],
       'Basement & Finished Rooms Below Grade': [salesComparisonValidation.checkBasementAdjustment],
       'Basement & Finished Rooms Below Grade Adjustment': [salesComparisonValidation.checkBasementAdjustment],
@@ -737,6 +841,9 @@ function Subject({ defaultFormType }) {
       'Basement Finished Rooms Adjustment': [salesComparisonValidation.checkBasementAdjustment],
       'Basement Adjustment': [salesComparisonValidation.checkBasementAdjustment],
       'Data Source(s)': [salesComparisonValidation.checkDataSourceDOM],
+      'Verification Source(s)': [salesComparisonValidation.checkVerificationSources],
+      'Verification Source': [salesComparisonValidation.checkVerificationSources],
+      'Verification Sources': [salesComparisonValidation.checkVerificationSources],
       'Actual Age': [salesComparisonValidation.checkActualAgeAdjustment, salesComparisonValidation.checkSubjectAgeConsistency], 'Actual Age Adjustment': [salesComparisonValidation.checkActualAgeAdjustment],
       'Sale Price': [salesComparisonValidation.checkCompSalePriceWithinNeighborhoodRange, salesComparisonValidation.checkSalePrice, salesComparisonValidation.checkCompSalePriceBracketing],
       'Sale Price $': [salesComparisonValidation.checkCompSalePriceWithinNeighborhoodRange, salesComparisonValidation.checkSalePrice, salesComparisonValidation.checkCompSalePriceBracketing],
@@ -766,6 +873,13 @@ function Subject({ defaultFormType }) {
       'Indicated Value by Sales Comparison Approach': [salesComparisonValidation.checkFinalValueBracketing, reconciliationValidation.checkFinalValueConsistency, neighborhoodValidation.checkPredominantPriceVsIndicatedValue, priorSaleHistoryValidation.checkSubjectPriorSaleValueIncrease],
       'APPRAISED VALUE OF SUBJECT PROPERTY $': [reconciliationValidation.checkFinalValueConsistency],
       'Cost Approach (if developed)': [reconciliationValidation.checkCostApproachDeveloped, form1004And1007Validation.checkCostApproachMatchConsistency],
+      'Total Gross Living Area': [costApproachValidation.checkCostApproachGlaConsistency],
+      'Total Gross Living Area:': [costApproachValidation.checkCostApproachGlaConsistency],
+      'Describe any additions or modifications (decks, rooms, remodeling, etc.):': [improvementsValidation.checkAdditionsOrModifications],
+      'Describe any additions or modifications (decks, rooms, remodeling, etc.)': [improvementsValidation.checkAdditionsOrModifications],
+      'Describe any additions or modifications (decks, rooms, remodeling, etc.': [improvementsValidation.checkAdditionsOrModifications],
+      'Additions/Modifications Description': [improvementsValidation.checkAdditionsOrModifications],
+      'Additions or Modifications': [improvementsValidation.checkAdditionsOrModifications],
       'This appraisal is made "as is", subject to completion per plans and specifications on the basis of a hypothetical condition that the improvements have been completed, subject to the following repairs or alterations on the basis of a hypothetical condition that the repairs or alterations have been completed, or subject to the following required inspection based on the extraordinary assumption that the condition or deficiency does not require alteration or repair:': [reconciliationValidation.checkAppraisalCondition],
       'Reconciliation Status': [reconciliationValidation.checkAppraisalCondition],
       'as of': [reconciliationValidation.checkAsOfDate, form1004And1007Validation.checkRentScheduleAsOfDateConsistency, contractValidation.checkContractDateVsAsOfDate],
@@ -1158,6 +1272,45 @@ function Subject({ defaultFormType }) {
       registry[f].push(costApproachValidation.checkBplCostApproachReplication);
     });
 
+    const costGlaConsistencyFields = [
+      "Total Gross Living Area",
+      "Total Gross Living Area:",
+      "Square Feet of Gross Living Area Above Grade",
+      "Gross Living Area",
+      "Gross Living Area sq.ft."
+    ];
+    costGlaConsistencyFields.forEach(f => {
+      if (!registry[f]) registry[f] = [];
+      registry[f].push(costApproachValidation.checkCostApproachGlaConsistency);
+    });
+
+    const additionsModificationsFields = [
+      "Describe any additions or modifications (decks, rooms, remodeling, etc.):",
+      "Describe any additions or modifications (decks, rooms, remodeling, etc.)",
+      "Describe any additions or modifications (decks, rooms, remodeling, etc.",
+      "Additions/Modifications Description",
+      "Additions or Modifications"
+    ];
+    additionsModificationsFields.forEach(f => {
+      if (!registry[f]) registry[f] = [];
+      registry[f].push(improvementsValidation.checkAdditionsOrModifications);
+    });
+
+    const neighborhoodConformityFields = [
+      "Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?",
+      "Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? If No, describe",
+      "Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)",
+      "Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)Yes/NO If No, describe:",
+      "Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.) Yes/No If No, describe",
+      "Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? comment",
+      "Neighborhood Conformance Comment",
+      "If No, describe"
+    ];
+    neighborhoodConformityFields.forEach(f => {
+      if (!registry[f]) registry[f] = [];
+      registry[f].push(improvementsValidation.checkNeighborhoodConformity);
+    });
+
     return registry;
   };
 
@@ -1460,6 +1613,20 @@ function Subject({ defaultFormType }) {
         'Room Count Bdrms', 'Room Count Baths',
         'Other:', 'Other: Adjustment',
         'Other', 'Other Adjustment',
+        'Other Feature 1', 'Other Feature 1 Adjustment',
+        'Other Feature 2', 'Other Feature 2 Adjustment',
+        'Other Feature 3', 'Other Feature 3 Adjustment',
+        'Other Feature 4', 'Other Feature 4 Adjustment',
+        'Other Feature 5', 'Other Feature 5 Adjustment',
+        'Additional Description', 'Additional Adjustment', 'Additional Description Adjustment',
+        'Fireplace (s), etc.', 'Fireplace (s), etc. Adjustment',
+        'Fireplace', 'Fireplace Adjustment',
+        'Fireplace(s)', 'Fireplace(s) Adjustment',
+        'Fence, Pool, etc.', 'Fence, Pool, etc. Adjustment',
+        'Fence/Pool', 'Fence/Pool Adjustment',
+        'Woodstove', 'Woodstove Adjustment',
+        'ADU Adjustment',
+        'Verification Source(s)', 'Verification Source', 'Verification Sources',
         'Basement & Finished Rooms Below Grade', 'Basement & Finished Rooms Below Grade Adjustment',
         'Basement & Finished Rooms', 'Basement & Finished Rooms Adjustment',
         'Basement Description', 'Basement Description Adjustment',
@@ -1567,7 +1734,26 @@ function Subject({ defaultFormType }) {
       }
 
       const lookupKey = Object.keys(customRegistry).find(k => k.toLowerCase() === String(lookupField).toLowerCase()) || lookupField;
-      const validationFns = customRegistry[lookupKey] || [];
+      let validationFns = customRegistry[lookupKey] || [];
+      if (validationFns.length === 0 && typeof lookupField === 'string') {
+        const lfLower = lookupField.toLowerCase();
+        if (lfLower.startsWith('other feature') || lfLower === 'other' || lfLower === 'other adjustment' || lfLower.includes('additional description') || lfLower.includes('additional adjustment')) {
+          validationFns = [salesComparisonValidation.checkExtraSalesGridFieldAdjustment];
+        } else if (lfLower.includes('verification source')) {
+          validationFns = [salesComparisonValidation.checkVerificationSources];
+        } else if (
+          lfLower.includes('permanent foundation') ||
+          lfLower.includes('towing hitch') ||
+          lfLower.includes('septic tank') ||
+          lfLower.includes('acceptable to the market') ||
+          lfLower.includes('manner of attachment') ||
+          lfLower.includes('wheels/axles removed') ||
+          lfLower.includes('connected to utilities') ||
+          lfLower.includes('market acceptability')
+        ) {
+          validationFns = [improvementsValidation.checkManufacturedHomeConditionalField];
+        }
+      }
       for (const fn of validationFns) {
         try {
           let result = fn(lookupField, value, allData, path, saleName);
@@ -1859,6 +2045,20 @@ function Subject({ defaultFormType }) {
         'Room Count Bdrms', 'Room Count Baths',
         'Other:', 'Other: Adjustment',
         'Other', 'Other Adjustment',
+        'Other Feature 1', 'Other Feature 1 Adjustment',
+        'Other Feature 2', 'Other Feature 2 Adjustment',
+        'Other Feature 3', 'Other Feature 3 Adjustment',
+        'Other Feature 4', 'Other Feature 4 Adjustment',
+        'Other Feature 5', 'Other Feature 5 Adjustment',
+        'Additional Description', 'Additional Adjustment', 'Additional Description Adjustment',
+        'Fireplace (s), etc.', 'Fireplace (s), etc. Adjustment',
+        'Fireplace', 'Fireplace Adjustment',
+        'Fireplace(s)', 'Fireplace(s) Adjustment',
+        'Fence, Pool, etc.', 'Fence, Pool, etc. Adjustment',
+        'Fence/Pool', 'Fence/Pool Adjustment',
+        'Woodstove', 'Woodstove Adjustment',
+        'ADU Adjustment',
+        'Verification Source(s)', 'Verification Source', 'Verification Sources',
         'Basement & Finished Rooms Below Grade', 'Basement & Finished Rooms Below Grade Adjustment',
         'Basement & Finished Rooms', 'Basement & Finished Rooms Adjustment',
         'Basement Description', 'Basement Description Adjustment',
@@ -1929,7 +2129,26 @@ function Subject({ defaultFormType }) {
       }
 
       const lookupKey = Object.keys(customRegistry).find(k => k.toLowerCase() === String(lookupField).toLowerCase()) || lookupField;
-      const validationFns = customRegistry[lookupKey] || [];
+      let validationFns = customRegistry[lookupKey] || [];
+      if (validationFns.length === 0 && typeof lookupField === 'string') {
+        const lfLower = lookupField.toLowerCase();
+        if (lfLower.startsWith('other feature') || lfLower === 'other' || lfLower === 'other adjustment' || lfLower.includes('additional description') || lfLower.includes('additional adjustment')) {
+          validationFns = [salesComparisonValidation.checkExtraSalesGridFieldAdjustment];
+        } else if (lfLower.includes('verification source')) {
+          validationFns = [salesComparisonValidation.checkVerificationSources];
+        } else if (
+          lfLower.includes('permanent foundation') ||
+          lfLower.includes('towing hitch') ||
+          lfLower.includes('septic tank') ||
+          lfLower.includes('acceptable to the market') ||
+          lfLower.includes('manner of attachment') ||
+          lfLower.includes('wheels/axles removed') ||
+          lfLower.includes('connected to utilities') ||
+          lfLower.includes('market acceptability')
+        ) {
+          validationFns = [improvementsValidation.checkManufacturedHomeConditionalField];
+        }
+      }
       if (validationFns.length === 0) {
         return;
       }
@@ -2301,20 +2520,30 @@ function Subject({ defaultFormType }) {
       }
 
       // Synchronize Units and One with Accessory Unit aliases
-      const isUnitsField = fieldKey === 'Units';
+      const isUnitsField = fieldKey === 'Units' || fieldKey === '# of Units' || fieldKey === 'Number of Units';
       const isOneWithAccessoryUnitField = fieldKey === 'One with Accessory Unit';
 
       if (isUnitsField) {
         const uVal = String(value || '').trim();
         newData['Units'] = uVal;
+        newData['# of Units'] = uVal;
+        newData['Number of Units'] = uVal;
         if (!newData.Subject) newData.Subject = {};
         newData.Subject['Units'] = uVal;
+        newData.Subject['# of Units'] = uVal;
+        newData.Subject['Number of Units'] = uVal;
         if (!newData.IMPROVEMENTS) newData.IMPROVEMENTS = {};
         newData.IMPROVEMENTS['Units'] = uVal;
+        newData.IMPROVEMENTS['# of Units'] = uVal;
+        newData.IMPROVEMENTS['Number of Units'] = uVal;
         if (!newData.Improvements) newData.Improvements = {};
         newData.Improvements['Units'] = uVal;
+        newData.Improvements['# of Units'] = uVal;
+        newData.Improvements['Number of Units'] = uVal;
         if (!newData.GENERAL_DESCRIPTION) newData.GENERAL_DESCRIPTION = {};
         newData.GENERAL_DESCRIPTION['Units'] = uVal;
+        newData.GENERAL_DESCRIPTION['# of Units'] = uVal;
+        newData.GENERAL_DESCRIPTION['Number of Units'] = uVal;
 
         const isAcc = uVal.toLowerCase().includes('accessory');
         const accFlag = isAcc ? 'Yes' : 'No';
@@ -2338,15 +2567,31 @@ function Subject({ defaultFormType }) {
 
         if (isPositive) {
           newData['Units'] = 'One with Accessory Unit';
+          newData['# of Units'] = 'One with Accessory Unit';
+          newData['Number of Units'] = 'One with Accessory Unit';
           newData.Subject['Units'] = 'One with Accessory Unit';
+          newData.Subject['# of Units'] = 'One with Accessory Unit';
+          newData.Subject['Number of Units'] = 'One with Accessory Unit';
           newData.IMPROVEMENTS['Units'] = 'One with Accessory Unit';
+          newData.IMPROVEMENTS['# of Units'] = 'One with Accessory Unit';
+          newData.IMPROVEMENTS['Number of Units'] = 'One with Accessory Unit';
           newData.Improvements['Units'] = 'One with Accessory Unit';
+          newData.Improvements['# of Units'] = 'One with Accessory Unit';
+          newData.Improvements['Number of Units'] = 'One with Accessory Unit';
         } else if (accRaw.toLowerCase() === 'no') {
           if (String(newData['Units'] || '').toLowerCase().includes('accessory')) {
             newData['Units'] = 'One';
+            newData['# of Units'] = 'One';
+            newData['Number of Units'] = 'One';
             newData.Subject['Units'] = 'One';
+            newData.Subject['# of Units'] = 'One';
+            newData.Subject['Number of Units'] = 'One';
             newData.IMPROVEMENTS['Units'] = 'One';
+            newData.IMPROVEMENTS['# of Units'] = 'One';
+            newData.IMPROVEMENTS['Number of Units'] = 'One';
             newData.Improvements['Units'] = 'One';
+            newData.Improvements['# of Units'] = 'One';
+            newData.Improvements['Number of Units'] = 'One';
           }
         }
       }

@@ -486,7 +486,7 @@ export const CostApproach1004C = ({
                   Total Gross Living Area:
                 </Typography>
                 <Box sx={{ width: '120px', bgcolor: '#f8fafc', border: '1px solid #94a3b8', borderRadius: 0.5, px: 0.5 }}>
-                  {renderCellInput(['Total Gross Living Area', 'Total Gross Living Area:', 'Square Feet of Gross Living Area Above Grade'], '', { textAlign: 'right', fontWeight: 'bold' })}
+                  {renderCellInput(['Total Gross Living Area', 'Total Gross Living Area:'], '', { textAlign: 'right', fontWeight: 'bold' })}
                 </Box>
                 <Typography sx={{ fontSize: '0.75rem', color: '#64748b' }}>Sq. ft.</Typography>
               </Box>

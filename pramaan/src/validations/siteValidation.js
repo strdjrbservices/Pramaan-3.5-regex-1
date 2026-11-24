@@ -223,7 +223,10 @@ export const checkArea = (field, text) => {
     return { isMatch: true };
 };
 export const checkYesNoWithComment = (field, text, data, fieldConfig) => {
-    if (field !== fieldConfig.name) return null;
+    const isTarget = Array.isArray(fieldConfig?.name)
+        ? fieldConfig.name.includes(field)
+        : field === fieldConfig?.name;
+    if (!isTarget) return null;
 
     const value = String(text || '').trim();
 
@@ -234,11 +237,21 @@ export const checkYesNoWithComment = (field, text, data, fieldConfig) => {
         };
     }
 
-    const wanted = fieldConfig.wantedValue.toLowerCase();
-    const unwanted = fieldConfig.unwantedValue.toLowerCase();
+    const wanted = (fieldConfig.wantedValue || 'yes').toLowerCase();
+    const unwanted = (fieldConfig.unwantedValue || 'no').toLowerCase();
 
-    const wantedRegex = new RegExp(`^${wanted}\\b`, 'i');
-    const unwantedRegex = new RegExp(`^${unwanted}\\b`, 'i');
+    const isExplain = /explain/i.test(field) || fieldConfig.actionWord === 'explain';
+    const actionPhrase = isExplain ? 'an explanation' : 'a description';
+
+    let wantedPattern = wanted === 'no'
+        ? `^(no|n|none|n/a|not\\s+applicable|no\\s+apparent|no\\s+known|no\\s+adverse)\\b`
+        : `^(yes|y)\\b`;
+    let unwantedPattern = unwanted === 'no'
+        ? `^(no|n)\\b`
+        : `^(yes|y)\\b`;
+
+    const wantedRegex = new RegExp(wantedPattern, 'i');
+    const unwantedRegex = new RegExp(unwantedPattern, 'i');
 
     const isWanted = wantedRegex.test(value);
     const isUnwanted = unwantedRegex.test(value);
@@ -253,7 +266,7 @@ export const checkYesNoWithComment = (field, text, data, fieldConfig) => {
         if (!description) {
             return {
                 isError: true,
-                message: `'${field}' requires a description when answered '${unwanted}'.`,
+                message: `'${field}' requires ${actionPhrase} when answered '${unwanted === 'no' ? 'No' : 'Yes'}'.`,
             };
         }
 
@@ -262,8 +275,26 @@ export const checkYesNoWithComment = (field, text, data, fieldConfig) => {
 
     return {
         isError: true,
-        message: `'${field}' should be '${wanted}' or '${unwanted}' with description.`,
+        message: `'${field}' should be '${wanted === 'no' ? 'No' : 'Yes'}' or '${unwanted === 'no' ? 'No' : 'Yes'}' with ${actionPhrase}.`,
     };
+};
+
+export const checkYesNoOnlySite = (field, text, data, fieldConfig) => {
+    const isTarget = Array.isArray(fieldConfig?.name)
+        ? fieldConfig.name.includes(field)
+        : field === fieldConfig?.name;
+    if (!isTarget) return null;
+
+    const value = String(text || '').trim().toLowerCase();
+    if (!value) {
+        return { isError: true, message: `'${field}' should not be blank.` };
+    }
+    const isYes = /^(yes|y)\b/i.test(value);
+    const isNo = /^(no|n)\b/i.test(value);
+    if (!isYes && !isNo) {
+        return { isError: true, message: `'${field}' must be 'Yes' or 'No'.` };
+    }
+    return { isMatch: true };
 };
 
 export const checkUtilities = (field, text, data) => {

@@ -286,7 +286,7 @@ const SalesComparisonSection = ({
                   }
 
                   let subjectValue = row.label === "Verification Source(s)"
-                    ? (comparableSales.map(sale => getCompData(sale)[row.valueKey]).find(Boolean) || subjectObj[row.valueKey] || '')
+                    ? (subjectObj[row.valueKey] || comparableSales.map(sale => getCompData(sale)[row.valueKey]).find(Boolean) || '')
                     : (row.subjectValueKey ? (data[row.subjectValueKey] || subjectObj[row.subjectValueKey] || subjectObj[row.valueKey] || '') : (subjectObj[row.valueKey] || data[row.valueKey] || ''));
 
                   if (!subjectValue && (row.valueKey === 'Unit #' || row.label === 'Unit #')) {

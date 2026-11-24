@@ -643,4 +643,177 @@ export const checkCostApproachFieldsNotBlank = (field, text, data) => {
     return null;
 };
 
+export const checkCostApproachGlaConsistency = (field, text, data, fieldPath, saleName, formType) => {
+    const fLower = String(field || '').trim().toLowerCase();
+    const isCostGlaField = (
+        fLower === 'total gross living area' ||
+        fLower === 'total gross living area:' ||
+        (Array.isArray(fieldPath) && (fieldPath[0] === 'COST_APPROACH' || fieldPath[0] === 'Cost Approach') && (fLower.includes('gross living area') || fLower.includes('gla')))
+    );
+    const isImpGlaField = (
+        fLower === 'square feet of gross living area above grade' ||
+        fLower === 'above grade finished area' ||
+        (Array.isArray(fieldPath) && (fieldPath[0] === 'IMPROVEMENTS' || fieldPath[0] === 'Improvements') && (fLower.includes('gross living area') || fLower.includes('gla')))
+    );
+    const isSalesGridGlaField = (
+        (fLower === 'gross living area' || fLower === 'gross living area sq.ft.' || fLower === 'gla') &&
+        (!saleName || saleName === 'Subject')
+    );
+
+    if (!isCostGlaField && !isImpGlaField && !isSalesGridGlaField) {
+        return null;
+    }
+
+    const parseGla = (val) => {
+        if (val === undefined || val === null) return NaN;
+        const s = String(typeof val === 'object' && val !== null ? (val.value ?? val.choice ?? '') : val).trim();
+        if (!s) return NaN;
+        const cleaned = s.replace(/,/g, '').replace(/[^0-9.]/g, '');
+        const num = parseFloat(cleaned);
+        return isNaN(num) ? NaN : Math.round(num);
+    };
+
+    const currentText = String(text !== undefined && text !== null ? (typeof text === 'object' ? (text.value ?? '') : text) : '').trim();
+
+    if (isCostGlaField && !currentText) {
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: "'Total Gross Living Area' cannot be blank. It must match Improvements and Sales Grid."
+        };
+    }
+
+    const getCostGla = (d) => {
+        if (!d || typeof d !== 'object') return '';
+        return (
+            d.COST_APPROACH?.['Total Gross Living Area'] ||
+            d.COST_APPROACH?.['Total Gross Living Area:'] ||
+            d['Cost Approach']?.['Total Gross Living Area'] ||
+            d['Cost Approach']?.['Total Gross Living Area:'] ||
+            d.clean_data?.['Cost Approach']?.['Total Gross Living Area'] ||
+            d.clean_data?.['Cost Approach']?.['Total Gross Living Area:'] ||
+            d.clean_data?.COST_APPROACH?.['Total Gross Living Area'] ||
+            d.clean_data?.COST_APPROACH?.['Total Gross Living Area:'] ||
+            d.data?.clean_data?.['Cost Approach']?.['Total Gross Living Area'] ||
+            d.data?.clean_data?.['Cost Approach']?.['Total Gross Living Area:'] ||
+            d.data?.['Cost Approach']?.['Total Gross Living Area'] ||
+            d.data?.['Cost Approach']?.['Total Gross Living Area:'] ||
+            d['Total Gross Living Area'] ||
+            d['Total Gross Living Area:'] ||
+            ''
+        );
+    };
+
+    const getImprovementsGla = (d) => {
+        if (!d || typeof d !== 'object') return '';
+        return (
+            d.IMPROVEMENTS?.['Square Feet of Gross Living Area Above Grade'] ||
+            d.Improvements?.['Square Feet of Gross Living Area Above Grade'] ||
+            d.clean_data?.Improvements?.['Square Feet of Gross Living Area Above Grade'] ||
+            d.clean_data?.IMPROVEMENTS?.['Square Feet of Gross Living Area Above Grade'] ||
+            d.data?.clean_data?.Improvements?.['Square Feet of Gross Living Area Above Grade'] ||
+            d.data?.clean_data?.IMPROVEMENTS?.['Square Feet of Gross Living Area Above Grade'] ||
+            d.data?.Improvements?.['Square Feet of Gross Living Area Above Grade'] ||
+            d.data?.IMPROVEMENTS?.['Square Feet of Gross Living Area Above Grade'] ||
+            d.IMPROVEMENTS?.['Gross Living Area'] ||
+            d.Improvements?.['Gross Living Area'] ||
+            d.clean_data?.Improvements?.['Gross Living Area'] ||
+            d.clean_data?.IMPROVEMENTS?.['Gross Living Area'] ||
+            d.data?.clean_data?.Improvements?.['Gross Living Area'] ||
+            d.data?.clean_data?.IMPROVEMENTS?.['Gross Living Area'] ||
+            d['Square Feet of Gross Living Area Above Grade'] ||
+            ''
+        );
+    };
+
+    const getSalesGridSubjectGla = (d) => {
+        if (!d || typeof d !== 'object') return '';
+        return (
+            d.SALES_GRID?.Subject?.['Gross Living Area'] ||
+            d.SALES_GRID?.Subject?.['Gross Living Area sq.ft.'] ||
+            d.SALES_GRID?.Subject?.['Square Feet of Gross Living Area Above Grade'] ||
+            d['Sales Grid']?.Subject?.['Gross Living Area'] ||
+            d['Sales Grid']?.Subject?.['Gross Living Area sq.ft.'] ||
+            d['Sales Grid']?.Subject?.['Square Feet of Gross Living Area Above Grade'] ||
+            d.clean_data?.['Sales Grid']?.Subject?.['Gross Living Area'] ||
+            d.clean_data?.['Sales Grid']?.Subject?.['Gross Living Area sq.ft.'] ||
+            d.clean_data?.SALES_GRID?.Subject?.['Gross Living Area'] ||
+            d.data?.clean_data?.['Sales Grid']?.Subject?.['Gross Living Area'] ||
+            d.data?.clean_data?.['Sales Grid']?.Subject?.['Gross Living Area sq.ft.'] ||
+            d.Subject?.['Gross Living Area'] ||
+            d.Subject?.['Gross Living Area sq.ft.'] ||
+            d.clean_data?.Subject?.['Gross Living Area'] ||
+            d.data?.clean_data?.Subject?.['Gross Living Area'] ||
+            d['Gross Living Area'] ||
+            ''
+        );
+    };
+
+    const costGlaRaw = String(isCostGlaField ? currentText : (getCostGla(data) || '')).trim();
+    const impGlaRaw = String(isImpGlaField ? currentText : (getImprovementsGla(data) || '')).trim();
+    const salesGlaRaw = String(isSalesGridGlaField ? currentText : (getSalesGridSubjectGla(data) || '')).trim();
+
+    const costNum = parseGla(costGlaRaw);
+    const impNum = parseGla(impGlaRaw);
+    const salesNum = parseGla(salesGlaRaw);
+
+    const hasCost = !isNaN(costNum) && costNum > 0;
+    const hasImp = !isNaN(impNum) && impNum > 0;
+    const hasSales = !isNaN(salesNum) && salesNum > 0;
+
+    if (hasCost && hasImp && hasSales) {
+        if (costNum === impNum && costNum === salesNum) {
+            return {
+                isMatch: true,
+                message: `Verified: Total Gross Living Area (${costGlaRaw} sq. ft.) matches Improvements (${impGlaRaw}) and Sales Grid (${salesGlaRaw}).`
+            };
+        }
+        const mismatches = [];
+        if (costNum !== impNum) mismatches.push(`Improvements indicates '${impGlaRaw}'`);
+        if (costNum !== salesNum) mismatches.push(`Sales Grid indicates '${salesGlaRaw}'`);
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: `GLA mismatch: Cost Approach indicates '${costGlaRaw}', but ${mismatches.join(' and ')}. Gross Living Area must match across Cost Approach, Improvements, and Sales Grid.`
+        };
+    }
+
+    if (hasCost && hasImp) {
+        if (costNum === impNum) {
+            return {
+                isMatch: true,
+                message: `Verified: Total Gross Living Area (${costGlaRaw} sq. ft.) matches Improvements (${impGlaRaw}).`
+            };
+        }
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: `GLA mismatch: Cost Approach indicates '${costGlaRaw}', but Improvements indicates '${impGlaRaw}'. Gross Living Area must match.`
+        };
+    }
+
+    if (hasCost && hasSales) {
+        if (costNum === salesNum) {
+            return {
+                isMatch: true,
+                message: `Verified: Total Gross Living Area (${costGlaRaw} sq. ft.) matches Sales Grid (${salesGlaRaw}).`
+            };
+        }
+        return {
+            isError: true,
+            skipBlankFilter: true,
+            message: `GLA mismatch: Cost Approach indicates '${costGlaRaw}', but Sales Grid indicates '${salesGlaRaw}'. Gross Living Area must match.`
+        };
+    }
+
+    if (hasCost) {
+        return {
+            isMatch: true,
+            message: `Total Gross Living Area is ${costGlaRaw} sq. ft.`
+        };
+    }
+
+    return null;
+};
+
 export { checkCostApproachMatchConsistency } from './form1004And1007Validation';

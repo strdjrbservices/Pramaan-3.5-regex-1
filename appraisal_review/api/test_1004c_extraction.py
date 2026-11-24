@@ -52,6 +52,9 @@ class Test1004CExtraction(unittest.TestCase):
         self.assertEqual(imp.get("Foundation Type"), "Concrete Runners")
         self.assertEqual(imp.get("Concrete Runners"), "Yes")
         self.assertEqual(imp.get("# of Units"), "1")
+        self.assertIn("Covered Porch", imp.get("Describe any additions or modifications (decks, rooms, remodeling, etc.):", ""))
+        self.assertIn("Covered Porch", imp.get("Describe any additions or modifications (decks, rooms, remodeling, etc.)", ""))
+        self.assertTrue(imp.get("Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)?", "").startswith("Yes"))
 
         # 5. Verify 3 Site questions for 1004C
         site = clean_data.get("Site", {})
@@ -79,6 +82,9 @@ class Test1004CExtraction(unittest.TestCase):
         self.assertEqual(cost.get("Section One Cost $"), "121,440")
         self.assertEqual(cost.get("Section Two Cost $"), "121,440")
         self.assertEqual(cost.get("Indicated Value by Cost Approach"), "218,225")
+        self.assertIn(cost.get("Total Gross Living Area"), ["2,111.8", "2,112"])
+        self.assertEqual(clean_data.get("Improvements", {}).get("Square Feet of Gross Living Area Above Grade"), "2,112")
+        self.assertEqual(clean_data.get("Sales Grid", {}).get("Subject", {}).get("Gross Living Area"), "2,112")
 
     def test_pdf_1004c_extraction(self):
         if not os.path.exists(PDF_FILE):
@@ -122,6 +128,7 @@ class Test1004CExtraction(unittest.TestCase):
         self.assertEqual(cost.get("Section One Cost $"), "121,440")
         self.assertEqual(cost.get("Section Two Cost $"), "121,440")
         self.assertEqual(cost.get("Indicated Value by Cost Approach"), "218,225")
+        self.assertIn(cost.get("Total Gross Living Area"), ["2,111.8", "2,112"])
 
 
 if __name__ == "__main__":

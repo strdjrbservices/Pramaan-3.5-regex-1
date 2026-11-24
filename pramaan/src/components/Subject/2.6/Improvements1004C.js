@@ -4,7 +4,9 @@ import {
 } from '@mui/material';
 import HomeRepairServiceIcon from '@mui/icons-material/HomeRepairService';
 import LibraryBooksIcon from '@mui/icons-material/LibraryBooks';
+import { PlaylistAdd as PlaylistAddIcon, CheckCircle as CheckCircleIcon } from '@mui/icons-material';
 import { EditableField } from '../components/EditableField';
+import { checkUnits, checkManufacturedHomeConditionalField } from '../../../validations/improvementsValidation';
 
 export const Improvements1004C = ({
   id = 'improvements-section',
@@ -61,10 +63,17 @@ export const Improvements1004C = ({
 
   const handleFieldChange = (actualKey, value) => {
     if (!onDataChange) return;
-    onDataChange(['IMPROVEMENTS', actualKey], value);
-    onDataChange(['Improvements', actualKey], value);
-    onDataChange(['Manufactured Home', actualKey], value);
-    onDataChange([actualKey], value);
+    const keysToUpdate = [actualKey];
+    if (actualKey === '# of Units' || actualKey === 'Units' || actualKey === 'Number of Units') {
+      keysToUpdate.push('# of Units', 'Units', 'Number of Units');
+    }
+    const uniqueKeys = [...new Set(keysToUpdate)];
+    for (const k of uniqueKeys) {
+      onDataChange(['IMPROVEMENTS', k], value);
+      onDataChange(['Improvements', k], value);
+      onDataChange(['Manufactured Home', k], value);
+      onDataChange([k], value);
+    }
   };
 
   const checkOptionMatches = (valStr, opt) => {
@@ -128,37 +137,118 @@ export const Improvements1004C = ({
     const valStr = renderValue(rawVal);
     const targetPath = getFieldPath(actualKey);
 
+    const isUnitsField = label === '# of Units' || keys.includes('# of Units') || keys.includes('Units');
+    const isManuallyValidated = Boolean(manualValidations && manualValidations[JSON.stringify(targetPath)]);
+    let validationResult = null;
+    if (isUnitsField) {
+      validationResult = checkUnits(actualKey, valStr, allData);
+    }
+
+    let statusStyle = {};
+    let statusTooltip = '';
+    if (isManuallyValidated) {
+      statusStyle = { backgroundColor: '#87ceeb', borderRadius: '4px', padding: '1px 3px' };
+      statusTooltip = 'Manually validated.';
+    } else if (validationResult?.isError) {
+      statusStyle = {
+        backgroundColor: '#ffebee',
+        border: '1px solid #d32f2f',
+        borderRadius: '4px',
+        padding: '2px 4px'
+      };
+      statusTooltip = validationResult.message;
+    } else if (validationResult?.isMatch) {
+      statusStyle = {
+        backgroundColor: '#91ff00ff',
+        borderRadius: '4px',
+        padding: '1px 3px'
+      };
+      statusTooltip = validationResult.message || 'Validation successful!';
+    }
+
     return (
       <div style={{ borderBottom: '1px solid #e9ecef', paddingBottom: '3px', marginBottom: '4px' }}>
-        <div
-          onClick={() => setEditingField && setEditingField(targetPath)}
-          style={{ fontWeight: 'bold', color: '#495057', fontSize: '0.7rem', marginBottom: '2px', cursor: 'pointer', userSelect: 'none' }}
-        >
-          {label}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2px' }}>
+          <div
+            onClick={() => setEditingField && setEditingField(targetPath)}
+            style={{ fontWeight: 'bold', color: '#495057', fontSize: '0.7rem', cursor: 'pointer', userSelect: 'none' }}
+          >
+            {label}
+          </div>
+          {!showTextInput && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+              <Tooltip title="Revision Language">
+                <IconButton
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const text = valStr
+                      ? `Please review and revise '${label}' (Current Value: "${valStr}") in the Improvements section.`
+                      : `Please provide '${label}' in the Improvements section.`;
+                    if (navigator.clipboard) navigator.clipboard.writeText(text);
+                    if (window.dispatchEvent) {
+                      window.dispatchEvent(new CustomEvent('showNotification', { detail: `'${label}' revision text copied to clipboard!` }));
+                    }
+                  }}
+                  size="small"
+                  sx={{ padding: '2px' }}
+                >
+                  <PlaylistAddIcon sx={{ fontSize: '0.85rem' }} />
+                </IconButton>
+              </Tooltip>
+              {handleManualValidation && (
+                <Tooltip title={isManuallyValidated ? "Remove Manual Validation" : "Mark as Validated"}>
+                  <IconButton
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleManualValidation(targetPath);
+                    }}
+                    size="small"
+                    sx={{
+                      opacity: isManuallyValidated ? 1 : 0.6,
+                      transition: 'opacity 0.2s ease-in-out',
+                      '&:hover': { opacity: 1 },
+                      padding: '2px',
+                      color: isManuallyValidated ? 'green' : 'inherit'
+                    }}
+                  >
+                    <CheckCircleIcon sx={{ fontSize: '0.85rem' }} />
+                  </IconButton>
+                </Tooltip>
+              )}
+            </div>
+          )}
         </div>
 
         {options.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px 8px', marginBottom: '2px' }}>
-            {options.map((opt) => {
-              const isChecked = checkOptionMatches(valStr, opt);
-              const handleToggle = () => {
-                let items = valStr ? valStr.split(',').map(s => s.trim()).filter(Boolean) : [];
-                if (isChecked) {
-                  items = items.filter(item => !checkOptionMatches(item, opt));
-                } else {
-                  items.push(opt);
-                }
-                const newVal = items.join(', ');
-                handleFieldChange(actualKey, newVal);
-              };
+          <Tooltip title={statusTooltip} placement="top" arrow disableHoverListener={!statusTooltip}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px 8px', marginBottom: '2px', ...statusStyle }}>
+              {options.map((opt) => {
+                const isChecked = checkOptionMatches(valStr, opt);
+                const handleToggle = () => {
+                  let items = valStr ? valStr.split(',').map(s => s.trim()).filter(Boolean) : [];
+                  if (isChecked) {
+                    items = items.filter(item => !checkOptionMatches(item, opt));
+                  } else {
+                    items.push(opt);
+                  }
+                  const newVal = items.join(', ');
+                  handleFieldChange(actualKey, newVal);
+                };
 
-              return (
-                <label key={opt} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', cursor: 'pointer', fontSize: '0.69rem', userSelect: 'none', margin: 0 }}>
-                  <input type="checkbox" checked={isChecked} onChange={handleToggle} style={{ margin: 0, width: '12px', height: '12px' }} />
-                  <span>{opt}</span>
-                </label>
-              );
-            })}
+                return (
+                  <label key={opt} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', cursor: 'pointer', fontSize: '0.69rem', userSelect: 'none', margin: 0, fontWeight: isChecked ? 600 : 'normal' }}>
+                    <input type="checkbox" checked={isChecked} onChange={handleToggle} style={{ margin: 0, width: '12px', height: '12px' }} />
+                    <span>{opt}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </Tooltip>
+        )}
+
+        {!showTextInput && validationResult?.isError && (
+          <div style={{ color: '#d32f2f', fontSize: '0.65rem', marginTop: '2px', fontWeight: 500 }}>
+            {validationResult.message}
           </div>
         )}
 
@@ -190,6 +280,7 @@ export const Improvements1004C = ({
 
     const isYes = qStr.toLowerCase().startsWith('y') || qStr.toLowerCase() === 'true';
     const isNo = qStr.toLowerCase().startsWith('n') || qStr.toLowerCase() === 'false';
+    const isMissingExplain = isNo && !expStr.trim();
 
     const handleYesToggle = () => {
       handleFieldChange(qKey, isYes ? '' : 'Yes');
@@ -215,11 +306,27 @@ export const Improvements1004C = ({
         </div>
 
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '12px', minWidth: '120px' }}>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', margin: 0, fontWeight: isYes ? '700' : 'normal' }}>
+          <label style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+            cursor: 'pointer',
+            margin: 0,
+            fontWeight: isYes ? '700' : 'normal',
+            color: isYes ? '#2e7d32' : 'inherit'
+          }}>
             <input type="checkbox" checked={isYes} onChange={handleYesToggle} style={{ margin: 0, width: '13px', height: '13px' }} />
             <span>Yes</span>
           </label>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', margin: 0, fontWeight: isNo ? '700' : 'normal' }}>
+          <label style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+            cursor: 'pointer',
+            margin: 0,
+            fontWeight: isNo ? '700' : 'normal',
+            color: isNo ? (isMissingExplain ? '#d32f2f' : '#2e7d32') : 'inherit'
+          }}>
             <input type="checkbox" checked={isNo} onChange={handleNoToggle} style={{ margin: 0, width: '13px', height: '13px' }} />
             <span>No</span>
           </label>
@@ -227,11 +334,20 @@ export const Improvements1004C = ({
 
         <div style={{ flex: '1 1 35%', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
           {explainLabel && (
-            <span style={{ fontSize: '0.72rem', color: '#495057', whiteSpace: 'nowrap' }}>
+            <span style={{
+              fontSize: '0.72rem',
+              color: isMissingExplain ? '#d32f2f' : '#495057',
+              fontWeight: isMissingExplain ? 'bold' : 'normal',
+              whiteSpace: 'nowrap'
+            }}>
               {explainLabel}:
             </span>
           )}
-          <div style={{ flexGrow: 1, borderBottom: '1px solid #adb5bd' }}>
+          <div style={{
+            flexGrow: 1,
+            borderBottom: isNo ? (isMissingExplain ? '2px solid #d32f2f' : '2px solid #2e7d32') : '1px solid #adb5bd',
+            borderRadius: '2px'
+          }}>
             <EditableField
               fieldPath={getFieldPath(expKey)}
               value={expStr}
@@ -239,7 +355,9 @@ export const Improvements1004C = ({
               editingField={editingField}
               setEditingField={setEditingField}
               isEditable={isEditable}
+              isMissing={isMissingExplain}
               allData={allData}
+              customValidation={(f, t, d) => checkManufacturedHomeConditionalField(f, t, allData || d || data)}
               manualValidations={manualValidations}
               handleManualValidation={handleManualValidation}
               revisionHandlers={revisionHandlers}
@@ -415,8 +533,8 @@ export const Improvements1004C = ({
               {renderImpField('Roof Surface', ['Roof Surface (Material/Condition)', 'Roof Surface'])}
               {renderImpField('Gutters & Downspouts', ['Gutters & Downspouts (Material/Condition)', 'Gutters & Downspouts'])}
               {renderImpField('Window Type', ['Window Type (Material/Condition)', 'Window Type'])}
-              {renderImpField('Storm Sash/Insulated', ['Storm Sash/Insulated'])}
-              {renderImpField('Screens', ['Screens'])}
+              {renderImpField('Storm Sash/Insulated', ['Storm Sash/Insulated', 'Storm Sash', 'Storm Sash/Insulated (Material/Condition)'])}
+              {renderImpField('Screens', ['Screens', 'Screens (Material/Condition)'])}
               {renderImpField('Doors', ['Doors', 'Doors (Material/Condition)'])}
               {renderImpField('Amenities', [
                 'Amenities', 'Amenities Description', 'Patio/Deck', 'Fence', 'Porch', 'Pool'
@@ -685,14 +803,16 @@ export const Improvements1004C = ({
             Describe any additions or modifications (decks, rooms, remodeling, etc.):
           </div>
           <EditableField
-            fieldPath={getFieldPath('Describe any additions or modifications (decks, rooms, remodeling, etc.)')}
+            fieldPath={getFieldPath('Describe any additions or modifications (decks, rooms, remodeling, etc.):')}
             value={renderValue(getImpValue([
-              'Describe any additions or modifications (decks, rooms, remodeling, etc.',
+              'Describe any additions or modifications (decks, rooms, remodeling, etc.):',
               'Describe any additions or modifications (decks, rooms, remodeling, etc.)',
+              'Describe any additions or modifications (decks, rooms, remodeling, etc.',
               'Additions/Modifications Description',
               'Additions or Modifications'
             ]).value)}
             onDataChange={(p, val) => {
+              handleFieldChange('Describe any additions or modifications (decks, rooms, remodeling, etc.):', val);
               handleFieldChange('Describe any additions or modifications (decks, rooms, remodeling, etc.)', val);
               handleFieldChange('Describe any additions or modifications (decks, rooms, remodeling, etc.', val);
             }}
@@ -965,7 +1085,8 @@ export const Improvements1004C = ({
             'If No, describe',
             [
               'Does the property generally conform to the neighborhood (functional utility, style, condition, use, construction, etc.)? comment',
-              'Neighborhood Conformance Comment'
+              'Neighborhood Conformance Comment',
+              'If No, describe'
             ]
           )}
         </div>
