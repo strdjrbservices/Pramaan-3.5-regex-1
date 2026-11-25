@@ -34,4 +34,4 @@ Unified Full-Stack Deployment: **React Frontend** + **Django REST Backend** + **
 
 Deployed on Hugging Face Spaces with 16 GB RAM and 2 vCPUs.
 
-*Last Redeployed: 2026-11-25 15:56 UTC*
+*Last Redeployed: 2026-11-25 16:30 UTC (Hard Push / Fresh Build)*
