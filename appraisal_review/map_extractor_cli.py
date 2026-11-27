@@ -99,8 +99,11 @@ class MapExtractor:
                     ws_dir = os.path.dirname(cur_dir)
                     cand_dirs = [
                         os.path.join(ws_dir, ".easyocr", "model"),
+                        os.path.join(ws_dir, ".easyocr_models"),
+                        os.path.join(os.path.dirname(ws_dir), ".easyocr_models"),
                         os.path.join(cur_dir, ".easyocr", "model"),
                         os.path.join(os.getcwd(), ".easyocr", "model"),
+                        os.path.join(os.getcwd(), ".easyocr_models"),
                         os.path.expanduser(r"~\.EasyOCR\model")
                     ]
                     m_dir = next((d for d in cand_dirs if os.path.exists(d)), None)
@@ -227,21 +230,22 @@ class MapExtractor:
         if img_bgr is None or img_bgr.size == 0:
             return []
 
+        easy_results = []
         if self.active_engine == "easyocr" and self._easyocr_reader is not None:
             try:
                 rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-                res = self._easyocr_reader.readtext(rgb)
-                results = []
+                res = self._easyocr_reader.readtext(rgb, min_size=10, text_threshold=0.5, low_text=0.3)
                 for box, text, prob in res:
                     txt_clean = text.strip()
                     if txt_clean:
-                        results.append((box, txt_clean, float(prob)))
-                if results:
-                    return results
+                        easy_results.append((box, txt_clean, float(prob)))
+                if len(easy_results) >= 3:
+                    return easy_results
             except Exception:
                 pass
 
         # PyTesseract box-level fallback (grouped by line)
+        tess_results = []
         if pytesseract is not None:
             try:
                 gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
@@ -262,7 +266,6 @@ class MapExtractor:
                     x, y, w, h = data['left'][i], data['top'][i], data['width'][i], data['height'][i]
                     lines_map.setdefault(key, []).append((x, y, x + w, y + h, txt, conf / 100.0))
 
-                results = []
                 for words in lines_map.values():
                     words.sort(key=lambda w: w[0])
                     x0 = min(w[0] for w in words)
@@ -273,12 +276,10 @@ class MapExtractor:
                     avg_conf = sum(w[5] for w in words) / len(words)
                     if line_txt:
                         box = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
-                        results.append((box, line_txt, float(avg_conf)))
-                if results:
-                    return results
+                        tess_results.append((box, line_txt, float(avg_conf)))
             except Exception:
                 pass
-        return []
+        return tess_results if len(tess_results) > len(easy_results) else easy_results
 
     def get_pdf_doc(self, file_path: str):
         """Opens a PDF directly or decodes embedded PDF stream from a MISMO XML file."""
@@ -1345,9 +1346,18 @@ class MapExtractor:
         b64_img = base64.b64encode(pix.tobytes("jpeg")).decode("utf-8")
 
         # 5. OCR Fallback for scanned/raster or hybrid sketches where vector text is empty or incomplete
-        has_images = bool(page.get_images()) if hasattr(page, "get_images") else False
+        has_images = bool(page.get_images(full=True)) if hasattr(page, "get_images") else False
+        if not has_images and hasattr(page, "get_image_info"):
+            try:
+                has_images = bool(page.get_image_info())
+            except Exception:
+                pass
+        def _real_room_cnt(rd: Dict[str, Any]) -> int:
+            return sum(len(v) for k, v in (rd.get("by_category") or {}).items() if k != "other")
+
+        vec_real_cnt = _real_room_cnt(room_data)
         need_area_ocr = not areas
-        need_room_ocr = len(room_data.get("all_labels", [])) < 3 or (has_images and len(room_data.get("all_labels", [])) < 8)
+        need_room_ocr = vec_real_cnt < 3 or (has_images and vec_real_cnt < 6)
         if (need_area_ocr or need_room_ocr) and fitz is not None:
             try:
                 # Locate where the bottom Area Calculations Summary table starts so room OCR
@@ -1363,7 +1373,7 @@ class MapExtractor:
                 # Run high-DPI OCR on the drawing canvas only for room labels
                 if need_room_ocr:
                     canvas_rect = fitz.Rect(10, 65, page.rect.width - 10, canvas_bottom_y)
-                    canvas_pix = page.get_pixmap(clip=canvas_rect, dpi=250)
+                    canvas_pix = page.get_pixmap(clip=canvas_rect, dpi=300)
                     c_arr = np.frombuffer(canvas_pix.tobytes("jpeg"), np.uint8)
                     c_bgr = cv2.imdecode(c_arr, cv2.IMREAD_COLOR)
                     if c_bgr is not None and c_bgr.size > 0:
@@ -1381,7 +1391,7 @@ class MapExtractor:
                                 by1 = max(p[1] for p in box) * sy + canvas_rect.y0
                                 c_blocks.append((bx0, by0, bx1, by1, ocr_txt))
                             ocr_room_data = self.extract_sketch_room_labels(None, "\n".join(c_lines), custom_blocks=c_blocks)
-                            if len(ocr_room_data.get("all_labels", [])) > len(room_data.get("all_labels", [])):
+                            if _real_room_cnt(ocr_room_data) > vec_real_cnt or len(ocr_room_data.get("all_labels", [])) > len(room_data.get("all_labels", [])):
                                 room_data = ocr_room_data
 
                 # Run full-page OCR only if Area Calculations Summary was missing from vector text
