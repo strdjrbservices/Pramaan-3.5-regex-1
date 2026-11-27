@@ -50,11 +50,13 @@ import {
   MeetingRoom as RoomIcon,
   Fullscreen as FullscreenIcon,
   PhotoLibrary as PhotoLibraryIcon,
-  OpenInNew as OpenInNewIcon
+  OpenInNew as OpenInNewIcon,
+  OpenWith as OpenWithIcon,
+  RestartAlt as RestartAltIcon
 } from '@mui/icons-material';
 import { VERIFY_IMAGES_URL } from './ImageVerificationBanner';
 import { API_BASE_URL } from '../utils/utils.js';
-import { InteractiveZoomImageViewer } from './InteractiveZoomImageViewer.js';
+import { InteractiveZoomImageViewer, DraggableDialogPaper } from './InteractiveZoomImageViewer.js';
 import {
   ROOM_THEMES,
   DEFAULT_ROOM_THEME,
@@ -617,22 +619,49 @@ const getImprovementsRoomCounts = (data, allData) => {
     'Above Grade Finished Area'
   ]);
 
+  const rawBasementArea = getVal([
+    'Basement Area sq.ft.',
+    'Basement Area',
+    'Improvements Basement Area'
+  ]);
+
+  const rawBasementFinish = getVal([
+    'Basement Finish %',
+    'Basement Finish',
+    'Improvements Basement Finish'
+  ]);
+
+  const rawBasementDetails = getVal([
+    'Basement Details',
+    'Basement Description'
+  ]);
+
+  const rawFullBasement = getVal(['Full Basement']);
+  const rawPartialBasement = getVal(['Partial Basement']);
+  const rawFoundation = getVal(['Foundation Type', 'Foundation']);
+
   return {
     totalRooms: rawRooms,
     bedrooms: rawBeds,
     bathrooms: rawBaths,
-    gla: rawGLA
+    gla: rawGLA,
+    basementArea: rawBasementArea,
+    basementFinish: rawBasementFinish,
+    basementDetails: rawBasementDetails,
+    fullBasement: rawFullBasement,
+    partialBasement: rawPartialBasement,
+    foundationType: rawFoundation
   };
 };
 
 const getSalesGridSubjectRoomCounts = (data, allData) => {
   const root = { ...(allData || {}), ...(data || {}) };
-  const sGrid = root.SALES_GRID || root['Sales Grid'] || root.sales_grid || {};
+  const sGrid = root.SALES_GRID || root['Sales Grid'] || root.sales_grid || root.SALES_COMPARISON || {};
   const sSubj = sGrid.Subject || sGrid.SUBJECT || {};
   const rootSubj = root.Subject || root.SUBJECT || {};
-  const fieldsSGrid = root.fields?.SALES_GRID || {};
+  const fieldsSGrid = root.fields?.SALES_GRID || root.fields?.['Sales Grid'] || root.fields?.SALES_COMPARISON || {};
   const fieldsSubj = fieldsSGrid.Subject || fieldsSGrid.SUBJECT || root.fields?.Subject || {};
-  const cleanGrid = root.clean_data?.['Sales Grid']?.Subject || root.clean_data?.Subject || {};
+  const cleanGrid = root.clean_data?.['Sales Grid']?.Subject || root.clean_data?.SALES_GRID?.Subject || root.clean_data?.Subject || {};
 
   const getVal = (keys) => {
     for (const k of keys) {
@@ -640,8 +669,10 @@ const getSalesGridSubjectRoomCounts = (data, allData) => {
       if (fieldsSubj[k] !== undefined && fieldsSubj[k] !== null && String(fieldsSubj[k]).trim() !== '') return String(fieldsSubj[k]).trim();
       if (cleanGrid[k] !== undefined && cleanGrid[k] !== null && String(cleanGrid[k]).trim() !== '') return String(cleanGrid[k]).trim();
       if (rootSubj[k] !== undefined && rootSubj[k] !== null && String(rootSubj[k]).trim() !== '') return String(rootSubj[k]).trim();
-      if (sGrid[k] !== undefined && sGrid[k] !== null && String(sGrid[k]).trim() !== '') return String(sGrid[k]).trim();
-      if (root[k] !== undefined && root[k] !== null && String(root[k]).trim() !== '') return String(root[k]).trim();
+      if (/^subject\b/i.test(k)) {
+        if (sGrid[k] !== undefined && sGrid[k] !== null && String(sGrid[k]).trim() !== '') return String(sGrid[k]).trim();
+        if (root[k] !== undefined && root[k] !== null && String(root[k]).trim() !== '') return String(root[k]).trim();
+      }
     }
     return '';
   };
@@ -715,12 +746,30 @@ const getSalesGridSubjectRoomCounts = (data, allData) => {
     'Finished Area Above Grade'
   ]);
 
+  const rawBasement = getVal([
+    'Basement & Finished Rooms Below Grade',
+    'Subject Basement & Finished Rooms Below Grade',
+    'Basement Description',
+    'Basement',
+    'Subject Basement',
+    'Other (e.g., basement, etc.)'
+  ]);
+
+  const rawBasementFinished = getVal([
+    'Rooms Below Grade',
+    'Subject Rooms Below Grade',
+    'Basement Finished Rooms',
+    'Subject Basement Finished Rooms'
+  ]);
+
   return {
     totalRooms: rawRooms,
     bedrooms: rawBeds,
     bathrooms: rawBaths,
     aboveGradeRoomCount: rawAboveGrade,
-    gla: rawGLA
+    gla: rawGLA,
+    basement: rawBasement,
+    basementFinished: rawBasementFinished
   };
 };
 
@@ -739,10 +788,12 @@ const getPhotoRoomCounts = (data, allData) => {
   let beds = pc?.bedroom_count ?? null;
   let baths = pc?.full_bath_count !== undefined ? (pc.half_bath_count > 0 ? (pc.full_bath_count + 0.5) : pc.full_bath_count) : null;
   let rooms = pc?.total_room_count ?? null;
+  let basementCount = pc?.basement_count ?? null;
   let bedDisp = pc?.bedroom_display || '';
   let bathDisp = pc?.bathroom_display || '';
   let bathDet = pc?.bathroom_detail || '';
   let roomDisp = pc?.total_room_display || '';
+  let basementDisp = pc?.basement_display || '';
 
   // Fallback to individual keys
   if (beds === null) {
@@ -768,15 +819,22 @@ const getPhotoRoomCounts = (data, allData) => {
     }
   }
 
-  // Fallback: analyze extracted_photos directly if needed
+  // Analyze extracted_photos directly so basement-labeled photos are always separated into Basement / Below Grade
   const photos = allData?.extracted_photos || data?.extracted_photos || allData?.clean_data?.extracted_photos || data?.clean_data?.extracted_photos || [];
-  if ((beds === null || baths === null) && photos.length > 0) {
-    const distinctBeds = new Set();
-    const distinctFullBaths = new Set();
-    const distinctHalfBaths = new Set();
+  let photoBasementRooms = pc?.basement_rooms || null;
+  if (photos.length > 0) {
+    let bedPhotoCount = 0;
+    let fullBathPhotoCount = 0;
+    let halfBathPhotoCount = 0;
     const distinctLiving = new Set();
     const distinctKitchen = new Set();
     const distinctDining = new Set();
+    let basementPhotoCount = 0;
+    let bsmtRrCount = 0;
+    let bsmtBrCount = 0;
+    let bsmtFullBaCount = 0;
+    let bsmtHalfBaCount = 0;
+    let bsmtOCount = 0;
 
     photos.forEach(p => {
       const cat = (p?.category || '').toLowerCase();
@@ -784,28 +842,58 @@ const getPhotoRoomCounts = (data, allData) => {
       const cap = (p?.caption || p?.title || p?.original_label || '').trim();
       if (!cap) return;
       const norm = cap.replace(/\s*\([a-zA-Z0-9]+\)$/, '').trim().toLowerCase();
-      if (/\b(?:bedroom|bdrm|bed\b|mbr\b|master\s*bed|primary\s*bed|guest\s*bed)\b/.test(norm)) distinctBeds.add(norm);
-      else if (/(?:^|[\s\b])(?:half[\s-]*(?:bath(?:room)?|ba)|1\/2[\s-]*(?:bath(?:room)?|ba)|0?\.5[\s-]*(?:bath(?:room)?|ba)|(?:bath(?:room)?|ba)\s*(?:\(\s*)?(?:half|1\/2|0?\.5)(?:\s*\))?|powder(?:\s*room)?|lav(?:atory)?|wc)\b/i.test(norm)) distinctHalfBaths.add(norm);
-      else if (/\b(?:full\s*bath|master\s*bath|primary\s*bath|bath\s*#?\s*\d|bathroom|bath\b)\b/.test(norm)) distinctFullBaths.add(norm);
+      const isDupAngle = /\b(?:angle\s*[2-9]|view\s*[2-9]|alt(?:ernate)?\s*view|2nd\s*view)\b/i.test(cap);
+
+      if (/\b(?:basement|bsmt|below\s*grade|lower\s*level|cellar)\b/.test(norm)) {
+        basementPhotoCount += 1;
+        if (isDupAngle) return;
+        if (/\b(?:bedroom|bdrm|bed\b|mbr\b|master\s*bed|primary\s*bed|guest\s*bed|br\s*\d*)\b/.test(norm)) bsmtBrCount += 1;
+        else if (/(?:^|[\s\b])(?:half[\s-]*(?:bath(?:room)?|bth|ba)|1\/2[\s-]*(?:bath(?:room)?|bth|ba)|0?\.5[\s-]*(?:bath(?:room)?|bth|ba)|(?:bath(?:room)?|bth|ba)\s*(?:\(\s*)?(?:half|1\/2|0?\.5)(?:\s*\))?|powder(?:\s*room)?|lav(?:atory)?|wc)\b/i.test(norm)) bsmtHalfBaCount += 1;
+        else if (/\b(?:full\s*bath|master\s*bath|primary\s*bath|bath\s*#?\s*\d|bathroom|bath\b|bth\b)\b/.test(norm)) bsmtFullBaCount += 1;
+        else if (/\b(?:rec(?:reation)?|family\s*room|game\s*room|media\s*room|play\s*room)\b/.test(norm)) bsmtRrCount += 1;
+        else if (/\b(?:kitchen|kitchenette|kit\b|dining|den\b|office\b|study\b|bar\b|wet\s*bar|wetbar|bonus)\b/.test(norm)) bsmtOCount += 1;
+        return;
+      }
+      if (/\b(?:bedroom|bdrm|bed\b|mbr\b|master\s*bed|primary\s*bed|guest\s*bed)\b/.test(norm)) {
+        if (!isDupAngle) bedPhotoCount += 1;
+      }
+      else if (/(?:^|[\s\b])(?:half[\s-]*(?:bath(?:room)?|bth|ba)|1\/2[\s-]*(?:bath(?:room)?|bth|ba)|0?\.5[\s-]*(?:bath(?:room)?|bth|ba)|(?:bath(?:room)?|bth|ba)\s*(?:\(\s*)?(?:half|1\/2|0?\.5)(?:\s*\))?|powder(?:\s*room)?|lav(?:atory)?|wc)\b/i.test(norm)) {
+        if (!isDupAngle) halfBathPhotoCount += 1;
+      }
+      else if (/\b(?:full\s*bath|master\s*bath|primary\s*bath|bath\s*#?\s*\d|bathroom|bath\b|bth\b)\b/.test(norm)) {
+        if (!isDupAngle) fullBathPhotoCount += 1;
+      }
       else if (/\b(?:living|family\s*room|great\s*room)\b/.test(norm)) distinctLiving.add(norm);
-      else if (/\b(?:kitchen|kit\b)\b/.test(norm)) distinctKitchen.add(norm);
+      else if (/\b(?:kitchen|kitchenette|kit\b)\b/.test(norm)) distinctKitchen.add(norm);
       else if (/\b(?:dining|dinette)\b/.test(norm)) distinctDining.add(norm);
     });
 
-    if (beds === null && distinctBeds.size > 0) {
-      beds = distinctBeds.size;
-      bedDisp = `${beds} Bed${beds !== 1 ? 's' : ''}`;
+    if (bedPhotoCount > 0 || basementPhotoCount > 0) {
+      beds = bedPhotoCount;
+      bedDisp = beds > 0 ? `${beds} Bed${beds !== 1 ? 's' : ''}` : '—';
     }
-    if (baths === null && (distinctFullBaths.size > 0 || distinctHalfBaths.size > 0)) {
-      const f = distinctFullBaths.size;
-      const h = distinctHalfBaths.size;
-      baths = h > 0 ? (f + 0.5) : f;
-      bathDisp = h > 0 ? `${f}.${h} Baths` : `${f}.0 Baths`;
-      bathDet = h > 0 ? `${f} Full, ${h} Half` : `${f} Full Bath${f !== 1 ? 's' : ''}`;
+    if (fullBathPhotoCount > 0 || halfBathPhotoCount > 0 || basementPhotoCount > 0) {
+      const f = fullBathPhotoCount;
+      const h = halfBathPhotoCount;
+      baths = (f > 0 || h > 0) ? (h > 0 ? (f + 0.5) : f) : null;
+      bathDisp = (f > 0 || h > 0) ? (h > 0 ? `${f}.${h} Baths` : `${f}.0 Baths`) : '—';
+      bathDet = (f > 0 || h > 0) ? (h > 0 ? `${f} Full, ${h} Half` : `${f} Full Bath${f !== 1 ? 's' : ''}`) : '';
     }
-    if (rooms === null && (distinctBeds.size > 0 || distinctLiving.size > 0 || distinctKitchen.size > 0)) {
-      rooms = distinctBeds.size + distinctLiving.size + distinctKitchen.size + distinctDining.size;
-      roomDisp = `${rooms} Rooms`;
+    if (bedPhotoCount > 0 || distinctLiving.size > 0 || distinctKitchen.size > 0 || basementPhotoCount > 0) {
+      rooms = bedPhotoCount + distinctLiving.size + distinctKitchen.size + distinctDining.size;
+      roomDisp = rooms > 0 ? `${rooms} Rooms` : '—';
+    }
+    if (basementPhotoCount > 0) {
+      basementCount = basementPhotoCount;
+      basementDisp = `${basementCount} Photo${basementCount !== 1 ? 's' : ''}`;
+      const bBa = bsmtFullBaCount + (0.5 * bsmtHalfBaCount);
+      photoBasementRooms = {
+        rr: bsmtRrCount,
+        br: bsmtBrCount,
+        ba: bBa,
+        o: bsmtOCount,
+        hasAny: (bsmtRrCount + bsmtBrCount + bBa + bsmtOCount) > 0
+      };
     }
   }
 
@@ -813,10 +901,13 @@ const getPhotoRoomCounts = (data, allData) => {
     bedroom_count: beds,
     bathroom_count: baths,
     total_room_count: rooms,
+    basement_count: basementCount,
+    basement_rooms: photoBasementRooms,
     bedroom_display: bedDisp || (beds !== null ? `${beds} Bed${beds !== 1 ? 's' : ''}` : '—'),
     bathroom_display: bathDisp || (baths !== null ? `${baths} Bath(s)` : '—'),
     bathroom_detail: bathDet || '',
     total_room_display: roomDisp || (rooms !== null ? `${rooms} Rooms` : '—'),
+    basement_display: basementDisp || (basementCount !== null && basementCount > 0 ? `${basementCount} Photo${basementCount !== 1 ? 's' : ''}` : '—'),
     gla_display: '—'
   };
 };
@@ -4027,6 +4118,160 @@ export const MapAndSketchExhibitsSection = ({
                             const bathEval = evaluateRoomMatch(activeBathCount, impCounts.bathrooms, gridCounts.bathrooms, true, false, photoCounts.bathroom_count);
                             const totEval = evaluateRoomMatch(activeTotRooms, impCounts.totalRooms, gridCounts.totalRooms, false, false, photoCounts.total_room_count);
 
+                            // Basement reconciliation across Sketch, Improvements, Sales Grid, and Photos
+                            const sketchBsmtAreas = effectiveAreaList.filter(ar => /basement|bsmt/i.test(ar.name || ''));
+                            const sketchBsmtSqft = sketchBsmtAreas.reduce((sum, ar) => sum + (Number(ar.sqft) || 0), 0);
+                            const sketchBsmtLabels = roomCats?.basement || [];
+                            const sketchBsmtVal = sketchBsmtSqft > 0 ? sketchBsmtSqft : null;
+                            const sketchBsmtDisplay = sketchBsmtSqft > 0
+                              ? `${Math.round(sketchBsmtSqft).toLocaleString()} Sq Ft`
+                              : (sketchBsmtLabels.length > 0 ? sketchBsmtLabels.join(', ') : '—');
+                            const sketchBsmtDetail = sketchBsmtSqft > 0
+                              ? 'Calculated Floor Plan Area'
+                              : (sketchBsmtLabels.length > 0 ? 'Identified on Floor Plan' : 'Not labeled on sketch');
+
+                            let impBsmtVal = null;
+                            let impBsmtDisplay = '—';
+                            let impBsmtDetail = 'Form Basement Area';
+                            const impBsmtAreaMatch = String(impCounts.basementArea || '').replace(/,/g, '').match(/([0-9]+(?:\.[0-9]+)?)/);
+                            if (impBsmtAreaMatch) {
+                              const num = parseFloat(impBsmtAreaMatch[1]);
+                              impBsmtVal = num;
+                              impBsmtDisplay = num > 0 ? `${Math.round(num).toLocaleString()} Sq Ft` : '0 Sq Ft';
+                              if (num > 0 && impCounts.basementFinish && !/^0+%?$/.test(impCounts.basementFinish.trim())) {
+                                impBsmtDetail = `Form Area (${impCounts.basementFinish} Fin.)`;
+                              } else if (num === 0) {
+                                impBsmtDetail = 'No Basement';
+                              }
+                            } else if (/none|no\s*basement/i.test(impCounts.basementArea || '') || (impCounts.fullBasement === 'No' && impCounts.partialBasement === 'No' && /slab|crawl/i.test(impCounts.foundationType || ''))) {
+                              impBsmtVal = 0;
+                              impBsmtDisplay = 'None';
+                              impBsmtDetail = impCounts.foundationType || 'No Basement';
+                            } else if (impCounts.fullBasement === 'Yes' || impCounts.partialBasement === 'Yes' || /basement/i.test(impCounts.foundationType || '')) {
+                              impBsmtDisplay = impCounts.fullBasement === 'Yes' ? 'Full Basement' : (impCounts.partialBasement === 'Yes' ? 'Partial Basement' : impCounts.foundationType);
+                              impBsmtDetail = impCounts.basementFinish && !/^0+%?$/.test(impCounts.basementFinish.trim())
+                                ? `Form Foundation (${impCounts.basementFinish} Fin.)`
+                                : 'Form Foundation';
+                            }
+
+                            let gridBsmtVal = null;
+                            let gridBsmtDisplay = '—';
+                            let gridBsmtDetail = 'Grid Below Grade';
+                            const rawGridBsmt = String(gridCounts.basement || '').trim();
+                            if (rawGridBsmt) {
+                              if (/^(?:0\s*(?:sf|sq\.?\s*ft)?|none|no\s*basement|n\/a)$/i.test(rawGridBsmt)) {
+                                gridBsmtVal = 0;
+                                gridBsmtDisplay = /^0/.test(rawGridBsmt) ? '0 Sq Ft' : rawGridBsmt;
+                              } else {
+                                const gridBsmtMatch = rawGridBsmt.replace(/,/g, '').match(/([0-9]+(?:\.[0-9]+)?)/);
+                                if (gridBsmtMatch) {
+                                  const num = parseFloat(gridBsmtMatch[1]);
+                                  gridBsmtVal = num;
+                                  gridBsmtDisplay = num > 0 ? `${Math.round(num).toLocaleString()} Sq Ft` : '0 Sq Ft';
+                                  if (rawGridBsmt.toLowerCase() !== gridBsmtDisplay.toLowerCase()) {
+                                    gridBsmtDetail = rawGridBsmt;
+                                  }
+                                } else {
+                                  gridBsmtDisplay = rawGridBsmt;
+                                }
+                              }
+                            }
+
+                            const bsmtEval = evaluateRoomMatch(sketchBsmtVal, impBsmtVal, gridBsmtVal, false, true, null);
+
+                            // Rooms Below Grade (Basement) UAD parser & reconciliation: rr (rec), br (bed), ba (bath), o (other)
+                            const parseBelowGradeUAD = (str) => {
+                              if (!str || typeof str !== 'string') return null;
+                              const s = str.trim();
+                              const mRr = s.match(/(\d+)\s*rr(?![a-zA-Z])/i);
+                              const mBr = s.match(/(\d+)\s*br(?![a-zA-Z])/i);
+                              const mBa = s.match(/(\d+(?:\.\d+)?)\s*ba(?![a-zA-Z])/i);
+                              const mO = s.match(/(\d+)\s*o(?![a-zA-Z])/i);
+                              if (!mRr && !mBr && !mBa && !mO) return null;
+                              return {
+                                rr: mRr ? parseInt(mRr[1], 10) : 0,
+                                br: mBr ? parseInt(mBr[1], 10) : 0,
+                                ba: mBa ? parseFloat(mBa[1]) : 0,
+                                o: mO ? parseInt(mO[1], 10) : 0
+                              };
+                            };
+
+                            const fmtBelowGrade = (obj) => {
+                              if (!obj) return { main: '—', detail: '' };
+                              const baStr = Number.isInteger(obj.ba) ? `${obj.ba}.0` : `${obj.ba}`;
+                              return {
+                                main: `${obj.rr}rr · ${obj.br}br · ${baStr}ba · ${obj.o}o`,
+                                detail: `${obj.rr} Rec, ${obj.br} Bed, ${baStr} Bath, ${obj.o} Other`
+                              };
+                            };
+
+                            const gridBelowGrade = parseBelowGradeUAD(gridCounts.basementFinished) || parseBelowGradeUAD(gridCounts.basement);
+                            const sketchBelowGradeRaw = roomSum.basement_rooms;
+                            const sketchBelowGrade = sketchBelowGradeRaw?.hasAny ? sketchBelowGradeRaw : null;
+                            const hasBasementInReport = Boolean(
+                              (sketchBsmtVal && sketchBsmtVal > 0) ||
+                              (impBsmtVal && impBsmtVal > 0) ||
+                              (gridBsmtVal && gridBsmtVal > 0) ||
+                              sketchBelowGrade ||
+                              gridBelowGrade
+                            );
+
+                            let belowGradeEval = { status: 'unknown', label: 'No Data', color: '#64748b', bg: '#f1f5f9', border: '#e2e8f0', isMatch: true };
+                            if (sketchBelowGrade && gridBelowGrade) {
+                              const sFmt = fmtBelowGrade(sketchBelowGrade).main;
+                              const gFmt = fmtBelowGrade(gridBelowGrade).main;
+                              if (
+                                sketchBelowGrade.rr === gridBelowGrade.rr &&
+                                sketchBelowGrade.br === gridBelowGrade.br &&
+                                sketchBelowGrade.ba === gridBelowGrade.ba &&
+                                sketchBelowGrade.o === gridBelowGrade.o
+                              ) {
+                                belowGradeEval = {
+                                  status: 'match_sketch_grid',
+                                  label: 'Sketch ↔ Grid Match',
+                                  detail: `Below-grade rooms match (${sFmt})`,
+                                  color: '#0369a1',
+                                  bg: '#e0f2fe',
+                                  border: '#bae6fd',
+                                  isMatch: true
+                                };
+                              } else {
+                                belowGradeEval = {
+                                  status: 'variance',
+                                  label: 'Variance Detected',
+                                  detail: `Sketch: ${sFmt} | Grid: ${gFmt}`,
+                                  color: '#b45309',
+                                  bg: '#fef3c7',
+                                  border: '#fde68a',
+                                  isMatch: false
+                                };
+                              }
+                            } else if (gridBelowGrade && !sketchBelowGrade) {
+                              belowGradeEval = {
+                                status: 'grid_only',
+                                label: 'Grid Reported',
+                                detail: `Sales Grid: ${fmtBelowGrade(gridBelowGrade).main} (not labeled on sketch)`,
+                                color: '#475569',
+                                bg: '#f1f5f9',
+                                border: '#cbd5e1',
+                                isMatch: true
+                              };
+                            } else if (sketchBelowGrade && !gridBelowGrade) {
+                              belowGradeEval = {
+                                status: 'sketch_only',
+                                label: 'Sketch Only',
+                                detail: `Sketch: ${fmtBelowGrade(sketchBelowGrade).main}`,
+                                color: '#475569',
+                                bg: '#f1f5f9',
+                                border: '#cbd5e1',
+                                isMatch: true
+                              };
+                            }
+
+                            const sketchBgDisp = fmtBelowGrade(sketchBelowGrade);
+                            const gridBgDisp = fmtBelowGrade(gridBelowGrade);
+                            const photoBgDisp = photoCounts.basement_rooms?.hasAny ? fmtBelowGrade(photoCounts.basement_rooms) : null;
+
                             const rawBathDisp = roomSum.bathroom_display;
                             const validBathDisp = (rawBathDisp && rawBathDisp !== '0' && rawBathDisp !== '—' && rawBathDisp !== '0 Bath(s)' && !/^0(\.0)?$/.test(String(rawBathDisp).trim()))
                               ? rawBathDisp
@@ -4078,10 +4323,36 @@ export const MapAndSketchExhibitsSection = ({
                                 photoDisplay: photoCounts.total_room_display || (photoCounts.total_room_count ? `${photoCounts.total_room_count} Rooms` : '—'),
                                 photoDetail: '(Bedrooms + Living + Dining + Kitchen)',
                                 eval: totEval
-                              }
+                              },
+                              {
+                                metric: 'Basement',
+                                icon: <LayersIcon fontSize="small" sx={{ color: '#475569' }} />,
+                                sketchDisplay: sketchBsmtDisplay,
+                                sketchDetail: sketchBsmtDetail,
+                                impDisplay: impBsmtDisplay,
+                                impDetail: impBsmtDetail,
+                                gridDisplay: gridBsmtDisplay,
+                                gridDetail: gridBsmtDetail,
+                                photoDisplay: photoCounts.basement_display || '—',
+                                photoDetail: 'Photo Addendum Labels',
+                                eval: bsmtEval
+                              },
+                              ...(hasBasementInReport ? [{
+                                metric: 'Rooms Below Grade',
+                                icon: <RoomIcon fontSize="small" sx={{ color: '#475569' }} />,
+                                sketchDisplay: sketchBgDisp.main,
+                                sketchDetail: sketchBgDisp.detail || 'Basement (rr / br / ba / o)',
+                                impDisplay: impCounts.basementFinish || '—',
+                                impDetail: 'Form Basement Finish',
+                                gridDisplay: gridBgDisp.main,
+                                gridDetail: gridBgDisp.detail || 'Grid Rooms Below Grade',
+                                photoDisplay: photoBgDisp ? photoBgDisp.main : (photoCounts.basement_display || '—'),
+                                photoDetail: photoBgDisp ? `${photoBgDisp.detail}${photoCounts.basement_display && photoCounts.basement_display !== '—' ? ` (${photoCounts.basement_display})` : ''}` : 'Photo Addendum Labels',
+                                eval: belowGradeEval
+                              }] : [])
                             ];
 
-                            const allMatched = glaEval.isMatch && bedEval.isMatch && bathEval.isMatch && totEval.isMatch;
+                            const allMatched = glaEval.isMatch && bedEval.isMatch && bathEval.isMatch && totEval.isMatch && (bsmtEval.status === 'unknown' || bsmtEval.isMatch) && (!hasBasementInReport || belowGradeEval.isMatch);
 
                             return (
                               <Paper
@@ -4154,7 +4425,7 @@ export const MapAndSketchExhibitsSection = ({
                                               {r.impDisplay}
                                             </Typography>
                                             <Typography variant="caption" sx={{ color: '#94a3b8', fontSize: '0.68rem', display: 'block' }}>
-                                              Form Finished Area
+                                              {r.impDetail || 'Form Finished Area'}
                                             </Typography>
                                           </TableCell>
                                           <TableCell sx={{ verticalAlign: 'middle' }}>
@@ -4162,7 +4433,7 @@ export const MapAndSketchExhibitsSection = ({
                                               {r.gridDisplay}
                                             </Typography>
                                             <Typography variant="caption" sx={{ color: '#94a3b8', fontSize: '0.68rem', display: 'block' }}>
-                                              Grid Subject Unit
+                                              {r.gridDetail || 'Grid Subject Unit'}
                                             </Typography>
                                           </TableCell>
                                           <TableCell sx={{ verticalAlign: 'middle' }}>
@@ -5061,25 +5332,87 @@ export const MapAndSketchExhibitsSection = ({
         </Stack>
       )}
 
-      {/* Modal Zoom & Rotate Dialog */}
+      {/* Modal Zoom & Rotate Dialog (Moveable Frame) */}
       <Dialog
         open={Boolean(previewImage)}
         onClose={() => setPreviewImage(null)}
         maxWidth="lg"
         fullWidth
+        PaperComponent={DraggableDialogPaper}
+        aria-labelledby="draggable-dialog-title"
+        disableEnforceFocus
+        BackdropProps={{
+          sx: {
+            bgcolor: 'rgba(0, 0, 0, 0.35)', // Translucent backdrop so the underlying report is clearly visible when moved
+          }
+        }}
       >
-        <DialogTitle component="div" sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography component="span" variant="subtitle1" sx={{ fontWeight: 700 }}>
-            Exhibit Viewer (Full Resolution)
-          </Typography>
-          <Stack direction="row" spacing={1}>
-            <Tooltip title="Rotate 90° Clockwise">
-              <IconButton onClick={() => setRotation((prev) => (prev + 90) % 360)}>
-                <RotateRightIcon />
+        <DialogTitle
+          id="draggable-dialog-title"
+          component="div"
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            cursor: 'grab',
+            userSelect: 'none',
+            bgcolor: '#0f172a',
+            color: '#fff',
+            py: 1.25,
+            px: 2.5,
+            borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+            '&:active': { cursor: 'grabbing' },
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Tooltip title="Moveable Frame: Click and drag anywhere on this title bar to move this window (Double-click to center)">
+              <OpenWithIcon sx={{ fontSize: 20, color: '#38bdf8', cursor: 'grab' }} />
+            </Tooltip>
+            <Typography component="span" variant="subtitle1" sx={{ fontWeight: 700, color: '#f8fafc' }}>
+              Exhibit Viewer (Full Resolution)
+            </Typography>
+            <Chip
+              label="Moveable Frame"
+              size="small"
+              sx={{
+                bgcolor: 'rgba(56, 189, 248, 0.15)',
+                color: '#38bdf8',
+                border: '1px solid rgba(56, 189, 248, 0.3)',
+                height: 20,
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                ml: 0.5,
+              }}
+            />
+          </Box>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Tooltip title="Reset Window Position (Center)">
+              <IconButton
+                size="small"
+                onClick={() => {
+                  const paper = document.querySelector('.MuiDialog-paper');
+                  if (paper) paper.style.transform = 'translate(0px, 0px)';
+                }}
+                sx={{ color: '#94a3b8', '&:hover': { color: '#fff', bgcolor: 'rgba(255, 255, 255, 0.1)' } }}
+              >
+                <RestartAltIcon fontSize="small" />
               </IconButton>
             </Tooltip>
-            <IconButton onClick={() => setPreviewImage(null)}>
-              <CloseIcon />
+            <Tooltip title="Rotate 90° Clockwise">
+              <IconButton
+                size="small"
+                onClick={() => setRotation((prev) => (prev + 90) % 360)}
+                sx={{ color: '#94a3b8', '&:hover': { color: '#fff', bgcolor: 'rgba(255, 255, 255, 0.1)' } }}
+              >
+                <RotateRightIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <IconButton
+              size="small"
+              onClick={() => setPreviewImage(null)}
+              sx={{ color: '#94a3b8', '&:hover': { color: '#ef4444', bgcolor: 'rgba(239, 68, 68, 0.15)' } }}
+            >
+              <CloseIcon fontSize="small" />
             </IconButton>
           </Stack>
         </DialogTitle>
@@ -5095,15 +5428,30 @@ export const MapAndSketchExhibitsSection = ({
         </DialogContent>
       </Dialog>
 
-      {/* Comparable Photo Addendum & Location Map Cross-Reference Modal */}
+      {/* Comparable Photo Addendum & Location Map Cross-Reference Modal (Moveable Frame) */}
       <Dialog
         open={Boolean(selectedCompPhotoModal)}
         onClose={() => setSelectedCompPhotoModal(null)}
         maxWidth="md"
         fullWidth
+        PaperComponent={DraggableDialogPaper}
+        aria-labelledby="draggable-dialog-title-comp"
+        disableEnforceFocus
         PaperProps={{ sx: { borderRadius: 3, p: 1 } }}
       >
-        <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1 }}>
+        <DialogTitle
+          id="draggable-dialog-title-comp"
+          component="div"
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            pb: 1,
+            cursor: 'grab',
+            userSelect: 'none',
+            '&:active': { cursor: 'grabbing' },
+          }}
+        >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <Chip label={selectedCompPhotoModal?.photoComp?.title || 'Comparable Photo'} color="primary" size="small" sx={{ fontWeight: 700 }} />
             <Typography component="span" variant="h6" sx={{ fontWeight: 700, color: '#0f172a' }}>

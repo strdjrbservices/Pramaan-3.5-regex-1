@@ -40,22 +40,22 @@ export const CATEGORY_RULES = {
   ],
   bathrooms: [
     // Half bath rules must precede full bath rules
-    { regex: /(?<![\d.])(?:0?\.5|1\/2)\s*(?:bath(?:room)?|ba\b|b\b|hf\b|hb\b|hba\b)/i, name: 'Half Bath' },
+    { regex: /(?<![\d.])(?:0?\.5|1\/2)\s*(?:bath(?:room)?|bth\b|ba\b|b\b|hf\b|hb\b|hba\b)/i, name: 'Half Bath' },
     { regex: /(?<![\d.])1(?:\.0)?\s*(?:hb\b|h\/b\b|hba\b|h\/ba\b|half\s*b(?:ath)?\b|half\s*ba\b)/i, name: 'Half Bath' },
-    { regex: /\b(?:half[\s-]*(?:bath(?:room)?|ba|b)|h\/b|hb|hba|h\/ba)\b/i, name: 'Half Bath' },
+    { regex: /\b(?:half[\s-]*(?:bath(?:room)?|bth|ba|b)|h\/b|hb|hba|h\/ba)\b/i, name: 'Half Bath' },
     { regex: /\b(?:powder(?:\s*room|\s*rm)?|pw[\s/.]*d?(?:\s*hb|\s*ba)?|pwd)\b/i, name: 'Half Bath' },
     { regex: /\b(?:lav(?:atory)?|wc|w\.c\.)\b/i, name: 'Half Bath' },
-    { regex: /\b(?:bath(?:room)?|ba)\s*(?:\(\s*)?(?:half|1\/2|0?\.5)(?:\s*\))?/i, name: 'Half Bath' },
+    { regex: /\b(?:bath(?:room)?|bth|ba)\s*(?:\(\s*)?(?:half|1\/2|0?\.5)(?:\s*\))?/i, name: 'Half Bath' },
 
     // Full bath rules
-    { regex: /\b(?:main|master|primary|m)\s*(?:bath(?:room)?|ba|fb|f\/b)\b/i, name: 'Main Bath' },
+    { regex: /\b(?:main|master|primary|m)\s*(?:bath(?:room)?|bth|ba|fb|f\/b)\b/i, name: 'Main Bath' },
     { regex: /\bmba\b/i, name: 'Main Bath' },
     { regex: /(?<![\d.])(?:[1-9](?:\.0)?)\s*(?:fb\b|f\/b\b|fba\b|f\/ba\b|full\s*b(?:ath)?\b|full\s*ba\b)/i, name: 'Full Bath' },
-    { regex: /(?<![\d.])(?:[1-9](?:\.0)?)\s*(?:bath(?:room)?|ba)\b/i, name: 'Full Bath' },
-    { regex: /\b(?:full\s*bath(?:room)?|full\s*ba|full\s*b)\b/i, name: 'Full Bath' },
+    { regex: /(?<![\d.])(?:[1-9](?:\.0)?)\s*(?:bath(?:room)?|bth|ba)\b/i, name: 'Full Bath' },
+    { regex: /\b(?:full\s*bath(?:room)?|full\s*bth|full\s*ba|full\s*b)\b/i, name: 'Full Bath' },
     { regex: /\b(?:fb|f\/b|f-b|fba|f\/ba)\s*\d*\b/i, name: 'Full Bath' },
     { regex: /\b(?:full\s+)?bath(?:room)?\s*\d*\b/i, name: 'Bath' },
-    { regex: /(?<!fin\s)(?<!finished\s)(?<!unfin\s)(?<!unfinished\s)\bba\s*\d*\b/i, name: 'Bath' }
+    { regex: /(?<!fin\s)(?<!finished\s)(?<!unfin\s)(?<!unfinished\s)\b(?:bth|ba)\s*\d*\b/i, name: 'Bath' }
   ],
   basement: [
     { regex: /\b(?:fin(?:ished)?\s*(?:basement|base|bsmt|bmst|ba))\b/i, name: 'Finished Basement' },
@@ -67,34 +67,42 @@ export const CATEGORY_RULES = {
     { regex: /\b(?:family(?:\s*room|\s*rm|\s*r|\s*area)?|fam(?:\s*room|\s*rm)?|fr\b|f\/r\b)\b/i, name: 'Family Room' },
     { regex: /\bgreat\s*room\b/i, name: 'Great Room' },
     { regex: /\b(?:rec(?:reation)?(?:\s*room|\s*rm)?)\b/i, name: 'Rec Room' },
-    { regex: /\b(?:game\s*room|game\s*rm|media\s*room|theater|theatre|billiard\s*room|play\s*room|playroom)\b/i, name: 'Game / Media Room' },
-    { regex: /\b(?:den|study|loft)\b/i, name: 'Den / Study' },
+    { regex: /\b(?:game\s*room|game\s*rm|media\s*room|theater|theatre|billiard\s*room|playing\s*room|play\s*room|playroom)\b/i, name: 'Game / Media Room' },
+    { regex: /\b(?:den|study)\b/i, name: 'Den / Study' },
+    { regex: /\bloft\b/i, name: 'Loft' },
     { regex: /\b(?:office|home\s*office|library)\b/i, name: 'Office' },
-    { regex: /\b(?:sitting(?:\s*room|\s*area)?)\b/i, name: 'Sitting Area' },
+    { regex: /\b(?:sitting(?:\s*room|\s*rm|\s*area)?)\b/i, name: 'Sitting Area' },
     { regex: /\b(?:sun\s*room|sunroom)\b/i, name: 'Sun Room' },
-    { regex: /\bbonus\s*room\b/i, name: 'Bonus Room' },
+    { regex: /\bbonus\s*(?:room|rm)\b/i, name: 'Bonus Room' },
+    { regex: /\bconverted(?:\s+(?:area|garage|space|room|rm))?\b/i, name: 'Converted Area' },
     { regex: /\b(?:adu|a\.d\.u\.|accessory\s*dwelling(?:\s*unit)?)\b/i, name: 'ADU' }
   ],
   kitchen_dining: [
+    { regex: /\bkitchenette\b/i, name: 'Kitchenette' },
     { regex: /\b(?:kitchen|kitch|kteten|kit|ki)\b/i, name: 'Kitchen' },
     { regex: /\b(?:dining\s*area|dinning\s*area)\b/i, name: 'Dining Area' },
     { regex: /\b(?:formal\s+)?(?:dining(?:\s*room|\s*rm)?|dinning(?:\s*room|\s*rm)?|diring|dr\b|d\/r\b|d\.r\.?)\b/i, name: 'Dining Room' },
     { regex: /\b(?:brkfst|brkfast|break\s*fast|breakfast|brk)(?:\s*(?:room|rm|nook|area))?\b/i, name: 'Breakfast Room' },
     { regex: /\b(?:dining\s*nook|dinette|nook)\b/i, name: 'Dining Nook' },
     { regex: /\bpantry\b/i, name: 'Pantry' },
-    { regex: /\b(?:wet\s*bar|bar)\b/i, name: 'Bar' }
+    { regex: /\b(?:wet\s*bar|wetbar|bar)\b/i, name: 'Bar' }
   ],
   openings_outdoor: [
     { regex: /\bopen\s+to\s+below\b/i, name: 'Open to Below' },
     { regex: /\b(?:open\s*porch|op\s*,\s*ep|op\/ep)\b/i, name: 'Open Porch' },
     { regex: /\b(?:c(?:o)?v(?:ere)?d\s*p(?:o)?rc?h|cvd\s*porch|cov\s*porch|c\/p|cp)\b/i, name: 'Covered Porch' },
     { regex: /\b(?:closed\s*porch|uncover(?:ed)?\s*porch|screened?\s*porch|front\s*porch|rear\s*porch|porch)\b/i, name: 'Porch' },
+    { regex: /\b(?:un(?:cov(?:ered)?|cvd)\s*deck)\b/i, name: 'Uncovered Deck' },
+    { regex: /\b(?:wood(?:en)?|composite|trex)\s*deck\b/i, name: 'Wood Deck' },
     { regex: /\bdeck\b/i, name: 'Deck' },
     { regex: /\bpatio\b/i, name: 'Patio' },
     { regex: /\bbalcony\b/i, name: 'Balcony' },
     { regex: /\b(?:terrace|veranda|lanai)\b/i, name: 'Terrace / Lanai' },
     { regex: /\b(?:courtyard|breezeway)\b/i, name: 'Courtyard / Breezeway' },
-    { regex: /\b(?:shed|storage\s*shed|tool\s*shed|workshop|barn)\b/i, name: 'Shed' }
+    { regex: /\bworkshop\b/i, name: 'Workshop' },
+    { regex: /\boutbuilding\b/i, name: 'Outbuilding' },
+    { regex: /\blean[\s-]*to\b/i, name: 'Lean-to' },
+    { regex: /\b(?:shed|storage\s*shed|tool\s*shed|barn)\b/i, name: 'Shed' }
   ],
   garage_parking: [
     { regex: /\b1\s*car\s*attached(?:\s*garage)?\b/i, name: '1 Car Attached' },
@@ -103,22 +111,28 @@ export const CATEGORY_RULES = {
     { regex: /\b1\s*car\s*(?:detached|de-?attached)(?:\s*garage)?\b/i, name: '1 Car Detached' },
     { regex: /\b2\s*car\s*(?:detached|de-?attached)(?:\s*garage)?\b/i, name: '2 Car Detached' },
     { regex: /\b3\s*car\s*(?:detached|de-?attached)(?:\s*garage)?\b/i, name: '3 Car Detached' },
-    { regex: /\b\d+[\s-]*car\s*(?:\/|\s+)?(?:attached|detached|de-?attached)?\s*(?:carport|garage)?\b/i, name: 'Carport / Garage' },
+    { regex: /\b(?:\d+\s*)?(?:car\s*built[\s-]*in|built[\s-]*in\s*(?:\d+\s*car\s*)?garage)\b/i, name: 'Built-in Garage' },
+    { regex: /\b\d+[\s-]*car\s*(?:\/|\s+)?(?:attached|detached|de-?attached)?\s*(?:car\s*port|garage)?\b/i, name: 'Carport / Garage' },
     { regex: /\b\d+\s*car\s*(?:attached|detached|de-?attached)?(?:\s*garage)?\b/i, name: 'Car Garage' },
     { regex: /\b(?:car\s*(?:detached|de-?attached)|(?:detached|de-?attached)\s*car)\b/i, name: 'Car Detached' },
     { regex: /\b(?:car\s*attached|attached\s*car)\b/i, name: 'Car Attached' },
     { regex: /\b(?:attached|detached|de-?attached)\s*garage\b/i, name: 'Garage' },
     { regex: /\bgarage\b/i, name: 'Garage' },
-    { regex: /\bcarport\b/i, name: 'Carport' }
+    { regex: /\bcar\s*port\b/i, name: 'Carport' }
   ],
   utility_laundry: [
+    { regex: /\b(?:w\s*\/\s*d(?:\s*area|\s*rm|\s*room)?|washer\s*(?:&|and|\/)?\s*dryer(?:\s*area)?)\b/i, name: 'W/D Area' },
     { regex: /\b(?:laundry(?:\s*room|\s*rm|\s*area)?|laundary|launda|laund|laun|lndry|ldy|la)\b/i, name: 'Laundry' },
-    { regex: /\butility(?:\s*room|\s*rm|\s*area)?\b/i, name: 'Utility' },
+    { regex: /\butility(?:\s*room|\s*rm|\s*area)?\b/i, name: 'Utility Room' },
     { regex: /\b(?:mud\s*room|mudroom|mud\s*rm)\b/i, name: 'Mud Room' },
+    { regex: /\b(?:hall(?:way)?|corridor)\b/i, name: 'Hall' },
     { regex: /\b(?:foyer|entry(?:way)?|vestibule)\b/i, name: 'Foyer / Entry' },
     { regex: /\b(?:entrance\s*stairs|entry\s*stairs|stairs|stairway|stair|staircase)\b/i, name: 'Stairs' },
     { regex: /\b(?:walk[\s-]*in\s*closet|wic)\b/i, name: 'Walk-in Closet' },
     { regex: /\bcl(?:o)?se[td]s?(?!\s*porch)\b/i, name: 'Closet' },
+    { regex: /\battic\b/i, name: 'Attic' },
+    { regex: /\bunfinished(?:\s+(?:area|space|room))?\b/i, name: 'Unfinished' },
+    { regex: /\bfinished(?:\s+(?:area|space|room))?\b/i, name: 'Finished' },
     { regex: /\b(?:mech\.?|mechanical|furnace|hvac|boiler|storage)\b/i, name: 'Storage / Mech' }
   ]
 };
@@ -146,6 +160,11 @@ export const normalizeRoomLabelString = (label) => {
   if (/^kit$/i.test(s) || /^ki$/i.test(s)) return 'Kitchen';
   if (/^brk$/i.test(s) || /^brkfst$/i.test(s) || /^break\s*fast$/i.test(s)) return 'Breakfast Room';
   if (/^laun$/i.test(s) || /^launda$/i.test(s) || /^la$/i.test(s) || /^laundary$/i.test(s)) return 'Laundry';
+  if (/^w\s*\/\s*d(?:\s*area)?$/i.test(s)) return 'W/D Area';
+  if (/^uncvd\s*deck$/i.test(s)) return 'Uncovered Deck';
+  if (/^bonus\s*rm$/i.test(s)) return 'Bonus Room';
+  if (/^primary\s*b\/r$/i.test(s)) return 'Primary Bedroom';
+  if (/^\.?5\s*bth$/i.test(s)) return 'Half Bath';
   if (/^fin(?:ished)?\s*(?:base|basement|ba|bsmt)$/i.test(s)) return 'Finished Basement';
   if (/^unfin(?:ished)?\s*(?:base|basement|ba|bsmt)$/i.test(s)) return 'Unfinished Basement';
   if (/^car\s*de-?attached$/i.test(s)) return 'Car Detached';
@@ -485,7 +504,8 @@ export const parseSketchRooms = (sketchItem, data = null, allData = null) => {
     utility_laundry: [],
     garage_parking: [],
     openings_outdoor: [],
-    basement: []
+    basement: [],
+    other: []
   };
   const byLevel = {};
   const directLabels = [];
@@ -571,21 +591,117 @@ export const parseSketchRooms = (sketchItem, data = null, allData = null) => {
     }
   }
 
+  // 5. Dynamic fallback: parse raw sketch text if still no labels
+  if (directLabels.length === 0) {
+    const rawTxt = [sketchItem?.raw_text, sketchItem?.raw_text_sample, sketchItem?.extracted_text, sketchItem?.text]
+      .filter(Boolean)
+      .join('\n');
+    if (rawTxt) {
+      let curLvl = '1st Floor';
+      const lines = rawTxt.split(/[\n|]+/).map(l => l.trim()).filter(Boolean);
+      for (const rawLine of lines) {
+        if (/\b(?:area\s*calculations\s*summary|calculation\s*details)\b/i.test(rawLine)) break;
+        const cleaned = rawLine
+          .replace(/\[?\s*-?\d+(?:\.\d+)?\s*(?:sq\s*ft|sf|ft2)\s*\]?/gi, '')
+          .replace(/\s+\d+(?:\.\d+)?['"]?\s*[x×]\s*\d+(?:\.\d+)?['"]?$/i, '')
+          .trim();
+        if (!cleaned || cleaned.length < 2 || cleaned.length > 60 || /^[\d.\s'"x=+\-/]+$/i.test(cleaned)) continue;
+        if (/^(?:borrower|file\s*no|property\s*address|case\s*no|lender|appraiser|client|scale|date|page\s*\d|total\s*sketch|living\s*area|non-living\s*area|gross\s*living\s*area|gla)\b/i.test(cleaned)) continue;
+        const lvlMatch = LEVEL_PATTERNS.find(lp => lp.regex.test(cleaned));
+        if (lvlMatch) {
+          curLvl = lvlMatch.name;
+          if (!byLevel[curLvl]) byLevel[curLvl] = [];
+          if (!/\b(?:basement|attic)\b/i.test(cleaned)) continue;
+        }
+        const norm = normalizeRoomLabelString(cleaned);
+        let matchedCat = null;
+        let stdName = norm;
+        for (const [catKey, rules] of Object.entries(CATEGORY_RULES)) {
+          const hit = rules.find(r => r.regex.test(norm));
+          if (hit) {
+            matchedCat = catKey;
+            stdName = hit.name;
+            break;
+          }
+        }
+        const isDynamicLabel = matchedCat || (/[a-zA-Z]{2,}/.test(norm) && norm.split(/\s+/).length <= 8 && !/^\d+\s+[A-Za-z]/.test(norm));
+        if (isDynamicLabel) {
+          if (!directLabels.includes(norm)) directLabels.push(norm);
+          const cat = matchedCat || 'other';
+          const entry = { label: norm, standard_name: stdName, category: cat, level: curLvl };
+          if (byCategory[cat]) byCategory[cat].push(entry);
+          if (!byLevel[curLvl]) byLevel[curLvl] = [];
+          byLevel[curLvl].push(entry);
+        }
+      }
+    }
+  }
+
   const uniqueLabels = Array.from(new Set(directLabels));
-  const bedCount = rawSum.bedroom_count ?? (byCategory.bedrooms.length > 0 ? byCategory.bedrooms.length : null);
-  const fullBaths = byCategory.bathrooms.filter(b => b.standard_name !== 'Half Bath').length;
-  const halfBaths = byCategory.bathrooms.filter(b => b.standard_name === 'Half Bath').length;
+
+  const isBsmtItem = (it) => /basement|bsmt|lower\s*level|below\s*grade|cellar/i.test(`${it?.level || ''} ${it?.label || ''} ${it?.standard_name || ''}`);
+  const hasBasementLevel = Object.keys(byLevel).some(k => /basement|bsmt|lower\s*level|below\s*grade|cellar/i.test(k))
+    || uniqueLabels.some(l => /basement|bsmt|below\s*grade|cellar/i.test(l));
+
+  const aboveBeds = byCategory.bedrooms.filter(b => !isBsmtItem(b));
+  const aboveBaths = byCategory.bathrooms.filter(b => !isBsmtItem(b));
+  const aboveLiving = byCategory.living.filter(b => !isBsmtItem(b));
+  const aboveKd = byCategory.kitchen_dining.filter(b => !isBsmtItem(b));
+  const aboveUtil = byCategory.utility_laundry.filter(b => !isBsmtItem(b));
+
+  const bedCount = hasBasementLevel
+    ? (aboveBeds.length > 0 ? aboveBeds.length : null)
+    : (rawSum.bedroom_count ?? (aboveBeds.length > 0 ? aboveBeds.length : null));
+  const fullBaths = aboveBaths.filter(b => b.standard_name !== 'Half Bath').length;
+  const halfBaths = aboveBaths.filter(b => b.standard_name === 'Half Bath').length;
   const calcBathCount = fullBaths + (0.5 * halfBaths);
   const calcBathDisplay = calcBathCount > 0 ? `${fullBaths} Full${halfBaths ? `, ${halfBaths} Half` : ''}` : '';
-  const bathCount = rawSum.bathroom_count ?? (calcBathCount > 0 ? calcBathCount : null);
-  const bathDisplay = (rawSum.bathroom_display && rawSum.bathroom_display !== '0' && rawSum.bathroom_display !== '—')
+  const bathCount = hasBasementLevel
+    ? (calcBathCount > 0 ? calcBathCount : null)
+    : (rawSum.bathroom_count ?? (calcBathCount > 0 ? calcBathCount : null));
+  const bathDisplay = (!hasBasementLevel && rawSum.bathroom_display && rawSum.bathroom_display !== '0' && rawSum.bathroom_display !== '—')
     ? rawSum.bathroom_display
     : (calcBathCount > 0 ? calcBathDisplay : (bathCount ? `${bathCount} Bath(s)` : ''));
-  const livingCount = rawSum.living_rooms_count ?? byCategory.living.length;
-  const hasKitchen = rawSum.has_kitchen ?? (byCategory.kitchen_dining.some(k => /kitchen/i.test(k.label || k.standard_name)));
-  const hasDining = rawSum.has_dining ?? (byCategory.kitchen_dining.some(k => /dining|nook|breakfast|brk/i.test(k.label || k.standard_name)));
+  const livingCount = hasBasementLevel ? aboveLiving.length : (rawSum.living_rooms_count ?? aboveLiving.length);
+  const hasKitchen = hasBasementLevel
+    ? aboveKd.some(k => /kitchen/i.test(k.label || k.standard_name))
+    : (rawSum.has_kitchen ?? aboveKd.some(k => /kitchen/i.test(k.label || k.standard_name)));
+  const hasDining = hasBasementLevel
+    ? aboveKd.some(k => /dining|nook|breakfast|brk/i.test(k.label || k.standard_name))
+    : (rawSum.has_dining ?? aboveKd.some(k => /dining|nook|breakfast|brk/i.test(k.label || k.standard_name)));
   const garageName = rawSum.garage || byCategory.garage_parking[0]?.label || null;
-  const totalRooms = rawSum.total_rooms ?? ((bedCount || 0) + livingCount + (hasKitchen ? 1 : 0) + (hasDining ? 1 : 0) || (uniqueLabels.length > 0 ? uniqueLabels.length : null));
+  const totalRooms = hasBasementLevel
+    ? ((bedCount || 0) + livingCount + (hasKitchen ? 1 : 0) + (hasDining ? 1 : 0) || null)
+    : (rawSum.total_rooms ?? ((bedCount || 0) + livingCount + (hasKitchen ? 1 : 0) + (hasDining ? 1 : 0) || (uniqueLabels.length > 0 ? uniqueLabels.length : null)));
+
+  // Below-grade (Basement) room counts matching Sales Grid UAD format: rr, br, ba, o
+  const bsmtBeds = byCategory.bedrooms.filter(isBsmtItem);
+  const bsmtBaths = byCategory.bathrooms.filter(isBsmtItem);
+  const bsmtLiving = byCategory.living.filter(isBsmtItem);
+  const bsmtKd = byCategory.kitchen_dining.filter(isBsmtItem);
+  const bsmtOtherCat = (byCategory.other || []).filter(isBsmtItem);
+
+  const bsmtRr = bsmtLiving.filter(l => /rec|family|game|media|play/i.test(l.standard_name || l.label || '')).length;
+  const bsmtNonRrLiving = bsmtLiving.length - bsmtRr;
+  const bsmtBr = bsmtBeds.length;
+  const bsmtFullBa = bsmtBaths.filter(b => b.standard_name !== 'Half Bath').length;
+  const bsmtHalfBa = bsmtBaths.filter(b => b.standard_name === 'Half Bath').length;
+  const bsmtBa = bsmtFullBa + (0.5 * bsmtHalfBa);
+  const bsmtO = bsmtKd.length + bsmtNonRrLiving + bsmtOtherCat.length;
+  const bsmtBaStr = (bsmtFullBa > 0 || bsmtHalfBa > 0) ? `${bsmtFullBa}.${bsmtHalfBa}` : '0';
+
+  const basementRooms = rawSum.basement_rooms && !hasBasementLevel
+    ? rawSum.basement_rooms
+    : {
+        rr: bsmtRr,
+        br: bsmtBr,
+        ba: bsmtBa,
+        full_ba: bsmtFullBa,
+        half_ba: bsmtHalfBa,
+        o: bsmtO,
+        uad: `${bsmtRr}rr${bsmtBr}br${bsmtBaStr}ba${bsmtO}o`,
+        hasAny: (bsmtRr + bsmtBr + bsmtFullBa + bsmtHalfBa + bsmtO) > 0
+      };
 
   return {
     labels: uniqueLabels,
@@ -598,10 +714,14 @@ export const parseSketchRooms = (sketchItem, data = null, allData = null) => {
       living_rooms_count: livingCount,
       has_kitchen: hasKitchen,
       has_dining: hasDining,
-      has_laundry: rawSum.has_laundry ?? (byCategory.utility_laundry.length > 0),
+      has_laundry: aboveUtil.length > 0 || (rawSum.has_laundry ?? false),
       garage: garageName ? normalizeRoomLabelString(garageName) : null,
       total_rooms: totalRooms,
-      total_room_labels: uniqueLabels.length
+      total_room_labels: uniqueLabels.length,
+      basement_rooms: {
+        ...basementRooms,
+        hasAny: (basementRooms.rr + basementRooms.br + basementRooms.ba + basementRooms.o) > 0
+      }
     }
   };
 };

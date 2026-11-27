@@ -601,7 +601,9 @@ def _parse_appraisal_type(val: str):
     has_1007 = bool(re.search(r"\b1007\b|RENT\s*SCHEDULE|SINGLE\s*FAMILY\s*(?:COMPARABLE\s*)?RENT|W\s*/\s*1007|WITH\s+1007|\+\s*1007|/\s*1007", s, re.I))
 
     primary = None
-    if re.search(r"\b1004C\b|MANUFACTURED", upper):
+    if re.search(r"\bARV\b|SUBJECT[-\s]*TO\s*ARV|ARV\s*W\s*/\s*AS[-\s]*IS", upper):
+        primary = "1004 Subject-To ARV w/ As-Is"
+    elif re.search(r"\b1004C\b|MANUFACTURED", upper):
         primary = "1004C"
     elif re.search(r"\b1004D\b|COMPLETION", upper):
         primary = "1004D"

@@ -66,6 +66,23 @@ export const detectFormTypeFromXmlString = (xmlString) => {
       return '203k-FHA';
     }
     if (combined.includes('1004') || combined.includes('URAR') || combined.includes('FRE70')) {
+      const isSubjectTo =
+        xmlString.includes('SubjectToCompletion') ||
+        xmlString.includes('SubjectToRepairs') ||
+        /subject\s+to\s+completion/i.test(xmlString) ||
+        /subject\s+to\s+the\s+following\s+repairs/i.test(xmlString);
+
+      const isAsIsOrArv =
+        /as[\s_-]*is["'\s]+(?:market\s+)?value/i.test(xmlString) ||
+        /"as[\s_-]*is"\s*(?:market\s+)?value/i.test(xmlString) ||
+        /as[\s_-]*is\s*(?:&|and)\s*as[\s_-]*complete/i.test(xmlString) ||
+        /as[\s_-]*is\s*addendum/i.test(xmlString) ||
+        /\barv\b/i.test(xmlString) ||
+        /after\s*repair\s*value/i.test(xmlString);
+
+      if (isSubjectTo || isAsIsOrArv) {
+        return '1004 Subject-To ARV w/ As-Is';
+      }
       return has1007 ? '1004 + 1007' : '1004';
     }
     if (combined.includes('ERC') || combined.includes('ECR')) {
@@ -87,10 +104,50 @@ export const detectFormTypeFromXmlString = (xmlString) => {
   }
 };
 
-export const normalizeExtractedFormType = (raw) => {
-  if (!raw) return null;
+export const detectFormTypeFromXmlFile = (file, callback) => {
+  if (!file || typeof callback !== 'function') return;
+  try {
+    if (file.size <= 500000) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const detected = detectFormTypeFromXmlString(e.target?.result);
+        if (detected) callback(detected);
+      };
+      reader.readAsText(file);
+    } else {
+      const headReader = new FileReader();
+      headReader.onload = (eHead) => {
+        const headText = eHead.target?.result || '';
+        const tailReader = new FileReader();
+        tailReader.onload = (eTail) => {
+          const tailText = eTail.target?.result || '';
+          const detected = detectFormTypeFromXmlString(headText + '\n' + tailText);
+          if (detected) callback(detected);
+        };
+        tailReader.readAsText(file.slice(Math.max(0, file.size - 300000)));
+      };
+      headReader.readAsText(file.slice(0, 200000));
+    }
+  } catch (err) {
+    console.error('Error reading XML file for detection:', err);
+  }
+};
+
+export const normalizeExtractedFormType = (raw, currentSelectedType) => {
+  if (!raw) return currentSelectedType || null;
   const s = String(raw).trim();
   const upper = s.toUpperCase();
+  if (
+    upper.includes('ARV') ||
+    (upper.includes('SUBJECT') && upper.includes('AS-IS')) ||
+    (upper.includes('SUBJECT') && upper.includes('AS IS')) ||
+    (upper.includes('SUBJECT') && upper.includes('TO'))
+  ) {
+    return '1004 Subject-To ARV w/ As-Is';
+  }
+  if (currentSelectedType === '1004 Subject-To ARV w/ As-Is' && (upper === '1004' || upper === 'URAR' || upper === 'FRE70')) {
+    return '1004 Subject-To ARV w/ As-Is';
+  }
   if ((upper.includes('1004C') && upper.includes('1007')) || upper === '1004C + 1007') return '1004C + 1007';
   if ((upper.includes('1004') && upper.includes('1007')) || upper === '1004 + 1007') return '1004 + 1007';
   if ((upper.includes('1025') && upper.includes('1007')) || upper === '1025 + 1007') return '1025 + 1007';

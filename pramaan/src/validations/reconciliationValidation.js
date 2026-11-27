@@ -12,8 +12,8 @@ export const checkFinalValueConsistency = (field, text, allData) => {
         ''
     ).trim();
 
-    // Restrict this validation strictly to 1004 and 1004 + 1007 form types
-    if (formType && formType !== '1004' && formType !== '1004 + 1007') {
+    // Restrict this validation strictly to 1004, 1004 + 1007, and 1004 Subject-To ARV w/ As-Is form types
+    if (formType && formType !== '1004' && formType !== '1004 + 1007' && formType !== '1004 Subject-To ARV w/ As-Is' && !formType.includes('ARV')) {
         return null;
     }
 

@@ -1,13 +1,24 @@
-import React from 'react';
-import { Paper, Box, Typography, Tooltip, IconButton, LinearProgress } from '@mui/material';
+import React, { useState } from 'react';
+import { Paper, Box, Typography, Tooltip, IconButton, LinearProgress, Dialog, DialogTitle, DialogContent, Chip, Button } from '@mui/material';
 import LibraryBooksIcon from '@mui/icons-material/LibraryBooks';
-import { PlaylistAdd as PlaylistAddIcon, CheckCircle as CheckCircleIcon } from '@mui/icons-material';
+import {
+  PlaylistAdd as PlaylistAddIcon,
+  CheckCircle as CheckCircleIcon,
+  Receipt as ReceiptIcon,
+  Close as CloseIcon,
+  ZoomIn as ZoomInIcon,
+  OpenInFull as OpenInFullIcon,
+  VerifiedUser as VerifiedUserIcon
+} from '@mui/icons-material';
 import { EditableField } from './EditableField';
 import { isPriorSaleIncreaseOver15, extractIncreaseComment } from '../../../validations/priorSaleHistoryValidation';
+import { InteractiveZoomImageViewer, DraggableDialogPaper } from './InteractiveZoomImageViewer.js';
 
 
 
 export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondary', usePre = false, extractionAttempted, onDataChange, editingField, setEditingField, highlightedFields = [], allData, loading, loadingSection, manualValidations, handleManualValidation, onRevisionButtonClick, revisionHandlers, showBlankValidation = false, hideEmptyFields = false, isEditable = true }) => {
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
+  const [eoModalOpen, setEoModalOpen] = useState(false);
 
 
 
@@ -1459,9 +1470,45 @@ export const GridInfoCard = ({ id, title, fields, data, cardClass = 'bg-secondar
 
     }
 
-    if ((certVal === undefined || certVal === null || certVal === '') && (fieldPath === 'E&O' || fieldPath === 'E&O Present' || fieldPath === 'E/O' || fieldPath === 'E/O Present' || fieldPath === 'E&O Insurance' || fieldPath === 'E/O Insurance')) {
+    if ((certVal === undefined || certVal === null || certVal === '') && (fieldPath === 'E&O Insurance' || fieldPath === 'E/O Insurance')) {
 
-      certVal = renderValue(data?.['E&O'] ?? data?.['E&O Present'] ?? data?.['E/O'] ?? data?.['E/O Present'] ?? data?.['E&O Insurance'] ?? data?.['E/O Insurance'] ?? data?.CERTIFICATION?.['E&O'] ?? data?.CERTIFICATION?.['E&O Present'] ?? data?.CERTIFICATION?.['E/O'] ?? data?.CERTIFICATION?.['E/O Present'] ?? allData?.['E&O'] ?? allData?.['E&O Present'] ?? allData?.['E/O'] ?? allData?.['E/O Present'] ?? allData?.CERTIFICATION?.['E&O'] ?? allData?.CERTIFICATION?.['E&O Present'] ?? allData?.CERTIFICATION?.['E/O'] ?? allData?.CERTIFICATION?.['E/O Present'] ?? '');
+      certVal = renderValue(
+        data?.['E&O Insurance'] ?? data?.['E/O Insurance'] ??
+        (typeof allData?.EO === 'object' && (allData.EO?.['E&O Insurance'] || allData.EO?.['E/O Insurance'])) ??
+        (typeof allData?.eo_data === 'object' && (allData.eo_data?.['E&O Insurance'] || allData.eo_data?.['E/O Insurance'])) ??
+        allData?.CERTIFICATION?.['E&O Insurance'] ?? allData?.CERTIFICATION?.['E/O Insurance'] ??
+        allData?.['E&O Insurance'] ?? allData?.['E/O Insurance'] ?? ''
+      );
+
+    }
+
+    if ((certVal === undefined || certVal === null || certVal === '') && (fieldPath === 'E&O' || fieldPath === 'E&O Present' || fieldPath === 'E/O' || fieldPath === 'E/O Present')) {
+
+      certVal = renderValue(
+        (typeof data?.['E&O'] === 'string' && data['E&O']) ||
+        (typeof data?.['E&O Present'] === 'string' && data['E&O Present']) ||
+        (typeof data?.['E/O'] === 'string' && data['E/O']) ||
+        (typeof data?.['E/O Present'] === 'string' && data['E/O Present']) ||
+        (typeof allData?.['E&O'] === 'string' && allData['E&O']) ||
+        (typeof allData?.['E&O Present'] === 'string' && allData['E&O Present']) ||
+        (typeof allData?.CERTIFICATION?.['E&O'] === 'string' && allData.CERTIFICATION['E&O']) ||
+        (typeof allData?.CERTIFICATION?.['E&O Present'] === 'string' && allData.CERTIFICATION['E&O Present']) ||
+        (allData?.EO || allData?.has_eo || data?.has_eo ? 'Present' : '') || ''
+      );
+
+    }
+
+    if ((certVal === undefined || certVal === null || certVal === '') && [
+      'Policy Period From', 'Policy Period To', 'E&O Insured', 'E&O Carrier', 'E&O Limit', 'E&O Deductible'
+    ].includes(fieldPath)) {
+
+      certVal = renderValue(
+        data?.[fieldPath] ??
+        (typeof allData?.EO === 'object' && allData.EO?.[fieldPath]) ??
+        (typeof allData?.eo_data === 'object' && allData.eo_data?.[fieldPath]) ??
+        allData?.CERTIFICATION?.[fieldPath] ??
+        allData?.[fieldPath] ?? ''
+      );
 
     }
 
@@ -7809,9 +7856,634 @@ const isNoneChecked = (
 
           </div>
 
+          {/* E&O Insurance Certificate Details & Copy Section */}
+          {(() => {
+            const allPhotos = allData?.extracted_photos || allData?.EXTRACTED_PHOTOS || data?.extracted_photos || data?.EXTRACTED_PHOTOS || [];
+            const eoPhoto = allPhotos.find(p => p.category === 'E&O Insurance' || /e\s*&\s*o|errors\s*(&|and)\s*omissions/i.test(p.caption || '')) || null;
+
+            // Resolve E&O dictionary safely from all sources, rejecting primitive strings like "Present"
+            const candidateEoObjects = [
+              data?.EO,
+              data?.eo_data,
+              allData?.EO,
+              allData?.eo_data,
+              allData?.clean_data?.EO,
+              allData?.clean_data?.eo_data,
+              eoPhoto?.eo_data,
+              (typeof data?.['E&O'] === 'object' && data?.['E&O'] !== null) ? data?.['E&O'] : null,
+              (typeof allData?.['E&O'] === 'object' && allData?.['E&O'] !== null) ? allData?.['E&O'] : null,
+              (typeof allData?.clean_data?.['E&O'] === 'object' && allData?.clean_data?.['E&O'] !== null) ? allData?.clean_data?.['E&O'] : null,
+            ];
+            const eoObj = candidateEoObjects.find(obj => obj && typeof obj === 'object' && !Array.isArray(obj)) || {};
+
+            // Dynamic resolver for E&O fields across all data layers - zero hardcoded values
+            const getEoVal = (...fieldNames) => {
+              for (const f of fieldNames) {
+                if (!f) continue;
+                if (eoObj && typeof eoObj === 'object' && eoObj[f] && typeof eoObj[f] === 'string' && eoObj[f].trim() !== '') {
+                  return eoObj[f].trim();
+                }
+                if (eoPhoto?.eo_data && typeof eoPhoto.eo_data === 'object' && eoPhoto.eo_data[f] && typeof eoPhoto.eo_data[f] === 'string' && eoPhoto.eo_data[f].trim() !== '') {
+                  return eoPhoto.eo_data[f].trim();
+                }
+                if (data && typeof data === 'object' && data[f] && typeof data[f] === 'string' && data[f].trim() !== '') {
+                  return data[f].trim();
+                }
+                if (allData?.CERTIFICATION && typeof allData.CERTIFICATION === 'object' && allData.CERTIFICATION[f] && typeof allData.CERTIFICATION[f] === 'string' && allData.CERTIFICATION[f].trim() !== '') {
+                  return allData.CERTIFICATION[f].trim();
+                }
+                if (allData?.clean_data?.CERTIFICATION && typeof allData.clean_data.CERTIFICATION === 'object' && allData.clean_data.CERTIFICATION[f] && typeof allData.clean_data.CERTIFICATION[f] === 'string' && allData.clean_data.CERTIFICATION[f].trim() !== '') {
+                  return allData.clean_data.CERTIFICATION[f].trim();
+                }
+                if (allData && typeof allData === 'object' && allData[f] && typeof allData[f] === 'string' && allData[f].trim() !== '') {
+                  return allData[f].trim();
+                }
+              }
+              return '';
+            };
+
+            const eoImgSrc = eoPhoto?.base64_preview || eoObj?.base64_preview || (typeof data?.base64_preview === 'string' ? data.base64_preview : '') || (typeof allData?.base64_preview === 'string' ? allData.base64_preview : '') || '';
+            const eoPageNum = getEoVal('E&O Page', 'Page') || eoPhoto?.page || '';
+            const eoPresentVal = getEoVal('E&O Present', 'E&O Attached') || (typeof data?.['E&O'] === 'string' ? data['E&O'] : '') || (typeof allData?.['E&O'] === 'string' ? allData['E&O'] : '') || (typeof data?.['E&O Present'] === 'string' ? data['E&O Present'] : '') || (typeof allData?.['E&O Present'] === 'string' ? allData['E&O Present'] : '');
+            const isEoPresent = String(eoPresentVal).toLowerCase().includes('present') || String(data?.['E&O Attached']).toLowerCase() === 'yes' || String(allData?.['E&O Attached']).toLowerCase() === 'yes' || Boolean(data?.has_eo || allData?.has_eo || eoObj?.has_eo);
+            const hasEo = isEoPresent || Boolean(eoImgSrc || getEoVal('E&O Insurance', 'Policy Period To', 'E&O Carrier'));
+
+            if (!hasEo) return null;
+
+            return (
+              <div style={{
+                marginTop: '20px',
+                border: '1.5px solid #059669',
+                borderRadius: '8px',
+                backgroundColor: '#f8fafc',
+                overflow: 'hidden'
+              }}>
+                {/* Header */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '10px 16px',
+                  backgroundColor: '#ecfdf5',
+                  borderBottom: '1px solid #a7f3d0'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <VerifiedUserIcon sx={{ color: '#047857', fontSize: '1.25rem' }} />
+                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: '#064e3b' }}>
+                      E&O Insurance Certificate Details & Copy
+                    </span>
+                    {eoPageNum && (
+                      <Chip
+                        size="small"
+                        label={`Page ${eoPageNum}`}
+                        sx={{ height: '20px', fontSize: '0.72rem', fontWeight: 600, backgroundColor: '#059669', color: '#fff' }}
+                      />
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Chip
+                      size="small"
+                      label="E&O: Present"
+                      sx={{
+                        height: '22px',
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        backgroundColor: '#dcfce7',
+                        color: '#15803d',
+                        border: '1px solid #86efac'
+                      }}
+                    />
+                    {eoImgSrc && (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<OpenInFullIcon sx={{ fontSize: '0.9rem' }} />}
+                        onClick={() => setEoModalOpen(true)}
+                        sx={{
+                          textTransform: 'none',
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          padding: '2px 8px',
+                          borderColor: '#059669',
+                          color: '#059669',
+                          '&:hover': { borderColor: '#047857', backgroundColor: '#d1fae5' }
+                        }}
+                      >
+                        View E&O Copy
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Body: Two Columns (Data + Photo Preview) */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', padding: '14px', gap: '16px' }}>
+                  {/* Left: E&O Data Grid */}
+                  <div style={{ flex: '1 1 380px', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+                    {/* Policy / Certificate # */}
+                    <div style={{ backgroundColor: '#fff', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Policy / Certificate #</div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>
+                        {getEoVal('E&O Insurance', 'E/O Insurance', 'Policy Number', 'Certificate Number', 'Policy #') || '—'}
+                      </div>
+                    </div>
+                    {/* Insured Appraiser / Company */}
+                    <div style={{ backgroundColor: '#fff', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Insured Name / Appraiser</div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>
+                        {getEoVal('E&O Insured', 'Insured Name', 'Appraiser Name', 'Name') || '—'}
+                      </div>
+                    </div>
+                    {/* Effective / Inception Date */}
+                    <div style={{ backgroundColor: '#fff', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Policy Period From</div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#0f172a' }}>
+                        {getEoVal('Policy Period From', 'Inception Date', 'Effective Date', 'Policy From') || '—'}
+                      </div>
+                    </div>
+                    {/* Expiration Date */}
+                    <div style={{ backgroundColor: '#fff', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Policy Period To</div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#0f172a' }}>
+                        {getEoVal('Policy Period To', 'Expiration Date', 'Policy To', 'Expires') || '—'}
+                      </div>
+                    </div>
+                    {/* Limits of Liability */}
+                    <div style={{ backgroundColor: '#fff', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Limit of Liability</div>
+                      <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#059669' }}>
+                        {getEoVal('E&O Limit', 'Limit of Liability', 'Limits', 'Liability Limit') || '—'}
+                      </div>
+                    </div>
+                    {/* Deductible */}
+                    <div style={{ backgroundColor: '#fff', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Deductible</div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#0f172a' }}>
+                        {getEoVal('E&O Deductible', 'Deductible', 'Retention') || '—'}
+                      </div>
+                    </div>
+                    {/* Insurance Carrier */}
+                    <div style={{ gridColumn: 'span 2', backgroundColor: '#fff', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Insurance Carrier / Company</div>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0f172a' }}>
+                        {getEoVal('E&O Carrier', 'Insurance Carrier', 'Carrier', 'Insurance Company', 'Company') || '—'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right: Visual E&O Preview Thumbnail */}
+                  {eoImgSrc && (
+                    <div
+                      style={{
+                        flex: '0 0 200px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: '#fff',
+                        borderRadius: '8px',
+                        border: '1.5px solid #cbd5e1',
+                        padding: '8px',
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                        transition: 'all 0.2s ease-in-out'
+                      }}
+                      onClick={() => setEoModalOpen(true)}
+                      title="Click to view full-resolution E&O Insurance certificate"
+                    >
+                      <div style={{ position: 'relative', width: '100%', overflow: 'hidden', borderRadius: '4px' }}>
+                        <img
+                          src={eoImgSrc}
+                          alt="E&O Certificate Preview"
+                          style={{ width: '100%', height: 'auto', maxHeight: '240px', objectFit: 'contain', display: 'block' }}
+                        />
+                        <div style={{
+                          position: 'absolute',
+                          inset: 0,
+                          backgroundColor: 'rgba(5, 150, 105, 0.08)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          opacity: 0,
+                          transition: 'opacity 0.2s',
+                          '&:hover': { opacity: 1 }
+                        }}>
+                          <ZoomInIcon sx={{ fontSize: '2rem', color: '#059669' }} />
+                        </div>
+                      </div>
+                      <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '4px', color: '#059669', fontSize: '0.78rem', fontWeight: 600 }}>
+                        <ZoomInIcon sx={{ fontSize: '1rem' }} />
+                        <span>View Full Resolution</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Appraisal Invoice Details & Copy Section */}
+          {(() => {
+            const invoiceInfo = data?.INVOICE || data?.Invoice || data?.invoice_data || allData?.INVOICE || allData?.Invoice || allData?.invoice_data || {};
+            const invAttachedVal = data?.['Invoice Attached'] ?? data?.['Invoice Present'] ?? allData?.['Invoice Attached'] ?? allData?.['Invoice Present'] ?? invoiceInfo?.['Invoice Attached'] ?? invoiceInfo?.['Invoice Present'] ?? '';
+            const hasInvoice = invAttachedVal === 'Yes' || data?.has_invoice || allData?.has_invoice || Boolean(invoiceInfo?.['Invoice Number'] || invoiceInfo?.['Invoice Total'] || invoiceInfo?.['Invoice Page'] || invoiceInfo?.has_invoice);
+            const allPhotos = allData?.extracted_photos || allData?.EXTRACTED_PHOTOS || data?.extracted_photos || data?.EXTRACTED_PHOTOS || [];
+            const invoicePhoto = allPhotos.find(p => p.category === 'Invoice' || /invoice\s*copy|appraisal\s*invoice/i.test(p.caption || '')) || (invoiceInfo?.base64_preview ? { base64_preview: invoiceInfo.base64_preview, caption: `Invoice Copy (Page ${invoiceInfo['Invoice Page'] || 1})`, category: 'Invoice' } : null);
+            const invoiceImgSrc = invoicePhoto?.base64_preview || invoiceInfo?.base64_preview || '';
+
+            if (!hasInvoice) return null;
+
+            return (
+              <div style={{
+                marginTop: '20px',
+                border: '1.5px solid #0284c7',
+                borderRadius: '8px',
+                backgroundColor: '#f8fafc',
+                overflow: 'hidden'
+              }}>
+                {/* Header */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '10px 16px',
+                  backgroundColor: '#e0f2fe',
+                  borderBottom: '1px solid #bae6fd'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <ReceiptIcon sx={{ color: '#0369a1', fontSize: '1.25rem' }} />
+                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0c4a6e' }}>
+                      Appraisal Invoice Details & Copy
+                    </span>
+                    {invoiceInfo['Invoice Page'] && (
+                      <Chip
+                        size="small"
+                        label={`Page ${invoiceInfo['Invoice Page']}`}
+                        sx={{ height: '20px', fontSize: '0.72rem', fontWeight: 600, backgroundColor: '#0284c7', color: '#fff' }}
+                      />
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {invoiceInfo['Payment Status'] && (
+                      <Chip
+                        size="small"
+                        label={invoiceInfo['Payment Status']}
+                        sx={{
+                          height: '22px',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          backgroundColor: invoiceInfo['Payment Status'] === 'Paid' ? '#dcfce7' : '#fef3c7',
+                          color: invoiceInfo['Payment Status'] === 'Paid' ? '#15803d' : '#b45309',
+                          border: `1px solid ${invoiceInfo['Payment Status'] === 'Paid' ? '#86efac' : '#fcd34d'}`
+                        }}
+                      />
+                    )}
+                    {invoiceImgSrc && (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<OpenInFullIcon sx={{ fontSize: '0.9rem' }} />}
+                        onClick={() => setInvoiceModalOpen(true)}
+                        sx={{
+                          textTransform: 'none',
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          padding: '2px 8px',
+                          borderColor: '#0284c7',
+                          color: '#0284c7',
+                          '&:hover': { borderColor: '#0369a1', backgroundColor: '#e0f2fe' }
+                        }}
+                      >
+                        View Invoice Copy
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Body: Two Columns (Data + Photo Preview) */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', padding: '14px', gap: '16px' }}>
+                  {/* Left: Invoice Data Grid */}
+                  <div style={{ flex: '1 1 380px', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+                    {/* Invoice # */}
+                    <div style={{ backgroundColor: '#fff', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Invoice #</div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>{invoiceInfo['Invoice Number'] || data?.['Invoice Number'] || '—'}</div>
+                    </div>
+                    {/* Invoice Date */}
+                    <div style={{ backgroundColor: '#fff', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Invoice Date</div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>{invoiceInfo['Invoice Date'] || data?.['Invoice Date'] || '—'}</div>
+                    </div>
+                    {/* Total Fee */}
+                    <div style={{ backgroundColor: '#fff', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Total Fee / Amount Due</div>
+                      <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0284c7' }}>{invoiceInfo['Invoice Total'] || invoiceInfo['Total Fee'] || data?.['Total Fee'] || '—'}</div>
+                    </div>
+                    {/* Due Date */}
+                    {invoiceInfo['Due Date'] && (
+                      <div style={{ backgroundColor: '#fff', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                        <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Terms / Due Date</div>
+                        <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#0f172a' }}>{invoiceInfo['Due Date']}</div>
+                      </div>
+                    )}
+                    {/* Amount Paid */}
+                    {invoiceInfo['Amount Paid'] && (
+                      <div style={{ backgroundColor: '#fff', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                        <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Amount Paid</div>
+                        <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#16a34a' }}>{invoiceInfo['Amount Paid']}</div>
+                      </div>
+                    )}
+                    {/* Balance Due */}
+                    {invoiceInfo['Balance Due'] && (
+                      <div style={{ backgroundColor: '#fff', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                        <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Balance Due</div>
+                        <div style={{ fontSize: '0.88rem', fontWeight: 700, color: invoiceInfo['Balance Due'] === '$0.00' ? '#16a34a' : '#ea580c' }}>{invoiceInfo['Balance Due']}</div>
+                      </div>
+                    )}
+                    {/* Payee / Appraiser */}
+                    <div style={{ gridColumn: 'span 2', backgroundColor: '#fff', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Appraiser / Payee</div>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#0f172a' }}>{invoiceInfo['Appraiser / Payee'] || '—'}</div>
+                      {(invoiceInfo['Payee Address'] || invoiceInfo['Payee Phone']) && (
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
+                          {[invoiceInfo['Payee Address'], invoiceInfo['Payee Phone']].filter(Boolean).join(' • ')}
+                        </div>
+                      )}
+                    </div>
+                    {/* Client / Billed To */}
+                    <div style={{ gridColumn: 'span 2', backgroundColor: '#fff', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Billed To / Client</div>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#0f172a' }}>{invoiceInfo['Client / Billed To'] || '—'}</div>
+                      {invoiceInfo['Client Email'] && (
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>{invoiceInfo['Client Email']}</div>
+                      )}
+                    </div>
+                    {/* Lender & Borrower */}
+                    {(invoiceInfo['Lender'] || invoiceInfo['Borrower']) && (
+                      <div style={{ gridColumn: 'span 2', backgroundColor: '#fff', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                        <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Lender & Borrower</div>
+                        <div style={{ fontSize: '0.82rem', color: '#1e293b' }}>
+                          {invoiceInfo['Lender'] && <span><strong>Lender:</strong> {invoiceInfo['Lender']} </span>}
+                          {invoiceInfo['Borrower'] && <span>• <strong>Borrower:</strong> {invoiceInfo['Borrower']}</span>}
+                        </div>
+                      </div>
+                    )}
+                    {/* Service Description */}
+                    {invoiceInfo['Service Description'] && (
+                      <div style={{ gridColumn: 'span 2', backgroundColor: '#fff', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                        <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Service / Description</div>
+                        <div style={{ fontSize: '0.82rem', color: '#334155' }}>{invoiceInfo['Service Description']}</div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right: Visual Invoice Preview Thumbnail */}
+                  {invoiceImgSrc && (
+                    <div
+                      style={{
+                        flex: '0 0 200px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: '#fff',
+                        borderRadius: '8px',
+                        border: '1.5px solid #cbd5e1',
+                        padding: '8px',
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                        transition: 'all 0.2s ease-in-out'
+                      }}
+                      onClick={() => setInvoiceModalOpen(true)}
+                      title="Click to view full-resolution invoice copy"
+                    >
+                      <div style={{ position: 'relative', width: '100%', overflow: 'hidden', borderRadius: '4px' }}>
+                        <img
+                          src={invoiceImgSrc}
+                          alt="Invoice Copy Preview"
+                          style={{ width: '100%', height: 'auto', maxHeight: '240px', objectFit: 'contain', display: 'block' }}
+                        />
+                        <div style={{
+                          position: 'absolute',
+                          inset: 0,
+                          backgroundColor: 'rgba(2, 132, 199, 0.08)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          opacity: 0,
+                          transition: 'opacity 0.2s',
+                          '&:hover': { opacity: 1 }
+                        }}>
+                          <ZoomInIcon sx={{ fontSize: '2rem', color: '#0284c7' }} />
+                        </div>
+                      </div>
+                      <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '4px', color: '#0284c7', fontSize: '0.78rem', fontWeight: 600 }}>
+                        <ZoomInIcon sx={{ fontSize: '1rem' }} />
+                        <span>View Full Resolution</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
 
 
         </div>
+
+        {/* Interactive Full Resolution Invoice Dialog Modal */}
+        {invoiceModalOpen && (() => {
+          const invoiceInfo = data?.INVOICE || data?.Invoice || data?.invoice_data || allData?.INVOICE || allData?.Invoice || allData?.invoice_data || {};
+          const allPhotos = allData?.extracted_photos || allData?.EXTRACTED_PHOTOS || data?.extracted_photos || data?.EXTRACTED_PHOTOS || [];
+          const invoicePhoto = allPhotos.find(p => p.category === 'Invoice' || /invoice\s*copy|appraisal\s*invoice/i.test(p.caption || '')) || (invoiceInfo?.base64_preview ? { base64_preview: invoiceInfo.base64_preview, caption: `Invoice Copy (Page ${invoiceInfo['Invoice Page'] || 1})`, category: 'Invoice' } : null);
+          const invoiceImgSrc = invoicePhoto?.base64_preview || invoiceInfo?.base64_preview || '';
+
+          if (!invoiceImgSrc) return null;
+
+          return (
+            <Dialog
+              open={invoiceModalOpen}
+              onClose={() => setInvoiceModalOpen(false)}
+              maxWidth="lg"
+              fullWidth
+              PaperComponent={DraggableDialogPaper}
+              aria-labelledby="draggable-dialog-invoice-title"
+              disableEnforceFocus
+              BackdropProps={{ sx: { bgcolor: 'rgba(0, 0, 0, 0.45)' } }}
+              PaperProps={{
+                sx: {
+                  borderRadius: 3,
+                  backgroundColor: '#0f172a',
+                  color: '#fff',
+                  overflow: 'hidden'
+                }
+              }}
+            >
+              <DialogTitle
+                id="draggable-dialog-invoice-title"
+                component="div"
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  py: 1.5,
+                  px: 2.5,
+                  backgroundColor: '#1e293b',
+                  borderBottom: '1px solid #334155',
+                  cursor: 'move',
+                  userSelect: 'none'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <ReceiptIcon sx={{ color: '#38bdf8', fontSize: '1.4rem' }} />
+                  <div>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#f8fafc', lineHeight: 1.2 }}>
+                      Appraisal Invoice Copy {invoiceInfo['Invoice Page'] ? `(Page ${invoiceInfo['Invoice Page']})` : ''}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#94a3b8' }}>
+                      {[invoiceInfo['Invoice Number'] ? `Invoice #${invoiceInfo['Invoice Number']}` : '', invoiceInfo['Invoice Total'] ? `Total: ${invoiceInfo['Invoice Total']}` : '', invoiceInfo['Appraiser / Payee']].filter(Boolean).join(' • ')}
+                    </Typography>
+                  </div>
+                </div>
+                <IconButton
+                  size="small"
+                  onClick={() => setInvoiceModalOpen(false)}
+                  sx={{ color: '#94a3b8', '&:hover': { color: '#fff', backgroundColor: 'rgba(255,255,255,0.1)' } }}
+                >
+                  <CloseIcon />
+                </IconButton>
+              </DialogTitle>
+              <DialogContent sx={{ p: 0, backgroundColor: '#020617', minHeight: '500px' }}>
+                <InteractiveZoomImageViewer
+                  src={invoiceImgSrc}
+                  alt="Appraisal Invoice Copy"
+                  maxHeight="78vh"
+                  minHeight="520px"
+                  allowRotate={true}
+                />
+              </DialogContent>
+            </Dialog>
+          );
+        })()}
+
+        {/* Interactive Full Resolution E&O Certificate Dialog Modal */}
+        {eoModalOpen && (() => {
+          const allPhotos = allData?.extracted_photos || allData?.EXTRACTED_PHOTOS || data?.extracted_photos || data?.EXTRACTED_PHOTOS || [];
+          const eoPhoto = allPhotos.find(p => p.category === 'E&O Insurance' || /e\s*&\s*o|errors\s*(&|and)\s*omissions/i.test(p.caption || '')) || null;
+
+          const candidateEoObjects = [
+            data?.EO,
+            data?.eo_data,
+            allData?.EO,
+            allData?.eo_data,
+            allData?.clean_data?.EO,
+            allData?.clean_data?.eo_data,
+            eoPhoto?.eo_data,
+            (typeof data?.['E&O'] === 'object' && data?.['E&O'] !== null) ? data?.['E&O'] : null,
+            (typeof allData?.['E&O'] === 'object' && allData?.['E&O'] !== null) ? allData?.['E&O'] : null,
+            (typeof allData?.clean_data?.['E&O'] === 'object' && allData?.clean_data?.['E&O'] !== null) ? allData?.clean_data?.['E&O'] : null,
+          ];
+          const eoObj = candidateEoObjects.find(obj => obj && typeof obj === 'object' && !Array.isArray(obj)) || {};
+
+          const getEoVal = (...fieldNames) => {
+            for (const f of fieldNames) {
+              if (!f) continue;
+              if (eoObj && typeof eoObj === 'object' && eoObj[f] && typeof eoObj[f] === 'string' && eoObj[f].trim() !== '') {
+                return eoObj[f].trim();
+              }
+              if (eoPhoto?.eo_data && typeof eoPhoto.eo_data === 'object' && eoPhoto.eo_data[f] && typeof eoPhoto.eo_data[f] === 'string' && eoPhoto.eo_data[f].trim() !== '') {
+                return eoPhoto.eo_data[f].trim();
+              }
+              if (data && typeof data === 'object' && data[f] && typeof data[f] === 'string' && data[f].trim() !== '') {
+                return data[f].trim();
+              }
+              if (allData?.CERTIFICATION && typeof allData.CERTIFICATION === 'object' && allData.CERTIFICATION[f] && typeof allData.CERTIFICATION[f] === 'string' && allData.CERTIFICATION[f].trim() !== '') {
+                return allData.CERTIFICATION[f].trim();
+              }
+              if (allData?.clean_data?.CERTIFICATION && typeof allData.clean_data.CERTIFICATION === 'object' && allData.clean_data.CERTIFICATION[f] && typeof allData.clean_data.CERTIFICATION[f] === 'string' && allData.clean_data.CERTIFICATION[f].trim() !== '') {
+                return allData.clean_data.CERTIFICATION[f].trim();
+              }
+              if (allData && typeof allData === 'object' && allData[f] && typeof allData[f] === 'string' && allData[f].trim() !== '') {
+                return allData[f].trim();
+              }
+            }
+            return '';
+          };
+
+          const eoImgSrc = eoPhoto?.base64_preview || eoObj?.base64_preview || (typeof data?.base64_preview === 'string' ? data.base64_preview : '') || (typeof allData?.base64_preview === 'string' ? allData.base64_preview : '') || '';
+          const eoPageNum = getEoVal('E&O Page', 'Page') || eoPhoto?.page || '';
+          const eoPolNum = getEoVal('E&O Insurance', 'E/O Insurance', 'Policy Number', 'Certificate Number', 'Policy #');
+          const eoCarrier = getEoVal('E&O Carrier', 'Insurance Carrier', 'Carrier', 'Insurance Company', 'Company');
+          const eoLimit = getEoVal('E&O Limit', 'Limit of Liability', 'Limits');
+          const eoInsured = getEoVal('E&O Insured', 'Insured Name', 'Appraiser Name', 'Name');
+
+          if (!eoImgSrc) return null;
+
+          return (
+            <Dialog
+              open={eoModalOpen}
+              onClose={() => setEoModalOpen(false)}
+              maxWidth="lg"
+              fullWidth
+              PaperComponent={DraggableDialogPaper}
+              aria-labelledby="draggable-dialog-eo-title"
+              disableEnforceFocus
+              BackdropProps={{ sx: { bgcolor: 'rgba(0, 0, 0, 0.45)' } }}
+              PaperProps={{
+                sx: {
+                  borderRadius: 3,
+                  backgroundColor: '#0f172a',
+                  color: '#fff',
+                  overflow: 'hidden'
+                }
+              }}
+            >
+              <DialogTitle
+                id="draggable-dialog-eo-title"
+                component="div"
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  py: 1.5,
+                  px: 2.5,
+                  backgroundColor: '#1e293b',
+                  borderBottom: '1px solid #334155',
+                  cursor: 'move',
+                  userSelect: 'none'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <VerifiedUserIcon sx={{ color: '#34d399', fontSize: '1.4rem' }} />
+                  <div>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#f8fafc', lineHeight: 1.2 }}>
+                      E&O Insurance Certificate Copy {eoPageNum ? `(Page ${eoPageNum})` : ''}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#94a3b8' }}>
+                      {[eoPolNum ? `Policy #${eoPolNum}` : '', eoCarrier, eoLimit ? `Limit: ${eoLimit}` : '', eoInsured].filter(Boolean).join(' • ')}
+                    </Typography>
+                  </div>
+                </div>
+                <IconButton
+                  size="small"
+                  onClick={() => setEoModalOpen(false)}
+                  sx={{ color: '#94a3b8', '&:hover': { color: '#fff', backgroundColor: 'rgba(255,255,255,0.1)' } }}
+                >
+                  <CloseIcon />
+                </IconButton>
+              </DialogTitle>
+              <DialogContent sx={{ p: 0, backgroundColor: '#020617', minHeight: '500px' }}>
+                <InteractiveZoomImageViewer
+                  src={eoImgSrc}
+                  alt="E&O Insurance Certificate Copy"
+                  maxHeight="78vh"
+                  minHeight="520px"
+                  allowRotate={true}
+                />
+              </DialogContent>
+            </Dialog>
+          );
+        })()}
 
       </Paper>
 

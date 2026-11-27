@@ -27,3 +27,4 @@ export * as appraisalVersion1Validation from './appraisalVersion1Validation';
 export * as version1Validation from './appraisalVersion1Validation';
 export * as ecrValidation from './ecrValidation';
 export * as form1004And1007Validation from './form1004And1007Validation';
+export * as arvAsIsValidation from './arvAsIsValidation';

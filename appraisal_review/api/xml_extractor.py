@@ -31,15 +31,28 @@ except ImportError:
     pypdf = None
 
 try:
-    from api.eo_extractor import extract_eo_insurance_from_doc
+    import cv2
+except ImportError:
+    cv2 = None
+
+try:
+    import numpy as np
+except ImportError:
+    np = None
+
+try:
+    from api.eo_extractor import extract_eo_insurance_from_doc, extract_eo_copy_data
 except ImportError:
     try:
-        from .eo_extractor import extract_eo_insurance_from_doc  # type: ignore
+        from .eo_extractor import extract_eo_insurance_from_doc, extract_eo_copy_data  # type: ignore
     except Exception:
-        def extract_eo_insurance_from_doc(doc: Any) -> Dict[str, str]:  # type: ignore
+        def extract_eo_insurance_from_doc(doc: Any, use_ocr: bool = True, appraiser_hint: str = "") -> Dict[str, str]:  # type: ignore
             return {
                 "E&O": "Absent",
                 "E&O Present": "Absent",
+                "E&O Attached": "No",
+                "has_eo": False,
+                "E&O Page": "",
                 "E&O Insurance": "",
                 "Policy Period From": "",
                 "Policy Period To": "",
@@ -47,6 +60,16 @@ except ImportError:
                 "E&O Carrier": "",
                 "E&O Limit": "",
                 "E&O Deductible": "",
+                "base64_preview": ""
+            }
+        def extract_eo_copy_data(page: Any, p_no: int, use_ocr: bool = True, appraiser_hint: str = "") -> Dict[str, Any]: # type: ignore
+            return {
+                "E&O": "Present",
+                "E&O Present": "Present",
+                "E&O Attached": "Yes",
+                "has_eo": True,
+                "E&O Page": p_no,
+                "base64_preview": ""
             }
 
 def _clean_currency(val: Any) -> str:
@@ -67,6 +90,21 @@ def _clean_currency(val: Any) -> str:
         return f"{prefix}{num:,.2f}"
     except ValueError:
         return val_str
+
+def _clean_basement_area(raw: str) -> str:
+    """Return trimmed BasementArea _Description preserving exact UAD format (e.g. '694sf694sfwo')."""
+    return raw.strip() if raw else ""
+
+
+def _clean_basement_rooms(raw: str) -> str:
+    """Return trimmed BasementFinish _Description preserving exact UAD format (e.g. '0rr2br1.0ba1o')."""
+    if not raw or not raw.strip():
+        return ""
+    s = raw.strip()
+    if re.match(r'^(?:n/a|none|na)$', s, re.IGNORECASE):
+        return ""
+    return s
+
 
 def _parse_and_sum_adjustments(adj_str: Any) -> str:
     if adj_str is None:
@@ -741,6 +779,254 @@ def _detect_uspap_identification_presence(root: ET.Element, embedded_doc: Option
     return False, "Not Present"
 
 
+def extract_invoice_copy_data(page, p_no: int) -> Dict[str, Any]:
+    """
+    Extracts structured invoice copy data and high-res image from an invoice page.
+    Works for TOTAL Form NIV5D, ACI, ClickFORMS, Bradford, SFREP, and scanned invoices.
+    """
+    # 1. Render high-res image preview of the invoice page
+    pix = page.get_pixmap(dpi=150)
+    b64_img = base64.b64encode(pix.tobytes("jpeg")).decode("utf-8")
+    base64_preview = f"data:image/jpeg;base64,{b64_img}"
+
+    # 2. Extract words
+    words = page.get_text("words") or []
+
+    # Left header (Appraiser / Payee info) vs Right header (Invoice #, Dates)
+    left_hdr_words = [w for w in words if w[0] < 310 and w[1] < 160]
+    right_hdr_words = [w for w in words if w[0] >= 300 and w[1] < 160]
+    body_words = [w for w in words if w[1] >= 150]
+
+    def words_to_lines(word_list):
+        lines = []
+        curr = []
+        curr_y = None
+        for w in sorted(word_list, key=lambda x: (round(x[1] / 4.0) * 4.0, x[0])):
+            wy = round(w[1] / 4.0) * 4.0
+            if curr_y is None or abs(wy - curr_y) < 3.5:
+                curr.append(w[4])
+                curr_y = wy
+            else:
+                lines.append(" ".join(curr))
+                curr = [w[4]]
+                curr_y = wy
+        if curr:
+            lines.append(" ".join(curr))
+        return lines
+
+    left_hdr_lines = words_to_lines(left_hdr_words)
+    right_hdr_lines = words_to_lines(right_hdr_words)
+    body_lines = words_to_lines(body_words)
+    all_lines = words_to_lines(words)
+
+    full_visual_text = "\n".join(all_lines)
+    raw_text = page.get_text("text") or ""
+
+    inv_data = {
+        "Invoice Attached": "Yes",
+        "Invoice Present": "Yes",
+        "has_invoice": True,
+        "Invoice Page": p_no,
+        "Invoice Number": "",
+        "Invoice Date": "",
+        "Due Date": "",
+        "Invoice Total": "",
+        "Total Fee": "",
+        "Fee Amount": "",
+        "Balance Due": "",
+        "Amount Paid": "",
+        "Payment Status": "",
+        "Appraiser / Payee": "",
+        "Payee Address": "",
+        "Payee Phone": "",
+        "Payee Email": "",
+        "Client / Billed To": "",
+        "Client Email": "",
+        "Lender": "",
+        "Borrower": "",
+        "Property Address": "",
+        "City State Zip": "",
+        "Service Description": "",
+        "Legal Description": "",
+        "base64_preview": base64_preview
+    }
+
+    # --- Header Parsing (Left: Appraiser/Payee, Right: Inv#/Date) ---
+    # Appraiser Name from FROM: line or top left header
+    m_from = re.search(r'FROM\s*:\s*\n?\s*([^\n\r|]+)', full_visual_text, re.I)
+    if m_from and m_from.group(1).strip() and not any(k in m_from.group(1).upper() for k in ["INVOICE", "FORM", "TELEPHONE", "FAX"]):
+        inv_data["Appraiser / Payee"] = m_from.group(1).strip()
+    elif left_hdr_lines:
+        for l in left_hdr_lines:
+            l_s = re.sub(r'^\s*FROM\s*:\s*', '', l, flags=re.I).strip()
+            if l_s and not any(k in l_s.upper() for k in ["INVOICE", "FORM", "TELEPHONE", "FAX", "TO:"]):
+                inv_data["Appraiser / Payee"] = l_s
+                break
+
+    # Payee Address
+    street_line = ""
+    csz_line = ""
+    for l in left_hdr_lines:
+        l_s = l.strip()
+        if re.search(r'\d+\s+[A-Za-z0-9\s]+(?:Rd|St|Ave|Dr|Blvd|Ln|Way|Ct|Highway|Hwy|Pkwy|Plaza|Road|Street|Avenue|Lane|Drive)\b', l_s, re.I):
+            street_line = l_s
+        elif re.search(r'^[A-Za-z\s]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?', l_s):
+            csz_line = l_s
+    if street_line and csz_line:
+        inv_data["Payee Address"] = f"{street_line}, {csz_line}"
+    elif csz_line:
+        inv_data["Payee Address"] = csz_line
+    elif street_line:
+        inv_data["Payee Address"] = street_line
+
+    # Payee Phone
+    for l in left_hdr_lines:
+        m_ph = re.search(r'\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}', l)
+        if m_ph:
+            inv_data["Payee Phone"] = m_ph.group(0).strip()
+            break
+
+    # Invoice Number from Right Header or Full Text
+    for l in right_hdr_lines:
+        m_num = re.search(r'(?:Client\s*File\s*#|Main\s*File\s*#|Internal\s*Order\s*#|Invoice\s*(?:#|No|Number))\s*[:\-]?\s*([0-9][A-Za-z0-9\-]+)', l, re.I)
+        if m_num:
+            inv_data["Invoice Number"] = m_num.group(1).strip()
+            break
+        m_pat = re.search(r'\b(\d{4,}-\d{4,})\b', l)
+        if m_pat and not inv_data["Invoice Number"]:
+            inv_data["Invoice Number"] = m_pat.group(1).strip()
+
+    if not inv_data["Invoice Number"]:
+        m_inv_num = re.search(r'(?:Client\s*File\s*#|Main\s*File\s*#\s*(?:on\s*form)?|Internal\s*Order\s*#|Invoice\s*(?:#|No|Number))\s*[:\-]?\s*([0-9][A-Za-z0-9\-]+)', full_visual_text, re.I)
+        if m_inv_num:
+            inv_data["Invoice Number"] = m_inv_num.group(1).strip()
+        else:
+            m_num2 = re.search(r'\b(\d{4,}-\d{4,})\b', full_visual_text)
+            if m_num2:
+                inv_data["Invoice Number"] = m_num2.group(1).strip()
+
+    # Invoice Date from Right Header or Full Text
+    for l in right_hdr_lines:
+        m_d = re.search(r'(?:Invoice\s*Date|Date\s*of\s*Invoice|Date)\s*[:\-]?\s*([0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4})', l, re.I)
+        if m_d:
+            inv_data["Invoice Date"] = m_d.group(1).strip()
+            break
+    if not inv_data["Invoice Date"]:
+        m_date = re.search(r'(?:Invoice\s*Date|Date\s*of\s*Invoice)\s*[:\-]?\s*([0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4})', full_visual_text, re.I)
+        if m_date:
+            inv_data["Invoice Date"] = m_date.group(1).strip()
+        else:
+            m_d2 = re.search(r'\b(\d{1,2}/\d{1,2}/\d{4})\b', full_visual_text)
+            if m_d2:
+                inv_data["Invoice Date"] = m_d2.group(1).strip()
+
+    # Due Date - only extract if actually present in document
+    m_due = re.search(r'(?:Due\s*Date|Payment\s*Due|Terms)\s*[:\-]\s*([^\n\r|]+)', full_visual_text, re.I)
+    if m_due and m_due.group(1).strip():
+        val = m_due.group(1).strip()
+        if not any(stop in val.upper() for stop in ["REFERENCE", "INTERNAL", "FILE", "LENDER"]):
+            inv_data["Due Date"] = val
+    if not inv_data["Due Date"]:
+        for l in right_hdr_lines:
+            m_dl = re.search(r'(?:Due\s*Date|Terms)\s*[:\-]\s*([A-Za-z0-9\s/]+)$', l, re.I)
+            if m_dl and m_dl.group(1).strip():
+                inv_data["Due Date"] = m_dl.group(1).strip()
+                break
+
+    # Amounts & Total Due
+    m_tot = re.search(r'(?:TOTAL\s*DUE(?:\s*\$)?|AMOUNT\s*DUE(?:\s*\$)?|INVOICE\s*TOTAL(?:\s*\$)?|TOTAL\s*FEE(?:\s*\$)?)[^\n\r0-9]{0,20}\n?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d{2})?|\d+(?:\.\d{2})?)', full_visual_text, re.I)
+    if m_tot:
+        amt_str = f"${m_tot.group(1).strip()}"
+        inv_data["Invoice Total"] = amt_str
+        inv_data["Total Fee"] = amt_str
+        inv_data["Fee Amount"] = amt_str
+    else:
+        m_sub = re.search(r'\b([0-9]{1,3}(?:,[0-9]{3})*\.\d{2})\b', full_visual_text)
+        if m_sub:
+            amt_str = f"${m_sub.group(1).strip()}"
+            inv_data["Invoice Total"] = amt_str
+            inv_data["Total Fee"] = amt_str
+            inv_data["Fee Amount"] = amt_str
+
+    # Amount Paid - only extract if document explicitly lists payment amount
+    m_paid = re.search(r'(?:Amount\s*Paid|Paid\s*Amount|Payments?\s*(?:Amount)?|Check\s*Amount)[^\n\r0-9]{0,20}\n?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d{2})?|\d+(?:\.\d{2})?)', full_visual_text, re.I)
+    if m_paid:
+        inv_data["Amount Paid"] = f"${m_paid.group(1).strip()}"
+
+    # Balance Due - only extract if document lists balance
+    m_bal = re.search(r'(?:Balance\s*Due|Amount\s*Due|Remaining\s*Balance)[^\n\r0-9]{0,20}\n?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d{2})?|\d+(?:\.\d{2})?)', full_visual_text, re.I)
+    if m_bal:
+        inv_data["Balance Due"] = f"${m_bal.group(1).strip()}"
+
+    # Payment Status - only if document states it or explicitly marked
+    if re.search(r'\bPAID\s+IN\s+FULL\b|\bSTATUS\s*:\s*PAID\b|\bPAID\s*\(X\)', full_visual_text, re.I):
+        inv_data["Payment Status"] = "Paid"
+    elif re.search(r'\bSTATUS\s*:\s*UNPAID\b|\bUNPAID\b', full_visual_text, re.I):
+        inv_data["Payment Status"] = "Unpaid"
+    elif re.search(r'\bDUE\s+UPON\s+RECEIPT\b', full_visual_text, re.I):
+        inv_data["Payment Status"] = "Due Upon Receipt"
+    elif re.search(r'\bPENDING\b', full_visual_text, re.I):
+        inv_data["Payment Status"] = "Pending"
+    else:
+        inv_data["Payment Status"] = ""
+
+    # Client Email
+    m_email = re.search(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', full_visual_text)
+    if m_email:
+        inv_data["Client Email"] = m_email.group(0).strip()
+
+    # Client / Billed To from Client: or TO: block
+    m_cli = re.search(r'(?:Client|Billed\s*To|Bill\s*To)\s*:\s*([^\n\r|]+)', full_visual_text, re.I)
+    if m_cli and m_cli.group(1).strip():
+        inv_data["Client / Billed To"] = m_cli.group(1).strip()
+    else:
+        m_to = re.search(r'TO\s*:\s*\n?\s*([^\n\r|]+)', full_visual_text, re.I)
+        if m_to and m_to.group(1).strip():
+            inv_data["Client / Billed To"] = m_to.group(1).strip()
+
+    # Lender
+    m_lend = re.search(r'Lender\s*:\s*([^\n\r|]+?)(?:\s+Client:|\s*$)', full_visual_text, re.I)
+    if m_lend:
+        inv_data["Lender"] = m_lend.group(1).strip()
+
+    # Borrower
+    m_borr = re.search(r'(?:Purchaser/Borrower|Borrower|Purchaser)\s*:\s*\n?\s*([^\n\r|]+)', full_visual_text, re.I)
+    if m_borr:
+        inv_data["Borrower"] = m_borr.group(1).strip()
+
+    # Property Address
+    m_paddr = re.search(r'Property\s*Address\s*:\s*([^\n\r|]+)', full_visual_text, re.I)
+    if m_paddr:
+        inv_data["Property Address"] = m_paddr.group(1).strip()
+
+    # City State Zip
+    m_city = re.search(r'City\s*:\s*([A-Za-z\s]+?)(?:\s+County|\s+State|\s*$)', full_visual_text, re.I | re.M)
+    m_state = re.search(r'State\s*:\s*([A-Z]{2})', full_visual_text, re.I)
+    m_zip = re.search(r'Zip\s*:\s*(\d{5}(?:-\d{4})?)', full_visual_text, re.I)
+    if m_city and m_state and m_zip:
+        inv_data["City State Zip"] = f"{m_city.group(1).strip()}, {m_state.group(1).strip()} {m_zip.group(1).strip()}"
+        if inv_data["Property Address"] and inv_data["City State Zip"] not in inv_data["Property Address"]:
+            inv_data["Property Address"] = f"{inv_data['Property Address']}, {inv_data['City State Zip']}"
+
+    # Service Description - from invoice line items table
+    m_svc_hdr = re.search(r'(?:FEES\s+AMOUNT|ITEM\s+DESCRIPTION|SERVICE\s+DESCRIPTION|SERVICES\s+RENDERED)\s*\n+([^\n\r]+)', full_visual_text, re.I)
+    if m_svc_hdr:
+        inv_data["Service Description"] = m_svc_hdr.group(1).strip()
+    if not inv_data["Service Description"]:
+        m_svc_line = re.search(r'\n([^\n\r$]{3,80}\s+\$?[0-9,]+\.\d{2}|\$?[0-9,]+\.\d{2}\s*-\s*[^\n\r]+)', full_visual_text)
+        if m_svc_line:
+            line_str = m_svc_line.group(1).strip()
+            if not any(h in line_str.upper() for h in ["TOTAL", "SUBTOTAL", "BALANCE", "AMOUNT DUE", "FEE AMOUNT", "PAID"]):
+                inv_data["Service Description"] = line_str
+
+    # Legal Description
+    m_leg = re.search(r'Legal\s*Description\s*:\s*([^\n\r]+)', full_visual_text, re.I)
+    if m_leg:
+        inv_data["Legal Description"] = m_leg.group(1).strip()
+
+    return inv_data
+
+
 def _detect_invoice_presence(root: ET.Element, embedded_doc: Optional[ET.Element] = None, full_narrative: str = "") -> Tuple[bool, str, Dict[str, Any]]:
     """
     Identifies whether an appraisal invoice page or invoice copy is present in MISMO XML or embedded PDF.
@@ -806,20 +1092,8 @@ def _detect_invoice_presence(root: ET.Element, embedded_doc: Optional[ET.Element
                     ))
 
                     if has_inv_heading and has_inv_indicators:
-                        m_amt = re.search(
-                            r'(?:TOTAL\s*DUE|AMOUNT\s*DUE|INVOICE\s*TOTAL|TOTAL\s*FEE|INVOICE\s*AMOUNT|TOTAL)[^0-9$\n]{0,35}\$?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d{2})?|\d+(?:\.\d{2})?)',
-                            raw_t,
-                            re.IGNORECASE
-                        )
-                        amt = ""
-                        if m_amt and any(c.isdigit() for c in m_amt.group(1)):
-                            amt = f"${m_amt.group(1).strip()}"
+                        inv_details = extract_invoice_copy_data(page, page_num)
                         pdf.close()
-                        inv_details["Invoice Attached"] = "Yes"
-                        inv_details["Invoice Present"] = "Yes"
-                        inv_details["has_invoice"] = True
-                        inv_details["Invoice Page"] = page_num
-                        inv_details["Invoice Total"] = amt
                         return True, f"Embedded PDF Page {page_num} (Invoice)", inv_details
                 pdf.close()
         except Exception:
@@ -1616,6 +1890,41 @@ def _detect_form_type_from_xml(root: ET.Element) -> str:
         
     # Check 1004 (URAR / FRE 70)
     if "1004" in ct or "URAR" in ct or "FRE70" in ct:
+        is_subject_to = False
+        for elem in root.iter():
+            tag = elem.tag.split("}")[-1]
+            if tag == "_CONDITION_OF_APPRAISAL":
+                cond_t = elem.attrib.get("_Type", "")
+                if cond_t in ["SubjectToCompletion", "SubjectToRepairs"]:
+                    is_subject_to = True
+                    break
+
+        if is_subject_to:
+            has_as_is = False
+            for elem in root.iter():
+                for k, v in elem.attrib.items():
+                    if any(phrase in str(v).lower() for phrase in ["as is value", "as-is value", "as is market value", "as-is market value", "as-is addendum"]):
+                        has_as_is = True
+                        break
+                if has_as_is:
+                    break
+
+            if not has_as_is and fitz is not None:
+                embedded_doc = root.find(".//DOCUMENT")
+                if embedded_doc is not None and embedded_doc.text:
+                    try:
+                        pdf_bytes = base64.b64decode(embedded_doc.text.strip())
+                        emb_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+                        for p in emb_doc:
+                            if re.search(r"as[\s-]*is\s+value|as[\s-]*is\s+market\s+value|\"as-is\"\s+value|as-is\s+addendum", p.get_text(), re.I):
+                                has_as_is = True
+                                break
+                    except Exception:
+                        pass
+
+            if has_as_is:
+                return "1004 Subject-To ARV w/ As-Is"
+
         return "1004 + 1007" if has_1007 else "1004"
         
     # Check Worldwide ERC
@@ -2324,6 +2633,12 @@ def _extract_photos_with_pdfplumber(
                     photos.append(photo_item)
     except Exception as e:
         print("pdfplumber photo extraction warning:", e)
+    if plumber_doc is not None:
+        try:
+            plumber_doc.close()
+        except Exception:
+            pass
+
     return photos
 
 def classify_subject_view_label(raw_label: str, page_context: str = "") -> Optional[Tuple[str, str]]:
@@ -2391,6 +2706,144 @@ def classify_subject_view_label(raw_label: str, page_context: str = "") -> Optio
         return ("HUD Certification Label", lbl)
 
     return None
+
+
+_PHOTO_LABEL_KEYWORD_MAP = [
+    (re.compile(r'\b(?:mbr|master\s*bed(?:room)?|primary\s*bed(?:room)?|primary\s*suite|br\s*\d+|bdrm|bed\s*\d+|bedroom)\b', re.I), 'Bedroom'),
+    (re.compile(r'\b(?:half\s*bath|powder\s*room|lavatory|full\s*bath|master\s*bath|primary\s*bath|bath(?:room)?)\b', re.I), 'Bathroom'),
+    (re.compile(r'\b(?:kitchen|kitchenette|kitch)\b', re.I), 'Kitchen'),
+    (re.compile(r'\b(?:living\s*room|family\s*room|great\s*room|sitting\s*room|den|rec\s*room)\b', re.I), 'Living Area'),
+    (re.compile(r'\b(?:dining\s*room|dining\s*area|breakfast\s*nook|dinette)\b', re.I), 'Dining Area'),
+    (re.compile(r'\b(?:basement|bsmt|below\s*grade|cellar)\b', re.I), 'Basement'),
+    (re.compile(r'\b(?:rear\s*view|back\s*yard|rear\s*exterior|subject\s*rear)\b', re.I), 'Exterior Rear'),
+    (re.compile(r'\b(?:front\s*view|front\s*exterior|subject\s*front)\b', re.I), 'Exterior Front'),
+    (re.compile(r'\b(?:street\s*view|street\s*scene)\b', re.I), 'Street View'),
+    (re.compile(r'\b(?:garage|carport|driveway)\b', re.I), 'Garage / Parking'),
+    (re.compile(r'\b(?:laundry|utility\s*room|mud\s*room)\b', re.I), 'Utility / Laundry'),
+]
+
+
+def _normalize_photo_label(raw_label: str) -> str:
+    """Map raw photo label variations to canonical category label via keyword map."""
+    if not raw_label:
+        return ""
+    for pat, canonical in _PHOTO_LABEL_KEYWORD_MAP:
+        if pat.search(raw_label):
+            return canonical
+    return raw_label.strip()
+
+
+_PHOTO_SKIP_PHRASES = (
+    "aciweb", "int6ar", "page ", "page#", "appraisal", "form 1004", "form pht", "form pic",
+    "form dls", "total appraisal", "1-800-alamode", "appraised date", "appraised value",
+    "sale date", "sale price", "file no", "file #", "case no", "case #", "borrower",
+    "property address", "lender/client", "clickforms", "bradford", "sfrep", "alamode",
+    "photo addendum", "subject photo addendum", "interior photo addendum"
+)
+
+
+def _clean_extracted_photo_label(raw_lbl: str) -> str:
+    """Clean leading/trailing punctuation, slot prefixes, and extra whitespace from a photo label."""
+    if not raw_lbl:
+        return ""
+    s = re.sub(r"\s+", " ", str(raw_lbl)).strip()
+    s = re.sub(r"^(?:photo\s*#?\s*\d+\s*[:\-|.]*\s*|#\d+\s*[:\-|.]+\s*)", "", s, flags=re.I).strip()
+    s = s.strip(":-|•·—– ")
+    return s
+
+
+def _is_boilerplate_photo_label(line: str) -> bool:
+    """Return True if a candidate text line is form chrome, metadata, or a bare number."""
+    if not line:
+        return True
+    ln = line.strip()
+    if len(ln) < 2 or len(ln) >= 45:
+        return True
+    ln_low = ln.lower()
+    if any(sk in ln_low for sk in _PHOTO_SKIP_PHRASES):
+        return True
+    if re.match(r"^(?:page\s*\d+(?:\s*of\s*\d+)?|photo\s*#?\s*\d+|#?\d+)$", ln_low):
+        return True
+    if re.match(r"^[\d,\.\$\s\/\-:]+$", ln) and len(ln) < 18:
+        return True
+    return False
+
+
+def _extract_words_in_band(
+    page_words: List[Tuple[Any, ...]],
+    x0: float,
+    y0: float,
+    x1: float,
+    y1: float,
+) -> str:
+    """Group PyMuPDF word-level bounding boxes inside a coordinate band into clean lines."""
+    band_words = [
+        w for w in page_words
+        if w[0] >= x0 and w[2] <= x1 and w[1] >= y0 and w[3] <= y1
+    ]
+    if not band_words:
+        return ""
+    band_words.sort(key=lambda w: (round(w[1] / 4.0), w[0]))
+    lines: List[str] = []
+    cur_y = None
+    cur_tokens: List[str] = []
+    for w in band_words:
+        wy = w[1]
+        if cur_y is None or abs(wy - cur_y) <= 5.0:
+            cur_tokens.append(str(w[4]))
+            if cur_y is None:
+                cur_y = wy
+        else:
+            line_txt = " ".join(cur_tokens).strip()
+            if line_txt:
+                lines.append(line_txt)
+            cur_tokens = [str(w[4])]
+            cur_y = wy
+    if cur_tokens:
+        line_txt = " ".join(cur_tokens).strip()
+        if line_txt:
+            lines.append(line_txt)
+
+    clean_lines: List[str] = []
+    for ln in lines:
+        if _is_boilerplate_photo_label(ln):
+            continue
+        if ln not in clean_lines:
+            clean_lines.append(ln)
+    return " ".join(clean_lines[:2]).strip()
+
+
+def _assess_photo_quality(pix: Any) -> Optional[Dict[str, Any]]:
+    """Compute OpenCV Laplacian variance (blur), mean brightness, aspect ratio, and resolution."""
+    if pix is None:
+        return None
+    w_px, h_px = pix.width, pix.height
+    aspect = round(w_px / h_px, 2) if h_px > 0 else 0.0
+    quality: Dict[str, Any] = {
+        "resolution": f"{w_px}x{h_px}",
+        "aspect_ratio": aspect
+    }
+    if cv2 is not None and np is not None and w_px > 0 and h_px > 0:
+        try:
+            arr = np.frombuffer(pix.samples, dtype=np.uint8).reshape(h_px, w_px, pix.n)
+            if pix.n == 4:
+                gray = cv2.cvtColor(arr, cv2.COLOR_RGBA2GRAY)
+            elif pix.n == 3:
+                gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
+            else:
+                gray = arr
+            lap_var = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+            mean_bright = float(gray.mean())
+            exposure = "underexposed" if mean_bright < 40.0 else ("overexposed" if mean_bright > 225.0 else "normal")
+            quality.update({
+                "laplacian_variance": round(lap_var, 2),
+                "is_blurry": lap_var < 30.0,
+                "mean_brightness": round(mean_bright, 1),
+                "exposure": exposure
+            })
+        except Exception:
+            pass
+    return quality
 
 
 def extract_photos_from_xml(
@@ -2476,6 +2929,14 @@ def extract_photos_from_xml(
             return _extract_photos_with_pdfplumber(pdf_bytes, max_photos=max_photos, dpi=dpi, include_images=include_images, reference_records=reference_records)
         return []
 
+    appraiser_name = ""
+    if reference_records and isinstance(reference_records, dict):
+        appraiser_name = reference_records.get("appraiser_name") or reference_records.get("appraiser") or ""
+    if not appraiser_name and xml_text:
+        m_appr = re.search(r'<(?:_|APPRAISER_)?Name>([^<]+)', xml_text, re.I) or re.search(r'AppraiserName=["\']([^"\']+)["\']', xml_text, re.I)
+        if m_appr:
+            appraiser_name = m_appr.group(1).strip()
+
     if reference_records is None:
         reference_records = {"subject": None, "sales_comps": [], "rental_comps": []}
         try:
@@ -2516,6 +2977,8 @@ def extract_photos_from_xml(
 
     photos = []
     photo_count = 0
+    plumber_doc = None  # Lazy-opened only if PyMuPDF word/block matching misses a label
+    ocr_extractor = None  # Lazy-loaded only if vector + pdfplumber matching misses a label
 
     # 3. Iterate through pages and extract photos using ultra-fast page.get_image_info
     skip_form_headers = [
@@ -2529,11 +2992,17 @@ def extract_photos_from_xml(
         "ENGAGEMENT LETTER",
         "SCOPE OF WORK",
         "PRIVACY NOTICE",
-        "STATEMENTS OF FACT"
+        "STATEMENTS OF FACT",
+        "TAX RECORD",
+        "TAX ASSESSMENT",
+        "APPRAISER LICENSE",
+        "STATE LICENSE",
+        "CERTIFICATION LICENSE"
     ]
     photo_override_headers = [
-        "PHOTO ADDENDUM", "SUBJECT PROPERTY PHOTO", "COMPARABLE PROPERTY PHOTO", 
-        "COMPARABLE RENTALS PHOTO", "ADDITIONAL PHOTOS", "BUILDING SKETCH", "LOCATION MAP", "FLOOR PLAN"
+        "PHOTO ADDENDUM", "SUBJECT PROPERTY PHOTO", "COMPARABLE PROPERTY PHOTO",
+        "COMPARABLE RENTALS PHOTO", "ADDITIONAL PHOTOS", "BUILDING SKETCH", "LOCATION MAP", "FLOOR PLAN",
+        "PHT6", "PHT3", "PHT12", "DLSTRNT", "PICPIX", "PICSIX", "PICINT"
     ]
 
     for p_idx in range(len(doc)):
@@ -2543,6 +3012,61 @@ def extract_photos_from_xml(
         p_no = p_idx + 1
         raw_text = page.get_text() or ""
         raw_upper = raw_text.upper()
+        hdr_clip = page.get_text("text", clip=fitz.Rect(0, 0, page.rect.width, 100)).strip().upper()
+
+        # Check if page is an Invoice Copy exhibit (Full Canvas Pixmap Render + Structured Data Extraction)
+        is_invoice_page = (
+            any(k in raw_upper[:300] for k in ["INVOICE", "APPRAISAL INVOICE", "FEE INVOICE", "SERVICES INVOICE"])
+            or any(k in hdr_clip for k in ["INVOICE", "APPRAISAL INVOICE", "FEE INVOICE"])
+        ) and any(ind in raw_upper for ind in [
+            "TOTAL DUE", "AMOUNT DUE", "TOTAL FEE", "PLEASE REMIT", "BILLED TO", "BILL TO",
+            "CLIENT FILE", "INVOICE NUMBER", "INVOICE #", "FEES AMOUNT", "BALANCE DUE"
+        ]) and "USPAP" not in hdr_clip
+
+        if is_invoice_page:
+            inv_data = extract_invoice_copy_data(page, p_no)
+            photos.append({
+                "page": p_no,
+                "category": "Invoice",
+                "caption": f"Invoice Copy (Page {p_no})",
+                "format": "jpeg",
+                "width": round(page.rect.width, 1),
+                "height": round(page.rect.height, 1),
+                "rect": [0, 0, round(page.rect.width, 1), round(page.rect.height, 1)],
+                "base64_preview": inv_data.get("base64_preview", ""),
+                "invoice_data": inv_data,
+                "raw_text": raw_text
+            })
+            photo_count += 1
+            continue
+
+        # Check if page is an E&O Insurance Certificate exhibit (Full Canvas Pixmap Render + Structured Data Extraction)
+        is_eo_page = (
+            any(k in raw_upper[:300] for k in ["E & O", "E&O", "ERRORS & OMISSIONS", "ERRORS AND OMISSIONS", "APPRAISER E&O", "E&O INSURANCE", "CERTIFICATE OF LIABILITY INSURANCE", "PROFESSIONAL LIABILITY"])
+            or any(k in hdr_clip for k in ["E & O", "E&O", "ERRORS & OMISSIONS", "APPRAISER E&O", "E&O INSURANCE", "CERTIFICATE OF LIABILITY INSURANCE"])
+        ) and (
+            any(ind in raw_upper for ind in [
+                "POLICY NUMBER", "POLICY #", "POLICY NO", "POLICY PERIOD", "EXPIRATION", "INCEPTION",
+                "LIMIT OF LIABILITY", "LIMITS", "DEDUCTIBLE", "INSURED", "CARRIER", "PRODUCER", "ACORD", "COVERAGE"
+            ]) or "E & O" in raw_upper[:200] or "E&O" in raw_upper[:200]
+        ) and "USPAP" not in hdr_clip
+
+        if is_eo_page:
+            eo_data = extract_eo_copy_data(page, p_no, use_ocr=include_images, appraiser_hint=appraiser_name)
+            photos.append({
+                "page": p_no,
+                "category": "E&O Insurance",
+                "caption": f"E&O Insurance Certificate (Page {p_no})",
+                "format": "jpeg",
+                "width": round(page.rect.width, 1),
+                "height": round(page.rect.height, 1),
+                "rect": [0, 0, round(page.rect.width, 1), round(page.rect.height, 1)],
+                "base64_preview": eo_data.get("base64_preview", ""),
+                "eo_data": eo_data,
+                "raw_text": raw_text
+            })
+            photo_count += 1
+            continue
 
         # Skip standard form report pages where images are only digital signatures or company headers
         is_form_report_page = (
@@ -2553,7 +3077,6 @@ def extract_photos_from_xml(
             continue
 
         # Check if page is a Building Sketch or Floor Plan exhibit (Full canvas pixmap render for vector or raster sketches)
-        hdr_clip = page.get_text("text", clip=fitz.Rect(0, 0, page.rect.width, 100)).strip().upper()
         is_sketch_page = (
             any(k in hdr_clip for k in ["SKETCH", "FLOORPLAN", "FLOOR PLAN", "INSTAPLAN", "BUILDING SKETCH", "AREA CALCULATIONS"])
             or any(k in raw_upper[:300] for k in ["FLOORPLAN SKETCH", "BUILDING SKETCH", "SKETCH / FLOOR PLAN", "SKETCH ADDENDUM"])
@@ -2598,39 +3121,60 @@ def extract_photos_from_xml(
             photo_count += 1
             continue
 
-        img_infos = page.get_image_info()
+        img_infos = page.get_image_info(xrefs=True)
         if not img_infos:
             continue
 
         # Collect placed image rectangles (keep strips with height >= 6 for merging)
         rects = []
+        rect_xrefs = []
         for item in img_infos:
             bbox = item.get("bbox")
             if bbox:
                 r = fitz.Rect(bbox)
                 if r.width >= 50 and r.height >= 6:
                     rects.append(r)
+                    rect_xrefs.append((r, item.get("xref", 0)))
 
         if not rects:
             continue
 
-        # Merge horizontal strips (ACI / ClickFORMS style strip tiling)
+        # Merge horizontal strips (ACI / ClickFORMS style strip tiling, height < 75px) & overlapping masks
         clusters = []
-        rects.sort(key=lambda r: (round(r.x0 / 20), r.y0))
-        for r in rects:
+        cluster_xrefs = []
+        rect_xrefs.sort(key=lambda rx: (round(rx[0].x0 / 20), rx[0].y0))
+        for r, xref_id in rect_xrefs:
             merged = False
-            for c in clusters:
-                is_slice = (c.height < 60 or r.height < 60)
+            for idx_c, c in enumerate(clusters):
+                is_slice = (c.height < 75 or r.height < 75)
                 overlaps = (r.y0 < c.y1 - 5)
                 if abs(c.x0 - r.x0) < 18 and abs(c.x1 - r.x1) < 18 and (overlaps or (is_slice and r.y0 <= c.y1 + 12)):
                     c.y1 = max(c.y1, r.y1)
+                    if xref_id and xref_id not in cluster_xrefs[idx_c]:
+                        cluster_xrefs[idx_c].append(xref_id)
+                    merged = True
+                    break
+                inter = c & r
+                min_area = min(c.get_area(), r.get_area())
+                if min_area > 0 and (inter.get_area() / min_area) > 0.80:
+                    c.x0 = min(c.x0, r.x0)
+                    c.y0 = min(c.y0, r.y0)
+                    c.x1 = max(c.x1, r.x1)
+                    c.y1 = max(c.y1, r.y1)
+                    if xref_id and xref_id not in cluster_xrefs[idx_c]:
+                        cluster_xrefs[idx_c].append(xref_id)
                     merged = True
                     break
             if not merged:
                 clusters.append(fitz.Rect(r))
+                cluster_xrefs.append([xref_id] if xref_id else [])
 
-        # Filter out thin dividers or tiny graphics (< 70 pt in width or < 60 pt in height)
-        photo_frames = [c for c in clusters if (c.width >= 70 and c.height >= 60 and (c.width * c.height) >= 5000)]
+        # Filter out thin dividers or tiny graphics (support 12/15-photo grids >= 55x50 pt)
+        frame_pairs = [
+            (c, xlist) for c, xlist in zip(clusters, cluster_xrefs)
+            if (c.width >= 55 and c.height >= 50 and (c.width * c.height) >= 3200)
+        ]
+        photo_frames = [fp[0] for fp in frame_pairs]
         if not photo_frames:
             continue
 
@@ -2641,55 +3185,94 @@ def extract_photos_from_xml(
                 continue
 
         # Sort frames: top-to-bottom, left-to-right
-        photo_frames.sort(key=lambda r: (round(r.y0 / 50), r.x0))
+        frame_pairs.sort(key=lambda fp: (round(fp[0].y0 / 50), fp[0].x0))
+        photo_frames = [fp[0] for fp in frame_pairs]
 
         blocks = page.get_text("blocks")
         body_blocks = [b for b in blocks if b[1] >= 82] # Ignore page top header metadata
+        page_words = [w for w in (page.get_text("words") or []) if w[1] >= 82]
+        page_mid_x = float(page.rect.width) / 2.0
 
-        for frame in photo_frames:
+        for frame, frame_xrefs in frame_pairs:
             if photo_count >= max_photos:
                 break
 
             best_label = ""
             unit_str = ""
 
-            # Check Layout A: Text to the right of photo (TOTAL & ACI 3-photo layouts)
-            right_blocks = [
-                b for b in body_blocks 
-                if b[0] >= frame.x1 - 35 and abs(b[1] - frame.y0) < 65
-            ]
-            if right_blocks:
-                right_blocks.sort(key=lambda b: (abs(b[1] - frame.y0), b[0]))
-                for b in right_blocks:
-                    txt = b[4].strip()
-                    for line in txt.split("\n"):
-                        line = line.strip()
-                        if line and not any(skip in line.lower() for skip in [
-                            "appraised date", "appraised value", "sale date", "sale price",
-                            "form 1004", "total appraisal", "1-800-alamode", "page #", "aciweb", "int6ar"
-                        ]):
-                            if re.match(r"^[\d,\.\$\s\/]+$", line) and len(line) < 15:
-                                continue
-                            if not best_label and len(line) < 40:
+            # Determine column/row neighbors so labels never bleed across adjacent grid cells
+            has_right_neighbor = any(
+                other is not frame and other.x0 >= frame.x1 - 15 and abs(other.y0 - frame.y0) < 80
+                for other in photo_frames
+            )
+            next_row_y0 = min(
+                (other.y0 for other in photo_frames
+                 if other is not frame and other.y0 > frame.y1 - 5 and not (other.x1 < frame.x0 or other.x0 > frame.x1)),
+                default=float(page.rect.height)
+            )
+            prev_row_y1 = max(
+                (other.y1 for other in photo_frames
+                 if other is not frame and other.y1 < frame.y0 + 5 and not (other.x1 < frame.x0 or other.x0 > frame.x1)),
+                default=82.0
+            )
+            sub_y1 = min(frame.y1 + 65, next_row_y0 + 2)
+            above_y0 = max(82.0, frame.y0 - 35, prev_row_y1 - 2)
+            # Enforce two-column split boundaries when frame sits cleanly on one side of page_mid_x
+            col_x0 = max(0.0, frame.x0 - 20)
+            col_x1 = min(float(page.rect.width), frame.x1 + 20)
+            if frame.x1 <= page_mid_x + 15:
+                col_x1 = min(col_x1, page_mid_x + 10)
+            elif frame.x0 >= page_mid_x - 15:
+                col_x0 = max(col_x0, page_mid_x - 10)
+
+            # Check Layout A: Text to the right of photo (TOTAL & ACI 3-photo layouts, only when no right-hand photo neighbor)
+            if not has_right_neighbor and frame.width < page.rect.width * 0.70:
+                right_blocks = [
+                    b for b in body_blocks
+                    if (frame.x1 - 35 <= b[0] <= frame.x1 + 240) and abs(b[1] - frame.y0) < 65
+                ]
+                if right_blocks:
+                    right_blocks.sort(key=lambda b: (abs(b[1] - frame.y0), b[0]))
+                    for b in right_blocks:
+                        txt = b[4].strip()
+                        for line in txt.split("\n"):
+                            line = line.strip()
+                            if not _is_boilerplate_photo_label(line):
                                 best_label = line
                                 break
-                    if best_label:
-                        break
+                        if best_label:
+                            break
+                if not best_label and page_words:
+                    best_label = _extract_words_in_band(
+                        page_words,
+                        frame.x1 - 10,
+                        max(82.0, frame.y0 - 5),
+                        min(float(page.rect.width), frame.x1 + 240),
+                        frame.y1 + 5,
+                    )
 
-            # Check Layout B: Text directly below photo (ACI 6-photo interior grid layout)
+            # Check Layout B1: Word-level Sub-Image Band (column & row bounded)
+            if not best_label and page_words:
+                best_label = _extract_words_in_band(
+                    page_words,
+                    col_x0,
+                    frame.y1 - 5,
+                    col_x1,
+                    sub_y1,
+                )
+
+            # Check Layout B2: Block-level Sub-Image Band fallback (ACI 6-photo interior grid layout)
             if not best_label:
                 below_blocks = [
-                    b for b in body_blocks 
-                    if (0 <= b[1] - frame.y1 < 65) and (abs(b[0] - frame.x0) < 85 or abs(b[2] - frame.x1) < 85)
+                    b for b in body_blocks
+                    if (frame.y1 - 5 <= b[1] < sub_y1) and (abs(b[0] - frame.x0) < 60 or abs(b[2] - frame.x1) < 60)
                 ]
                 if below_blocks:
                     label_parts = []
                     for b in below_blocks:
                         for line in b[4].strip().split("\n"):
                             line = line.strip()
-                            if line and len(line) < 40 and not any(skip in line.lower() for skip in [
-                                "aciweb", "int6ar", "page", "appraisal"
-                            ]):
+                            if not _is_boilerplate_photo_label(line):
                                 if "UNIT" in line.upper():
                                     unit_str = line
                                 elif line not in label_parts:
@@ -2699,19 +3282,103 @@ def extract_photos_from_xml(
                     elif label_parts:
                         best_label = " ".join(label_parts[:2])
 
-            # Check Layout C: Text directly above photo
+            # Check Layout C1: Word-level Above-Image Band (column & row bounded)
+            if not best_label and page_words:
+                best_label = _extract_words_in_band(
+                    page_words,
+                    col_x0,
+                    above_y0,
+                    col_x1,
+                    frame.y0 + 5,
+                )
+
+            # Check Layout C2: Block-level Above-Image fallback
             if not best_label:
                 above_blocks = [
-                    b for b in body_blocks 
-                    if (0 <= frame.y0 - b[3] < 35) and (abs(b[0] - frame.x0) < 85 or abs(b[2] - frame.x1) < 85)
+                    b for b in body_blocks
+                    if (above_y0 <= b[3] <= frame.y0 + 5) and (abs(b[0] - frame.x0) < 60 or abs(b[2] - frame.x1) < 60)
                 ]
                 if above_blocks:
                     for b in above_blocks:
                         for line in b[4].strip().split("\n"):
                             line = line.strip()
-                            if line and len(line) < 40 and not any(skip in line.lower() for skip in ["aciweb", "page"]):
+                            if not _is_boilerplate_photo_label(line):
                                 best_label = line
                                 break
+
+            # Check Layout D: pdfplumber targeted crop fallback if vector text was fragmented
+            if not best_label and pdfplumber is not None and pdf_bytes:
+                try:
+                    if plumber_doc is None:
+                        plumber_doc = pdfplumber.open(io.BytesIO(pdf_bytes))
+                    if p_idx < len(plumber_doc.pages):
+                        ppage = plumber_doc.pages[p_idx]
+                        crop_regions = [
+                            (max(0, frame.x0 - 30), max(82, frame.y1 - 8), min(ppage.width, frame.x1 + 30), min(ppage.height, min(next_row_y0 + 8, frame.y1 + 85))),
+                            (max(0, frame.x0 - 30), max(82, max(prev_row_y1 - 8, frame.y0 - 45)), min(ppage.width, frame.x1 + 30), min(ppage.height, frame.y0 + 8)),
+                            (max(0, frame.x0 + 4), max(82, frame.y1 - frame.height * 0.22), min(ppage.width, frame.x1 - 4), min(ppage.height, frame.y1)),
+                        ]
+                        if not has_right_neighbor:
+                            crop_regions.append((max(0, frame.x1 - 15), max(82, frame.y0 - 5), min(ppage.width, frame.x1 + 240), min(ppage.height, frame.y1 + 5)))
+                        for cr in crop_regions:
+                            if cr[2] > cr[0] + 10 and cr[3] > cr[1] + 5:
+                                cr_txt = (ppage.crop(cr).extract_text() or "").strip()
+                                for cr_ln in cr_txt.split("\n"):
+                                    cr_ln = cr_ln.strip()
+                                    if not _is_boilerplate_photo_label(cr_ln):
+                                        best_label = cr_ln
+                                        break
+                            if best_label:
+                                break
+                except Exception:
+                    pass
+
+            # Check Layout E: Expanded word-level & inside-frame caption search (force extraction)
+            if not best_label and page_words:
+                expanded_bands = [
+                    (frame.x0 - 45, frame.y1 - 8, frame.x1 + 45, min(float(page.rect.height), next_row_y0 + 8, frame.y1 + 95)),
+                    (frame.x0 - 45, max(82.0, prev_row_y1 - 8, frame.y0 - 50), frame.x1 + 45, frame.y0 + 8),
+                    (frame.x0 + 2, frame.y1 - frame.height * 0.25, frame.x1 - 2, frame.y1),
+                ]
+                for bx0, by0, bx1, by1 in expanded_bands:
+                    if bx1 > bx0 + 10 and by1 > by0 + 5:
+                        cand_lbl = _extract_words_in_band(page_words, bx0, by0, bx1, by1)
+                        if cand_lbl and not _is_boilerplate_photo_label(cand_lbl):
+                            best_label = cand_lbl
+                            break
+
+            # Check Layout F: Targeted OCR force fallback for rasterized/scanned label strips
+            if not best_label and include_images and cv2 is not None and np is not None:
+                try:
+                    if ocr_extractor is None:
+                        try:
+                            from map_extractor_cli import MapExtractor
+                        except ImportError:
+                            from appraisal_review.map_extractor_cli import MapExtractor  # type: ignore
+                        ocr_extractor = MapExtractor(save_images=False)
+                    ocr_strips = [
+                        fitz.Rect(max(0, frame.x0 - 20), max(82, frame.y1 - 4), min(page.rect.width, frame.x1 + 20), min(page.rect.height, sub_y1)),
+                        fitz.Rect(max(0, frame.x0 - 20), max(82, above_y0), min(page.rect.width, frame.x1 + 20), min(page.rect.height, frame.y0 + 4)),
+                    ]
+                    if not has_right_neighbor:
+                        ocr_strips.append(fitz.Rect(max(0, frame.x1 - 4), max(82, frame.y0), min(page.rect.width, frame.x1 + 240), min(page.rect.height, frame.y1)))
+                    for s_rect in ocr_strips:
+                        if s_rect.width < 20 or s_rect.height < 10:
+                            continue
+                        s_pix = page.get_pixmap(clip=s_rect, dpi=150)
+                        s_arr = np.frombuffer(s_pix.samples, dtype=np.uint8).reshape(s_pix.height, s_pix.width, s_pix.n)
+                        s_bgr = cv2.cvtColor(s_arr, cv2.COLOR_RGBA2BGR) if s_pix.n == 4 else cv2.cvtColor(s_arr, cv2.COLOR_RGB2BGR)
+                        ocr_hits = ocr_extractor.run_ocr(s_bgr)
+                        for o_txt, o_prob in (ocr_hits or []):
+                            if o_prob >= 0.30 and not _is_boilerplate_photo_label(o_txt):
+                                best_label = o_txt.strip()
+                                break
+                        if best_label:
+                            break
+                except Exception:
+                    pass
+
+            best_label = _clean_extracted_photo_label(best_label)
 
             # Skip digital signature labels
             if any(sig_w in (best_label or "").lower() for sig_w in [
@@ -2746,6 +3413,7 @@ def extract_photos_from_xml(
             elif any(k in raw_upper for k in ["INTERIOR PHOTO"]):
                 category = "Interior"
 
+            has_explicit_label = bool(best_label and best_label.strip())
             if not best_label:
                 if any(k in raw_upper for k in ["HUD CERTIFICATION LABEL", "HUD CERTIFICATION"]):
                     best_label = "HUD Certification Label"
@@ -2763,15 +3431,35 @@ def extract_photos_from_xml(
                     if not best_label:
                         best_label = "Map Exhibit"
                 else:
-                    best_label = f"{category} Photo"
+                    if category == "Subject":
+                        best_label = "Subject Exterior"
+                    elif category == "Interior":
+                        best_label = "Interior Room"
+                    elif category == "Comparable":
+                        best_label = "Comparable Sale"
+                    elif category == "Rental":
+                        best_label = "Rental Comparable"
+                    else:
+                        best_label = "Additional Exhibit"
 
-            # Render image if requested
+            # Render image & run OpenCV quality verification (native xref pixmap when single-xref, else clip pixmap)
             base64_preview = ""
+            quality_metrics = None
             w_px, h_px = round(frame.width), round(frame.height)
             if include_images:
                 try:
                     pix = page.get_pixmap(clip=frame, dpi=dpi)
                     w_px, h_px = pix.width, pix.height
+                    q_pix = pix
+                    if len(frame_xrefs) == 1 and frame_xrefs[0]:
+                        try:
+                            native_pix = fitz.Pixmap(doc, frame_xrefs[0])
+                            if native_pix.n - native_pix.alpha > 3:
+                                native_pix = fitz.Pixmap(fitz.csRGB, native_pix)
+                            q_pix = native_pix
+                        except Exception:
+                            q_pix = pix
+                    quality_metrics = _assess_photo_quality(q_pix)
                     img_bytes = pix.tobytes("jpeg", jpg_quality=70)
                     b64_enc = base64.b64encode(img_bytes).decode("ascii")
                     base64_preview = f"data:image/jpeg;base64,{b64_enc}"
@@ -2813,10 +3501,38 @@ def extract_photos_from_xml(
                 category = "Subject"
 
             photo_count += 1
+            slot_status = "LABELED" if has_explicit_label else "MISSING_LABEL"
+            final_lbl = mand_view_type or best_label
+            normalized_lbl = _normalize_photo_label(final_lbl)
+            norm_group_map = {
+                "Bedroom": "bedrooms",
+                "Bathroom": "bathrooms",
+                "Kitchen": "kitchen",
+                "Living Area": "living",
+                "Dining Area": "dining",
+                "Exterior Front": "subject_exterior",
+                "Exterior Rear": "subject_exterior",
+                "Street View": "subject_exterior",
+                "Garage / Parking": "garage",
+                "Basement": "basement",
+            }
+            photo_group = norm_group_map.get(normalized_lbl, "other")
+            if re.search(r"\b(?:basement|bsmt|below\s*grade|lower\s*level|cellar)\b", final_lbl, re.I):
+                if re.search(r"\b(?:bed|br|bdrm)\b", final_lbl, re.I):
+                    photo_group = "basement_bedrooms"
+                elif re.search(r"\b(?:bath|bth|ba|powder|lav)\b", final_lbl, re.I):
+                    photo_group = "basement_bathrooms"
+                elif re.search(r"\b(?:rec|family|game|media|play)\b", final_lbl, re.I):
+                    photo_group = "basement_rec"
+                else:
+                    photo_group = "basement_other"
             photo_item = {
                 "id": f"photo_{photo_count}",
-                "caption": mand_view_type or best_label,
-                "title": mand_view_type or best_label,
+                "caption": final_lbl,
+                "title": final_lbl,
+                "normalized_label": normalized_lbl,
+                "photo_group": photo_group,
+                "slot_status": slot_status,
                 "category": category,
                 "page": p_no,
                 "base64_preview": base64_preview,
@@ -2830,6 +3546,8 @@ def extract_photos_from_xml(
                     "y1": round(frame.y1)
                 }
             }
+            if quality_metrics:
+                photo_item["image_quality"] = quality_metrics
             if mand_view_type:
                 photo_item["view_type"] = mand_view_type
                 photo_item["original_label"] = mand_orig_label
@@ -2894,6 +3612,12 @@ def extract_photos_from_xml(
                     p["address"] = sub_addr
                 if not p.get("street"):
                     p["street"] = sub_st
+
+    if plumber_doc is not None:
+        try:
+            plumber_doc.close()
+        except Exception:
+            pass
 
     return photos
 
@@ -4578,8 +5302,8 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
             gba_amt = adjustments.get("GrossBuildingArea", {}).get("amount", "")
 
             # Basement
-            bm_desc = adjustments.get("BasementArea", {}).get("desc", "")
-            bm_fin_desc = adjustments.get("BasementFinish", {}).get("desc", "")
+            bm_desc = _clean_basement_area(adjustments.get("BasementArea", {}).get("desc", ""))
+            bm_fin_desc = _clean_basement_rooms(adjustments.get("BasementFinish", {}).get("desc", ""))
             bm_amt = adjustments.get("BasementArea", {}).get("amount", "") or adjustments.get("BasementFinish", {}).get("amount", "")
             full_bm_desc = f"{bm_desc} {bm_fin_desc}".strip() or bm_desc or bm_fin_desc
 
@@ -7292,13 +8016,19 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
                     emb_pdf = cand_pdf
 
                 if not eo_found:
-                    eo_info = extract_eo_insurance_from_doc(cand_pdf, use_ocr=extract_images)
+                    eo_info = extract_eo_insurance_from_doc(cand_pdf, use_ocr=extract_images, appraiser_hint=appraiser_name)
                     if eo_info.get("E&O") == "Present":
                         eo_found = True
                         certification_section["E&O"] = "Present"
                         certification_section["E&O Present"] = "Present"
                         certification_section["E/O"] = "Present"
                         certification_section["E/O Present"] = "Present"
+                        certification_section["E&O Attached"] = "Yes"
+                        certification_section["has_eo"] = True
+                        if eo_info.get("E&O Page"):
+                            certification_section["E&O Page"] = eo_info["E&O Page"]
+                        if eo_info.get("base64_preview"):
+                            certification_section["base64_preview"] = eo_info["base64_preview"]
                         for k in ["E&O Insurance", "Policy Period From", "Policy Period To", "E&O Insured", "E&O Carrier", "E&O Limit", "E&O Deductible"]:
                             if eo_info.get(k):
                                 certification_section[k] = eo_info[k]
@@ -7743,6 +8473,9 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
                         "proximity": v.get("Proximity to Subject") or v.get("Proximity") or "",
                         "monthly_rent": v.get("Monthly Rental") or v.get("Adjusted Monthly Rent") or ""
                     })
+
+        if isinstance(refs_for_photos, dict) and appraiser_name:
+            refs_for_photos["appraiser_name"] = appraiser_name
 
         extracted_photos = extract_photos_from_xml(
             xml_path_or_bytes,
@@ -8597,6 +9330,7 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
 
     if has_invoice:
         fields.setdefault("INVOICE", {})
+        fields["INVOICE"].update(inv_details)
         fields["INVOICE"]["Invoice Attached"] = "Yes"
         fields["INVOICE"]["Invoice Present"] = "Yes"
         if inv_details.get("Invoice Page"):
@@ -8604,7 +9338,55 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         if inv_details.get("Invoice Total"):
             fields["INVOICE"]["Invoice Total"] = inv_details["Invoice Total"]
             fields["INVOICE"]["Total Fee"] = inv_details["Invoice Total"]
+        # Link base64 preview from extracted_photos if present
+        if not fields["INVOICE"].get("base64_preview"):
+            for p in extracted_photos or []:
+                if p.get("category") == "Invoice" and p.get("base64_preview"):
+                    fields["INVOICE"]["base64_preview"] = p.get("base64_preview")
+                    break
         fields["Invoice"] = fields["INVOICE"]
+        fields["invoice_data"] = fields["INVOICE"]
+        for ik, iv in fields["INVOICE"].items():
+            if iv and ik not in fields:
+                fields[ik] = iv
+
+    # Ensure E&O fields are linked and exposed at root and in dedicated dictionary
+    has_eo = certification_section.get("E&O") == "Present" or eo_found or any(p.get("category") == "E&O Insurance" for p in extracted_photos or [])
+    if has_eo:
+        eo_dict = {}
+        for k in ["E&O", "E&O Present", "E&O Attached", "has_eo", "E&O Page", "E&O Insurance", "Policy Period From", "Policy Period To", "E&O Insured", "E&O Carrier", "E&O Limit", "E&O Deductible", "base64_preview"]:
+            if certification_section.get(k):
+                eo_dict[k] = certification_section[k]
+        eo_dict["E&O"] = "Present"
+        eo_dict["E&O Present"] = "Present"
+        eo_dict["E&O Attached"] = "Yes"
+        eo_dict["has_eo"] = True
+        for p in extracted_photos or []:
+            if p.get("category") == "E&O Insurance":
+                if p.get("base64_preview") and not eo_dict.get("base64_preview"):
+                    eo_dict["base64_preview"] = p.get("base64_preview")
+                if p.get("page") and not eo_dict.get("E&O Page"):
+                    eo_dict["E&O Page"] = p.get("page")
+                if p.get("eo_data"):
+                    for ek, ev in p["eo_data"].items():
+                        if ev and not eo_dict.get(ek):
+                            eo_dict[ek] = ev
+                if "eo_data" in p and isinstance(p["eo_data"], dict):
+                    for ek, ev in eo_dict.items():
+                        if ev and not p["eo_data"].get(ek):
+                            p["eo_data"][ek] = ev
+                break
+
+        for ek, ev in eo_dict.items():
+            if ev and not certification_section.get(ek):
+                certification_section[ek] = ev
+
+        fields["EO"] = eo_dict
+        fields["E&O"] = eo_dict
+        fields["eo_data"] = eo_dict
+        for ek, ev in eo_dict.items():
+            if ev and ek not in fields:
+                fields[ek] = ev
 
     # Flatten category fields into root fields so data[field] is directly available to UI
     for cat_dict in [clean_subject, contract_section, neighborhood_section, site_section, improvements_section, reconciliation_section, income_approach_section, cost_approach_section, pud_info_section, project_info_section, project_analysis_section, unit_descriptions_section, prior_sale_history_section, market_conditions_section, condo_coop_section, condo_foreclosure_section, certification_section, uspap_identification_section, info_of_sales_section]:
@@ -8747,6 +9529,12 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
                 fields.setdefault(mk, mv)
     if has_invoice and "INVOICE" in fields:
         clean_data["Invoice"] = fields["INVOICE"]
+        clean_data["INVOICE"] = fields["INVOICE"]
+        clean_data["invoice_data"] = fields["INVOICE"]
+    if "EO" in fields:
+        clean_data["EO"] = fields["EO"]
+        clean_data["E&O"] = fields["EO"]
+        clean_data["eo_data"] = fields["EO"]
 
     # Dedicated Separate Extraction for Sales Grid Addresses and Rental Grid Addresses
     sales_grid_addresses: Dict[str, Any] = {}
@@ -8989,13 +9777,19 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "gla_display": "—"
     }
     if extracted_photos:
-        distinct_beds = set()
-        distinct_half_baths = set()
-        distinct_full_baths = set()
+        bed_photo_count = 0
+        half_bath_photo_count = 0
+        full_bath_photo_count = 0
         distinct_living = set()
         distinct_kitchen = set()
         distinct_dining = set()
         distinct_other = set()
+        distinct_basement = set()
+        bsmt_rr_count = 0
+        bsmt_br_count = 0
+        bsmt_full_ba_count = 0
+        bsmt_half_ba_count = 0
+        bsmt_o_count = 0
 
         for p in extracted_photos:
             cat = (p.get("category") or "").strip().lower()
@@ -9005,24 +9799,46 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
             if not cap:
                 continue
             norm_cap = re.sub(r'\s*\([a-zA-Z0-9]+\)$', '', cap).strip().lower()
+            is_dup_angle = bool(re.search(r'\b(?:angle\s*[2-9]|view\s*[2-9]|alt(?:ernate)?\s*view|2nd\s*view)\b', cap, re.I))
+
+            # Separate any photo whose label references Basement / Below Grade / Lower Level
+            if re.search(r'\b(?:basement|bsmt|below\s*grade|lower\s*level|cellar)\b', norm_cap):
+                distinct_basement.add(f"{len(distinct_basement)}_{norm_cap}")
+                if is_dup_angle:
+                    continue
+                if re.search(r'\b(?:bedroom|bdrm|bed\b|mbr\b|master\s*bed|primary\s*bed|guest\s*bed|br\s*\d*)\b', norm_cap):
+                    bsmt_br_count += 1
+                elif re.search(r'(?:^|[\s\b])(?:half[\s-]*(?:bath(?:room)?|bth|ba)|1\/2[\s-]*(?:bath(?:room)?|bth|ba)|0?\.5[\s-]*(?:bath(?:room)?|bth|ba)|(?:bath(?:room)?|bth|ba)\s*(?:\(\s*)?(?:half|1\/2|0?\.5)(?:\s*\))?|powder(?:\s*room)?|lav(?:atory)?|wc)\b', norm_cap):
+                    bsmt_half_ba_count += 1
+                elif re.search(r'\b(?:full\s*bath|full\s*ba|master\s*bath|primary\s*bath|guest\s*bath|hall\s*bath|bath\s*#?\s*\d|bathroom|bath\b|bth\b|3\/4\s*bath)\b', norm_cap):
+                    bsmt_full_ba_count += 1
+                elif re.search(r'\b(?:rec(?:reation)?|family\s*room|game\s*room|media\s*room|play\s*room)\b', norm_cap):
+                    bsmt_rr_count += 1
+                elif re.search(r'\b(?:kitchen|kitchenette|kit\b|dining|den\b|office\b|study\b|bar\b|wet\s*bar|wetbar|bonus)\b', norm_cap):
+                    bsmt_o_count += 1
+                continue
+
             if re.search(r'\b(?:bedroom|bdrm|bed\b|mbr\b|master\s*bed|primary\s*bed|guest\s*bed)\b', norm_cap):
-                distinct_beds.add(norm_cap)
-            elif re.search(r'(?:^|[\s\b])(?:half[\s-]*(?:bath(?:room)?|ba)|1\/2[\s-]*(?:bath(?:room)?|ba)|0?\.5[\s-]*(?:bath(?:room)?|ba)|(?:bath(?:room)?|ba)\s*(?:\(\s*)?(?:half|1\/2|0?\.5)(?:\s*\))?|powder(?:\s*room)?|lav(?:atory)?|wc)\b', norm_cap):
-                distinct_half_baths.add(norm_cap)
-            elif re.search(r'\b(?:full\s*bath|full\s*ba|master\s*bath|primary\s*bath|guest\s*bath|hall\s*bath|bath\s*#?\s*\d|bathroom|bath\b|3\/4\s*bath)\b', norm_cap):
-                distinct_full_baths.add(norm_cap)
+                if not is_dup_angle:
+                    bed_photo_count += 1
+            elif re.search(r'(?:^|[\s\b])(?:half[\s-]*(?:bath(?:room)?|bth|ba)|1\/2[\s-]*(?:bath(?:room)?|bth|ba)|0?\.5[\s-]*(?:bath(?:room)?|bth|ba)|(?:bath(?:room)?|bth|ba)\s*(?:\(\s*)?(?:half|1\/2|0?\.5)(?:\s*\))?|powder(?:\s*room)?|lav(?:atory)?|wc)\b', norm_cap):
+                if not is_dup_angle:
+                    half_bath_photo_count += 1
+            elif re.search(r'\b(?:full\s*bath|full\s*ba|master\s*bath|primary\s*bath|guest\s*bath|hall\s*bath|bath\s*#?\s*\d|bathroom|bath\b|bth\b|3\/4\s*bath)\b', norm_cap):
+                if not is_dup_angle:
+                    full_bath_photo_count += 1
             elif re.search(r'\b(?:living|family\s*room|great\s*room|sitting\s*room)\b', norm_cap):
                 distinct_living.add(norm_cap)
-            elif re.search(r'\b(?:kitchen|kit\b)\b', norm_cap):
+            elif re.search(r'\b(?:kitchen|kitchenette|kit\b)\b', norm_cap):
                 distinct_kitchen.add(norm_cap)
             elif re.search(r'\b(?:dining|dinette|breakfast\s*nook)\b', norm_cap):
                 distinct_dining.add(norm_cap)
             elif re.search(r'\b(?:den\b|office\b|study\b|library\b|sunroom\b|bonus\s*room)\b', norm_cap):
                 distinct_other.add(norm_cap)
 
-        bed_count = len(distinct_beds)
-        full_bath_count = len(distinct_full_baths)
-        half_bath_count = len(distinct_half_baths)
+        bed_count = bed_photo_count
+        full_bath_count = full_bath_photo_count
+        half_bath_count = half_bath_photo_count
         living_count = len(distinct_living)
         kitchen_count = len(distinct_kitchen)
         dining_count = len(distinct_dining)
@@ -9039,6 +9855,8 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
                 bath_disp = f"{full_bath_count}.0 Baths"
                 bath_det = f"{full_bath_count} Full Bath{'s' if full_bath_count != 1 else ''}"
 
+        bsmt_count = len(distinct_basement)
+        bsmt_ba_val = bsmt_full_ba_count + (0.5 * bsmt_half_ba_count)
         photo_room_counts = {
             "bedroom_count": bed_count,
             "full_bath_count": full_bath_count,
@@ -9048,6 +9866,14 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
             "dining_count": dining_count,
             "other_count": other_count,
             "total_room_count": tot_room_count,
+            "basement_count": bsmt_count,
+            "basement_display": f"{bsmt_count} Photo{'s' if bsmt_count != 1 else ''}" if bsmt_count > 0 else "—",
+            "basement_rooms": {
+                "rr": bsmt_rr_count,
+                "br": bsmt_br_count,
+                "ba": bsmt_ba_val,
+                "o": bsmt_o_count,
+            },
             "bedroom_display": f"{bed_count} Bed{'s' if bed_count != 1 else ''}" if bed_count > 0 else "—",
             "bathroom_display": bath_disp,
             "bathroom_detail": bath_det,
@@ -9441,9 +10267,125 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
     clean_data["map_exhibits_analysis"] = map_exhibits_analysis
     fields["map_exhibits_analysis"] = map_exhibits_analysis
 
+    # 1004 Subject-To ARV w/ As-Is Extraction directly inside XML extractor
+    try:
+        try:
+            from .arv_as_is_engine import ARVAsIsEngine, extract_as_is_grid_and_reconciliations, extract_arv_as_is_report
+        except (ImportError, ValueError):
+            try:
+                from appraisal_review.api.arv_as_is_engine import ARVAsIsEngine, extract_as_is_grid_and_reconciliations, extract_arv_as_is_report
+            except ImportError:
+                from arv_as_is_engine import ARVAsIsEngine, extract_as_is_grid_and_reconciliations, extract_arv_as_is_report
+        x_path = xml_path_or_bytes if isinstance(xml_path_or_bytes, str) else None
+        is_arv = False
+        if x_path:
+            is_arv, conf, _ = ARVAsIsEngine.is_arv_as_is_report(x_path, xml_tree=tree)
+        else:
+            # Check XML tree
+            cond_node = tree.find(".//RECONCILIATION")
+            if cond_node is not None:
+                c_type = cond_node.get("_ConditionType", "")
+                if c_type in ["SubjectToCompletion", "SubjectToRepairs"]:
+                    is_arv = True
+
+        if is_arv:
+            form_type = "1004 Subject-To ARV w/ As-Is"
+            fields["formType"] = form_type
+            fields["form_type"] = form_type
+            fields["Form Type"] = form_type
+            fields["From Type"] = form_type
+            clean_data["formType"] = form_type
+            clean_data["form_type"] = form_type
+            clean_data["Form Type"] = form_type
+            clean_data["From Type"] = form_type
+
+            if x_path:
+                arv_data = extract_arv_as_is_report(x_path, companion_pdf=companion_pdf_path)
+                fields["ARV_AS_IS"] = arv_data
+                fields["arv_as_is_data"] = arv_data
+                clean_data["ARV_AS_IS"] = arv_data
+                clean_data["arv_as_is_data"] = arv_data
+
+                if arv_data.get("as_is_value"):
+                    fields["As-Is Value $"] = arv_data.get("as_is_value_formatted")
+                    clean_data["As-Is Value $"] = arv_data.get("as_is_value_formatted")
+                if arv_data.get("arv_value"):
+                    fields["Subject-To ARV Value $"] = arv_data.get("arv_value_formatted")
+                    clean_data["Subject-To ARV Value $"] = arv_data.get("arv_value_formatted")
+
+                dual_data = extract_as_is_grid_and_reconciliations(
+                    x_path,
+                    base_sales_grid=sales_grid,
+                    base_recon=reconciliation_section,
+                    companion_pdf_path=companion_pdf_path,
+                    arv_data=arv_data
+                )
+                fields["SALES_GRID"] = dual_data.get("primary_sales_grid", sales_grid)
+                clean_data["SALES_GRID"] = dual_data.get("primary_sales_grid", sales_grid)
+                fields["Sales Grid"] = dual_data.get("primary_sales_grid", sales_grid)
+                clean_data["Sales Grid"] = dual_data.get("primary_sales_grid", sales_grid)
+
+                fields["AS_IS_SALES_GRID"] = dual_data.get("as_is_sales_grid", {})
+                clean_data["AS_IS_SALES_GRID"] = dual_data.get("as_is_sales_grid", {})
+                fields["As-Is Sales Grid"] = dual_data.get("as_is_sales_grid", {})
+                clean_data["As-Is Sales Grid"] = dual_data.get("as_is_sales_grid", {})
+
+                fields["PRIMARY_RECONCILIATION"] = dual_data.get("primary_recon", {})
+                clean_data["PRIMARY_RECONCILIATION"] = dual_data.get("primary_recon", {})
+                fields["Primary Reconciliation"] = dual_data.get("primary_recon", {})
+                clean_data["Primary Reconciliation"] = dual_data.get("primary_recon", {})
+
+                fields["AS_IS_RECONCILIATION"] = dual_data.get("as_is_recon", {})
+                clean_data["AS_IS_RECONCILIATION"] = dual_data.get("as_is_recon", {})
+                fields["As-Is Reconciliation"] = dual_data.get("as_is_recon", {})
+                clean_data["As-Is Reconciliation"] = dual_data.get("as_is_recon", {})
+
+                if dual_data.get("as_is_comps"):
+                    fields["as_is_comps"] = dual_data["as_is_comps"]
+                    clean_data["as_is_comps"] = dual_data["as_is_comps"]
+                if dual_data.get("as_is_comparable_sales"):
+                    fields["as_is_comparable_sales"] = dual_data["as_is_comparable_sales"]
+                    clean_data["as_is_comparable_sales"] = dual_data["as_is_comparable_sales"]
+                if dual_data.get("as_is_prior_sale_history"):
+                    fields["AS_IS_PRIOR_SALE_HISTORY"] = dual_data["as_is_prior_sale_history"]
+                    clean_data["AS_IS_PRIOR_SALE_HISTORY"] = dual_data["as_is_prior_sale_history"]
+                    fields["As-Is Prior Sale History"] = dual_data["as_is_prior_sale_history"]
+                    clean_data["As-Is Prior Sale History"] = dual_data["as_is_prior_sale_history"]
+                if dual_data.get("as_is_sales_comparison_additional"):
+                    fields["AS_IS_SALES_COMPARISON_ADDITIONAL"] = dual_data["as_is_sales_comparison_additional"]
+                    clean_data["AS_IS_SALES_COMPARISON_ADDITIONAL"] = dual_data["as_is_sales_comparison_additional"]
+                    fields["As-Is Sales Comparison Additional"] = dual_data["as_is_sales_comparison_additional"]
+                    clean_data["As-Is Sales Comparison Additional"] = dual_data["as_is_sales_comparison_additional"]
+
+                budget_photo_status = arv_data.get("rehab_budget_photo_or_pages_present", "Present")
+                budget_photo_details = arv_data.get("rehab_budget_photo_or_pages_details", "Present")
+                fields["Rehab / High Budget Photo or Pages"] = budget_photo_details
+                clean_data["Rehab / High Budget Photo or Pages"] = budget_photo_details
+                fields["Rehab Budget Photo or Pages Present"] = budget_photo_status
+                clean_data["Rehab Budget Photo or Pages Present"] = budget_photo_status
+                fields["High Budget Photo or Pages Present"] = budget_photo_status
+                clean_data["High Budget Photo or Pages Present"] = budget_photo_status
+    except Exception as e_arv:
+        pass
+
     return {
         "status": "success",
         "form_type": form_type,
+        "ARV_AS_IS": fields.get("ARV_AS_IS"),
+        "arv_as_is_data": fields.get("ARV_AS_IS"),
+        "AS_IS_SALES_GRID": fields.get("AS_IS_SALES_GRID"),
+        "As-Is Sales Grid": fields.get("AS_IS_SALES_GRID"),
+        "PRIMARY_RECONCILIATION": fields.get("PRIMARY_RECONCILIATION"),
+        "Primary Reconciliation": fields.get("PRIMARY_RECONCILIATION"),
+        "AS_IS_RECONCILIATION": fields.get("AS_IS_RECONCILIATION"),
+        "As-Is Reconciliation": fields.get("AS_IS_RECONCILIATION"),
+        "as_is_comps": fields.get("as_is_comps"),
+        "as_is_comparable_sales": fields.get("as_is_comparable_sales"),
+        "AS_IS_PRIOR_SALE_HISTORY": fields.get("AS_IS_PRIOR_SALE_HISTORY"),
+        "As-Is Prior Sale History": fields.get("AS_IS_PRIOR_SALE_HISTORY"),
+        "Rehab / High Budget Photo or Pages": fields.get("Rehab / High Budget Photo or Pages"),
+        "Rehab Budget Photo or Pages Present": fields.get("Rehab Budget Photo or Pages Present"),
+        "High Budget Photo or Pages Present": fields.get("High Budget Photo or Pages Present"),
         "has_1004mc": has_1004mc,
         "1004mc_presence": mc_present_str,
         "UAD pages present in the report": uad_present_str,
@@ -9466,6 +10408,15 @@ def extract_fields_from_xml(xml_path_or_bytes: Any, extract_images: bool = True,
         "E/O Present": certification_section.get("E/O Present", certification_section.get("E&O Present", "Absent")),
         "E&O Insurance": certification_section.get("E&O Insurance", ""),
         "E/O Insurance": certification_section.get("E/O Insurance", certification_section.get("E&O Insurance", "")),
+        "Invoice Attached": inv_present_str,
+        "Invoice Present": inv_present_str,
+        "has_invoice": has_invoice,
+        "INVOICE": fields.get("INVOICE", {}),
+        "Invoice": fields.get("INVOICE", {}),
+        "invoice_data": fields.get("INVOICE", {}),
+        "EO": fields.get("EO", {}),
+        "E&O": fields.get("EO", {}),
+        "eo_data": fields.get("EO", {}),
         "Certification": certification_section,
         "CERTIFICATION": certification_section,
         "fields": fields,

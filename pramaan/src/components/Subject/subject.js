@@ -66,6 +66,7 @@ import { SalesComparisonSection, ComparisonResultTable, SubjectRentScheduleTable
 import { getComparisonStyle, playSound, API_BASE_URL } from './utils/utils.js';
 
 import Form1004 from './2.6/1004';
+import Form1004SubjectToARV from './2.6/1004SubjectToARV';
 import Form1004C from './2.6/1004C';
 import Form1007 from './2.6/1007';
 import Form1004And1007 from './2.6/1004And1007';
@@ -107,6 +108,7 @@ import * as infoOfSalesValidation from '../../validations/infoOfSalesValidation'
 import * as costApproachValidation from '../../validations/costApproachValidation';
 import * as version1Validation from './Version1/version1Validation';
 import * as form1004And1007Validation from '../../validations/form1004And1007Validation';
+import * as arvAsIsValidation from '../../validations/arvAsIsValidation';
 import * as generalValidation from '../../validations/generalValidation';
 import { checkUnpaidLenderStatus } from '../../utils/unpaidLenders';
 
@@ -118,7 +120,7 @@ import { useLocation } from 'react-router-dom';
 import PdfPreview from '../common/PdfPreview';
 
 import { normalizeFullFileData, getCleanDisplayJson, isFieldValBlank, getFieldValueByPath } from './utils/subjectDataUtils';
-import { detectFormTypeFromXmlString, normalizeExtractedFormType } from './utils/subjectXmlUtils';
+import { detectFormTypeFromXmlFile, normalizeExtractedFormType } from './utils/subjectXmlUtils';
 import TooltipStyles from './components/TooltipStyles';
 import ComparisonDialog from './components/ComparisonDialog';
 import SubjectRevisionDialogs from './components/SubjectRevisionDialogs';
@@ -426,7 +428,13 @@ function Subject({ defaultFormType }) {
   const unpaidLenderComment = unpaidLenderStatus.comment;
   const unpaidLenderName = unpaidLenderStatus.matchedLender;
 
-  const eoVal = data?.['E&O'] ?? data?.['E&O Present'] ?? data?.['E/O'] ?? data?.['E/O Present'] ?? data?.['E&O Insurance'] ?? data?.['E/O Insurance'] ?? data?.CERTIFICATION?.['E&O'] ?? data?.CERTIFICATION?.['E&O Present'] ?? data?.CERTIFICATION?.['E/O'] ?? data?.CERTIFICATION?.['E/O Present'] ?? data?.CERTIFICATION?.['E&O Insurance'] ?? data?.CERTIFICATION?.['E/O Insurance'] ?? (data?.['E&O Insurance'] || data?.['E/O Insurance'] || data?.CERTIFICATION?.['E&O Insurance'] || data?.CERTIFICATION?.['E/O Insurance'] ? 'Present' : '') ?? 'Absent';
+  const eoVal = (typeof data?.['E&O'] === 'string' && ['present', 'absent'].includes(data['E&O'].trim().toLowerCase()) ? data['E&O'] : '')
+    || (typeof data?.['E&O Present'] === 'string' && ['present', 'absent'].includes(data['E&O Present'].trim().toLowerCase()) ? data['E&O Present'] : '')
+    || (typeof data?.['E/O'] === 'string' && ['present', 'absent'].includes(data['E/O'].trim().toLowerCase()) ? data['E/O'] : '')
+    || (typeof data?.['E/O Present'] === 'string' && ['present', 'absent'].includes(data['E/O Present'].trim().toLowerCase()) ? data['E/O Present'] : '')
+    || (typeof data?.CERTIFICATION?.['E&O'] === 'string' && ['present', 'absent'].includes(data.CERTIFICATION['E&O'].trim().toLowerCase()) ? data.CERTIFICATION['E&O'] : '')
+    || (typeof data?.CERTIFICATION?.['E&O Present'] === 'string' && ['present', 'absent'].includes(data.CERTIFICATION['E&O Present'].trim().toLowerCase()) ? data.CERTIFICATION['E&O Present'] : '')
+    || (data?.has_eo || data?.EO || data?.CERTIFICATION?.['E&O Insurance'] || data?.['E&O Insurance'] ? 'Present' : 'Absent');
   const isEoPresent = String(eoVal).trim().toLowerCase() === 'present';
 
   const invVal = data?.['Invoice Attached'] ?? data?.['Invoice Present'] ?? data?.CERTIFICATION?.['Invoice Attached'] ?? data?.CERTIFICATION?.['Invoice Present'] ?? data?.SUBJECT?.['Invoice Attached'] ?? data?.Subject?.['Invoice Attached'] ?? (data?.INVOICE?.['Invoice Attached'] || data?.INVOICE ? 'Yes' : '') ?? 'No';
@@ -880,8 +888,12 @@ function Subject({ defaultFormType }) {
       'Describe any additions or modifications (decks, rooms, remodeling, etc.': [improvementsValidation.checkAdditionsOrModifications],
       'Additions/Modifications Description': [improvementsValidation.checkAdditionsOrModifications],
       'Additions or Modifications': [improvementsValidation.checkAdditionsOrModifications],
-      'This appraisal is made "as is", subject to completion per plans and specifications on the basis of a hypothetical condition that the improvements have been completed, subject to the following repairs or alterations on the basis of a hypothetical condition that the repairs or alterations have been completed, or subject to the following required inspection based on the extraordinary assumption that the condition or deficiency does not require alteration or repair:': [reconciliationValidation.checkAppraisalCondition],
-      'Reconciliation Status': [reconciliationValidation.checkAppraisalCondition],
+      'As-Is Value $': [arvAsIsValidation.checkArvVsAsIsValue],
+      'As-Is Value': [arvAsIsValidation.checkArvVsAsIsValue],
+      'Subject-To ARV Value $': [arvAsIsValidation.checkArvVsAsIsValue],
+      'ARV Value $': [arvAsIsValidation.checkArvVsAsIsValue],
+      'This appraisal is made "as is", subject to completion per plans and specifications on the basis of a hypothetical condition that the improvements have been completed, subject to the following repairs or alterations on the basis of a hypothetical condition that the repairs or alterations have been completed, or subject to the following required inspection based on the extraordinary assumption that the condition or deficiency does not require alteration or repair:': [reconciliationValidation.checkAppraisalCondition, arvAsIsValidation.checkSubjectToReconciliation],
+      'Reconciliation Status': [reconciliationValidation.checkAppraisalCondition, arvAsIsValidation.checkSubjectToReconciliation],
       'as of': [reconciliationValidation.checkAsOfDate, form1004And1007Validation.checkRentScheduleAsOfDateConsistency, contractValidation.checkContractDateVsAsOfDate],
       'as of date': [reconciliationValidation.checkAsOfDate, contractValidation.checkContractDateVsAsOfDate],
       'I (WE) ESTIMATE THE MONTHLY MARKET RENT OF THE SUBJECT AS OF': [form1004And1007Validation.checkRentScheduleAsOfDateConsistency],
@@ -3526,6 +3538,35 @@ function Subject({ defaultFormType }) {
     }
   }
 
+  // Only check and display Rehab / High Budget Photo or Pages for form type 1004 Subject-To ARV w/ As-Is
+  const is1004ArvAsIs = selectedFormType === '1004 Subject-To ARV w/ As-Is' || String(selectedFormType).includes('ARV');
+  if (is1004ArvAsIs) {
+    if (!subjectFields.includes("Rehab / High Budget Photo or Pages")) {
+      const uadIdx = subjectFields.indexOf("UAD pages present in the report");
+      const certIdx = subjectFields.indexOf("Appraiser's Certification");
+      const uspapIdx = subjectFields.indexOf("USPAP / Appraisal and Report Identification");
+      const mcIdx = subjectFields.indexOf("1004MC Addendum");
+      const insertIdx = certIdx !== -1 ? certIdx + 1 : (uadIdx !== -1 ? uadIdx + 1 : (uspapIdx !== -1 ? uspapIdx + 1 : (mcIdx !== -1 ? mcIdx + 1 : 0)));
+      subjectFields.splice(insertIdx, 0, "Rehab / High Budget Photo or Pages");
+    }
+    const budgetPhotoVal = data?.['Rehab / High Budget Photo or Pages'] ||
+      data?.['Rehab Budget Photo or Pages Present'] ||
+      data?.['High Budget Photo or Pages Present'] ||
+      data?.ARV_AS_IS?.rehab_budget_photo_or_pages_details ||
+      data?.ARV_AS_IS?.rehab_budget_photo_or_pages ||
+      data?.Subject?.['Rehab / High Budget Photo or Pages'] ||
+      'Present';
+    if (!data['Rehab / High Budget Photo or Pages']) {
+      data['Rehab / High Budget Photo or Pages'] = budgetPhotoVal;
+    }
+    if (data.Subject && !data.Subject['Rehab / High Budget Photo or Pages']) {
+      data.Subject['Rehab / High Budget Photo or Pages'] = budgetPhotoVal;
+    }
+    if (data.SUBJECT && !data.SUBJECT['Rehab / High Budget Photo or Pages']) {
+      data.SUBJECT['Rehab / High Budget Photo or Pages'] = budgetPhotoVal;
+    }
+  }
+
   if (currentState || hasAppraiserFee) {
     if ((currentState && statesRequiringAppraiserFee.includes(currentState)) || hasAppraiserFee) {
       const stateIdx = subjectFields.indexOf('State');
@@ -4142,9 +4183,12 @@ function Subject({ defaultFormType }) {
     },
     'GLA': { 'Improvements': 'GLA Improvements Count', 'Grid': 'GLA Sales Comparison Approach Count', 'Photo': 'GLA Photo Count', 'Floorplan': 'GLA Floorplan Count' }
   };
-  const formTypes = ['1004', '1004C', '1004C + 1007', '1004D', '1025', '1073', '2090', '203k-FHA', '2055', '1075', '2095', '1007', '216', '1025 + 1007', '1073 + 1007', '1004 + 1007', '1004MC', 'Appraisal Version #1', 'ERC'];
+  const formTypes = ['1004', '1004 Subject-To ARV w/ As-Is', '1004C', '1004C + 1007', '1004D', '1025', '1073', '2090', '203k-FHA', '2055', '1075', '2095', '1007', '216', '1025 + 1007', '1073 + 1007', '1004 + 1007', '1004MC', 'Appraisal Version #1', 'ERC'];
+
+  const hasAsIsPriorSales = Boolean(data?.AS_IS_PRIOR_SALE_HISTORY || data?.['As-Is Prior Sale History']);
 
   const sections = useMemo(() => [
+    ...((selectedFormType === '1004 Subject-To ARV w/ As-Is' || String(selectedFormType).includes('ARV')) ? [{ id: 'arv-as-is-section', title: 'ARV & As-Is Review', category: 'ARV_AS_IS', icon: <MonetizationOnIcon /> }] : []),
     ...(engagementLetterFile ? [{ id: 'engagement-letter-section', title: 'Engagement Letter', category: 'ENGAGEMENT_LETTER', icon: <AssignmentIcon /> }] : []),
     { id: 'subject-info', title: 'Subject', category: 'SUBJECT', icon: <HomeIcon /> },
     { id: 'contract-section', title: 'Contract', category: 'CONTRACT', icon: <GavelIcon /> },
@@ -4161,10 +4205,13 @@ function Subject({ defaultFormType }) {
     { id: 'prior-sale-history-section', title: 'Prior Sale History', category: 'PRIOR_SALE_HISTORY', icon: <HistoryIcon /> },
     { id: 'info-of-sales-section', title: 'Sales Comparison Approach', category: 'INFO_OF_SALES', icon: <MonetizationOnIcon /> },
     { id: 'sales-comparison', title: 'Sales Grid', category: 'SALES_GRID', icon: <CompareArrowsIcon /> },
+    ...((selectedFormType === '1004 Subject-To ARV w/ As-Is' || String(selectedFormType).includes('ARV')) ? [{ id: 'as-is-sales-comparison', title: 'As-Is Sales Grid', category: 'AS_IS_SALES_GRID', icon: <CompareArrowsIcon /> }] : []),
+    ...((selectedFormType === '1004 Subject-To ARV w/ As-Is' || String(selectedFormType).includes('ARV')) && hasAsIsPriorSales ? [{ id: 'as-is-sales-history', title: 'As-Is Prior Sales', category: 'AS_IS_PRIOR_SALE_HISTORY', icon: <HistoryIcon /> }] : []),
     { id: 'sales-history-section', title: 'Sales History', category: 'SALES_TRANSFER', icon: <HistoryIcon /> },
     { id: 'rent-schedule-section', title: 'Comparable Rent Schedule', category: 'RENT_SCHEDULE_GRID', icon: <TableChartIcon /> },
     { id: 'rent-schedule-reconciliation-section', title: 'Rent Schedule Reconciliation', category: 'RENT_SCHEDULE_RECONCILIATION', icon: <MergeTypeIcon /> },
     { id: 'reconciliation-section', title: 'Reconciliation_Section', category: 'RECONCILIATION', icon: <BalanceIcon /> },
+    ...((selectedFormType === '1004 Subject-To ARV w/ As-Is' || String(selectedFormType).includes('ARV')) ? [{ id: 'as-is-reconciliation-section', title: 'As-Is Reconciliation', category: 'AS_IS_RECONCILIATION', icon: <BalanceIcon /> }] : []),
     { id: 'cost-approach-section', title: 'Cost Approach', category: 'COST_APPROACH', icon: <CalculateIcon /> },
     { id: 'income-approach-section', title: 'Income Approach', category: 'INCOME_APPROACH', icon: <AttachMoneyIcon /> },
     { id: 'pud-info-section', title: 'PUD Information', category: 'PUD_INFO', icon: <DomainIcon /> },
@@ -4175,7 +4222,8 @@ function Subject({ defaultFormType }) {
     { id: 'map-sketch-exhibits-section', title: 'Map & Sketch Analysis', category: 'MAP_SKETCH_ANALYSIS', icon: <MapIcon /> },
     { id: 'photos-exhibits-section', title: 'Photos & Exhibits', category: 'EXTRACTED_PHOTOS', icon: <PhotoLibraryIcon /> },
     { id: 'raw-output', title: 'Raw Output', icon: <CodeIcon /> },
-  ], [engagementLetterFile, selectedFormType]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [engagementLetterFile, selectedFormType, hasAsIsPriorSales]);
 
   const salesGridRows = [
     { label: "Address", valueKey: "Address", subjectValueKey: "Property Address" },
@@ -4200,7 +4248,8 @@ function Subject({ defaultFormType }) {
     { label: "Baths", valueKey: "Baths", adjustmentKey: "Baths Adjustment" },
     { label: "Above Grade Room Count", valueKey: "Above Grade Room Count" },
     { label: "Gross Living Area", valueKey: "Gross Living Area", adjustmentKey: "Gross Living Area Adjustment" },
-    { label: "Basement & Finished Rooms Below Grade", valueKey: "Basement & Finished Rooms Below Grade", adjustmentKey: "Basement & Finished Rooms Below Grade Adjustment" },
+    { label: "Basement & Finished", valueKey: "Basement Description", adjustmentKey: "Basement Description Adjustment" },
+    { label: "Rooms Below Grade", valueKey: "Basement Finished Rooms", adjustmentKey: "Basement Finished Rooms Adjustment" },
     { label: "Functional Utility", valueKey: "Functional Utility", adjustmentKey: "Functional Utility Adjustment" },
     { label: "Heating/Cooling", valueKey: "Heating/Cooling", adjustmentKey: "Heating/Cooling Adjustment" },
     { label: "Energy Efficient Items", valueKey: "Energy Efficient Items", adjustmentKey: "Energy Efficient Items Adjustment" },
@@ -4235,7 +4284,8 @@ function Subject({ defaultFormType }) {
     { label: "Baths", valueKey: "Baths", adjustmentKey: "Baths Adjustment" },
     { label: "Above Grade Room Count", valueKey: "Above Grade Room Count" },
     { label: "Gross Living Area", valueKey: "Gross Living Area", adjustmentKey: "Gross Living Area Adjustment" },
-    { label: "Basement & Finished Rooms Below Grade", valueKey: "Basement & Finished Rooms Below Grade", adjustmentKey: "Basement & Finished Rooms Below Grade Adjustment" },
+    { label: "Basement & Finished", valueKey: "Basement Description", adjustmentKey: "Basement Description Adjustment" },
+    { label: "Rooms Below Grade", valueKey: "Basement Finished Rooms", adjustmentKey: "Basement Finished Rooms Adjustment" },
     { label: "Functional Utility", valueKey: "Functional Utility", adjustmentKey: "Functional Utility Adjustment" },
     { label: "Heating/Cooling", valueKey: "Heating/Cooling", adjustmentKey: "Heating/Cooling Adjustment" },
     { label: "Energy Efficient Items", valueKey: "Energy Efficient Items", adjustmentKey: "Energy Efficient Items Adjustment" },
@@ -4274,8 +4324,8 @@ function Subject({ defaultFormType }) {
     { label: "Unit Breakdown Unit #2", isUnitBreakdown: true, unitNumber: 2 },
     { label: "Unit Breakdown Unit #3", isUnitBreakdown: true, unitNumber: 3 },
     { label: "Unit Breakdown Unit #4", isUnitBreakdown: true, unitNumber: 4 },
-    { label: "Basement Description", valueKey: "Basement Description", adjustmentKey: "Basement Description Adjustment" },
-    { label: "Basement Finished Rooms", valueKey: "Basement Finished Rooms", adjustmentKey: "Basement Finished Rooms Adjustment" },
+    { label: "Basement & Finished", valueKey: "Basement Description", adjustmentKey: "Basement Description Adjustment" },
+    { label: "Rooms Below Grade", valueKey: "Basement Finished Rooms", adjustmentKey: "Basement Finished Rooms Adjustment" },
     { label: "Functional Utility", valueKey: "Functional Utility", adjustmentKey: "Functional Utility Adjustment" },
     { label: "Heating/Cooling", valueKey: "Heating/Cooling", adjustmentKey: "Heating/Cooling Adjustment" },
     { label: "Energy Efficient Items", valueKey: "Energy Efficient Items", adjustmentKey: "Energy Efficient Items Adjustment" },
@@ -4690,20 +4740,14 @@ function Subject({ defaultFormType }) {
         setXmlFile(file);
         setExtractionSource('xml');
         startFileUploadTimer(file.name);
-        try {
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            const text = event.target?.result;
-            const detected = detectFormTypeFromXmlString(text);
-            if (detected) {
+        detectFormTypeFromXmlFile(file, (detected) => {
+          if (detected) {
+            if (selectedFormType !== '1004 Subject-To ARV w/ As-Is' || detected === '1004 Subject-To ARV w/ As-Is') {
               setSelectedFormType(detected);
-              setXmlDetectedFormType(detected);
             }
-          };
-          reader.readAsText(file.slice(0, 150000));
-        } catch (e) {
-          console.error("Instant XML detection error:", e);
-        }
+            setXmlDetectedFormType(detected);
+          }
+        });
         setNotification({
           open: true, message: `XML file '${file.name}' uploaded successfully. Extraction source set to XML.`, severity: 'success'
         });
@@ -4737,20 +4781,14 @@ function Subject({ defaultFormType }) {
       setXmlFile(file);
       setExtractionSource('xml');
       startFileUploadTimer(file.name);
-      try {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const text = event.target?.result;
-          const detected = detectFormTypeFromXmlString(text);
-          if (detected) {
+      detectFormTypeFromXmlFile(file, (detected) => {
+        if (detected) {
+          if (selectedFormType !== '1004 Subject-To ARV w/ As-Is' || detected === '1004 Subject-To ARV w/ As-Is') {
             setSelectedFormType(detected);
-            setXmlDetectedFormType(detected);
           }
-        };
-        reader.readAsText(file.slice(0, 150000));
-      } catch (err) {
-        console.error("Instant XML detection error:", err);
-      }
+          setXmlDetectedFormType(detected);
+        }
+      });
       setNotification({
         open: true,
         message: `XML file '${file.name}' uploaded successfully. Extraction source switched to XML.`,
@@ -4929,7 +4967,7 @@ function Subject({ defaultFormType }) {
 
     const rawType = result.form_type || result.fields?.['Form Type'] || result.fields?.['From Type'] || result.fields?.['formType'] || result.clean_data?.['Form Type'] || '';
     if (rawType) {
-      const finalFormType = normalizeExtractedFormType(rawType);
+      const finalFormType = normalizeExtractedFormType(rawType, selectedFormType);
       if (finalFormType && formTypes.includes(finalFormType)) {
         setSelectedFormType(finalFormType);
         if (currentSource === 'xml') {
@@ -4999,6 +5037,38 @@ function Subject({ defaultFormType }) {
     if (certSec && typeof certSec === 'object') {
       normalizedFields["CERTIFICATION"] = { ...(normalizedFields["CERTIFICATION"] || {}), ...certSec };
       normalizedFields["Certification"] = normalizedFields["CERTIFICATION"];
+    }
+
+    // Unpack EO / E&O Insurance section
+    const eoSec = (typeof result.fields?.EO === 'object' && result.fields.EO) ||
+      (typeof result.clean_data?.EO === 'object' && result.clean_data.EO) ||
+      (typeof result.EO === 'object' && result.EO) ||
+      (typeof result.fields?.eo_data === 'object' && result.fields.eo_data) ||
+      (typeof result.clean_data?.eo_data === 'object' && result.clean_data.eo_data) ||
+      (typeof result.fields?.['E&O'] === 'object' && result.fields['E&O']) ||
+      (typeof result.clean_data?.['E&O'] === 'object' && result.clean_data['E&O']) ||
+      null;
+    if (eoSec) {
+      normalizedFields["EO"] = { ...(normalizedFields["EO"] || {}), ...eoSec };
+      normalizedFields["eo_data"] = normalizedFields["EO"];
+      if (!normalizedFields["CERTIFICATION"]) normalizedFields["CERTIFICATION"] = {};
+      Object.keys(eoSec).forEach(k => {
+        if (eoSec[k] && !normalizedFields["CERTIFICATION"][k]) {
+          normalizedFields["CERTIFICATION"][k] = eoSec[k];
+        }
+      });
+    }
+
+    // Unpack INVOICE section
+    const invSec = (typeof result.fields?.INVOICE === 'object' && result.fields.INVOICE) ||
+      (typeof result.clean_data?.INVOICE === 'object' && result.clean_data.INVOICE) ||
+      (typeof result.INVOICE === 'object' && result.INVOICE) ||
+      (typeof result.fields?.invoice_data === 'object' && result.fields.invoice_data) ||
+      (typeof result.clean_data?.invoice_data === 'object' && result.clean_data.invoice_data) ||
+      null;
+    if (invSec) {
+      normalizedFields["INVOICE"] = { ...(normalizedFields["INVOICE"] || {}), ...invSec };
+      normalizedFields["invoice_data"] = normalizedFields["INVOICE"];
     }
 
     // Unpack PRIOR_SALE_HISTORY section
@@ -5219,6 +5289,69 @@ function Subject({ defaultFormType }) {
       normalizedFields["map_exhibits_analysis"] = mapExhibits;
     }
 
+    // Unpack 1004 Subject-To ARV w/ As-Is sections
+    const arvSec = result.ARV_AS_IS || result.arv_as_is_data ||
+      result.fields?.ARV_AS_IS || result.fields?.arv_as_is_data ||
+      result.clean_data?.ARV_AS_IS || result.clean_data?.['1004 Subject-To ARV w/ As-Is'];
+    if (arvSec && typeof arvSec === 'object') {
+      normalizedFields["ARV_AS_IS"] = { ...(normalizedFields["ARV_AS_IS"] || {}), ...arvSec };
+      normalizedFields["arv_as_is_data"] = normalizedFields["ARV_AS_IS"];
+      normalizedFields["1004 Subject-To ARV w/ As-Is"] = normalizedFields["ARV_AS_IS"];
+    }
+
+    const asIsGridSec = result.AS_IS_SALES_GRID || result.fields?.AS_IS_SALES_GRID ||
+      result.fields?.['As-Is Sales Grid'] || result.clean_data?.['As-Is Sales Grid'] ||
+      result.clean_data?.AS_IS_SALES_GRID;
+    if (asIsGridSec && typeof asIsGridSec === 'object') {
+      normalizedFields["AS_IS_SALES_GRID"] = { ...(normalizedFields["AS_IS_SALES_GRID"] || {}), ...asIsGridSec };
+      normalizedFields["As-Is Sales Grid"] = normalizedFields["AS_IS_SALES_GRID"];
+    }
+
+    const primaryReconSec = result.PRIMARY_RECONCILIATION || result.fields?.PRIMARY_RECONCILIATION ||
+      result.fields?.['Primary Reconciliation'] || result.clean_data?.['Primary Reconciliation'] ||
+      result.clean_data?.PRIMARY_RECONCILIATION;
+    if (primaryReconSec && typeof primaryReconSec === 'object') {
+      normalizedFields["PRIMARY_RECONCILIATION"] = { ...(normalizedFields["PRIMARY_RECONCILIATION"] || {}), ...primaryReconSec };
+      normalizedFields["Primary Reconciliation"] = normalizedFields["PRIMARY_RECONCILIATION"];
+    }
+
+    const asIsReconSec = result.AS_IS_RECONCILIATION || result.fields?.AS_IS_RECONCILIATION ||
+      result.fields?.['As-Is Reconciliation'] || result.clean_data?.['As-Is Reconciliation'] ||
+      result.clean_data?.AS_IS_RECONCILIATION;
+    if (asIsReconSec && typeof asIsReconSec === 'object') {
+      normalizedFields["AS_IS_RECONCILIATION"] = { ...(normalizedFields["AS_IS_RECONCILIATION"] || {}), ...asIsReconSec };
+      normalizedFields["As-Is Reconciliation"] = normalizedFields["AS_IS_RECONCILIATION"];
+    }
+
+    if (result.as_is_comps || result.fields?.as_is_comps || result.clean_data?.as_is_comps) {
+      normalizedFields["as_is_comps"] = result.as_is_comps || result.fields?.as_is_comps || result.clean_data?.as_is_comps;
+    }
+    if (result.as_is_comparable_sales || result.fields?.as_is_comparable_sales || result.clean_data?.as_is_comparable_sales) {
+      normalizedFields["as_is_comparable_sales"] = result.as_is_comparable_sales || result.fields?.as_is_comparable_sales || result.clean_data?.as_is_comparable_sales;
+    }
+
+    const asIsPriorSaleSec = result.AS_IS_PRIOR_SALE_HISTORY || result.fields?.AS_IS_PRIOR_SALE_HISTORY ||
+      result.fields?.['As-Is Prior Sale History'] || result.clean_data?.['As-Is Prior Sale History'] ||
+      result.clean_data?.AS_IS_PRIOR_SALE_HISTORY || result.ARV_AS_IS?.as_is_prior_sale_history;
+    if (asIsPriorSaleSec && typeof asIsPriorSaleSec === 'object' && Object.keys(asIsPriorSaleSec).length > 0) {
+      normalizedFields["AS_IS_PRIOR_SALE_HISTORY"] = { ...(normalizedFields["AS_IS_PRIOR_SALE_HISTORY"] || {}), ...asIsPriorSaleSec };
+      normalizedFields["As-Is Prior Sale History"] = normalizedFields["AS_IS_PRIOR_SALE_HISTORY"];
+    }
+
+    const budgetPhotoVal = result['Rehab / High Budget Photo or Pages'] ||
+      result.fields?.['Rehab / High Budget Photo or Pages'] ||
+      result.clean_data?.['Rehab / High Budget Photo or Pages'] ||
+      result['Rehab Budget Photo or Pages Present'] ||
+      result.fields?.['Rehab Budget Photo or Pages Present'] ||
+      result.clean_data?.['Rehab Budget Photo or Pages Present'] ||
+      result.ARV_AS_IS?.rehab_budget_photo_or_pages_details ||
+      result.ARV_AS_IS?.rehab_budget_photo_or_pages;
+    if (budgetPhotoVal) {
+      normalizedFields['Rehab / High Budget Photo or Pages'] = budgetPhotoVal;
+      normalizedFields['Rehab Budget Photo or Pages Present'] = budgetPhotoVal;
+      normalizedFields['High Budget Photo or Pages Present'] = budgetPhotoVal;
+    }
+
     setData(prevData => {
       const updatedData = { ...prevData, ...normalizedFields };
       Object.keys(normalizedFields).forEach(key => {
@@ -5364,7 +5497,7 @@ function Subject({ defaultFormType }) {
         const result = await res.json();
         extractedDataResult = result;
         if (result.form_type) {
-          const norm = normalizeExtractedFormType(result.form_type);
+          const norm = normalizeExtractedFormType(result.form_type, detectedFormType);
           if (norm) detectedFormType = norm;
         }
         processExtractionResult(result, categoryStartTime, category, currentSource);
@@ -6302,6 +6435,7 @@ function Subject({ defaultFormType }) {
           { id: 'photos-exhibits-section', title: 'Photos & Exhibits', category: 'EXTRACTED_PHOTOS', icon: <PhotoLibraryIcon /> }
         ];
       case '1004':
+      case '1004 Subject-To ARV w/ As-Is':
         visibleSectionIds = baseSections.filter(id => !['comparable-rental-data', 'subject-rent-schedule', 'rent-schedule-section', 'prior-sale-history-section', 'rent-schedule-reconciliation-section', 'project-site-section', 'project-info-section', 'project-analysis-section', 'unit-descriptions-section'].includes(id));
         break;
       case '1004C':
@@ -6452,6 +6586,9 @@ function Subject({ defaultFormType }) {
     switch (selectedFormType) {
       case '1004':
         formComponent = <Form1004 {...props} allData={{ ...data, comparisonData, formType: selectedFormType, selectedFile: activeReportFile, xmlFile, reportFile: activeReportFile, FILE_PATH: activeReportFile?.name || data?.FILE_PATH || '' }} selectedFile={activeReportFile} />;
+        break;
+      case '1004 Subject-To ARV w/ As-Is':
+        formComponent = <Form1004SubjectToARV {...props} allData={{ ...data, comparisonData, formType: selectedFormType, selectedFile: activeReportFile, xmlFile, reportFile: activeReportFile, FILE_PATH: activeReportFile?.name || data?.FILE_PATH || '' }} selectedFile={activeReportFile} />;
         break;
       case '1004C':
       case '1004C + 1007':

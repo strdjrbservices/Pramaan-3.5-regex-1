@@ -20,6 +20,7 @@ import csv
 import json
 import base64
 import io
+import tempfile
 import argparse
 from typing import List, Dict, Any, Optional, Tuple
 import xml.etree.ElementTree as ET

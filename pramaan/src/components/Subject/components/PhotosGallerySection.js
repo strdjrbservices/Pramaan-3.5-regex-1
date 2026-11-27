@@ -50,11 +50,15 @@ import {
 
   ImageSearch as ImageSearchIcon,
 
-  RotateRight as RotateRightIcon
+  RotateRight as RotateRightIcon,
+
+  OpenWith as OpenWithIcon,
+
+  RestartAlt as RestartAltIcon
 
 } from '@mui/icons-material';
 
-import { InteractiveZoomImageViewer } from './InteractiveZoomImageViewer.js';
+import { InteractiveZoomImageViewer, DraggableDialogPaper } from './InteractiveZoomImageViewer.js';
 
 
 
@@ -141,6 +145,14 @@ export const PhotosGallerySection = ({
     if (c === 'rental property' || c === 'rental') return 'Rental property';
     if (c.includes('sketch') || c.includes('floor')) return 'Building Sketch';
     if (c.includes('map') || c.includes('aerial')) return 'Maps & Aerials';
+    if (c.includes('invoice') || cap.includes('invoice')) return 'Invoice';
+    if (
+      c === 'e&o' || c === 'e & o' || c === 'eo' || c.includes('e&o') ||
+      c.includes('errors & omissions') || c.includes('errors and omissions') ||
+      cap.includes('e&o') || cap.includes('errors & omissions') || cap.includes('errors and omissions')
+    ) {
+      return 'E&O Insurance';
+    }
 
     return cat || 'General';
   };
@@ -170,6 +182,10 @@ export const PhotosGallerySection = ({
       'Maps & Aerials': 0,
 
       'HUD Plate & Certification': 0,
+
+      'Invoice': 0,
+
+      'E&O Insurance': 0,
 
       General: 0
 
@@ -304,6 +320,10 @@ export const PhotosGallerySection = ({
       case 'Maps & Aerials': return { bg: '#e0f2f1', color: '#00695c', border: '#80cbc4' };
 
       case 'HUD Plate & Certification': return { bg: '#e0f2fe', color: '#0369a1', border: '#7dd3fc' };
+
+      case 'Invoice': return { bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' };
+
+      case 'E&O Insurance': return { bg: '#ecfdf5', color: '#047857', border: '#a7f3d0' };
 
       default: return { bg: '#f5f5f5', color: '#424242', border: '#e0e0e0' };
 
@@ -532,6 +552,10 @@ export const PhotosGallerySection = ({
             { key: 'Building Sketch', label: 'Building Sketch' },
 
             { key: 'Maps & Aerials', label: 'Maps & Aerials' },
+
+            { key: 'Invoice', label: 'Invoice Copy' },
+
+            { key: 'E&O Insurance', label: 'E&O Insurance' },
 
             { key: 'General', label: 'Other Exhibits' }
 
@@ -1001,7 +1025,7 @@ export const PhotosGallerySection = ({
 
 
 
-      {/* Fullscreen Preview Lightbox Modal */}
+      {/* Fullscreen Preview Lightbox Modal (Moveable Frame) */}
 
       <Dialog
 
@@ -1012,6 +1036,14 @@ export const PhotosGallerySection = ({
         maxWidth="lg"
 
         fullWidth
+
+        PaperComponent={DraggableDialogPaper}
+
+        aria-labelledby="draggable-dialog-title-photo"
+
+        disableEnforceFocus
+
+        BackdropProps={{ sx: { bgcolor: 'rgba(0, 0, 0, 0.35)' } }}
 
         PaperProps={{
 
@@ -1031,9 +1063,25 @@ export const PhotosGallerySection = ({
 
       >
 
-        <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+        <DialogTitle
+          id="draggable-dialog-title-photo"
+          component="div"
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderBottom: '1px solid rgba(255,255,255,0.1)',
+            cursor: 'grab',
+            userSelect: 'none',
+            '&:active': { cursor: 'grabbing' },
+          }}
+        >
 
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+
+            <Tooltip title="Moveable Frame: Drag to move window (Double-click to center)">
+              <OpenWithIcon sx={{ fontSize: 20, color: '#38bdf8', cursor: 'grab' }} />
+            </Tooltip>
 
             <Chip label={previewPhoto?.category || 'Exhibit'} color="primary" size="small" sx={{ fontWeight: 700 }} />
 
@@ -1043,9 +1091,38 @@ export const PhotosGallerySection = ({
 
             </Typography>
 
+            <Chip
+              label="Moveable Frame"
+              size="small"
+              sx={{
+                bgcolor: 'rgba(56, 189, 248, 0.15)',
+                color: '#38bdf8',
+                border: '1px solid rgba(56, 189, 248, 0.3)',
+                height: 20,
+                fontSize: '0.68rem',
+                fontWeight: 700,
+              }}
+            />
+
           </Box>
 
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+
+            <Tooltip title="Reset Window Position (Center)">
+
+              <IconButton
+                onClick={() => {
+                  const paper = document.querySelector('.MuiDialog-paper');
+                  if (paper) paper.style.transform = 'translate(0px, 0px)';
+                }}
+                sx={{ color: '#94a3b8', '&:hover': { color: '#fff' } }}
+              >
+
+                <RestartAltIcon />
+
+              </IconButton>
+
+            </Tooltip>
 
             <Tooltip title="Rotate 90°">
 

@@ -44,6 +44,11 @@ from .offline_requirement_checks import (
     evaluate_fha_requirements,
 )
 from .xml_extractor import extract_fields_from_xml, extract_photos_from_xml
+from .arv_as_is_engine import (
+    ARVAsIsEngine,
+    extract_arv_as_is_report,
+    extract_arv_as_is_full_dataset,
+)
 
 import threading
 import shutil
@@ -1011,8 +1016,16 @@ def extract_pdf(request):
             if category_clean in ["FHA_REQUIREMENT_CHECK", "FHA_CHECK", "FHA_REQUIREMENTS"]:
                 return Response(evaluate_fha_requirements(tmp_path, extracted_data=extracted_data_obj))
 
+            if category_clean in ["ARV_AS_IS_CHECK", "ARV_CHECK", "ARV_AS_IS", "ARV_REQUIREMENTS"]:
+                return Response(extract_arv_as_is_report(tmp_path))
+
             # Priority 2: Inferred routing from prompt when category is not explicitly specified
             if any(term in prompt_lower for term in [
+                "arv check", "as-is check", "as is check", "subject-to arv", "arv review", "arv validation"
+            ]):
+                return Response(extract_arv_as_is_report(tmp_path))
+
+            elif any(term in prompt_lower for term in [
                 "escalation check", "escalation rules", "run escalation check", "escalation trigger"
             ]):
                 return Response(evaluate_escalation_check(tmp_path, extracted_data=extracted_data_obj))
@@ -1100,6 +1113,19 @@ def extract_pdf(request):
                         if companion_pdf_path:
                             break
 
+                form_type_str_check = str(form_type or "").strip().upper()
+                is_arv_xml = "ARV" in form_type_str_check or ("SUBJECT" in form_type_str_check and "AS-IS" in form_type_str_check)
+                if not is_arv_xml:
+                    try:
+                        is_match, conf, _ = ARVAsIsEngine.is_arv_as_is_report(tmp_path)
+                        if is_match and conf >= 0.8:
+                            is_arv_xml = True
+                    except Exception as e_arv:
+                        logger.warning(f"XML ARV auto-detection error: {e_arv}")
+
+                if is_arv_xml:
+                    return Response(extract_arv_as_is_full_dataset(tmp_path, companion_pdf_path=companion_pdf_path))
+
                 xml_result = extract_fields_from_xml(tmp_path, companion_pdf_path=companion_pdf_path)
                 if xml_result.get("status") == "success":
                     return Response(xml_result)
@@ -1111,22 +1137,36 @@ def extract_pdf(request):
             # 7. PDF Field Extraction (Offline & Model pipelines)
             form_type_str = str(form_type or "").strip().upper()
 
-            # Auto-detect Appraisal Version #1 / UAD 3.6 from PDF
+            # Auto-detect Appraisal Version #1 / UAD 3.6 or 1004 Subject-To ARV w/ As-Is from PDF
             if not form_type_str or form_type_str in ["AUTO", "1004", "NONE", ""]:
                 try:
+                    is_match, conf, _ = ARVAsIsEngine.is_arv_as_is_report(tmp_path)
+                    if is_match and conf >= 0.8:
+                        form_type_str = "1004 SUBJECT-TO ARV W/ AS-IS"
+                except Exception as e_arv:
+                    logger.warning(f"PDF ARV auto-detection error: {e_arv}")
+
+                if form_type_str not in ["1004 SUBJECT-TO ARV W/ AS-IS"]:
                     try:
-                        import pymupdf as fitz
-                    except ImportError:
-                        import fitz
-                    _doc = fitz.open(tmp_path)
-                    _p_text = (_doc[0].get_text() if len(_doc) > 0 else "") + (_doc[1].get_text() if len(_doc) > 1 else "")
-                    _doc.close()
-                    if re.search(r"Appraisal\s+Version\s+(#?\w+)", _p_text, re.IGNORECASE) or ("Fannie Mae | Freddie Mac" in _p_text and "Uniform Residential Appraisal Report" in _p_text):
-                        form_type_str = "APPRAISAL VERSION #1"
-                except Exception:
-                    pass
+                        try:
+                            import pymupdf as fitz
+                        except ImportError:
+                            import fitz
+                        _doc = fitz.open(tmp_path)
+                        _p_text = (_doc[0].get_text() if len(_doc) > 0 else "") + (_doc[1].get_text() if len(_doc) > 1 else "")
+                        _doc.close()
+                        if re.search(r"Appraisal\s+Version\s+(#?\w+)", _p_text, re.IGNORECASE) or ("Fannie Mae | Freddie Mac" in _p_text and "Uniform Residential Appraisal Report" in _p_text):
+                            form_type_str = "APPRAISAL VERSION #1"
+                    except Exception:
+                        pass
 
             if not custom_prompt:
+                # Dedicated 1004 Subject-To ARV w/ As-Is Engine
+                if "ARV" in form_type_str or ("SUBJECT" in form_type_str and "AS-IS" in form_type_str):
+                    arv_data = extract_arv_as_is_full_dataset(tmp_path)
+                    if arv_data.get("status") == "success":
+                        return Response(arv_data)
+
                 # 100% Offline Pure Python Extraction (Fast & $0.00 cost)
                 if form_type_str in ["ECR", "ERC", "WORLDWIDE ERC"]:
                     offline_data = extract_fields_from_pdf_ecr_offline(tmp_path)
@@ -2165,3 +2205,34 @@ def extract_hud_ocr_view(request):
             "status": "error",
             "detail": str(exc),
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+@parser_classes([MultiPartParser, FormParser])
+def arv_as_is_check_view(request):
+    """
+    Runs dedicated 1004 Subject-To ARV w/ As-Is engine validation and extraction 100% offline.
+    """
+    file = request.data.get("file") or request.data.get("pdf_file") or request.data.get("xml_file")
+    if not file:
+        return Response({"detail": "No file uploaded"}, status=status.HTTP_400_BAD_REQUEST)
+
+    tmp_path = ""
+    companion_tmp = ""
+    try:
+        tmp_path = _save_temp_file(file)
+        companion_pdf = request.FILES.get("companion_pdf") or request.FILES.get("pdf_file")
+        if companion_pdf:
+            companion_tmp = _save_temp_file(companion_pdf)
+
+        res = extract_arv_as_is_report(tmp_path, companion_pdf=companion_tmp if companion_tmp else None)
+        return Response(res)
+    except Exception as exc:
+        traceback.print_exc()
+        return Response({"detail": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        if companion_tmp and os.path.exists(companion_tmp):
+            os.remove(companion_tmp)
+

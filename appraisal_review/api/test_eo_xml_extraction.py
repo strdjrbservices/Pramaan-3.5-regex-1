@@ -96,5 +96,122 @@ class TestEoXmlExtraction(unittest.TestCase):
         self.assertEqual(fields.get("E&O"), "Present")
         self.assertEqual(fields.get("E&O Insurance"), "EO-PDF-9999")
 
+    def test_diverse_eo_formats(self):
+        # 1. LIA / Liberty style Declarations with Item 1..4 & From/To 12:01 AM
+        lia_text = """
+        REAL ESTATE APPRAISERS PROFESSIONAL LIABILITY DECLARATIONS
+        Policy Number: LIA-0098765-26
+        Item 1. Named Insured:
+        Apex Valuation Services LLC
+        123 Main St, Austin, TX 78701
+        Item 2. Policy Period: From: 04/15/2026 to 04/15/2027 12:01 A.M. Standard Time
+        Item 3. Limits of Liability: $1,000,000 Each Claim / $1,000,000 Aggregate
+        Item 4. Deductible: $2,500 Each Claim
+        Underwritten by: Liberty Insurance Underwriters Inc.
+        """
+        r1 = parse_eo_text(lia_text)
+        self.assertEqual(r1["E&O"], "Present")
+        self.assertEqual(r1["E&O Insurance"], "LIA-0098765-26")
+        self.assertEqual(r1["Policy Period From"], "04/15/2026")
+        self.assertEqual(r1["Policy Period To"], "04/15/2027")
+        self.assertEqual(r1["E&O Insured"], "Apex Valuation Services LLC")
+        self.assertEqual(r1["E&O Carrier"], "Liberty Insurance Underwriters Inc.")
+        self.assertEqual(r1["E&O Limit"], "$1,000,000")
+        self.assertEqual(r1["E&O Deductible"], "$2,500")
+
+        # 2. OREP / Hudson Certificate style
+        orep_text = """
+        CERTIFICATE OF INSURANCE - REAL ESTATE APPRAISERS E&O
+        Certificate Number: OREP-441122
+        Member Name: Jane Doe Appraisals
+        Effective Date: March 1, 2026
+        Expiration Date: March 1, 2027
+        Each Claim: $500,000
+        Self-Insured Retention: $1,000
+        Coverage provided by: Hudson Insurance Company
+        """
+        r2 = parse_eo_text(orep_text)
+        self.assertEqual(r2["E&O"], "Present")
+        self.assertEqual(r2["E&O Insurance"], "OREP-441122")
+        self.assertEqual(r2["Policy Period From"], "03/01/2026")
+        self.assertEqual(r2["Policy Period To"], "03/01/2027")
+        self.assertEqual(r2["E&O Insured"], "Jane Doe Appraisals")
+        self.assertEqual(r2["E&O Carrier"], "Hudson Insurance Company")
+        self.assertEqual(r2["E&O Limit"], "$500,000")
+        self.assertEqual(r2["E&O Deductible"], "$1,000")
+
+        # 3. ACORD 25 Certificate with multiple insurers (Insurer B = E&O)
+        acord_text = """
+        CERTIFICATE OF LIABILITY INSURANCE
+        INSURED
+        Summit Appraisal Group
+        450 Oak Ave
+        INSURER A: State Farm Fire and Casualty Company NAIC # 25143
+        INSURER B: General Star Indemnity Company NAIC # 37362
+        B  Claims-Made  Professional Liability  GS-8877665  05/01/2026  05/01/2027  Each Claim $1,000,000
+        Deductible: None
+        """
+        r3 = parse_eo_text(acord_text)
+        self.assertEqual(r3["E&O"], "Present")
+        self.assertEqual(r3["E&O Insurance"], "GS-8877665")
+        self.assertEqual(r3["Policy Period From"], "05/01/2026")
+        self.assertEqual(r3["Policy Period To"], "05/01/2027")
+        self.assertEqual(r3["E&O Insured"], "Summit Appraisal Group")
+        self.assertEqual(r3["E&O Carrier"], "General Star Indemnity Company")
+        self.assertEqual(r3["E&O Limit"], "$1,000,000")
+        self.assertEqual(r3["E&O Deductible"], "None")
+
+        # 4. CNA / Travelers OCR-artifact table style
+        cna_ocr = """
+        ERRORS AND OMISSIONS DECLARATIONS
+        Agency Branch Prefix Policy Number
+        078990 969 RFB 42313903226
+        NAMED INSURED
+        Jennifer Leary DBA: Forest Cove Appraisals
+        Policy Period: 01/15/26 to 01/15/27
+        Insurance is provided by
+        Ivelen Casualtv & Surety Company ol Amerlca
+        Limits of Liability: 51,000,000
+        Deductible: 52,500
+        """
+        r4 = parse_eo_text(cna_ocr)
+        self.assertEqual(r4["E&O"], "Present")
+        self.assertEqual(r4["E&O Insurance"], "RFB 42313903226")
+        self.assertEqual(r4["Policy Period From"], "01/15/2026")
+        self.assertEqual(r4["Policy Period To"], "01/15/2027")
+        self.assertEqual(r4["E&O Insured"], "Jennifer Leary DBA: Forest Cove Appraisals")
+        self.assertEqual(r4["E&O Carrier"], "Travelers Casualty & Surety Company of America")
+        self.assertEqual(r4["E&O Limit"], "$1,000,000")
+        self.assertEqual(r4["E&O Deductible"], "$2,500")
+
+        # 5. Competing dates on same page (e.g., Effective/Retroactive/License Expires + Policy Period: From ... To ...)
+        competing_text = """
+        Effective: 11/24/2026
+        License Expires: 12/31/2027
+        Policy Period: From 11/07/2026 To 11/07/2027
+        (Month, Day, Year) (Month, Day, Year)
+        """
+        r5 = parse_eo_text(competing_text)
+        self.assertEqual(r5["Policy Period From"], "11/07/2026")
+        self.assertEqual(r5["Policy Period To"], "11/07/2027")
+
+        # 6. Great American OCR artifacts ($10.000 dot thousands, ARATIONS header bleed, spaces in dates)
+        ga_ocr = """
+        ARATIONS GREATAMERICAN for REAL ESTATE PROFESSIONAL INSURANCE GROUP
+        Policy Number: RAB3873736-26
+        Named Insured: Realty Management Services Inc
+        Policy Period: From (Month, Day, Year) 11 / 07 / 2026 To (Month, Day, Year) 11 / 07 / 2027
+        Limits of Liability: $1,000,000
+        Deductible: $10.000
+        """
+        r6 = parse_eo_text(ga_ocr)
+        self.assertEqual(r6["E&O Insurance"], "RAB3873736-26")
+        self.assertEqual(r6["E&O Insured"], "Realty Management Services Inc")
+        self.assertEqual(r6["Policy Period From"], "11/07/2026")
+        self.assertEqual(r6["Policy Period To"], "11/07/2027")
+        self.assertEqual(r6["E&O Limit"], "$1,000,000")
+        self.assertEqual(r6["E&O Deductible"], "$10,000")
+        self.assertEqual(r6["E&O Carrier"], "Great American for REAL ESTATE PROFESSIONAL INSURANCE GROUP")
+
 if __name__ == "__main__":
     unittest.main()

@@ -216,7 +216,7 @@ const EscalationCheck = ({ onPromptSubmit, loading, response, error }) => {
               </TableHead>
               <TableBody>
                 {sortedDetails.length > 0 ? (sortedDetails.map((item, index) => {
-                  const isInvalid = item.status === 'Needs Escalation';
+                  const isInvalid = item.status === 'Needs Escalation' || item.status === 'Needs Review' || !isGreen(item.status);
                   const statusStyle = isInvalid
                     ? { backgroundColor: '#ff0000', color: '#ffffff', padding: '4px 8px', borderRadius: '4px', display: 'inline-block', cursor: 'pointer' }
                     : { backgroundColor: '#91ff00ff', color: '#000000', padding: '4px 8px', borderRadius: '4px', display: 'inline-block' };

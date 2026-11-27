@@ -1127,7 +1127,7 @@ export const parseBasementGridString = (str) => {
         };
     }
 
-    const cleanStr = str.trim().toLowerCase();
+    const cleanStr = str.trim().toLowerCase().replace(/,/g, '');
 
     if (cleanStr === 'none' || cleanStr === '0' || cleanStr === 'n/a' || cleanStr === 'slab' || cleanStr === 'crawl') {
         return {
@@ -1148,8 +1148,8 @@ export const parseBasementGridString = (str) => {
     let hasBasement = false;
     let hasFinish = false;
 
-    // Pattern: {total}sf{finish}sf{exit} e.g. 1349sf1012sfwo or 1349 sqft 1012 sqft wo
-    const sfMatch = cleanStr.match(/(\d+)\s*s[fq]\.?\s*(\d+)\s*s[fq]\.?([a-z0-9]*)/i);
+    // Pattern: {total}sf{finish}sf{exit} e.g. 1349sf1012sfwo or 1,349 sf / 1,012 sf wo
+    const sfMatch = cleanStr.match(/(\d+)\s*s[fq]\.?\s*(?:\/\s*)?(\d+)\s*s[fq]\.?\s*([a-z0-9]*)/i);
     if (sfMatch) {
         totalArea = parseInt(sfMatch[1], 10);
         finishedArea = parseInt(sfMatch[2], 10);
@@ -1170,13 +1170,13 @@ export const parseBasementGridString = (str) => {
     let o = 0;
     let hasRoomCount = false;
 
-    const rrMatch = cleanStr.match(/(\d+)\s*rr/);
+    const rrMatch = cleanStr.match(/(\d+)\s*(?:rr|rec\s*rms?)/);
     if (rrMatch) {
         rr = parseInt(rrMatch[1], 10);
         hasRoomCount = true;
     }
 
-    const brMatch = cleanStr.match(/(\d+)\s*br/);
+    const brMatch = cleanStr.match(/(\d+)\s*(?:br|bdrms?)/);
     if (brMatch) {
         br = parseInt(brMatch[1], 10);
         hasRoomCount = true;
@@ -1188,7 +1188,7 @@ export const parseBasementGridString = (str) => {
         hasRoomCount = true;
     }
 
-    const oMatch = cleanStr.match(/(\d+)\s*o(?![a-z])/);
+    const oMatch = cleanStr.match(/(\d+)\s*(?:o(?![a-z])|other)/);
     if (oMatch) {
         o = parseInt(oMatch[1], 10);
         hasRoomCount = true;
@@ -4526,9 +4526,9 @@ export const checkExtraSalesGridFieldAdjustment = (field, arg2, arg3, arg4, arg5
         adjVal = String(textVal).trim();
     } else {
         adjVal = getValFromObj(compGrid, adjKey, `${featureKey} Adjustment`) ||
-                 getValFromObj(compRawObj, adjKey, `${featureKey} Adjustment`) ||
-                 getValFromObj(compGrid, `${featureKey} Adj`) ||
-                 getValFromObj(compRawObj, `${featureKey} Adj`);
+            getValFromObj(compRawObj, adjKey, `${featureKey} Adjustment`) ||
+            getValFromObj(compGrid, `${featureKey} Adj`) ||
+            getValFromObj(compRawObj, `${featureKey} Adj`);
     }
 
     // If completely empty across Subject and Comp, skip

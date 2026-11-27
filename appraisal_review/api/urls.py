@@ -30,6 +30,7 @@ urlpatterns = [
     path('extract-from-html/', views.extract_from_html_view, name='extract_from_html'),
     path('extract-photos/', views.extract_photos_view, name='extract_photos'),
     path('extract-hud-ocr/', views.extract_hud_ocr_view, name='extract_hud_ocr'),
+    path('arv-as-is-check/', views.arv_as_is_check_view, name='arv_as_is_check'),
     path('extract-maps/', views.extract_maps_view, name='extract_maps'),
     path('extract-sketch-base64/', views.extract_sketch_base64_view, name='extract_sketch_base64'),
 

@@ -21,15 +21,18 @@ except ImportError:
     from api.xml_extractor import find_comparable_rent_schedule_pages, extract_rent_schedule_from_pdf_page, classify_subject_view_label
 
 try:
-    from api.eo_extractor import extract_eo_insurance_from_doc
+    from api.eo_extractor import extract_eo_insurance_from_doc, extract_eo_copy_data
 except ImportError:
     try:
-        from .eo_extractor import extract_eo_insurance_from_doc  # type: ignore
+        from .eo_extractor import extract_eo_insurance_from_doc, extract_eo_copy_data  # type: ignore
     except Exception:
-        def extract_eo_insurance_from_doc(doc: Any) -> Dict[str, str]:  # type: ignore
+        def extract_eo_insurance_from_doc(doc: Any, use_ocr: bool = True, appraiser_hint: str = "") -> Dict[str, str]:  # type: ignore
             return {
                 "E&O": "Absent",
                 "E&O Present": "Absent",
+                "E&O Attached": "No",
+                "has_eo": False,
+                "E&O Page": "",
                 "E&O Insurance": "",
                 "Policy Period From": "",
                 "Policy Period To": "",
@@ -37,6 +40,16 @@ except ImportError:
                 "E&O Carrier": "",
                 "E&O Limit": "",
                 "E&O Deductible": "",
+                "base64_preview": ""
+            }
+        def extract_eo_copy_data(page: Any, p_no: int, use_ocr: bool = True, appraiser_hint: str = "") -> Dict[str, Any]: # type: ignore
+            return {
+                "E&O": "Present",
+                "E&O Present": "Present",
+                "E&O Attached": "Yes",
+                "has_eo": True,
+                "E&O Page": p_no,
+                "base64_preview": ""
             }
 
 
@@ -3872,6 +3885,32 @@ def extract_page_2_sales_grid_and_reconciliation(page_p2, page_extra_comps=None,
                     col_data[f"{row_label} Adjustment"] = ""
 
         col_data["Adjusted Sale Price of Comparable"] = col_data.get("Adjusted Sale Price of Comparables", "")
+        # Split "Basement & Finished Rooms Below Grade" into two clean fields + adjustments
+        bsmt_line1 = col_data.get("Basement & Finished Rooms Below Grade", "")
+        y_bsmt_row = next((ry for rl, ry in row_anchors if rl == "Basement & Finished Rooms Below Grade"), None)
+        if y_bsmt_row is not None:
+            bsmt_line2 = get_text_in(dx0, y_bsmt_row + 5.5, dx1, y_bsmt_row + 17.5)
+            adj_line1 = get_text_in(ax0, y_bsmt_row - 5.5, ax1, y_bsmt_row + 5.5) if ax0 is not None else ""
+            adj_line2 = get_text_in(ax0, y_bsmt_row + 5.5, ax1, y_bsmt_row + 17.5) if ax0 is not None else ""
+        else:
+            bsmt_line2, adj_line1, adj_line2 = "", "", ""
+
+        try:
+            from xml_extractor import _clean_basement_area, _clean_basement_rooms
+        except ImportError:
+            _clean_basement_area = lambda x: x
+            _clean_basement_rooms = lambda x: x
+
+        if bsmt_line1 or bsmt_line2:
+            combined_src = f"{bsmt_line1} {bsmt_line2}".strip()
+            area_m = re.search(r'([\d,]+\s*sf(?:\s*[\d,]+\s*sf\s*[a-z]*)?)', combined_src, re.IGNORECASE)
+            rooms_m = re.search(r'(\d+\s*rr\s*\d+\s*br\s*[\d.]+\s*ba\s*\d*\s*o?)', combined_src, re.IGNORECASE)
+            raw_area = area_m.group(1).strip() if area_m else bsmt_line1
+            raw_rooms = rooms_m.group(1).strip() if rooms_m else bsmt_line2
+            col_data["Basement Description"] = _clean_basement_area(raw_area)
+            col_data["Basement Finished Rooms"] = _clean_basement_rooms(raw_rooms)
+            col_data["Basement Description Adjustment"] = adj_line1 or col_data.get("Basement & Finished Rooms Below Grade Adjustment", "")
+            col_data["Basement Finished Rooms Adjustment"] = adj_line2
         grid[col_key] = col_data
 
     if custom_rows_p2:
@@ -4199,6 +4238,32 @@ def extract_page_2_sales_grid_and_reconciliation(page_p2, page_extra_comps=None,
                             col_data[f"{row_label} Adjustment"] = ""
 
                 col_data["Adjusted Sale Price of Comparable"] = col_data.get("Adjusted Sale Price of Comparables", "")
+                # Split "Basement & Finished Rooms Below Grade" into two clean fields + adjustments
+                bsmt_line1 = col_data.get("Basement & Finished Rooms Below Grade", "")
+                y_bsmt_row_ex = next((ry for rl, ry in row_anchors_ex if rl == "Basement & Finished Rooms Below Grade"), None)
+                if y_bsmt_row_ex is not None:
+                    bsmt_line2 = get_text_in_ex(dx0, y_bsmt_row_ex + 5.5, dx1, y_bsmt_row_ex + 17.5)
+                    adj_line1 = get_text_in_ex(ax0, y_bsmt_row_ex - 5.5, ax1, y_bsmt_row_ex + 5.5) if ax0 is not None else ""
+                    adj_line2 = get_text_in_ex(ax0, y_bsmt_row_ex + 5.5, ax1, y_bsmt_row_ex + 17.5) if ax0 is not None else ""
+                else:
+                    bsmt_line2, adj_line1, adj_line2 = "", "", ""
+
+                try:
+                    from xml_extractor import _clean_basement_area, _clean_basement_rooms
+                except ImportError:
+                    _clean_basement_area = lambda x: x
+                    _clean_basement_rooms = lambda x: x
+
+                if bsmt_line1 or bsmt_line2:
+                    combined_src = f"{bsmt_line1} {bsmt_line2}".strip()
+                    area_m = re.search(r'([\d,]+\s*sf(?:\s*[\d,]+\s*sf\s*[a-z]*)?)', combined_src, re.IGNORECASE)
+                    rooms_m = re.search(r'(\d+\s*rr\s*\d+\s*br\s*[\d.]+\s*ba\s*\d*\s*o?)', combined_src, re.IGNORECASE)
+                    raw_area = area_m.group(1).strip() if area_m else bsmt_line1
+                    raw_rooms = rooms_m.group(1).strip() if rooms_m else bsmt_line2
+                    col_data["Basement Description"] = _clean_basement_area(raw_area)
+                    col_data["Basement Finished Rooms"] = _clean_basement_rooms(raw_rooms)
+                    col_data["Basement Description Adjustment"] = adj_line1 or col_data.get("Basement & Finished Rooms Below Grade Adjustment", "")
+                    col_data["Basement Finished Rooms Adjustment"] = adj_line2
                 # Only save non-empty comparables
                 if col_data.get("Address") or col_data.get("Sale Price") or col_data.get("Date of Sale/Time") or col_data.get("Gross Living Area"):
                     grid[col_key] = col_data
@@ -5043,9 +5108,16 @@ def extract_certification_section(pdf_path, full_doc_text=""):
 
     # Extract E&O Insurance details (Policy Number, Policy Period From, Policy Period To, etc.)
     try:
-        eo_details = extract_eo_insurance_from_doc(doc)
+        appr_name_hint = cert.get("APPRAISER Name") or cert.get("Appraiser Name") or cert.get("Name") or ""
+        eo_details = extract_eo_insurance_from_doc(doc, use_ocr=True, appraiser_hint=appr_name_hint)
         cert["E&O"] = eo_details.get("E&O", "Absent")
         cert["E&O Present"] = eo_details.get("E&O Present", "Absent")
+        cert["E&O Attached"] = eo_details.get("E&O Attached", "Yes" if eo_details.get("E&O") == "Present" else "No")
+        cert["has_eo"] = eo_details.get("has_eo", eo_details.get("E&O") == "Present")
+        if eo_details.get("E&O Page"):
+            cert["E&O Page"] = eo_details["E&O Page"]
+        if eo_details.get("base64_preview"):
+            cert["base64_preview"] = eo_details["base64_preview"]
         if eo_details.get("E&O Insurance"):
             cert["E&O Insurance"] = eo_details["E&O Insurance"]
         if eo_details.get("Policy Period From"):
@@ -5076,6 +5148,254 @@ def extract_certification_section(pdf_path, full_doc_text=""):
         print(f"[pdf_extractor_offline] Invoice extraction notice: {e}")
 
     return cert
+
+
+def extract_invoice_copy_data(page, p_no: int) -> Dict[str, Any]:
+    """
+    Extracts structured invoice copy data and high-res image from an invoice page.
+    Works for TOTAL Form NIV5D, ACI, ClickFORMS, Bradford, SFREP, and scanned invoices.
+    """
+    # 1. Render high-res image preview of the invoice page
+    pix = page.get_pixmap(dpi=150)
+    b64_img = base64.b64encode(pix.tobytes("jpeg")).decode("utf-8")
+    base64_preview = f"data:image/jpeg;base64,{b64_img}"
+
+    # 2. Extract words
+    words = page.get_text("words") or []
+
+    # Left header (Appraiser / Payee info) vs Right header (Invoice #, Dates)
+    left_hdr_words = [w for w in words if w[0] < 310 and w[1] < 160]
+    right_hdr_words = [w for w in words if w[0] >= 300 and w[1] < 160]
+    body_words = [w for w in words if w[1] >= 150]
+
+    def words_to_lines(word_list):
+        lines = []
+        curr = []
+        curr_y = None
+        for w in sorted(word_list, key=lambda x: (round(x[1] / 4.0) * 4.0, x[0])):
+            wy = round(w[1] / 4.0) * 4.0
+            if curr_y is None or abs(wy - curr_y) < 3.5:
+                curr.append(w[4])
+                curr_y = wy
+            else:
+                lines.append(" ".join(curr))
+                curr = [w[4]]
+                curr_y = wy
+        if curr:
+            lines.append(" ".join(curr))
+        return lines
+
+    left_hdr_lines = words_to_lines(left_hdr_words)
+    right_hdr_lines = words_to_lines(right_hdr_words)
+    body_lines = words_to_lines(body_words)
+    all_lines = words_to_lines(words)
+
+    full_visual_text = "\n".join(all_lines)
+    raw_text = page.get_text("text") or ""
+
+    inv_data = {
+        "Invoice Attached": "Yes",
+        "Invoice Present": "Yes",
+        "has_invoice": True,
+        "Invoice Page": p_no,
+        "Invoice Number": "",
+        "Invoice Date": "",
+        "Due Date": "",
+        "Invoice Total": "",
+        "Total Fee": "",
+        "Fee Amount": "",
+        "Balance Due": "",
+        "Amount Paid": "",
+        "Payment Status": "",
+        "Appraiser / Payee": "",
+        "Payee Address": "",
+        "Payee Phone": "",
+        "Payee Email": "",
+        "Client / Billed To": "",
+        "Client Email": "",
+        "Lender": "",
+        "Borrower": "",
+        "Property Address": "",
+        "City State Zip": "",
+        "Service Description": "",
+        "Legal Description": "",
+        "base64_preview": base64_preview
+    }
+
+    # --- Header Parsing (Left: Appraiser/Payee, Right: Inv#/Date) ---
+    # Appraiser Name from FROM: line or top left header
+    m_from = re.search(r'FROM\s*:\s*\n?\s*([^\n\r|]+)', full_visual_text, re.I)
+    if m_from and m_from.group(1).strip() and not any(k in m_from.group(1).upper() for k in ["INVOICE", "FORM", "TELEPHONE", "FAX"]):
+        inv_data["Appraiser / Payee"] = m_from.group(1).strip()
+    elif left_hdr_lines:
+        for l in left_hdr_lines:
+            l_s = re.sub(r'^\s*FROM\s*:\s*', '', l, flags=re.I).strip()
+            if l_s and not any(k in l_s.upper() for k in ["INVOICE", "FORM", "TELEPHONE", "FAX", "TO:"]):
+                inv_data["Appraiser / Payee"] = l_s
+                break
+
+    # Payee Address
+    street_line = ""
+    csz_line = ""
+    for l in left_hdr_lines:
+        l_s = l.strip()
+        if re.search(r'\d+\s+[A-Za-z0-9\s]+(?:Rd|St|Ave|Dr|Blvd|Ln|Way|Ct|Highway|Hwy|Pkwy|Plaza|Road|Street|Avenue|Lane|Drive)\b', l_s, re.I):
+            street_line = l_s
+        elif re.search(r'^[A-Za-z\s]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?', l_s):
+            csz_line = l_s
+    if street_line and csz_line:
+        inv_data["Payee Address"] = f"{street_line}, {csz_line}"
+    elif csz_line:
+        inv_data["Payee Address"] = csz_line
+    elif street_line:
+        inv_data["Payee Address"] = street_line
+
+    # Payee Phone
+    for l in left_hdr_lines:
+        m_ph = re.search(r'\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}', l)
+        if m_ph:
+            inv_data["Payee Phone"] = m_ph.group(0).strip()
+            break
+
+    # Invoice Number from Right Header or Full Text
+    for l in right_hdr_lines:
+        m_num = re.search(r'(?:Client\s*File\s*#|Main\s*File\s*#|Internal\s*Order\s*#|Invoice\s*(?:#|No|Number))\s*[:\-]?\s*([0-9][A-Za-z0-9\-]+)', l, re.I)
+        if m_num:
+            inv_data["Invoice Number"] = m_num.group(1).strip()
+            break
+        m_pat = re.search(r'\b(\d{4,}-\d{4,})\b', l)
+        if m_pat and not inv_data["Invoice Number"]:
+            inv_data["Invoice Number"] = m_pat.group(1).strip()
+
+    if not inv_data["Invoice Number"]:
+        m_inv_num = re.search(r'(?:Client\s*File\s*#|Main\s*File\s*#\s*(?:on\s*form)?|Internal\s*Order\s*#|Invoice\s*(?:#|No|Number))\s*[:\-]?\s*([0-9][A-Za-z0-9\-]+)', full_visual_text, re.I)
+        if m_inv_num:
+            inv_data["Invoice Number"] = m_inv_num.group(1).strip()
+        else:
+            m_num2 = re.search(r'\b(\d{4,}-\d{4,})\b', full_visual_text)
+            if m_num2:
+                inv_data["Invoice Number"] = m_num2.group(1).strip()
+
+    # Invoice Date from Right Header or Full Text
+    for l in right_hdr_lines:
+        m_d = re.search(r'(?:Invoice\s*Date|Date\s*of\s*Invoice|Date)\s*[:\-]?\s*([0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4})', l, re.I)
+        if m_d:
+            inv_data["Invoice Date"] = m_d.group(1).strip()
+            break
+    if not inv_data["Invoice Date"]:
+        m_date = re.search(r'(?:Invoice\s*Date|Date\s*of\s*Invoice)\s*[:\-]?\s*([0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4})', full_visual_text, re.I)
+        if m_date:
+            inv_data["Invoice Date"] = m_date.group(1).strip()
+        else:
+            m_d2 = re.search(r'\b(\d{1,2}/\d{1,2}/\d{4})\b', full_visual_text)
+            if m_d2:
+                inv_data["Invoice Date"] = m_d2.group(1).strip()
+
+    # Due Date - only extract if actually present in document
+    m_due = re.search(r'(?:Due\s*Date|Payment\s*Due|Terms)\s*[:\-]\s*([^\n\r|]+)', full_visual_text, re.I)
+    if m_due and m_due.group(1).strip():
+        val = m_due.group(1).strip()
+        if not any(stop in val.upper() for stop in ["REFERENCE", "INTERNAL", "FILE", "LENDER"]):
+            inv_data["Due Date"] = val
+    if not inv_data["Due Date"]:
+        for l in right_hdr_lines:
+            m_dl = re.search(r'(?:Due\s*Date|Terms)\s*[:\-]\s*([A-Za-z0-9\s/]+)$', l, re.I)
+            if m_dl and m_dl.group(1).strip():
+                inv_data["Due Date"] = m_dl.group(1).strip()
+                break
+
+    # Amounts & Total Due
+    m_tot = re.search(r'(?:TOTAL\s*DUE(?:\s*\$)?|AMOUNT\s*DUE(?:\s*\$)?|INVOICE\s*TOTAL(?:\s*\$)?|TOTAL\s*FEE(?:\s*\$)?)[^\n\r0-9]{0,20}\n?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d{2})?|\d+(?:\.\d{2})?)', full_visual_text, re.I)
+    if m_tot:
+        amt_str = f"${m_tot.group(1).strip()}"
+        inv_data["Invoice Total"] = amt_str
+        inv_data["Total Fee"] = amt_str
+        inv_data["Fee Amount"] = amt_str
+    else:
+        m_sub = re.search(r'\b([0-9]{1,3}(?:,[0-9]{3})*\.\d{2})\b', full_visual_text)
+        if m_sub:
+            amt_str = f"${m_sub.group(1).strip()}"
+            inv_data["Invoice Total"] = amt_str
+            inv_data["Total Fee"] = amt_str
+            inv_data["Fee Amount"] = amt_str
+
+    # Amount Paid - only extract if document explicitly lists payment amount
+    m_paid = re.search(r'(?:Amount\s*Paid|Paid\s*Amount|Payments?\s*(?:Amount)?|Check\s*Amount)[^\n\r0-9]{0,20}\n?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d{2})?|\d+(?:\.\d{2})?)', full_visual_text, re.I)
+    if m_paid:
+        inv_data["Amount Paid"] = f"${m_paid.group(1).strip()}"
+
+    # Balance Due - only extract if document lists balance
+    m_bal = re.search(r'(?:Balance\s*Due|Amount\s*Due|Remaining\s*Balance)[^\n\r0-9]{0,20}\n?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d{2})?|\d+(?:\.\d{2})?)', full_visual_text, re.I)
+    if m_bal:
+        inv_data["Balance Due"] = f"${m_bal.group(1).strip()}"
+
+    # Payment Status - only if document states it or explicitly marked
+    if re.search(r'\bPAID\s+IN\s+FULL\b|\bSTATUS\s*:\s*PAID\b|\bPAID\s*\(X\)', full_visual_text, re.I):
+        inv_data["Payment Status"] = "Paid"
+    elif re.search(r'\bSTATUS\s*:\s*UNPAID\b|\bUNPAID\b', full_visual_text, re.I):
+        inv_data["Payment Status"] = "Unpaid"
+    elif re.search(r'\bDUE\s+UPON\s+RECEIPT\b', full_visual_text, re.I):
+        inv_data["Payment Status"] = "Due Upon Receipt"
+    elif re.search(r'\bPENDING\b', full_visual_text, re.I):
+        inv_data["Payment Status"] = "Pending"
+    else:
+        inv_data["Payment Status"] = ""
+
+    # Client Email
+    m_email = re.search(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', full_visual_text)
+    if m_email:
+        inv_data["Client Email"] = m_email.group(0).strip()
+
+    # Client / Billed To from Client: or TO: block
+    m_cli = re.search(r'(?:Client|Billed\s*To|Bill\s*To)\s*:\s*([^\n\r|]+)', full_visual_text, re.I)
+    if m_cli and m_cli.group(1).strip():
+        inv_data["Client / Billed To"] = m_cli.group(1).strip()
+    else:
+        m_to = re.search(r'TO\s*:\s*\n?\s*([^\n\r|]+)', full_visual_text, re.I)
+        if m_to and m_to.group(1).strip():
+            inv_data["Client / Billed To"] = m_to.group(1).strip()
+
+    # Lender
+    m_lend = re.search(r'Lender\s*:\s*([^\n\r|]+?)(?:\s+Client:|\s*$)', full_visual_text, re.I)
+    if m_lend:
+        inv_data["Lender"] = m_lend.group(1).strip()
+
+    # Borrower
+    m_borr = re.search(r'(?:Purchaser/Borrower|Borrower|Purchaser)\s*:\s*\n?\s*([^\n\r|]+)', full_visual_text, re.I)
+    if m_borr:
+        inv_data["Borrower"] = m_borr.group(1).strip()
+
+    # Property Address
+    m_paddr = re.search(r'Property\s*Address\s*:\s*([^\n\r|]+)', full_visual_text, re.I)
+    if m_paddr:
+        inv_data["Property Address"] = m_paddr.group(1).strip()
+
+    # City State Zip
+    m_city = re.search(r'City\s*:\s*([A-Za-z\s]+?)(?:\s+County|\s+State|\s*$)', full_visual_text, re.I | re.M)
+    m_state = re.search(r'State\s*:\s*([A-Z]{2})', full_visual_text, re.I)
+    m_zip = re.search(r'Zip\s*:\s*(\d{5}(?:-\d{4})?)', full_visual_text, re.I)
+    if m_city and m_state and m_zip:
+        inv_data["City State Zip"] = f"{m_city.group(1).strip()}, {m_state.group(1).strip()} {m_zip.group(1).strip()}"
+        if inv_data["Property Address"] and inv_data["City State Zip"] not in inv_data["Property Address"]:
+            inv_data["Property Address"] = f"{inv_data['Property Address']}, {inv_data['City State Zip']}"
+
+    # Service Description - from invoice line items table
+    m_svc_hdr = re.search(r'(?:FEES\s+AMOUNT|ITEM\s+DESCRIPTION|SERVICE\s+DESCRIPTION|SERVICES\s+RENDERED)\s*\n+([^\n\r]+)', full_visual_text, re.I)
+    if m_svc_hdr:
+        inv_data["Service Description"] = m_svc_hdr.group(1).strip()
+    if not inv_data["Service Description"]:
+        m_svc_line = re.search(r'\n([^\n\r$]{3,80}\s+\$?[0-9,]+\.\d{2}|\$?[0-9,]+\.\d{2}\s*-\s*[^\n\r]+)', full_visual_text)
+        if m_svc_line:
+            line_str = m_svc_line.group(1).strip()
+            if not any(h in line_str.upper() for h in ["TOTAL", "SUBTOTAL", "BALANCE", "AMOUNT DUE", "FEE AMOUNT", "PAID"]):
+                inv_data["Service Description"] = line_str
+
+    # Legal Description
+    m_leg = re.search(r'Legal\s*Description\s*:\s*([^\n\r]+)', full_visual_text, re.I)
+    if m_leg:
+        inv_data["Legal Description"] = m_leg.group(1).strip()
+
+    return inv_data
 
 
 def extract_invoice_info_from_doc(doc: Any, full_doc_text: str = "") -> Dict[str, Any]:
@@ -5121,16 +5441,7 @@ def extract_invoice_info_from_doc(doc: Any, full_doc_text: str = "") -> Dict[str
             ))
 
             if has_inv_heading and has_inv_indicators:
-                inv_page_idx = idx + 1
-                # Try to extract total fee / amount due
-                m_amt = re.search(
-                    r'(?:TOTAL\s*DUE|AMOUNT\s*DUE|INVOICE\s*TOTAL|TOTAL\s*FEE|TOTAL|SUBTOTAL)[^0-9$\n]{0,35}\$?\s*([0-9,]+(?:\.\d{2})?)',
-                    raw_t,
-                    re.IGNORECASE
-                )
-                if m_amt:
-                    inv_total_amt = f"${m_amt.group(1)}"
-                break
+                return extract_invoice_copy_data(page, idx + 1)
 
     has_inv = (inv_page_idx is not None)
 
@@ -6088,6 +6399,59 @@ def extract_photos_and_captions(doc, pdf_path=None):
                 "height": round(clip_rect.height, 1),
                 "rect": [round(clip_rect.x0, 1), round(clip_rect.y0, 1), round(clip_rect.x1, 1), round(clip_rect.y1, 1)],
                 "base64_preview": f"data:image/jpeg;base64,{b64_str}"
+            })
+            continue
+
+        # 3. Invoice Pages / Invoice Copy (Full Canvas Pixmap Render + Structured Data Extraction)
+        is_inv_page = (
+            any(k in text_upper[:300] for k in ["INVOICE", "APPRAISAL INVOICE", "FEE INVOICE", "SERVICES INVOICE"])
+            or any(k in header_text for k in ["INVOICE", "APPRAISAL INVOICE", "FEE INVOICE"])
+        ) and any(ind in text_upper for ind in [
+            "TOTAL DUE", "AMOUNT DUE", "TOTAL FEE", "PLEASE REMIT", "BILLED TO", "BILL TO",
+            "CLIENT FILE", "INVOICE NUMBER", "INVOICE #", "FEES AMOUNT", "BALANCE DUE"
+        ]) and "USPAP" not in header_text
+
+        if is_inv_page:
+            inv_data = extract_invoice_copy_data(page, page_idx + 1)
+            photos.append({
+                "page": page_idx + 1,
+                "category": "Invoice",
+                "caption": f"Invoice Copy (Page {page_idx + 1})",
+                "format": "jpeg",
+                "width": round(page.rect.width, 1),
+                "height": round(page.rect.height, 1),
+                "rect": [0, 0, round(page.rect.width, 1), round(page.rect.height, 1)],
+                "base64_preview": inv_data.get("base64_preview", ""),
+                "invoice_data": inv_data,
+                "raw_text": text
+            })
+            continue
+
+        # 4. E&O Insurance Pages / E&O Copy (Full Canvas Pixmap Render + Structured Data Extraction)
+        is_eo_page = (
+            any(k in text_upper[:300] for k in ["E & O", "E&O", "ERRORS & OMISSIONS", "ERRORS AND OMISSIONS", "APPRAISER E&O", "E&O INSURANCE", "CERTIFICATE OF LIABILITY INSURANCE", "PROFESSIONAL LIABILITY"])
+            or any(k in header_text for k in ["E & O", "E&O", "ERRORS & OMISSIONS", "APPRAISER E&O", "E&O INSURANCE", "CERTIFICATE OF LIABILITY INSURANCE"])
+        ) and (
+            any(ind in text_upper for ind in [
+                "POLICY NUMBER", "POLICY #", "POLICY NO", "POLICY PERIOD", "EXPIRATION", "INCEPTION",
+                "LIMIT OF LIABILITY", "LIMITS", "DEDUCTIBLE", "INSURED", "CARRIER", "PRODUCER", "ACORD", "COVERAGE"
+            ]) or "E & O" in text_upper[:200] or "E&O" in text_upper[:200]
+        ) and "USPAP" not in header_text
+
+        if is_eo_page:
+            appr_name_hint = clean_subject.get("Appraiser Name") or cert.get("APPRAISER Name") or cert.get("Appraiser Name") or cert.get("Name") or ""
+            eo_data = extract_eo_copy_data(page, page_idx + 1, use_ocr=True, appraiser_hint=appr_name_hint)
+            photos.append({
+                "page": page_idx + 1,
+                "category": "E&O Insurance",
+                "caption": f"E&O Insurance Certificate (Page {page_idx + 1})",
+                "format": "jpeg",
+                "width": round(page.rect.width, 1),
+                "height": round(page.rect.height, 1),
+                "rect": [0, 0, round(page.rect.width, 1), round(page.rect.height, 1)],
+                "base64_preview": eo_data.get("base64_preview", ""),
+                "eo_data": eo_data,
+                "raw_text": text
             })
             continue
 
@@ -7580,6 +7944,7 @@ def extract_fields_from_pdf_offline(pdf_path):
             if has_inv_pdf:
                 inv_page_no = (inv_idx + 1) if inv_idx is not None else inv_info.get("Invoice Page")
                 data.setdefault("INVOICE", {})
+                data["INVOICE"].update(inv_info)
                 data["INVOICE"]["Invoice Attached"] = "Yes"
                 data["INVOICE"]["Invoice Present"] = "Yes"
                 if inv_page_no:
@@ -7587,6 +7952,17 @@ def extract_fields_from_pdf_offline(pdf_path):
                 if inv_info.get("Invoice Total"):
                     data["INVOICE"]["Invoice Total"] = inv_info["Invoice Total"]
                     data["INVOICE"]["Total Fee"] = inv_info["Invoice Total"]
+                # Link base64 preview from extracted_photos if present
+                if not data["INVOICE"].get("base64_preview"):
+                    for p in extracted_photos or []:
+                        if p.get("category") == "Invoice" and p.get("base64_preview"):
+                            data["INVOICE"]["base64_preview"] = p.get("base64_preview")
+                            break
+                data["Invoice"] = data["INVOICE"]
+                data["invoice_data"] = data["INVOICE"]
+                for ik, iv in data["INVOICE"].items():
+                    if iv and ik not in data:
+                        data[ik] = iv
             if "SUBJECT" in data and isinstance(data["SUBJECT"], dict):
                 data["SUBJECT"]["Invoice Attached"] = inv_present_str
                 data["SUBJECT"]["Invoice Present"] = inv_present_str
@@ -7719,7 +8095,14 @@ def extract_fields_from_pdf_offline(pdf_path):
             p1_idx = page_indices.get("form_p1")
             primary_text = doc[p1_idx].get_text("text").upper() if (doc and p1_idx is not None and p1_idx < len(doc)) else full_doc_text[:5000].upper()
 
-            if re.search(r"\b(?:1004C|FORM\s*1004C|FREDDIE\s*MAC\s*FORM\s*70B|MANUFACTURED\s+HOME\s+APPRAISAL\s+REPORT)\b", full_doc_text, re.I):
+            # Check for 1004 Subject-To ARV w/ As-Is
+            has_sub_arv = bool(re.search(r"subject\s+to\s+completion|subject\s+to\s+the\s+following\s+repairs|subject\s+to\s+repairs", full_doc_text, re.I))
+            has_as_is_arv = bool(re.search(r"as[\s-]*is[\"'\s]+(?:market\s+)?value|\"as[\s-]*is\"\s*(?:market\s+)?value|as[\s-]*is\s*(?:&|and)\s*as[\s-]*complete|as[\s-]*is\s+addendum|as[\s-]*is\s+comparable|\"as[\s-]*is\"|\barv\b|after\s*repair\s*value", full_doc_text, re.I))
+            is_arv = has_sub_arv and has_as_is_arv
+
+            if is_arv:
+                base_form_type = "1004 Subject-To ARV w/ As-Is"
+            elif re.search(r"\b(?:1004C|FORM\s*1004C|FREDDIE\s*MAC\s*FORM\s*70B|MANUFACTURED\s+HOME\s+APPRAISAL\s+REPORT)\b", full_doc_text, re.I):
                 base_form_type = "1004C"
             elif re.search(r"\b(?:1073|FORM\s*1073|FREDDIE\s*MAC\s*FORM\s*465|INDIVIDUAL\s+CONDOMINIUM)\b", primary_text, re.I):
                 base_form_type = "1073"
@@ -7730,7 +8113,7 @@ def extract_fields_from_pdf_offline(pdf_path):
             elif re.search(r"\b(?:1004D|FORM\s*1004D|APPRAISAL\s+UPDATE)\b", primary_text, re.I):
                 base_form_type = "1004D"
 
-            detected_form_type = f"{base_form_type} + 1007" if has_1007 else base_form_type
+            detected_form_type = f"{base_form_type} + 1007" if (has_1007 and base_form_type != "1004 Subject-To ARV w/ As-Is") else base_form_type
 
             # Form 1004C Manufactured Home extraction from PDF
             manufactured_home_section: Dict[str, Any] = {}
@@ -8100,6 +8483,56 @@ def extract_fields_from_pdf_offline(pdf_path):
                 "Sales Grid": clean_sales_grid,
                 "Reconciliation": clean_data.get("RECONCILIATION") or {},
             }
+            if base_form_type == "1004 Subject-To ARV w/ As-Is":
+                try:
+                    try:
+                        from api.arv_as_is_engine import extract_arv_as_is_report, extract_as_is_grid_and_reconciliations
+                    except ImportError:
+                        from .arv_as_is_engine import extract_arv_as_is_report, extract_as_is_grid_and_reconciliations
+                    arv_summary = extract_arv_as_is_report(pdf_path, doc=doc, full_text=full_doc_text)
+                    clean_section_data["ARV_AS_IS"] = arv_summary
+                    clean_section_data["1004 Subject-To ARV w/ As-Is"] = arv_summary
+                    unified_fields["ARV_AS_IS"] = arv_summary
+                    unified_fields["1004 Subject-To ARV w/ As-Is"] = arv_summary
+
+                    # Partition As-Is Sales Grid and Dual Reconciliations
+                    dual_data = extract_as_is_grid_and_reconciliations(
+                        pdf_path,
+                        base_sales_grid=clean_sales_grid,
+                        base_recon=clean_data.get("RECONCILIATION"),
+                        doc=doc,
+                        full_text=full_doc_text,
+                        arv_data=arv_summary
+                    )
+                    clean_section_data["Primary Reconciliation"] = dual_data["primary_recon"]
+                    clean_section_data["As-Is Reconciliation"] = dual_data["as_is_recon"]
+                    clean_section_data["AS_IS_RECONCILIATION"] = dual_data["as_is_recon"]
+                    clean_section_data["As-Is Sales Grid"] = dual_data["as_is_sales_grid"]
+                    clean_section_data["AS_IS_SALES_GRID"] = dual_data["as_is_sales_grid"]
+                    clean_section_data["as_is_comps"] = dual_data["as_is_comps"]
+                    clean_section_data["as_is_comparable_sales"] = dual_data["as_is_comparable_sales"]
+                    if dual_data.get("as_is_prior_sale_history"):
+                        clean_section_data["AS_IS_PRIOR_SALE_HISTORY"] = dual_data["as_is_prior_sale_history"]
+                        clean_section_data["As-Is Prior Sale History"] = dual_data["as_is_prior_sale_history"]
+                    if dual_data["primary_sales_grid"]:
+                        clean_section_data["Sales Grid"] = dual_data["primary_sales_grid"]
+
+                    unified_fields["PRIMARY_RECONCILIATION"] = dual_data["primary_recon"]
+                    unified_fields["Primary Reconciliation"] = dual_data["primary_recon"]
+                    unified_fields["AS_IS_RECONCILIATION"] = dual_data["as_is_recon"]
+                    unified_fields["As-Is Reconciliation"] = dual_data["as_is_recon"]
+                    unified_fields["AS_IS_SALES_GRID"] = dual_data["as_is_sales_grid"]
+                    unified_fields["As-Is Sales Grid"] = dual_data["as_is_sales_grid"]
+                    unified_fields["as_is_comps"] = dual_data["as_is_comps"]
+                    unified_fields["as_is_comparable_sales"] = dual_data["as_is_comparable_sales"]
+                    if dual_data.get("as_is_prior_sale_history"):
+                        unified_fields["AS_IS_PRIOR_SALE_HISTORY"] = dual_data["as_is_prior_sale_history"]
+                        unified_fields["As-Is Prior Sale History"] = dual_data["as_is_prior_sale_history"]
+                    if dual_data["primary_sales_grid"]:
+                        unified_fields["SALES_GRID"] = dual_data["primary_sales_grid"]
+                        unified_fields["Sales Grid"] = dual_data["primary_sales_grid"]
+                except Exception as e_arv:
+                    print(f"Failed to populate ARV_AS_IS: {e_arv}")
             if clean_data.get("COST_APPROACH") and any(clean_data["COST_APPROACH"].values()):
                 clean_section_data["Cost Approach"] = clean_data["COST_APPROACH"]
             if clean_data.get("INCOME_APPROACH") and any(clean_data["INCOME_APPROACH"].values()):
@@ -8136,11 +8569,51 @@ def extract_fields_from_pdf_offline(pdf_path):
                 unified_fields["Comparable Rent Schedule Reconciliation"] = rent_schedule_reconciliation
             if clean_data.get("INVOICE") and any(clean_data["INVOICE"].values()):
                 clean_section_data["Invoice"] = clean_data["INVOICE"]
+                clean_section_data["INVOICE"] = clean_data["INVOICE"]
+                clean_section_data["invoice_data"] = clean_data["INVOICE"]
                 unified_fields["Invoice"] = clean_data["INVOICE"]
                 unified_fields["INVOICE"] = clean_data["INVOICE"]
+                unified_fields["invoice_data"] = clean_data["INVOICE"]
             unified_fields["Invoice Attached"] = clean_data.get("Invoice Attached", "No")
             unified_fields["Invoice Present"] = clean_data.get("Invoice Present", "No")
             unified_fields["has_invoice"] = clean_data.get("has_invoice", False)
+
+            # Link E&O Insurance details & preview
+            eo_data = clean_data.get("EO") or clean_data.get("E&O") or clean_data.get("eo_data") or {}
+            if not eo_data and clean_data.get("CERTIFICATION"):
+                cert_c = clean_data["CERTIFICATION"]
+                if cert_c.get("E&O") == "Present" or cert_c.get("E&O Present") == "Present":
+                    eo_data = {k: cert_c[k] for k in ["E&O", "E&O Present", "E&O Attached", "has_eo", "E&O Page", "E&O Insurance", "Policy Period From", "Policy Period To", "E&O Insured", "E&O Carrier", "E&O Limit", "E&O Deductible", "base64_preview"] if cert_c.get(k)}
+            for p in unified_fields.get("extracted_photos") or clean_data.get("extracted_photos") or []:
+                if p.get("category") == "E&O Insurance":
+                    if p.get("base64_preview") and not eo_data.get("base64_preview"):
+                        eo_data["base64_preview"] = p.get("base64_preview")
+                    if p.get("page") and not eo_data.get("E&O Page"):
+                        eo_data["E&O Page"] = p.get("page")
+                    if p.get("eo_data"):
+                        for ek, ev in p["eo_data"].items():
+                            if ev and not eo_data.get(ek):
+                                eo_data[ek] = ev
+                    if "eo_data" in p and isinstance(p["eo_data"], dict):
+                        for ek, ev in eo_data.items():
+                            if ev and not p["eo_data"].get(ek):
+                                p["eo_data"][ek] = ev
+                    break
+
+            if eo_data:
+                clean_section_data["EO"] = eo_data
+                clean_section_data["E&O"] = eo_data
+                clean_section_data["eo_data"] = eo_data
+                unified_fields["EO"] = eo_data
+                unified_fields["E&O"] = eo_data
+                unified_fields["eo_data"] = eo_data
+                if clean_data.get("CERTIFICATION") and isinstance(clean_data["CERTIFICATION"], dict):
+                    for ek, ev in eo_data.items():
+                        if ev and not clean_data["CERTIFICATION"].get(ek):
+                            clean_data["CERTIFICATION"][ek] = ev
+                for ek, ev in eo_data.items():
+                    if ev and ek not in unified_fields:
+                        unified_fields[ek] = ev
 
             raw_json_str = json.dumps(unified_fields, indent=2)
             unified_fields["raw"] = raw_json_str

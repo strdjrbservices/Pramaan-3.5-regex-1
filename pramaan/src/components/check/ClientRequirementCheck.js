@@ -182,6 +182,7 @@ Lender/Client List and their requirements:
     - As-Is comparables do not need to be gridded; the appraiser must provide commentary on the As-Is comparables in the report. If the As-Is comparables are gridded, that is also acceptable. If commentary is missing and comps are not gridded, status should be "Not Fulfilled" with comment: "As-Is comparables commentary missing from report. Per client instructions: As-Is comparables do not need to be gridded, but the appraiser must provide commentary on the As-Is comparables in the report (gridding them is also acceptable)."
     - Single-Value Reports: If the report is single-value, status is "Fulfilled".
 - CIVIC:
+  - Supplemental Value Addendum: Supplemental Value Addendum is mandatory. Reject if missing.
   - As-Is Value Order: Only CIVIC and Capital Funding Financial require the As-Is value to be presented first on two-value reports. For reports with two values (e.g., "As-Is" and "As-Repaired"), verify that the "As-Is" value is presented first.
   - Freddie Mac Unacceptable Practices: Do not perform the Freddie Mac Unacceptable Practices review for CV3 or CIVIC. Status should be "Fulfilled" with comment: "Do not perform the Freddie Mac Unacceptable Practices review for CV3 or CIVIC per client instructions."
 - National Loan Funding LLC/ Easy Street Capital, LLC:
@@ -189,14 +190,24 @@ Lender/Client List and their requirements:
   - Supervisory Section: If the appraiser signs the supervisory section and marks "Did Inspect" for both the interior and exterior of the subject property, no escalation is required. For comparable properties, either "Did" or "Did Not" is acceptable. If the supervisory section is signed and "Did Inspect" for both interior and exterior is not marked, status should be "Needs Review" with comment: "Supervisory appraiser signed the supervisory section, but did not mark 'Did Inspect' for both the interior and exterior of the subject property. Please escalate for review." If the supervisory section is not signed, status is "Fulfilled".
   - Lender Address: The correct lender address for all orders is: 3232 E Cesar Chavez St, Suite 1-320, Austin, TX 78702. If a new report contains the old lender address, send a revision request. Reject as: "Please update the lender address to the following:\n\n3232 E Cesar Chavez St, Suite 1-320, Austin, TX 78702."
 - Capital Funding Financial:
-  - Two-Value Reports (As-Is with ARV): For all two-value reports (As-Is with ARV), the As-Is value must be presented first. The As-Is value must be reflected in the Reconciliation section, with the As-Is comparables included in the grid as Comparables 1–3. If the report is completed for the As-Repaired Value first, the status should be "Not Fulfilled" and reject with the following comment: "The client requires the report to be completed for the As-Is value. Please update the report to show the As-Is value in the Reconciliation section, with the As-Is comparables included in the grid as Comparables 1–3." If the report is completed for the As-Is value first or is single-value, the status is "Fulfilled".
+  - Report must be completed As-Is.
+  - ARV must be included as a comment.
+  - Comps 1–3: As-Is.
+  - Comps 4–6: As-Repaired.
+  - Two-Value Reports (As-Is with ARV): For all two-value reports (As-Is with ARV), the As-Is value must be presented first in the Reconciliation section, with As-Is comparables included in the grid as Comparables 1–3 and As-Repaired comparables as Comparables 4–6.
 - Sierra Pacific Mortgage Company
   - 1004MC must needed
 - Temple View:
+  - As-Is comps are not required. Only mention which As-Is comps were used to determine the value.
   - Two-Value Reports:
-    - The report must be completed "Subject To", with the ARV comparables in slots 1–3. If completed otherwise, status should be "Not Fulfilled" with comment: "The report must be completed Subject To, with the ARV comparables in slots 1–3."
-    - As-Is comparables do not need to be gridded; the appraiser must provide commentary on the As-Is comparables in the report. If the As-Is comparables are gridded, that is also acceptable. If commentary is missing and comps are not gridded, status should be "Not Fulfilled" with comment: "As-Is comparables commentary missing from report. Per client instructions: As-Is comparables do not need to be gridded, but the appraiser must provide commentary on the As-Is comparables in the report (gridding them is also acceptable)."
+    - The report must be completed "Subject To", with the ARV comparables in slots 1–3.
+    - As-Is comparables do not need to be gridded; the appraiser must provide commentary on the As-Is comparables in the report. If the As-Is comparables are gridded, that is also acceptable.
     - Single-Value Reports: If the report is single-value, status is "Fulfilled".
+- 1004 Subject-To ARV w/ As-Is:
+  - Values: Both As-Is value and As-Repaired Value (ARV) must be provided.
+  - Comps: 3 closed comps for As-Is value. 3 separate closed comps for ARV.
+  - Rehab Budget: Must be included in the report.
+  - Rehab / High Budget Photo or Pages: Verify whether Rehab/High Budget photo or exhibit pages are present or not at the top of the report (only check for this form type).
 - June Point Lending:
   - Form 1004MC Required: Form 1004MC (Market Conditions Addendum) is required. If missing, status is "Not Fulfilled" with comment: "Form 1004MC (Market Conditions Addendum) is required for June Point Lending. Please include Form 1004MC." If present, status is "Fulfilled".
   - Standard Review Process: Standard appraisal review guidelines apply. Treat as a normal client.
