@@ -496,22 +496,22 @@ class MapExtractor:
             ],
             'bathrooms': [
                 # Half bath patterns (must precede full bath patterns)
-                (r'(?<![\d.])(?:0?\.5|1\/2)\s*(?:bath(?:room)?|ba\b|b\b|hf\b|hb\b|hba\b)', 'Half Bath'),
+                (r'(?<![\d.])(?:0?\.5|1\/2)\s*(?:bath(?:room)?|bth\b|ba\b|b\b|hf\b|hb\b|hba\b)', 'Half Bath'),
                 (r'(?<![\d.])1(?:\.0)?\s*(?:hb\b|h\/b\b|hba\b|h\/ba\b|half\s*b(?:ath)?\b|half\s*ba\b)', 'Half Bath'),
-                (r'\b(?:half[\s-]*(?:bath(?:room)?|ba|b)|h\/b|hb|hba|h\/ba)\b', 'Half Bath'),
+                (r'\b(?:half[\s-]*(?:bath(?:room)?|bth|ba|b)|h\/b|hb|hba|h\/ba)\b', 'Half Bath'),
                 (r'\b(?:powder(?:\s*room|\s*rm)?|pw[\s\/\.]*d?(?:\s*hb|\s*ba)?|pwd)\b', 'Half Bath'),
                 (r'\b(?:lav(?:atory)?|wc|w\.c\.)\b', 'Half Bath'),
-                (r'\b(?:bath(?:room)?|ba)\s*(?:\(\s*)?(?:half|1\/2|0?\.5)(?:\s*\))?', 'Half Bath'),
+                (r'\b(?:bath(?:room)?|bth|ba)\s*(?:\(\s*)?(?:half|1\/2|0?\.5)(?:\s*\))?', 'Half Bath'),
 
                 # Full bath patterns
-                (r'\b(?:main|master|primary|m)\s*(?:bath(?:room)?|ba|fb|f\/b)\b', 'Main Bath'),
+                (r'\b(?:main|master|primary|m)\s*(?:bath(?:room)?|bth|ba|fb|f\/b)\b', 'Main Bath'),
                 (r'\bmba\b', 'Main Bath'),
                 (r'(?<![\d.])(?:[1-9](?:\.0)?)\s*(?:fb\b|f\/b\b|fba\b|f\/ba\b|full\s*b(?:ath)?\b|full\s*ba\b)', 'Full Bath'),
-                (r'(?<![\d.])(?:[1-9](?:\.0)?)\s*(?:bath(?:room)?|ba)\b', 'Full Bath'),
-                (r'\b(?:full\s*bath(?:room)?|full\s*ba|full\s*b)\b', 'Full Bath'),
+                (r'(?<![\d.])(?:[1-9](?:\.0)?)\s*(?:bath(?:room)?|bth|ba)\b', 'Full Bath'),
+                (r'\b(?:full\s*bath(?:room)?|full\s*bth|full\s*ba|full\s*b)\b', 'Full Bath'),
                 (r'\b(?:fb|f\/b|f\-b|fba|f\/ba)\s*\d*\b', 'Full Bath'),
                 (r'\b(?:full\s+)?bath(?:room)?\s*\d*\b', 'Bath'),
-                (r'(?<!fin\s)(?<!finished\s)(?<!unfin\s)(?<!unfinished\s)\bba\s*\d*\b', 'Bath'),
+                (r'(?<!fin\s)(?<!finished\s)(?<!unfin\s)(?<!unfinished\s)\b(?:bth|ba)\s*\d*\b', 'Bath'),
             ],
             'basement': [
                 (r'\b(?:fin(?:ished)?\s*(?:basement|base|bsmt|bmst|ba))\b', 'Finished Basement'),
@@ -523,34 +523,42 @@ class MapExtractor:
                 (r'\b(?:family(?:\s*room|\s*rm|\s*r|\s*area)?|fam(?:\s*room|\s*rm)?|fr\b|f\/r\b)\b', 'Family Room'),
                 (r'\bgreat\s*room\b', 'Great Room'),
                 (r'\b(?:rec(?:reation)?(?:\s*room|\s*rm)?)\b', 'Rec Room'),
-                (r'\b(?:game\s*room|game\s*rm|media\s*room|theater|theatre|billiard\s*room|play\s*room|playroom)\b', 'Game / Media Room'),
-                (r'\b(?:den|study|loft)\b', 'Den / Study'),
+                (r'\b(?:game\s*room|game\s*rm|media\s*room|theater|theatre|billiard\s*room|playing\s*room|play\s*room|playroom)\b', 'Game / Media Room'),
+                (r'\b(?:den|study)\b', 'Den / Study'),
+                (r'\bloft\b', 'Loft'),
                 (r'\b(?:office|home\s*office|library)\b', 'Office'),
-                (r'\b(?:sitting(?:\s*room|\s*area)?)\b', 'Sitting Area'),
+                (r'\b(?:sitting(?:\s*room|\s*rm|\s*area)?)\b', 'Sitting Area'),
                 (r'\b(?:sun\s*room|sunroom)\b', 'Sun Room'),
-                (r'\bbonus\s*room\b', 'Bonus Room'),
+                (r'\bbonus\s*(?:room|rm)\b', 'Bonus Room'),
+                (r'\bconverted(?:\s+(?:area|garage|space|room|rm))?\b', 'Converted Area'),
                 (r'\b(?:adu|a\.d\.u\.|accessory\s*dwelling(?:\s*unit)?)\b', 'ADU'),
             ],
             'kitchen_dining': [
+                (r'\bkitchenette\b', 'Kitchenette'),
                 (r'\b(?:kitchen|kitch|kteten|kit|ki)\b', 'Kitchen'),
                 (r'\b(?:dining\s*area|dinning\s*area)\b', 'Dining Area'),
                 (r'\b(?:formal\s+)?(?:dining(?:\s*room|\s*rm)?|dinning(?:\s*room|\s*rm)?|diring|dr\b|d\/r\b|d\.r\.?)\b', 'Dining Room'),
                 (r'\b(?:brkfst|brkfast|break\s*fast|breakfast|brk)(?:\s*(?:room|rm|nook|area))?\b', 'Breakfast Room'),
                 (r'\b(?:dining\s*nook|dinette|nook)\b', 'Dining Nook'),
                 (r'\bpantry\b', 'Pantry'),
-                (r'\b(?:wet\s*bar|bar)\b', 'Bar'),
+                (r'\b(?:wet\s*bar|wetbar|bar)\b', 'Bar'),
             ],
             'openings_outdoor': [
                 (r'\bopen\s+to\s+below\b', 'Open to Below'),
                 (r'\b(?:open\s*porch|op\s*,\s*ep|op\/ep)\b', 'Open Porch'),
                 (r'\b(?:c(?:o)?v(?:ere)?d\s*p(?:o)?rc?h|cvd\s*porch|cov\s*porch|c\/p|cp)\b', 'Covered Porch'),
                 (r'\b(?:closed\s*porch|uncover(?:ed)?\s*porch|screened?\s*porch|front\s*porch|rear\s*porch|porch)\b', 'Porch'),
+                (r'\b(?:un(?:cov(?:ered)?|cvd)\s*deck)\b', 'Uncovered Deck'),
+                (r'\b(?:wood(?:en)?|composite|trex)\s*deck\b', 'Wood Deck'),
                 (r'\bdeck\b', 'Deck'),
                 (r'\bpatio\b', 'Patio'),
                 (r'\bbalcony\b', 'Balcony'),
                 (r'\b(?:terrace|veranda|lanai)\b', 'Terrace / Lanai'),
                 (r'\b(?:courtyard|breezeway)\b', 'Courtyard / Breezeway'),
-                (r'\b(?:shed|storage\s*shed|tool\s*shed|workshop|barn)\b', 'Shed'),
+                (r'\bworkshop\b', 'Workshop'),
+                (r'\boutbuilding\b', 'Outbuilding'),
+                (r'\blean[\s-]*to\b', 'Lean-to'),
+                (r'\b(?:shed|storage\s*shed|tool\s*shed|barn)\b', 'Shed'),
             ],
             'garage_parking': [
                 (r'\b1\s*car\s*attached(?:\s*garage)?\b', '1 Car Attached'),
@@ -559,22 +567,28 @@ class MapExtractor:
                 (r'\b1\s*car\s*(?:detached|de-?attached)(?:\s*garage)?\b', '1 Car Detached'),
                 (r'\b2\s*car\s*(?:detached|de-?attached)(?:\s*garage)?\b', '2 Car Detached'),
                 (r'\b3\s*car\s*(?:detached|de-?attached)(?:\s*garage)?\b', '3 Car Detached'),
-                (r'\b\d+[\s-]*car\s*(?:/|\s+)?(?:attached|detached|de-?attached)?\s*(?:carport|garage)?\b', 'Carport / Garage'),
+                (r'\b(?:\d+\s*)?(?:car\s*built[\s-]*in|built[\s-]*in\s*(?:\d+\s*car\s*)?garage)\b', 'Built-in Garage'),
+                (r'\b\d+[\s-]*car\s*(?:/|\s+)?(?:attached|detached|de-?attached)?\s*(?:car\s*port|garage)?\b', 'Carport / Garage'),
                 (r'\b\d+\s*car\s*(?:attached|detached|de-?attached)?(?:\s*garage)?\b', 'Car Garage'),
                 (r'\b(?:car\s*(?:detached|de-?attached)|(?:detached|de-?attached)\s*car)\b', 'Car Detached'),
                 (r'\b(?:car\s*attached|attached\s*car)\b', 'Car Attached'),
                 (r'\b(?:attached|detached|de-?attached)\s*garage\b', 'Garage'),
                 (r'\bgarage\b', 'Garage'),
-                (r'\bcarport\b', 'Carport'),
+                (r'\bcar\s*port\b', 'Carport'),
             ],
             'utility_laundry': [
+                (r'\b(?:w\s*\/\s*d(?:\s*area|\s*rm|\s*room)?|washer\s*(?:&|and|\/)?\s*dryer(?:\s*area)?)\b', 'W/D Area'),
                 (r'\b(?:laundry(?:\s*room|\s*rm|\s*area)?|laundary|launda|laund|laun|lndry|ldy|la)\b', 'Laundry'),
-                (r'\butility(?:\s*room|\s*rm|\s*area)?\b', 'Utility'),
+                (r'\butility(?:\s*room|\s*rm|\s*area)?\b', 'Utility Room'),
                 (r'\bmud\s*room|mudroom|mud\s*rm\b', 'Mud Room'),
+                (r'\b(?:hall(?:way)?|corridor)\b', 'Hall'),
                 (r'\b(?:foyer|entry(?:way)?|vestibule)\b', 'Foyer / Entry'),
                 (r'\b(?:entrance\s*stairs|entry\s*stairs|stairs|stairway|stair|staircase)\b', 'Stairs'),
                 (r'\b(?:walk[\s-]*in\s*closet|wic)\b', 'Walk-in Closet'),
                 (r'\bcl(?:o)?se[td]s?(?!\s*porch)\b', 'Closet'),
+                (r'\battic\b', 'Attic'),
+                (r'\bunfinished(?:\s+(?:area|space|room))?\b', 'Unfinished'),
+                (r'\bfinished(?:\s+(?:area|space|room))?\b', 'Finished'),
                 (r'\b(?:mech\.?|mechanical|furnace|hvac|boiler|storage)\b', 'Storage / Mech'),
             ]
         }
@@ -582,9 +596,26 @@ class MapExtractor:
         ignore_patterns = [
             r'^\s*[\d\.\s\'\"x\=\-\+\/\[\]]+\s*$',
             r'^\s*(?:total\s*sketch|area\s*calculations|calculation\s*details|uniform\s*residential)\b',
-            r'^\s*(?:borrower|file\s*no|property\s*address|case\s*no|lender|ice\s*lender|appraiser)\b',
-            r'^\s*(?:living\s*area|non-living\s*area|total\s*living\s*area)\b',
+            r'^\s*(?:borrower|file\s*no|property\s*address|case\s*no|lender|ice\s*lender|appraiser|client|scale|date|page\s*\d|sketch\s*by|comments)\b',
+            r'^\s*(?:living\s*area|non-living\s*area|total\s*living\s*area|gross\s*living\s*area|gla)\b',
+            r'^\s*\d+(?:\.\d+)?\s*(?:ft|in|sq\s*ft|sf|ft2)\b',
+            r'^\s*\d+(?:\.\d+)?\s*[\'\"]?\s*[x×]\s*\d+(?:\.\d+)?',
         ]
+
+        def _is_dynamic_room_label(cleaned_txt: str) -> bool:
+            if not cleaned_txt or len(cleaned_txt) < 2 or len(cleaned_txt) > 60:
+                return False
+            if len(cleaned_txt.split()) > 8:
+                return False
+            if not re.search(r'[a-zA-Z]{2,}', cleaned_txt):
+                return False
+            if any(re.search(pat, cleaned_txt, re.I) for pat in ignore_patterns):
+                return False
+            if any(re.search(lp, cleaned_txt, re.I) for lp, _ in LEVEL_PATTERNS):
+                return False
+            if re.match(r'^\d+\s+[A-Za-z]', cleaned_txt) or re.search(r'\b\d{5}(?:-\d{4})?\b', cleaned_txt):
+                return False
+            return True
 
         text_lines = [l.strip() for l in raw_text.split('\n') if l.strip()]
 
@@ -592,6 +623,7 @@ class MapExtractor:
             c_level = "Main Level"
             b_level = {}
             b_cat = {c: [] for c in ROOM_CATEGORIES}
+            b_cat['other'] = []
             labels = []
 
             # Pre-pass: merge split adjacent tokens (e.g., ["1/2", "Bath"] -> "1/2 Bath", ["0.5", "BA"] -> "0.5 BA")
@@ -603,8 +635,8 @@ class MapExtractor:
                 nxt = candidate_lines[ci + 1].strip() if ci + 1 < cn else ""
 
                 is_curr_half = bool(re.match(r'^(?:1\/2|0?\.5|half)$', curr, re.I))
-                is_nxt_bath = bool(re.match(r'^(?:bath(?:room)?|ba)$', nxt, re.I))
-                is_curr_bath = bool(re.match(r'^(?:bath(?:room)?|ba)$', curr, re.I))
+                is_nxt_bath = bool(re.match(r'^(?:bath(?:room)?|bth|ba)$', nxt, re.I))
+                is_curr_bath = bool(re.match(r'^(?:bath(?:room)?|bth|ba)$', curr, re.I))
                 is_nxt_half = bool(re.match(r'^(?:1\/2|0?\.5|half)$', nxt, re.I))
 
                 if (is_curr_half and is_nxt_bath) or (is_curr_bath and is_nxt_half):
@@ -620,6 +652,7 @@ class MapExtractor:
                     continue
 
                 cleaned = re.sub(r'\[?\s*\-?\d+(?:\.\d+)?\s*sq\s*ft\s*\]?', '', line, flags=re.I).strip()
+                cleaned = re.sub(r'\s+\d+(?:\.\d+)?[\'\"]?\s*[x×]\s*\d+(?:\.\d+)?[\'\"]?$', '', cleaned, flags=re.I).strip()
                 if not cleaned or re.match(r'^[\d\.\s\'\"x\=\-\+\/]+$', cleaned):
                     continue
 
@@ -629,12 +662,13 @@ class MapExtractor:
                         c_level = lvl_name
                         if c_level not in b_level:
                             b_level[c_level] = []
-                        if not re.search(r'\b(?:fin(?:ished)?|unfin(?:ished)?)\s*(?:basement|base|bsmt|bmst|ba)\b|\bbasement\b', cleaned, re.I):
+                        if len(cleaned.split()) <= 3 and not re.search(r'\b(?:fin(?:ished)?|unfin(?:ished)?)\s*(?:basement|base|bsmt|bmst|ba)\b|\bbasement\b|\battic\b', cleaned, re.I):
                             is_lvl = True
                             break
                 if is_lvl:
                     continue
 
+                matched_any = False
                 for cat, rules in ROOM_CATEGORIES.items():
                     matched = False
                     for pat, norm_name in rules:
@@ -651,9 +685,23 @@ class MapExtractor:
                             b_cat[cat].append(item)
                             labels.append(line)
                             matched = True
+                            matched_any = True
                             break
                     if matched:
                         break
+
+                if not matched_any and _is_dynamic_room_label(cleaned):
+                    item = {
+                        'label': line,
+                        'standard_name': cleaned,
+                        'category': 'other',
+                        'level': c_level
+                    }
+                    if c_level not in b_level:
+                        b_level[c_level] = []
+                    b_level[c_level].append(item)
+                    b_cat['other'].append(item)
+                    labels.append(line)
 
             return b_cat, b_level, labels
 
@@ -667,7 +715,7 @@ class MapExtractor:
 
         # Check if page has vector blocks or custom OCR blocks for high-precision spatial level clustering
         blocks = None
-        cutoff_y = 880
+        cutoff_y = (page.rect.height - 20) if (page is not None and hasattr(page, "rect")) else 1000
         if page is not None and hasattr(page, "get_text"):
             try:
                 blocks = page.get_text("blocks")
@@ -704,6 +752,7 @@ class MapExtractor:
                     anchors.append({'level': '1st Floor', 'cx': 300, 'cy': 400})
 
                 spatial_by_cat = {c: [] for c in ROOM_CATEGORIES}
+                spatial_by_cat['other'] = []
                 spatial_by_lvl = {}
                 spatial_labels = []
 
@@ -720,11 +769,13 @@ class MapExtractor:
 
                         for l in b[4].split('\n'):
                             cleaned = re.sub(r'\[?\s*\-?\d+(?:\.\d+)?\s*sq\s*ft\s*\]?', '', l, flags=re.I).strip()
-                            if not cleaned or len(cleaned) > 35 or re.match(r'^[\d\.\s\'\"x\=\-\+\/]+$', cleaned):
+                            cleaned = re.sub(r'\s+\d+(?:\.\d+)?[\'\"]?\s*[x×]\s*\d+(?:\.\d+)?[\'\"]?$', '', cleaned, flags=re.I).strip()
+                            if not cleaned or len(cleaned) > 60 or re.match(r'^[\d\.\s\'\"x\=\-\+\/]+$', cleaned):
                                 continue
                             if any(re.search(pat, cleaned, re.I) for pat in ignore_patterns):
                                 continue
 
+                            matched_any = False
                             for cat, rules in ROOM_CATEGORIES.items():
                                 matched = False
                                 for pat, norm_name in rules:
@@ -739,9 +790,21 @@ class MapExtractor:
                                         spatial_by_cat[cat].append(item)
                                         spatial_labels.append(l.strip())
                                         matched = True
+                                        matched_any = True
                                         break
                                 if matched:
                                     break
+
+                            if not matched_any and _is_dynamic_room_label(cleaned):
+                                item = {
+                                    'label': l.strip(),
+                                    'standard_name': cleaned,
+                                    'category': 'other',
+                                    'level': best_lvl
+                                }
+                                spatial_by_lvl.setdefault(best_lvl, []).append(item)
+                                spatial_by_cat['other'].append(item)
+                                spatial_labels.append(l.strip())
 
                 if spatial_labels:
                     by_category, by_level, all_labels = spatial_by_cat, spatial_by_lvl, list(dict.fromkeys(spatial_labels))
@@ -769,20 +832,59 @@ class MapExtractor:
             except Exception as ocr_err:
                 print(f"Notice: Sketch OCR fallback warning: {ocr_err}")
 
-        bed_count = len(by_category['bedrooms'])
-        full_baths = sum(1 for b in by_category['bathrooms'] if b['standard_name'] != 'Half Bath')
-        half_baths = sum(1 for b in by_category['bathrooms'] if b['standard_name'] == 'Half Bath')
+        def _is_bsmt_item(itm: Dict[str, Any]) -> bool:
+            lvl = (itm.get('level') or '').lower()
+            lbl = (itm.get('label') or '').lower()
+            std = (itm.get('standard_name') or '').lower()
+            bsmt_pat = r'\b(?:basement|bsmt|below\s*grade|lower\s*level|cellar)\b'
+            return bool(re.search(bsmt_pat, lvl) or re.search(bsmt_pat, lbl) or re.search(bsmt_pat, std))
+
+        above_beds = [b for b in by_category.get('bedrooms', []) if not _is_bsmt_item(b)]
+        above_baths = [b for b in by_category.get('bathrooms', []) if not _is_bsmt_item(b)]
+        above_living = [b for b in by_category.get('living', []) if not _is_bsmt_item(b)]
+        above_kd = [b for b in by_category.get('kitchen_dining', []) if not _is_bsmt_item(b)]
+        above_util = [b for b in by_category.get('utility_laundry', []) if not _is_bsmt_item(b)]
+
+        bed_count = len(above_beds)
+        full_baths = sum(1 for b in above_baths if b['standard_name'] != 'Half Bath')
+        half_baths = sum(1 for b in above_baths if b['standard_name'] == 'Half Bath')
         bath_count = full_baths + (0.5 * half_baths)
         bath_display = f"{full_baths} Full" + (f", {half_baths} Half" if half_baths else "") if bath_count > 0 else "—"
 
-        garage_labels = [g['label'] for g in by_category['garage_parking']]
+        garage_labels = [g['label'] for g in by_category.get('garage_parking', [])]
 
-        has_kitchen = len(by_category['kitchen_dining']) > 0 and any('kitchen' in k['standard_name'].lower() for k in by_category['kitchen_dining'])
-        has_dining = any('dining' in k['standard_name'].lower() or 'nook' in k['standard_name'].lower() or 'breakfast' in k['standard_name'].lower() for k in by_category['kitchen_dining'])
-        living_count = len(by_category['living'])
+        has_kitchen = len(above_kd) > 0 and any('kitchen' in k['standard_name'].lower() for k in above_kd)
+        has_dining = any('dining' in k['standard_name'].lower() or 'nook' in k['standard_name'].lower() or 'breakfast' in k['standard_name'].lower() for k in above_kd)
+        living_count = len(above_living)
         kitchen_count = 1 if has_kitchen else 0
         dining_count = 1 if has_dining else 0
         total_rooms = bed_count + living_count + kitchen_count + dining_count
+
+        # Below-grade (Basement) room breakdown matching Sales Grid UAD format: rr (rec), br (bed), ba (bath), o (other)
+        bsmt_beds = [b for b in by_category.get('bedrooms', []) if _is_bsmt_item(b)]
+        bsmt_baths = [b for b in by_category.get('bathrooms', []) if _is_bsmt_item(b)]
+        bsmt_living = [b for b in by_category.get('living', []) if _is_bsmt_item(b)]
+        bsmt_kd = [b for b in by_category.get('kitchen_dining', []) if _is_bsmt_item(b)]
+        bsmt_other_cat = [b for b in by_category.get('other', []) if _is_bsmt_item(b)]
+
+        bsmt_rr = sum(1 for l in bsmt_living if re.search(r'rec|family|game|media|play', l.get('standard_name', ''), re.I))
+        bsmt_non_rr_living = len(bsmt_living) - bsmt_rr
+        bsmt_br = len(bsmt_beds)
+        bsmt_full_ba = sum(1 for b in bsmt_baths if b['standard_name'] != 'Half Bath')
+        bsmt_half_ba = sum(1 for b in bsmt_baths if b['standard_name'] == 'Half Bath')
+        bsmt_ba = bsmt_full_ba + (0.5 * bsmt_half_ba)
+        bsmt_o = len(bsmt_kd) + bsmt_non_rr_living + len(bsmt_other_cat)
+        bsmt_ba_str = f"{bsmt_full_ba}.{bsmt_half_ba}" if (bsmt_full_ba or bsmt_half_ba) else "0"
+
+        basement_rooms = {
+            'rr': bsmt_rr,
+            'br': bsmt_br,
+            'ba': bsmt_ba,
+            'full_ba': bsmt_full_ba,
+            'half_ba': bsmt_half_ba,
+            'o': bsmt_o,
+            'uad': f"{bsmt_rr}rr{bsmt_br}br{bsmt_ba_str}ba{bsmt_o}o"
+        }
 
         summary = {
             'bedroom_count': bed_count,
@@ -793,10 +895,11 @@ class MapExtractor:
             'living_rooms_count': living_count,
             'has_kitchen': has_kitchen,
             'has_dining': has_dining,
-            'has_laundry': len(by_category['utility_laundry']) > 0 and any('laundry' in u['standard_name'].lower() for u in by_category['utility_laundry']),
+            'has_laundry': len(above_util) > 0 and any('laundry' in u['standard_name'].lower() for u in above_util),
             'garage': garage_labels[0] if garage_labels else None,
             'total_rooms': total_rooms,
-            'total_room_labels': len(all_labels)
+            'total_room_labels': len(all_labels),
+            'basement_rooms': basement_rooms
         }
 
         return {
@@ -1135,8 +1238,9 @@ class MapExtractor:
         pix = page.get_pixmap(clip=clip_rect, dpi=180) if clip_rect is not None else page.get_pixmap(dpi=180)
         b64_img = base64.b64encode(pix.tobytes("jpeg")).decode("utf-8")
 
-        # 5. OCR Fallback for scanned/raster sketches where vector text is empty or incomplete
-        if (not areas or len(room_data.get("all_labels", [])) < 2) and fitz is not None:
+        # 5. OCR Fallback for scanned/raster or hybrid sketches where vector text is empty or incomplete
+        has_images = bool(page.get_images()) if hasattr(page, "get_images") else False
+        if (not areas or len(room_data.get("all_labels", [])) < 2 or (has_images and len(room_data.get("all_labels", [])) < 5)) and fitz is not None:
             try:
                 np_arr = np.frombuffer(pix.tobytes("jpeg"), np.uint8)
                 img_bgr = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
@@ -1173,7 +1277,7 @@ class MapExtractor:
                                     areas = ocr_areas
                                     sketch_gla = ocr_gla
 
-                        if len(room_data.get("all_labels", [])) < 2:
+                        if len(room_data.get("all_labels", [])) < 2 or (has_images and len(room_data.get("all_labels", [])) < 5):
                             ocr_room_data = self.extract_sketch_room_labels(None, ocr_full_text, custom_blocks=custom_blocks)
                             if len(ocr_room_data.get("all_labels", [])) > len(room_data.get("all_labels", [])):
                                 room_data = ocr_room_data
