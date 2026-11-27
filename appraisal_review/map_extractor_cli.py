@@ -240,6 +240,44 @@ class MapExtractor:
                     return results
             except Exception:
                 pass
+
+        # PyTesseract box-level fallback (grouped by line)
+        if pytesseract is not None:
+            try:
+                gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+                data = pytesseract.image_to_data(gray, config='--psm 11 --oem 3', output_type=pytesseract.Output.DICT)
+                lines_map = {}
+                n_items = len(data.get('text', []))
+                for i in range(n_items):
+                    txt = (data['text'][i] or '').strip()
+                    if not txt:
+                        continue
+                    try:
+                        conf = float(data['conf'][i])
+                    except Exception:
+                        conf = -1.0
+                    if conf < 20:
+                        continue
+                    key = (data['block_num'][i], data['par_num'][i], data['line_num'][i])
+                    x, y, w, h = data['left'][i], data['top'][i], data['width'][i], data['height'][i]
+                    lines_map.setdefault(key, []).append((x, y, x + w, y + h, txt, conf / 100.0))
+
+                results = []
+                for words in lines_map.values():
+                    words.sort(key=lambda w: w[0])
+                    x0 = min(w[0] for w in words)
+                    y0 = min(w[1] for w in words)
+                    x1 = max(w[2] for w in words)
+                    y1 = max(w[3] for w in words)
+                    line_txt = " ".join(w[4] for w in words).strip()
+                    avg_conf = sum(w[5] for w in words) / len(words)
+                    if line_txt:
+                        box = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+                        results.append((box, line_txt, float(avg_conf)))
+                if results:
+                    return results
+            except Exception:
+                pass
         return []
 
     def get_pdf_doc(self, file_path: str):
@@ -1308,31 +1346,67 @@ class MapExtractor:
 
         # 5. OCR Fallback for scanned/raster or hybrid sketches where vector text is empty or incomplete
         has_images = bool(page.get_images()) if hasattr(page, "get_images") else False
-        if (not areas or len(room_data.get("all_labels", [])) < 2 or (has_images and len(room_data.get("all_labels", [])) < 5)) and fitz is not None:
+        need_area_ocr = not areas
+        need_room_ocr = len(room_data.get("all_labels", [])) < 3 or (has_images and len(room_data.get("all_labels", [])) < 8)
+        if (need_area_ocr or need_room_ocr) and fitz is not None:
             try:
-                np_arr = np.frombuffer(pix.tobytes("jpeg"), np.uint8)
-                img_bgr = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-                if img_bgr is not None and img_bgr.size > 0:
-                    ocr_boxes = self.run_ocr_boxes(img_bgr)
-                    if ocr_boxes:
-                        ocr_lines = []
-                        custom_blocks = []
-                        scale_x = (clip_rect.width / img_bgr.shape[1]) if clip_rect else (page.rect.width / img_bgr.shape[1])
-                        scale_y = (clip_rect.height / img_bgr.shape[0]) if clip_rect else (page.rect.height / img_bgr.shape[0])
-                        offset_x = clip_rect.x0 if clip_rect else 0
-                        offset_y = clip_rect.y0 if clip_rect else 0
+                # Locate where the bottom Area Calculations Summary table starts so room OCR
+                # focuses strictly on the drawing canvas (above the summary table, below header).
+                canvas_bottom_y = page.rect.height - 25
+                try:
+                    for blk in page.get_text("blocks"):
+                        if re.search(r'\b(?:area\s*calculations\s*summary|calculation\s*details)\b', blk[4], re.I):
+                            canvas_bottom_y = min(canvas_bottom_y, max(180.0, blk[1] - 4))
+                except Exception:
+                    pass
 
-                        for box, ocr_txt, prob in ocr_boxes:
-                            ocr_lines.append(ocr_txt)
-                            bx0 = min(p[0] for p in box) * scale_x + offset_x
-                            bx1 = max(p[0] for p in box) * scale_x + offset_x
-                            by0 = min(p[1] for p in box) * scale_y + offset_y
-                            by1 = max(p[1] for p in box) * scale_y + offset_y
-                            custom_blocks.append((bx0, by0, bx1, by1, ocr_txt))
+                # Run high-DPI OCR on the drawing canvas only for room labels
+                if need_room_ocr:
+                    canvas_rect = fitz.Rect(10, 65, page.rect.width - 10, canvas_bottom_y)
+                    canvas_pix = page.get_pixmap(clip=canvas_rect, dpi=250)
+                    c_arr = np.frombuffer(canvas_pix.tobytes("jpeg"), np.uint8)
+                    c_bgr = cv2.imdecode(c_arr, cv2.IMREAD_COLOR)
+                    if c_bgr is not None and c_bgr.size > 0:
+                        c_boxes = self.run_ocr_boxes(c_bgr)
+                        if c_boxes:
+                            c_lines = []
+                            c_blocks = []
+                            sx = canvas_rect.width / c_bgr.shape[1]
+                            sy = canvas_rect.height / c_bgr.shape[0]
+                            for box, ocr_txt, prob in c_boxes:
+                                c_lines.append(ocr_txt)
+                                bx0 = min(p[0] for p in box) * sx + canvas_rect.x0
+                                bx1 = max(p[0] for p in box) * sx + canvas_rect.x0
+                                by0 = min(p[1] for p in box) * sy + canvas_rect.y0
+                                by1 = max(p[1] for p in box) * sy + canvas_rect.y0
+                                c_blocks.append((bx0, by0, bx1, by1, ocr_txt))
+                            ocr_room_data = self.extract_sketch_room_labels(None, "\n".join(c_lines), custom_blocks=c_blocks)
+                            if len(ocr_room_data.get("all_labels", [])) > len(room_data.get("all_labels", [])):
+                                room_data = ocr_room_data
 
-                        ocr_full_text = "\n".join(ocr_lines)
+                # Run full-page OCR only if Area Calculations Summary was missing from vector text
+                if need_area_ocr:
+                    np_arr = np.frombuffer(pix.tobytes("jpeg"), np.uint8)
+                    img_bgr = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+                    if img_bgr is not None and img_bgr.size > 0:
+                        ocr_boxes = self.run_ocr_boxes(img_bgr)
+                        if ocr_boxes:
+                            ocr_lines = []
+                            custom_blocks = []
+                            scale_x = (clip_rect.width / img_bgr.shape[1]) if clip_rect else (page.rect.width / img_bgr.shape[1])
+                            scale_y = (clip_rect.height / img_bgr.shape[0]) if clip_rect else (page.rect.height / img_bgr.shape[0])
+                            offset_x = clip_rect.x0 if clip_rect else 0
+                            offset_y = clip_rect.y0 if clip_rect else 0
 
-                        if not areas:
+                            for box, ocr_txt, prob in ocr_boxes:
+                                ocr_lines.append(ocr_txt)
+                                bx0 = min(p[0] for p in box) * scale_x + offset_x
+                                bx1 = max(p[0] for p in box) * scale_x + offset_x
+                                by0 = min(p[1] for p in box) * scale_y + offset_y
+                                by1 = max(p[1] for p in box) * scale_y + offset_y
+                                custom_blocks.append((bx0, by0, bx1, by1, ocr_txt))
+
+                            ocr_full_text = "\n".join(ocr_lines)
                             spatial_areas = self._parse_sketch_areas_spatial(custom_blocks)
                             if spatial_areas:
                                 areas = spatial_areas
@@ -1344,11 +1418,6 @@ class MapExtractor:
                                 if ocr_areas:
                                     areas = ocr_areas
                                     sketch_gla = ocr_gla
-
-                        if len(room_data.get("all_labels", [])) < 2 or (has_images and len(room_data.get("all_labels", [])) < 5):
-                            ocr_room_data = self.extract_sketch_room_labels(None, ocr_full_text, custom_blocks=custom_blocks)
-                            if len(ocr_room_data.get("all_labels", [])) > len(room_data.get("all_labels", [])):
-                                room_data = ocr_room_data
             except Exception as ocr_err:
                 print(f"Notice: Sketch OCR fallback error: {ocr_err}")
 
