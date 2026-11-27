@@ -743,13 +743,78 @@ class MapExtractor:
                                         else ('3rd Floor' if re.search(r'third|3rd', lvl, re.I)
                                         else ('Basement' if 'basement' in lvl.lower()
                                         else 'Garage'))))
-                                anchors.append({'level': norm, 'cx': (b[0] + b[2]) / 2, 'cy': (b[1] + b[3]) / 2})
+                                anchors.append({
+                                    'level': norm,
+                                    'cx': (b[0] + b[2]) / 2,
+                                    'cy': (b[1] + b[3]) / 2,
+                                    'x0': b[0], 'y0': b[1], 'x1': b[2], 'y1': b[3]
+                                })
 
                 if any(a['level'] == '2nd Floor' for a in anchors) and not any(a['level'] == '1st Floor' for a in anchors):
                     min_x = min([a['cx'] for a in anchors if a['level'] == '2nd Floor'])
-                    anchors.append({'level': '1st Floor', 'cx': min_x / 2, 'cy': 400})
+                    anchors.append({'level': '1st Floor', 'cx': min_x / 2, 'cy': 400, 'x0': min_x / 2, 'y0': 400, 'x1': min_x / 2, 'y1': 400})
                 elif not anchors:
-                    anchors.append({'level': '1st Floor', 'cx': 300, 'cy': 400})
+                    anchors.append({'level': '1st Floor', 'cx': 300, 'cy': 400, 'x0': 300, 'y0': 400, 'x1': 300, 'y1': 400})
+
+                # Cluster candidate room blocks into separate floor-plan panels so a single
+                # Basement/Garage label on one panel does not swallow unlabeled above-grade panels.
+                cand_blocks = []
+                for b in blocks:
+                    if b[1] < cutoff_y:
+                        has_valid_line = False
+                        for l in b[4].split('\n'):
+                            cl = re.sub(r'\[?\s*\-?\d+(?:\.\d+)?\s*sq\s*ft\s*\]?', '', l, flags=re.I).strip()
+                            cl = re.sub(r'\s+\d+(?:\.\d+)?[\'\"]?\s*[x×]\s*\d+(?:\.\d+)?[\'\"]?$', '', cl, flags=re.I).strip()
+                            if cl and len(cl) <= 60 and not re.match(r'^[\d\.\s\'\"x\=\-\+\/]+$', cl) and not any(re.search(pat, cl, re.I) for pat in ignore_patterns):
+                                has_valid_line = True
+                                break
+                        if has_valid_line:
+                            cand_blocks.append(b)
+
+                def _box_gap(b1, b2):
+                    dx = max(0.0, max(b1[0], b2[0]) - min(b1[2], b2[2]))
+                    dy = max(0.0, max(b1[1], b2[1]) - min(b1[3], b2[3]))
+                    return (dx * dx + dy * dy) ** 0.5
+
+                n_cb = len(cand_blocks)
+                parent = list(range(n_cb))
+                def _find(x):
+                    while parent[x] != x:
+                        parent[x] = parent[parent[x]]
+                        x = parent[x]
+                    return x
+                for i in range(n_cb):
+                    for j in range(i + 1, n_cb):
+                        if _box_gap(cand_blocks[i], cand_blocks[j]) <= 70.0:
+                            ri, rj = _find(i), _find(j)
+                            if ri != rj:
+                                parent[rj] = ri
+
+                clusters = {}
+                for i in range(n_cb):
+                    r = _find(i)
+                    clusters.setdefault(r, []).append(cand_blocks[i])
+
+                block_level_map = {}
+                if len(clusters) > 1:
+                    for _, cl_blocks in clusters.items():
+                        cl_box = (
+                            min(b[0] for b in cl_blocks),
+                            min(b[1] for b in cl_blocks),
+                            max(b[2] for b in cl_blocks),
+                            max(b[3] for b in cl_blocks),
+                        )
+                        cl_anchors = [
+                            anc for anc in anchors
+                            if _box_gap(cl_box, (anc['x0'], anc['y0'], anc['x1'], anc['y1'])) <= 90.0
+                        ]
+                        for b in cl_blocks:
+                            if not cl_anchors:
+                                block_level_map[id(b)] = "1st Floor"
+                            else:
+                                cx, cy = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
+                                best_a = min(cl_anchors, key=lambda a: ((cx - a['cx'])**2 + (cy - a['cy'])**2)**0.5)
+                                block_level_map[id(b)] = best_a['level']
 
                 spatial_by_cat = {c: [] for c in ROOM_CATEGORIES}
                 spatial_by_cat['other'] = []
@@ -758,14 +823,17 @@ class MapExtractor:
 
                 for b in blocks:
                     if b[1] < cutoff_y:
-                        cx, cy = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
-                        best_lvl = "1st Floor"
-                        min_dist = float("inf")
-                        for anc in anchors:
-                            d = ((cx - anc['cx'])**2 + (cy - anc['cy'])**2)**0.5
-                            if d < min_dist:
-                                min_dist = d
-                                best_lvl = anc['level']
+                        if id(b) in block_level_map:
+                            best_lvl = block_level_map[id(b)]
+                        else:
+                            cx, cy = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
+                            best_lvl = "1st Floor"
+                            min_dist = float("inf")
+                            for anc in anchors:
+                                d = ((cx - anc['cx'])**2 + (cy - anc['cy'])**2)**0.5
+                                if d < min_dist:
+                                    min_dist = d
+                                    best_lvl = anc['level']
 
                         for l in b[4].split('\n'):
                             cleaned = re.sub(r'\[?\s*\-?\d+(?:\.\d+)?\s*sq\s*ft\s*\]?', '', l, flags=re.I).strip()
